@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!-- This is list of parameters -->
+<parameters>
+  <parameter ID="1">
+    <mode>IVFPQ</mode>
+    <dim>128</dim>
+    <nlist>2048</nlist>
+    <pq>32</pq>
+  </parameter>
+  <parameter ID="2">
+    <mode>IVFPQ</mode>
+    <dim>512</dim>
+    <nlist>8192</nlist>
+    <pq>64</pq>
+  </parameter>
+  <parameter ID="3">
+    <mode>IVFPQ</mode>
+    <dim>2048</dim>
+    <nlist>2048</nlist>
+    <pq>8</pq>
+  </parameter>
+  <parameter ID="21">
+    <mode>PCAR</mode>
+    <input_dim>512</input_dim>
+    <output_dim>128</output_dim>
+  </parameter>
+  <parameter ID="22">
+    <mode>PCAR</mode>
+    <input_dim>128</input_dim>
+    <output_dim>64</output_dim>
+  </parameter>
+  <parameter ID="41">
+    <mode>IVFSQ8</mode>
+    <dim>64</dim>
+    <nlist>1024</nlist>
+  </parameter>
+  <parameter ID="42">
+    <mode>IVFSQ8</mode>
+    <dim>64</dim>
+    <nlist>8192</nlist>
+  </parameter>
+  <parameter ID="43">
+    <mode>IVFSQ8</mode>
+    <dim>128</dim>
+    <nlist>8192</nlist>
+  </parameter>
+  <parameter ID="44">
+    <mode>IVFSQ8</mode>
+    <dim>128</dim>
+    <nlist>16384</nlist>
+  </parameter>
+  <parameter ID="61">
+    <mode>SQ8</mode>
+    <dim>64</dim>
+  </parameter>
+  <parameter ID="62">
+    <mode>SQ8</mode>
+    <dim>128</dim>
+  </parameter>
+  <parameter ID="63">
+    <mode>SQ8</mode>
+    <dim>512</dim>
+  </parameter>
+  <parameter ID="81">
+    <mode>Flat</mode>
+    <dim>128</dim>
+  </parameter>
+  <parameter ID="82">
+    <mode>Flat</mode>
+    <dim>512</dim>
+  </parameter>
+  <parameter ID="111">
+    <mode>IVFINT8</mode>
+    <dim>64</dim>
+    <nlist>1024</nlist>
+  </parameter>
+  <parameter ID="112">
+    <mode>IVFINT8</mode>
+    <dim>128</dim>
+    <nlist>1024</nlist>
+  </parameter>
+  <parameter ID="121">
+    <mode>INT8</mode>
+    <dim>128</dim>
+  </parameter>
+  <parameter ID="122">
+    <mode>INT8</mode>
+    <dim>512</dim>
+  </parameter>
+  <!-- aicpu -->
+  <parameter ID="1001">
+    <mode>AICPU</mode>
+  </parameter>
+</parameters>

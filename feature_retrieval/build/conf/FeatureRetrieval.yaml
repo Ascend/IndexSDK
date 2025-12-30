@@ -1,0 +1,24 @@
+component: feature_retrieval
+product: indexsdk
+systemEnv:
+  - workspace
+  - processor
+  - frame_project
+version:
+compile:
+  name: feature_retrieval
+  version:
+  input:
+    files:
+       include:
+        - commands:
+          - command: "cd {{ systemEnv.workspace }}/feature_retrieval/build && \
+          LD_PRELOAD= sudo LD_PRELOAD=${LD_PRELOAD} -E /bin/bash build.sh {{systemEnv.frame_project}}"
+  process:
+    language: c
+    compilerTool: make
+    parameters: []
+    sourcePath: ""
+    buildPath: ""
+  output:
+package:

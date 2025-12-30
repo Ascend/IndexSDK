@@ -1,0 +1,34 @@
+version: '2.0'
+buildspace:
+  fixed: true
+params:
+  - name: upload_type
+    value: artifact
+  - name: build_type
+    value: release
+envs:
+  - condition: env_types == 'label'
+    label: '${env_type}'
+  - condition: env_types == 'image'
+    resource:
+      type: docker
+      image: '${env_type}'
+      class: 16U32G
+      mode: toolbox
+steps:
+  BUILD:
+    - when:
+        condition: build_type == 'release'
+        steps:
+          - build_execute:
+              command: bash ${WORKSPACE}/vsa_hpp/.cloudbuild/build_pkg.sh ${build_type}
+              check: false
+    - when:
+        condition: build_type == 'ut'
+        steps:
+          - build_execute:
+              command: bash ${WORKSPACE}/vsa_hpp/.cloudbuild/build_dt.sh
+              check: false
+  POST_BUILD:
+    - compile_report:
+        compiler: gcc

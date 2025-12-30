@@ -1,0 +1,62 @@
+# Copyright (c) Facebook, Inc. and its affiliates.
+#
+# This source code is licensed under the MIT license found in the
+# LICENSE file in the root directory of this source tree.
+
+-include makefile.inc
+
+ASCEND_MINIOS_SRC     = ascenddaemon/impl_device/IndexILFlat.cpp
+ASCEND_MINIOS_OBJ     = $(sort $(ASCEND_MINIOS_SRC:.cpp=.o))
+ASCEND_MINIOS_DEPS_SRC     = $(wildcard ascenddaemon/StandardAscendResources.cpp ascenddaemon/utils/MemorySpace.cpp ascenddaemon/utils/TopkOp.cpp ascenddaemon/utils/AscendMemory.cpp ascenddaemon/utils/AscendUtils.cpp ascenddaemon/utils/AscendStackMemory.cpp ascenddaemon/utils/DistanceMatrixOp.cpp ascenddaemon/utils/AscendOpDesc.cpp ascenddaemon/utils/AscendOperator.cpp)
+ASCEND_MINIOS_DEPS_OBJ     = $(sort $(ASCEND_MINIOS_DEPS_SRC:.cpp=.o))
+
+#THREADPOOL
+COMMON_DIR            = common
+THREADPOOL_DIR        = $(COMMON_DIR)/threadpool
+THREADPOOL_SRC        = $(wildcard $(THREADPOOL_DIR)/*.cpp)
+ASCEND_THREADPOOL_OBJ = $(addprefix ascenddaemon/impl_device/, $(notdir $(THREADPOOL_SRC:.cpp=.o)))
+
+ASCENDFLAGS_MINIOS = -I. -I./ascenddaemon/impl_device -I./common
+
+############################
+# Building
+
+all: libascendfaiss_minios.$(SHAREDEXT)
+
+libascendfaiss_minios.$(SHAREDEXT): $(ASCEND_MINIOS_OBJ) $(ASCEND_MINIOS_DEPS_OBJ) $(ASCEND_THREADPOOL_OBJ)
+	$(ASCENDCXX) -o $@ $^ $(SHAREDFLAGS) $(ASCEND_MINIOS_LDFLAGS) $(ASCEND_MINIOS_LIBS)
+
+$(ASCEND_MINIOS_DEPS_OBJ): %.o: %.cpp
+	$(ASCENDCXX) $(ASCEND_MINIOS_FLAGS) $(ASCENDFLAGS_MINIOS) -c $< -o $@
+
+$(ASCEND_THREADPOOL_OBJ): $(THREADPOOL_SRC)
+	$(ASCENDCXX) $(ASCEND_MINIOS_FLAGS) $(ASCENDFLAGS_MINIOS) -c $< -o $@
+
+$(ASCEND_MINIOS_OBJ): $(ASCEND_MINIOS_SRC)
+	$(ASCENDCXX) $(ASCEND_MINIOS_FLAGS) $(ASCENDFLAGS_MINIOS) -c $< -o $@
+
+clean:
+	rm -f libascendfaiss_minios.$(SHAREDEXT)
+	rm -f test/ascenddevice/libascendfaiss_minios.$(SHAREDEXT)
+	rm -f $(ASCEND_MINIOS_DEPS_OBJ)
+	rm -f $(ASCEND_MINIOS_OBJ)
+	rm -f $(ASCEND_THREADPOOL_OBJ)
+
+#############################
+# Tests
+gtest: third_party/googletest/googletest
+	$(MAKE) -C third_party/googletest/googletest/make CXX="$(ASCENDCXX)" CXXFLAGS="$(ASCENDFLAGS)" gtest.a
+	mv third_party/googletest/googletest/make/gtest.a third_party/googletest/googletest/make/gtest_dev.a
+	rm -rf third_party/googletest/googletest/make/gtest-all.o
+	ln -sf `pwd`/third_party/googletest/googletest test/ascenddevice/gtest
+	#ln -sf `pwd`/third_party/googletest/googletest test/ops/gtest
+
+test_device: libascendfaiss_minios.$(SHAREDEXT)
+	cp libascendfaiss_minios.$(SHAREDEXT) test/ascenddevice
+	$(MAKE) -C test/ascenddevice run
+
+test_device_clean:
+	rm -f test/ascenddevice/*.o
+	rm -f test/ascenddevice/TestIndexILFlat
+
+.PHONY: all clean test_device

@@ -1,0 +1,12 @@
+string(ASCII 27 Esc)
+set(RED "${Esc}[0;31m")
+set(GREEN "${Esc}[1;32m")
+set(YELLOW "${Esc}[1;33m")
+set(BLUE "${Esc}[1;34m")
+set(END "${Esc}[m")
+
+SET(FAISS_HOME /usr/local/faiss)
+SET(PROTOBUF_HOME  /usr/local/protobuf)
+SET(ASCEND_PROJECT_HOME ${PROJECT_SOURCE_DIR}/..)
+SET(OPEN_SOURCE_HOME ${ASCEND_PROJECT_HOME}/../../opensource)
+SET(GTEST_HOME ${OPEN_SOURCE_HOME}/../../gtest_install)

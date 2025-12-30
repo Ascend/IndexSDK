@@ -1,0 +1,17 @@
+AscendIndexIVFSPSQImpl.o: ascend/custom/AscendIndexIVFSPSQImpl.cpp
+HdcBase.o: common/HdcBase.cpp common/HdcBase.h \
+ /usr/local/Ascend/driver/kernel/inc/driver/ascend_hal.h \
+ /usr/local/Ascend/driver/kernel/inc/driver/ascend_hal_define.h \
+ /usr/local/Ascend/driver/kernel/inc/driver/ascend_hal_error.h \
+ /usr/local/Ascend/driver/kernel/libc_sec/include/securec.h \
+ /usr/local/Ascend/driver/kernel/libc_sec/include/securectype.h \
+ common/utils/RpcUtils.h common/ErrorCode.h \
+ /usr/local/Ascend/ascend-toolkit/latest/acllib/include/acl/acl.h \
+ /usr/local/Ascend/ascend-toolkit/latest/acllib/include/acl/acl_rt.h \
+ /usr/local/Ascend/ascend-toolkit/latest/acllib/include/acl/acl_base.h \
+ /usr/local/Ascend/ascend-toolkit/latest/acllib/include/acl/error_codes/rt_error_codes.h \
+ /usr/local/Ascend/ascend-toolkit/latest/acllib/include/acl/error_codes/ge_error_codes.h \
+ /usr/local/Ascend/ascend-toolkit/latest/acllib/include/acl/acl_op.h \
+ /usr/local/Ascend/ascend-toolkit/latest/acllib/include/acl/acl_mdl.h \
+ common/utils/AscendAssert.h common/utils/AscendException.h \
+ common/utils/LogUtils.h

@@ -1,0 +1,18 @@
+version: 2.0
+params:
+  - name: docker_img_tag
+    value: V1
+  - name: memory_bridge_repository
+    value: 'ComputingFoundationSoftware/ock-platform'
+  - name: build_type
+    value: release
+env:
+  resource: 
+    type: docker
+    image: kweecr04.his.huawei.com:80/ecr-build-arm-gzkunpeng/ock_ubuntu_20.04.5_lts_x86:${docker_img_tag}
+steps:
+  pre_codecheck:
+    - checkout
+tool_params:
+  secsolar:
+    compile_script: bash ${WORKSPACE}/code/build.sh -t ${build_type}

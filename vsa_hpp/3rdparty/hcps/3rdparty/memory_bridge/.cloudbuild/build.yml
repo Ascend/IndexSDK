@@ -1,0 +1,32 @@
+version: '2.0'
+buildspace:
+  fixed: true
+params:
+  - name: upload_type
+    value: artifact
+  - name: build_type
+    value: release
+envs:
+  - condition: env_types == 'label'
+    label: '${env_type}'
+  - condition: env_types == 'image'
+    resource:
+      type: docker
+      image: '${env_type}'
+      class: 16U32G
+      mode: toolbox
+steps:
+  PRE_BUILD:
+    - checkout:
+        path: memory_bridge
+        submodule: false
+  BUILD:
+    - build_execute:
+        command: bash ${WORKSPACE}/memory_bridge/.cloudbuild/build_pkg.sh ${build_type}
+        check: false
+  POST_BUILD:
+    - compile_report:
+        compiler: gcc
+    - artget:
+        artifact_type: cloudartifact
+        file_path: ./memory_bridge/install/OCK-Ascend-MemoryBridge-23.0.0_${OS}-${ARCH}.tar.gz

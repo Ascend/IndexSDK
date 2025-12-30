@@ -1,0 +1,52 @@
+---
+version: 1.0.0
+
+project:
+  name: "vsa_hpp_test"
+  desc: "vsa_hpp_test project"
+  prod: null
+  team: null
+
+pipeline:
+  build:
+    - task: "compile_target"
+      exec: "bash ../../build.sh -s off -c on -t release"
+      args: false
+    - task: "cmake_test"
+      args: "--args=\"-DCMAKE_EXPORT_COMPILE_COMMANDS=ON\" -t release"
+  run:
+    - task: "get_base_line"
+      exec: "python3 -m fast_ptest.performance_main --op_type=get_baseline --fast_model_path='计算软件平台部/基础使能开发一部/Open Computing Kit for Ascend' --fast_server_type=release --product_version='Open Computing Kit for Ascend 23.0.0' --ptest_baseline=../build/performance_baseline.json"
+      args: false
+    - task: "run_test"
+  report:
+    - task: "lcov_report"
+      exec: "mkdir -p ../build/gcovr_report;pwd;lcov --d ../.. --c --output-file ../build/test.info --rc lcov_branch_coverage=1;lcov -r ../build/test.info \"*7.3.0*\" \"*/memory_bridge/*\" \"*/install/*\" \"*.h\" \"*/hpp/impl/*\" \"*3rdparty*\" -output-file ../build/coverage.info --rc lcov_branch_coverage=1;genhtml -o ../build/gcovr_report ../build/coverage.info --show-details --legend --rc lcov_branch_coverage=1"
+      args: false
+    - task: "performance_report"
+      exec: "python3 -m fast_ptest.performance_main --op_type=generate_report --ptest_baseline=../build/performance_baseline.json --ptest_report=../build/performance_report.json"
+      args: false
+    - task: "submit_performance_report"
+      exec: "python3 -m fast_ptest.performance_main --op_type=post_result --fast_model_path='计算软件平台部/基础使能开发一部/Open Computing Kit for Ascend' --product_version='Open Computing Kit for Ascend 23.0.0' --fast_server_type=release --ptest_baseline=../build/performance_baseline.json --ptest_report=../build/performance_report.json"
+      args: false
+  clean:
+    - task: "clean_target"
+      exec: "bash ../../build.sh -t clean"
+    - task: "clean"
+
+components:
+  - type: "hdt_cmc_c_cpp"
+    repo: null
+    dest: null
+    manifest:
+      gtest: null
+      gcov: null
+      mockcpp: null
+      secodefuzz: null
+      hdt-ptest: null
+  - type: "hdt_cmc_pypi"
+    repo: null
+    dest: null
+    manifest:
+      jinja2: null
+      hw-hdt-ptest: null

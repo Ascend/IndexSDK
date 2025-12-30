@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!-- This is list of parameters -->
+<parameters>
+  <parameter ID="41">
+    <mode>IVFSQ8</mode>
+    <dim>64</dim>
+    <nlist>1024</nlist>
+  </parameter>
+  <parameter ID="42">
+    <mode>IVFSQ8</mode>
+    <dim>64</dim>
+    <nlist>8192</nlist>
+  </parameter>
+  <parameter ID="43">
+    <mode>IVFSQ8</mode>
+    <dim>128</dim>
+    <nlist>8192</nlist>
+  </parameter>
+  <parameter ID="44">
+    <mode>IVFSQ8</mode>
+    <dim>128</dim>
+    <nlist>16384</nlist>
+  </parameter>
+  <parameter ID="61">
+    <mode>SQ8</mode>
+    <dim>64</dim>
+  </parameter>
+  <parameter ID="62">
+    <mode>SQ8</mode>
+    <dim>128</dim>
+  </parameter>
+  <parameter ID="63">
+    <mode>SQ8</mode>
+    <dim>512</dim>
+  </parameter>
+  <parameter ID="81">
+    <mode>Flat</mode>
+    <dim>128</dim>
+  </parameter>
+  <parameter ID="82">
+    <mode>Flat</mode>
+    <dim>512</dim>
+  </parameter>
+  <parameter ID="121">
+    <mode>INT8</mode>
+    <dim>128</dim>
+  </parameter>
+  <parameter ID="122">
+    <mode>INT8</mode>
+    <dim>512</dim>
+  </parameter>
+  <!-- aicpu -->
+  <parameter ID="1001">
+    <mode>AICPU</mode>
+  </parameter>
+</parameters>

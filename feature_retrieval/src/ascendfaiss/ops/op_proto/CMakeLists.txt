@@ -1,0 +1,37 @@
+# This file is part of the IndexSDK project.
+# Copyright (c) 2025 Huawei Technologies Co.,Ltd.
+#
+# IndexSDK is licensed under Mulan PSL v2.
+# You can use this software according to the terms and conditions of the Mulan PSL v2.
+# You may obtain a copy of Mulan PSL v2 at:
+#
+#          http://license.coscl.org.cn/MulanPSL2
+#
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND,
+# EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
+# MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
+# See the Mulan PSL v2 for more details.
+
+# add source files
+AUX_SOURCE_DIRECTORY(${CMAKE_CURRENT_LIST_DIR}/src SRCS)
+AUX_SOURCE_DIRECTORY(${CMAKE_CURRENT_LIST_DIR}/src/ivf IVF_SRCS)
+AUX_SOURCE_DIRECTORY(${CMAKE_CURRENT_LIST_DIR}/flat FLATS)
+AUX_SOURCE_DIRECTORY(${CMAKE_CURRENT_LIST_DIR}/int8 INT8S)
+INCLUDE_DIRECTORIES(
+    ${CMAKE_CURRENT_LIST_DIR}/include
+    ${ASCEND_TOOLKIT_PATH}/aarch64-linux/include/
+)
+
+IF(${NPU_TYPE} STREQUAL 310P)
+    ADD_DEFINITIONS(-DASCEND_310P)
+ELSE()
+    ADD_DEFINITIONS(-DASCEND_310)
+ENDIF()
+
+SET(LIBRARY_OUTPUT_PATH ${OP_PROTO_TARGET_OUT_DIR})
+ADD_LIBRARY(${OP_PROTO_TARGET} SHARED
+    ${SRCS}
+    ${IVF_SRCS}
+    ${FLATS}
+    ${INT8S}
+)

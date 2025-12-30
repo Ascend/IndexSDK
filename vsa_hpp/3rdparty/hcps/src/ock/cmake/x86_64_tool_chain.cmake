@@ -1,0 +1,13 @@
+set(CMAKE_SYSTEM_NAME Linux)
+set(CMAKE_SYSTEM_PROCESSOR X86_64)
+set(CPU_TYPE x86_64)
+
+set(CMAKE_C_COMPILER    "gcc"    CACHE PATH "C Compiler")
+set(CMAKE_CXX_COMPILER  "g++"    CACHE PATH "C++ Compiler")
+set(CMAKE_LINKER        "ld"     CACHE PATH "LINKER")
+set(CMAKE_AR            "ar"     CACHE PATH "AR")
+set(CMAKE_RANLIB        "ranlib" CACHE PATH "RANLIB")
+set(CMAKE_STRIP         "strip"  CACHE PATH "STRIP")
+add_definitions(-D__X86_64__)
+set(CMAKE_ARC linux-x86_64)
+add_compile_options(-msse2 -mavx)

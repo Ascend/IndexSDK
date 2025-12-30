@@ -1,0 +1,5 @@
+  --install                         Install mxIndex package in the current directory
+  --install-path=<path>             Install mxIndex packages directly to a target directory (absolute or relative)
+  --version                         Query mxIndex version
+  --upgrade                         Upgrade mxIndex to the specific version provided by this package
+  --platform                        Ascend platform, 310 or 310P or 910B or A3, default 310. used with --install or --upgrade

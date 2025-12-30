@@ -1,0 +1,10 @@
+acl/cmake-build-debug/
+acl/cmake-build-remote/
+acl/test/cmake-build-debug/
+acl/test/cmake-build-remote/
+securec/cmake-build-debug/
+securec/cmake-build-remote/
+.idea
+acl/.idea
+securec/.idea
+.vscode

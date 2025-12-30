@@ -1,0 +1,14 @@
+IndexSPSQL2.o: ascenddaemon/impl_custom/IndexSPSQL2.cpp \
+ ascenddaemon/impl_custom/IndexSPSQL2.h \
+ ascenddaemon/impl_custom/IndexSPSQ.h \
+ common/threadpool/AscendThreadPool.h common/utils/CommonUtils.h \
+ common/utils/OpLauncher.h ops/cpukernel/impl/utils/kernel_shared_def.h
+HdcBase.o: common/HdcBase.cpp common/HdcBase.h \
+ /usr/local/Ascend/driver/kernel/inc/driver/ascend_hal.h \
+ /usr/local/Ascend/driver/kernel/inc/driver/ascend_hal_define.h \
+ /usr/local/Ascend/driver/kernel/inc/driver/ascend_hal_error.h \
+ /usr/local/Ascend/driver/include/dvpp/securec.h \
+ /usr/local/Ascend/driver/include/dvpp/securectype.h \
+ common/utils/RpcUtils.h common/ErrorCode.h \
+ common/utils/AscendAssert.h common/utils/AscendException.h \
+ common/utils/LogUtils.h

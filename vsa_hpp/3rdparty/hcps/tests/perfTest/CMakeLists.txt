@@ -1,0 +1,61 @@
+# This file is part of the IndexSDK project.
+# Copyright (c) 2025 Huawei Technologies Co.,Ltd.
+#
+# IndexSDK is licensed under Mulan PSL v2.
+# You can use this software according to the terms and conditions of the Mulan PSL v2.
+# You may obtain a copy of Mulan PSL v2 at:
+#
+#          http://license.coscl.org.cn/MulanPSL2
+#
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND,
+# EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
+# MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
+# See the Mulan PSL v2 for more details.
+
+cmake_minimum_required(VERSION 3.14.1)
+
+if (NOT DEFINED ASCEND_TOOLKIT_PATH)
+    set(ASCEND_TOOLKIT_PATH "/usr/local/Ascend/ascend-toolkit/latest"   CACHE  STRING "")
+endif()
+SET(TARGET_NAME  perf_test)
+project(${TARGET_NAME} VERSION 1.0 LANGUAGES C CXX)
+
+# 包含所有组件的cmake
+
+message(STATUS "CMAKE_CURRENT_SOURCE_DIR: ${CMAKE_CURRENT_SOURCE_DIR}")
+include_directories(
+		"${CMAKE_CURRENT_SOURCE_DIR}/../pkg/mindx_pkg/include"
+		"${CMAKE_CURRENT_SOURCE_DIR}/../pkg/securec/include"
+		"${CMAKE_CURRENT_SOURCE_DIR}/../pkg/memory_bridge/include"
+		"${CMAKE_CURRENT_SOURCE_DIR}/../pkg/hcps/include"
+		"${CMAKE_CURRENT_SOURCE_DIR}/../pkg/vsa/include"
+		"${ASCEND_TOOLKIT_PATH}/include"
+		/usr/local/Ascend/driver/include/dvpp/
+		/usr/local/include/faiss
+
+)
+link_directories(
+		"${CMAKE_CURRENT_SOURCE_DIR}/../pkg/mindx_pkg/lib"
+		"${CMAKE_CURRENT_SOURCE_DIR}/../pkg/memory_bridge/lib"
+		"${CMAKE_CURRENT_SOURCE_DIR}/../pkg/hcps/lib"
+		"${CMAKE_CURRENT_SOURCE_DIR}/../pkg/vsa/lib"
+		"${CMAKE_CURRENT_SOURCE_DIR}/../pkg/securec/lib"
+		/usr/lib/gtest
+        /usr/local/lib
+		"${ASCEND_TOOLKIT_PATH}/lib64"
+)
+
+# 添加测试源代码
+aux_source_directory(. TEST_SRC)
+
+# 生成目标
+add_executable(${TARGET_NAME} ${TEST_SRC})
+
+# 打印构建选项
+get_target_property(COMPILE_FLAGS ${TARGET_NAME} COMPILE_OPTIONS)
+get_target_property(LINK_FLAGS ${TARGET_NAME} LINK_OPTIONS)
+target_link_libraries(${TARGET_NAME} ascendfaiss ock_vsa_hpp ock_hcps_pier ock_hmm securec ascendcl openblas faiss pthread libgtest.so)
+message(STATUS "Compiler id: ${CMAKE_CXX_COMPILER_ID}")
+message(STATUS "Compile flags: ${COMPILE_FLAGS}")
+message(STATUS "Link flags: ${LINK_FLAGS}")
+message(STATUS "Build Type: ${CMAKE_BUILD_TYPE}")

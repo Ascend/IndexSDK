@@ -1,0 +1,13 @@
+# Default ignored files
+.idea
+.vscode
+.cache
+*.swp
+*.swa
+install
+output
+build
+comp.cmake
+install
+coverage.info
+test.info

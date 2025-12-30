@@ -1,0 +1,49 @@
+# Copyright (c) Facebook, Inc. and its affiliates.
+#
+# This source code is licensed under the MIT license found in the
+# LICENSE file in the root directory of this source tree.
+
+CXX          = @CXX@
+CXXCPP       = @CXXCPP@
+CPPFLAGS     = -DFINTEGER=int @CPPFLAGS@ @OPENMP_CXXFLAGS@ @FAISS_CPPFLAGS@ @ASCEND_HOSTFLAGS@
+CXXFLAGS     = -fPIC -fstack-protector-all -Wall -Wreturn-type -D_FORTIFY_SOURCE=2 @ARCH_CXXFLAGS@ @CXXFLAGS@ @ASCEND_HOSTFLAGS@
+CPUFLAGS     = @ARCH_CPUFLAGS@
+LDFLAGS      = @OPENMP_CXXFLAGS@ @LDFLAGS@ @ASCEND_HOSTLDFLAGS@ @FAISS_LDFLAGS@ -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack -s
+LIBS         = @LIBS@ @FAISS_LIBS@ @ASCEND_HOSTLIBS@
+PYTHONCFLAGS = @PYTHON_CFLAGS@ -I@NUMPY_INCLUDE@
+SWIGFLAGS    = -DSWIGWORDSIZE64
+
+ASCENDCXX    = @ASCEND_CXX@ -fPIC
+ASCENDAR     = @ASCEND_AR@
+ASCENDFLAGS  = -fPIE -fstack-protector-all -Wall -fno-strict-aliasing -Wreturn-type -D_FORTIFY_SOURCE=2 @ASCEND_FLAGS@ @OPENMP_CXXFLAGS@ -O3 -frename-registers -fpeel-loops
+ASCEND_MINIOS_FLAGS = -fstack-protector-all -Wall -fno-strict-aliasing -Wreturn-type -D_FORTIFY_SOURCE=2 @ASCEND_FLAGS@ @OPENMP_CXXFLAGS@ -O3 -frename-registers -fpeel-loops
+ASCEND_ROOT  = @ASCEND_PREFIX@
+DRIVER_ROOT  = @DRIVER_PREFIX@
+PROTOBUF_ROOT= @PROTOBUF_PREFIX@
+PROTOBUF_AARCH64_ROOT = @PROTOBUF_AARCH64_PREFIX@
+FAISS_ROOT   = @FAISS_PREFIX@
+ASCENDLDFLAGS = @ASCEND_LDFLAGS@ @OPENMP_CXXFLAGS@ -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack -pie -s
+ASCEND_MINIOS_LDFLAGS = @ASCEND_LDFLAGS@ @OPENMP_CXXFLAGS@ -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack -s
+ASCENDLIBS   = @ASCEND_LIBS@
+ASCEND_MINIOS_LIBS = @ASCEND_DEVICE_LIBS@
+
+OS = $(shell uname -s)
+
+SHAREDEXT   = so
+SHAREDFLAGS = -shared
+
+ifeq ($(OS),Darwin)
+	SHAREDEXT   = dylib
+	SHAREDFLAGS = -dynamiclib -undefined dynamic_lookup
+        SWIGFLAGS   =
+endif
+
+MKDIR_P      = @MKDIR_P@
+PYTHON       = @PYTHON@
+SWIG         = @SWIG@
+AR          ?= ar
+
+prefix      ?= @prefix@
+exec_prefix ?= @exec_prefix@
+libdir       = @libdir@
+includedir   = @includedir@
