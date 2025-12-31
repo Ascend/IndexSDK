@@ -43,7 +43,7 @@ if (ACL_ONLINE_MODE)
     include_directories(
             ${PROJECT_SRC_ROOT}/include
             ${ASCEND_TOOLKIT_PATH}/runtime/include
-            ${ASCEND_TOOLKIT_PATH}/atc/include
+            ${ASCEND_TOOLKIT_PATH}/include
             ${ASCEND_TOOLKIT_PATH}/opp/vendors/customize/op_api/include
     )
     LINK_DIRECTORIES(

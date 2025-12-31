@@ -76,7 +76,7 @@ if (ACL_ONLINE_MODE)
     include_directories(
             ${AMODE_DIR}/include
             ${ASCEND_TOOLKIT_PATH}/runtime/include
-            ${ASCEND_TOOLKIT_PATH}/atc/include
+            ${ASCEND_TOOLKIT_PATH}/include
             ${ASCEND_TOOLKIT_PATH}/opp/vendors/customize/op_api/include
     )
     link_directories(

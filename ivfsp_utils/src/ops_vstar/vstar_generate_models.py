@@ -43,7 +43,7 @@ def set_env():
         os.environ['ASCEND_VERSION'] = 'ascend-toolkit/latest'
 
     ascend_toolkit_path = os.path.join(os.environ['ASCEND_HOME'], os.environ['ASCEND_VERSION'])
-    if not os.path.exists(os.path.join(ascend_toolkit_path, "compiler/bin/atc")):
+    if not os.path.exists(os.path.join(ascend_toolkit_path, "bin/atc")):
         err_msg = "Please set right ASCEND_HOME, now ASCEND_HOME={os.environ['ASCEND_VERSION']}.\n" \
                   "Usage: export ASCEND_HOME=${driver/ascend-toolkit_install_path}\n" \
                   "export ASCEND_VERSION=ascend-toolkit/latest"
@@ -51,15 +51,14 @@ def set_env():
 
     os.environ['PATH'] = os.path.join(
         os.environ.get('PATH', ''),
-        os.pathsep, os.path.join(ascend_toolkit_path, 'compiler/ccec_compiler/bin')[1:],
-        os.pathsep, os.path.join(ascend_toolkit_path, 'compiler/bin')[1:])
+        os.pathsep, os.path.join(ascend_toolkit_path, 'bin')[1:])
 
     os.environ['LD_LIBRARY_PATH'] = os.path.join(
         os.environ.get('LD_LIBRARY_PATH', ''),
-        os.pathsep, os.path.join(ascend_toolkit_path, 'compiler/lib64')[1:])
+        os.pathsep, os.path.join(ascend_toolkit_path, 'lib64')[1:])
     os.environ['PYTHONPATH'] = os.path.join(
         os.environ.get('PYTHONPATH', ''),
-        os.pathsep, os.path.join(ascend_toolkit_path, 'compiler/python/site-packages')[1:])
+        os.pathsep, os.path.join(ascend_toolkit_path, 'python/site-packages')[1:])
     
     os.environ['ASCEND_OPP_PATH'] = os.path.join(ascend_toolkit_path, 'opp')
 
@@ -69,7 +68,7 @@ def atc_model(json_file, soc_version="Ascend310"):
     Generate Offline Operators
     """
     ascend_toolkit_path = os.path.join(os.environ['ASCEND_HOME'], os.environ['ASCEND_VERSION'])
-    atc_path = os.path.join(ascend_toolkit_path, 'compiler/bin/atc')
+    atc_path = os.path.join(ascend_toolkit_path, 'bin/atc')
     
     return_code = subprocess.call([
         atc_path, '--singleop=./config/%s.json' % json_file,

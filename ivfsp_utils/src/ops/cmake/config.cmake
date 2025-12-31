@@ -26,7 +26,7 @@
 ADD_COMPILE_OPTIONS(-std=c++11  -fPIC  -fstack-protector-all  -Wall  -Wreturn-type  -D_FORTIFY_SOURCE=2  -O2)
 SET(CMAKE_SHARED_LINKER_FLAGS   "${CMAKE_SHARED_LINKER_FLAGS}  -Wl,-z,relro  -Wl,-z,now  -Wl,-z,noexecstack  -s")
 SET(CMAKE_EXE_LINKER_FLAGS      "${CMAKE_EXE_LINKER_FLAGS}  -Wl,-z,relro  -Wl,-z,now  -Wl,-z,noexecstack  -pie  -s")
-INCLUDE_DIRECTORIES(${ASCEND_TOOLKIT_PATH}/atc/include)
+INCLUDE_DIRECTORIES(${ASCEND_TOOLKIT_PATH}/include)
 
 # Set run package name, this package is used to install OPP.
 SET(RUN_TARGET custom_opp_${CMAKE_SYSTEM_PROCESSOR}.run)
