@@ -216,7 +216,7 @@ def generate_matmul_compute_ATA_json(core_num, code_num, dim, file_path):
 
 def atc_model(json_file, output_path, soc_version="Ascend310"):
     ascend_toolkit_path = os.path.join(os.environ['ASCEND_HOME'], os.environ['ASCEND_VERSION'])
-    atc_path = os.path.join(ascend_toolkit_path, 'atc/bin/atc')
+    atc_path = os.path.join(ascend_toolkit_path, 'bin/atc')
     return_code = subprocess.call([
         atc_path, '--singleop=./config/%s.json' % json_file,
         '--soc_version=%s' % soc_version, f'--output={output_path}'

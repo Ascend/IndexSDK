@@ -40,7 +40,7 @@ if [ ! "$PYTHON" ]; then
     export PYTHON=/usr/bin/python3
 fi
 
-if [ ! -d "${ASCEND_HOME}/${ASCEND_VERSION}/atc/include" ]; then
+if [ ! -d "${ASCEND_HOME}/${ASCEND_VERSION}/include" ]; then
     echo "Please set right ASCEND_HOME, now ASCEND_HOME=${ASCEND_HOME}"
     echo "Please set right ASCEND_VERSION, now ASCEND_VERSION=${ASCEND_VERSION}"
     echo "Usage: export ASCEND_HOME=\${driver/ascend-toolkit_install_path}"
@@ -50,7 +50,7 @@ fi
 
 echo "ASCEND_TOOLKIT_PATH: ${ASCEND_HOME}/${ASCEND_VERSION}"
 
-export ASCEND_TENSOR_COMPLIER_INCLUDE="${ASCEND_HOME}/${ASCEND_VERSION}/atc/include"
+export ASCEND_TENSOR_COMPILER_INCLUDE="${ASCEND_HOME}/${ASCEND_VERSION}/include"
 export ASCEND_OPP_PATH="${ASCEND_HOME}/${ASCEND_VERSION}/opp"
 export PROJECT_PATH="$(pwd)"
 
