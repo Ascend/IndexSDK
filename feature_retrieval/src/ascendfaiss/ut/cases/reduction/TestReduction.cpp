@@ -87,13 +87,14 @@ struct CheckPcarReduceItem {
     std::string str;
 };
 
+class TestNNInit : public TestWithParam<CheckNNInitItem> {
+};
 class TestNNInfer : public TestWithParam<CheckNNInferItem> {
 };
 class TestPcarInit : public TestWithParam<CheckPcarInitItem> {
 };
 class TestPcarTrain : public TestWithParam<CheckPcarTrainItem> {
 };
-
 class TestPcarReduce : public TestWithParam<CheckPcarReduceItem> {
 };
 
@@ -151,6 +152,104 @@ const CheckPcarReduceItem PACRREDUCEITEMS[] = {
     { 0, data.data(), output.data(), "n must be > 0 and < 1000000000" },
     { 1000000001, data.data(), output.data(), "n must be > 0 and < 1000000000" }
 };
+
+TEST_P(TestNNInit, NNInitInvalidInput)
+{
+    std::string msg;
+    for (int i = 0; i < DEVICELISTNUM; i++) {
+        device.emplace_back(i);
+    }
+
+    CheckNNInitItem item = GetParam();
+    std::vector<int> deviceList = item.deviceList;
+    char *model = item.model;
+    uint64_t modelSize = item.modelSize;
+    std::string str = item.str;
+    std::string method = item.method;
+
+    try {
+        faiss::ascend::ReductionConfig reductionConfig(deviceList, model, modelSize);
+        faiss::ascend::IReduction* reduction = CreateReduction(method, reductionConfig);
+        delete reduction;
+        faiss::ascend::AscendNNInferenceImpl reduceConfig(deviceList, model, modelSize);
+    } catch(std::exception &e) {
+        msg = e.what();
+    }
+    EXPECT_TRUE(msg.find(str) != std::string::npos);
+}
+
+TEST_P(TestNNInfer, DISABLED_NNInferInvalidInput)
+{
+    MOCKER_CPP(&aclmdlLoadFromMem).stubs().will(returnValue(0));
+    MOCKER_CPP(&aclmdlGetDesc).stubs().will(returnValue(0));
+    MOCKER_CPP(&aclmdlGetInputDataType).stubs().will(returnValue(1));
+    MOCKER_CPP(&aclmdlGetOutputDataType).stubs().will(returnValue(1));
+    MOCKER_CPP(&ascend::ModelExecuter::getInputDim).stubs().with(eq(0), eq(0)).will(returnValue(64));
+    MOCKER_CPP(&ascend::ModelExecuter::getInputDim).stubs().with(eq(0), eq(1)).will(returnValue(256));
+    MOCKER_CPP(&ascend::ModelExecuter::getOutputDim).stubs().will(returnValue(64));
+    faiss::ascend::AscendNNInference dimInference({ 0 }, g_nnom.data(), g_nnom.size());
+    FeatureGenerator(data);
+    std::string msg;
+
+    CheckNNInferItem item = GetParam();
+    size_t ntotal = item.ntotal;
+    float *inputData = item.inputData;
+    float *outputData = item.outputData;
+    std::string str = item.str;
+
+    try {
+        dimInference.infer(ntotal, reinterpret_cast<char *>(inputData), reinterpret_cast<char *>(outputData));
+    } catch(std::exception &e) {
+        msg = e.what();
+    }
+    EXPECT_TRUE(msg.find(str) != std::string::npos);
+
+    faiss::ascend::ReductionConfig reductionConfig({ 0 }, g_nnom.data(), g_nnom.size());
+    std::string method = "NN";
+    faiss::ascend::IReduction* reduction = CreateReduction(method, reductionConfig);
+    reduction->train(ntotal, inputData);
+    try {
+        reduction->reduce(ntotal, inputData, outputData);
+    } catch(std::exception &e) {
+        msg = e.what();
+    }
+    delete reduction;
+    EXPECT_TRUE(msg.find(str) != std::string::npos);
+    GlobalMockObject::verify();
+}
+
+TEST(TestAscendIReduction, DISABLED_NNReduce)
+{
+    MOCKER_CPP(&aclmdlLoadFromMem).stubs().will(returnValue(0));
+    MOCKER_CPP(&aclmdlGetDesc).stubs().will(returnValue(0));
+    MOCKER_CPP(&ascend::ModelInference::Infer).stubs().will(invoke(StubInfer));
+    MOCKER_CPP(&aclmdlGetInputDataType).stubs().will(returnValue(1));
+    MOCKER_CPP(&aclmdlGetOutputDataType).stubs().will(returnValue(1));
+    MOCKER_CPP(&ascend::ModelExecuter::getInputDim).stubs().with(eq(0), eq(0)).will(returnValue(64));
+    MOCKER_CPP(&ascend::ModelExecuter::getInputDim).stubs().with(eq(0), eq(1)).will(returnValue(256));
+    MOCKER_CPP(&ascend::ModelExecuter::getOutputDim).stubs().will(returnValue(64));
+
+    FeatureGenerator(data);
+    // NN IReduction
+    faiss::ascend::AscendNNInference dimInference({ 0 }, g_nnom.data(), g_nnom.size());
+    std::vector<float> outputData(NTOTAL * DIM_OUT);
+
+    EXPECT_EQ(dimInference.getDimIn(), DIM_IN);
+    EXPECT_EQ(dimInference.getInputType(), INPUT_TYPE);
+    EXPECT_EQ(dimInference.getDimBatch(), BATCH);
+    dimInference.infer(NTOTAL, reinterpret_cast<char *>(data.data()), reinterpret_cast<char *>(outputData.data()));
+    EXPECT_EQ(dimInference.getDimOut(), DIM_OUT);
+    EXPECT_EQ(dimInference.getOutputType(), OUTPUT_TYPE);
+
+    faiss::ascend::ReductionConfig reductionConfig({ 0 }, g_nnom.data(), g_nnom.size());
+    std::vector<float> output(NTOTAL * DIM_OUT);
+    std::string method = "NN";
+    faiss::ascend::IReduction* reduction = CreateReduction(method, reductionConfig);
+    reduction->train(NTOTAL, data.data());
+    reduction->reduce(NTOTAL, data.data(), output.data());
+    delete reduction;
+    GlobalMockObject::verify();
+}
 
 TEST_P(TestPcarInit, PcarInitInvalidInput)
 {
@@ -228,6 +327,8 @@ TEST(TestAscendIReduction, PCARReduce)
     }
 }
 
+INSTANTIATE_TEST_CASE_P(IReductionCheckGroup, TestNNInit, ::testing::ValuesIn(NNINITITEMS));
+INSTANTIATE_TEST_CASE_P(IReductionCheckGroup, TestNNInfer, ::testing::ValuesIn(NNINFERITEMS));
 INSTANTIATE_TEST_CASE_P(IReductionCheckGroup, TestPcarInit, ::testing::ValuesIn(PCARINITITEMS));
 INSTANTIATE_TEST_CASE_P(IReductionCheckGroup, TestPcarTrain, ::testing::ValuesIn(PCARTRAINITEMS));
 INSTANTIATE_TEST_CASE_P(IReductionCheckGroup, TestPcarReduce, ::testing::ValuesIn(PACRREDUCEITEMS));

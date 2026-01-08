@@ -146,6 +146,28 @@ TEST(TestAscendIndexUTIVFSQT, train_invalid_input)
     EXPECT_TRUE(msg.find("train after Update is not supported") != std::string::npos);
 }
 
+// preciseMemControl为true
+TEST(TestAscendIndexUTIVFSQT, train_preciseMemControl_is_true)
+{
+    MOCKER_CPP(&faiss::ascend::AscendIndexIVFSQCImpl::train).stubs()
+                    .will(invoke(StubIvfsqcTrain));
+    faiss::ScalarQuantizer ScalarQuantizerObj;
+    MOCKER_CPP_VIRTUAL(ScalarQuantizerObj, &faiss::ScalarQuantizer::train).stubs();
+
+    faiss::ascend::AscendIndexIVFSQTConfig conf({ 0, 1, 2, 3 });
+    faiss::ascend::AscendIndexIVFSQT index(DIM_IN, DIM_OUT, NLIST,
+        faiss::ScalarQuantizer::QuantizerType::QT_8bit, faiss::MetricType::METRIC_INNER_PRODUCT, conf);
+
+    std::vector<float> randData(DIM_IN * NTOTAL);
+    index.impl_->preciseMemControl = true;
+    index.train(NTOTAL, randData.data());
+    const size_t defaultThreshold = 1000000000;
+    EXPECT_EQ(index.impl_->numHostThreshold, defaultThreshold);
+
+    // mockcpp 需要显示调用该函数来恢复打桩
+    GlobalMockObject::verify();
+}
+
 // useKmeansPP设置为true，deviceNpuType为1
 TEST(TestAscendIndexUTIVFSQT, DISABLED_all_310P)
 {
@@ -195,6 +217,31 @@ TEST(TestAscendIndexUTIVFSQT, DISABLED_all_310P)
     delete initIndex;
     // mockcpp 需要显示调用该函数来恢复打桩
     GlobalMockObject::verify();
+}
+
+// useKmeansPP设置为false，deviceNpuType为0
+TEST(TestAscendIndexUTIVFSQT, train_deviceNpuType_is_0)
+{
+    MOCKER_CPP(&faiss::ascend::AscendIndexIVFSQCImpl::train).stubs()
+                .will(invoke(StubIvfsqcTrain));
+    faiss::ScalarQuantizer ScalarQuantizerObj;
+    MOCKER_CPP_VIRTUAL(ScalarQuantizerObj, &faiss::ScalarQuantizer::train).stubs();
+    std::vector<float> randData(DIM_IN * NTOTAL);
+    faiss::ascend::AscendIndexIVFSQTConfig conf({ 0, 1, 2, 3 });
+    faiss::ascend::AscendIndexIVFSQT index(DIM_IN, DIM_OUT, NLIST,
+        faiss::ScalarQuantizer::QuantizerType::QT_8bit, faiss::MetricType::METRIC_INNER_PRODUCT, conf);
+    index.train(NTOTAL, randData.data());
+
+
+    // mockcpp 需要显示调用该函数来恢复打桩
+    GlobalMockObject::verify();
+}
+
+// 测试310的调用流程
+TEST(TestAscendIndexUTIVFSQT, all_310)
+{
+    std::vector<int> deviceList {0, 1, 2, 3};
+    TestSearch(deviceList);
 }
 
 TEST(TestAscendIndexUTIVFSQT, test_setLowerBound_setMergeThres)
@@ -300,6 +347,31 @@ TEST(TestAscendIndexUTIVFSQT, test_reset)
     faiss::ascend::AscendIndexIVFSQT index(DIM_IN, DIM_OUT, NLIST,
         faiss::ScalarQuantizer::QuantizerType::QT_8bit, faiss::MetricType::METRIC_INNER_PRODUCT, conf);
     index.reset();
+}
+
+TEST(TestAscendIndexUTIVFSQT, test_getMin_getMax)
+{
+    std::vector<float> randData(DIM_IN * NTOTAL);
+
+    faiss::ascend::AscendIndexIVFSQTConfig conf({ 0 });
+    faiss::ascend::AscendIndexIVFSQT index(DIM_IN, DIM_OUT, NLIST,
+        faiss::ScalarQuantizer::QuantizerType::QT_8bit, faiss::MetricType::METRIC_INNER_PRODUCT, conf);
+
+    faiss::ScalarQuantizer ScalarQuantizerObj;
+    MOCKER_CPP_VIRTUAL(ScalarQuantizerObj, &faiss::ScalarQuantizer::train).stubs();
+    MOCKER_CPP_VIRTUAL(ScalarQuantizerObj, &faiss::ScalarQuantizer::compute_codes).stubs();
+    MOCKER_CPP_VIRTUAL(ScalarQuantizerObj, &faiss::ScalarQuantizer::decode).stubs();
+
+    float max = 1.0;
+    float min = 0.0;
+    randData[0] = max;
+    randData[1] = min;
+    index.train(NTOTAL, randData.data());
+    EXPECT_FLOAT_EQ(index.getQMin(), min);
+    EXPECT_FLOAT_EQ(index.getQMax(), max);
+
+    // mockcpp 需要显示调用该函数来恢复打桩
+    GlobalMockObject::verify();
 }
 
 TEST(TestAscendIndexUTIVFSQT, test_updateTParams_resetop)
