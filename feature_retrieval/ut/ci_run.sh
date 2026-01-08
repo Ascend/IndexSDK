@@ -133,11 +133,14 @@ function gen_report() {
     cp ./build/test_detail.xml ./output/coverage/report
 
     lcov --rc lcov_excl_br_line='(ASCEND_THROW_.*|FAISS_THROW_.*|APP_LOG.*|APPERR_RETURN_.*)' \
-         --rc lcov_branch_coverage=1 -c -d ./ -o ./output/coverage/summary/total.info
+         --rc lcov_branch_coverage=1 -c -d ./ --filter branch -o ./output/coverage/summary/total.info \
+          --ignore-errors inconsistent --ignore-errors mismatch
     lcov -r ./output/coverage/summary/total.info '*.hpp' '*.inl' '*ut/*' '/usr/include/*' '/usr/local/*' '*opensource*' \
     '*/src/faiss/ascend/*.h' '*/src/faiss/ascend/custom/impl/*.h' '*/ascend/custom/impl/*.h' '*/ascenddaemon/*.h' \
-    --rc lcov_branch_coverage=1 -o ./output/coverage/summary/total.info
-    genhtml --branch-coverage -o ./output/coverage/report/total ./output/coverage/summary/total.info
+    --rc lcov_branch_coverage=1 -o ./output/coverage/summary/total.info --ignore-errors inconsistent \
+         --ignore-errors unused
+    genhtml --branch-coverage -o ./output/coverage/report/total ./output/coverage/summary/total.info \
+     --ignore-errors inconsistent  --ignore-errors corrupt
 
     find ./ -type f -name "*.gcda" | xargs rm
     find ./ -type f -name "*.gcno" | xargs rm
