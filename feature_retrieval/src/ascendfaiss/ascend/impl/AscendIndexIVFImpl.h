@@ -40,6 +40,8 @@ public:
 
     virtual ~AscendIndexIVFImpl();
 
+    void initFlatAT();
+
     // Returns the number of inverted lists we're managing
     inline int getNumLists() const
     {

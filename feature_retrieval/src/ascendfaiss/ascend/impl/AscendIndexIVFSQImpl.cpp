@@ -52,6 +52,7 @@ AscendIndexIVFSQImpl::AscendIndexIVFSQImpl(AscendIndexIVFSQ *intf, const faiss::
     ((index == nullptr) ? DEFAULT_NLIST : index->nlist), config), intf_(intf), ivfsqConfig(config)
 {
     FAISS_THROW_IF_NOT_MSG(index != nullptr, "Invalid index nullptr.");
+    initFlatAT();
     copyFrom(index);
 }
 
@@ -63,6 +64,7 @@ AscendIndexIVFSQImpl::AscendIndexIVFSQImpl(AscendIndexIVFSQ *intf, int dims, int
       ivfsqConfig(config),
       byResidual(encodeResidual)
 {
+    initFlatAT();
     sq = faiss::ScalarQuantizer(dims, qtype);
 
     checkParams();
@@ -84,6 +86,7 @@ AscendIndexIVFSQImpl::AscendIndexIVFSQImpl(AscendIndexIVFSQ *intf, int dims, int
       byResidual(encodeResidual)
 {
     VALUE_UNUSED(dummy);
+    initFlatAT();
 
     sq = faiss::ScalarQuantizer(dims, qtype);
 
@@ -363,7 +366,7 @@ void AscendIndexIVFSQImpl::checkParams() const
     // only support SQ8
     FAISS_THROW_IF_NOT_MSG(sq.qtype == faiss::ScalarQuantizer::QT_8bit, "Unsupported qtype");
 
-    FAISS_THROW_IF_NOT_MSG(std::find(NLISTS.begin(), NLISTS.end(), this->nlist) != NLISTS.end(), "Unsupported nlists");
+    FAISS_THROW_IF_NOT_MSG(std::find(NLISTS.begin(), NLISTS.end(), this->nlist) != NLISTS.end(), "Unsupported nlist");
     FAISS_THROW_IF_NOT_MSG(std::find(DIMS.begin(), DIMS.end(), this->intf_->d) != DIMS.end(), "Unsupported dims");
 }
 

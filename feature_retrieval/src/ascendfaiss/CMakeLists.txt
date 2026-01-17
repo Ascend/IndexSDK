@@ -19,7 +19,6 @@ SET(CMAKE_SKIP_BUILD_RPATH  TRUE)
 SET(ASCEND_HOME                 /usr/local/Ascend            CACHE STRING   "")
 SET(DRIVER_HOME                 /usr/local/Ascend            CACHE STRING   "")
 SET(ASCEND_TOOLKIT_VERSION      latest                       CACHE STRING   "")
-SET(ASCEND_MINIOS_HOME          /usr/local/AscendMiniOs      CACHE STRING   "")
 SET(FAISS_HOME                  /usr/local/faiss             CACHE STRING   "")
 SET(NPU_TYPE                    310                          CACHE STRING   "310 | 310P")
 # Relative paths
@@ -30,7 +29,6 @@ FOREACH(X IN LISTS
             ASCEND_HOME
             DRIVER_HOME
             ASCEND_TOOLKIT_PATH
-            ASCEND_MINIOS_HOME
             FAISS_HOME
         )
     IF (NOT EXISTS ${X})
@@ -39,7 +37,7 @@ FOREACH(X IN LISTS
 ENDFOREACH()
 
 OPTION(BUILD_ASCENDHOST    "Build ascendhost"                          ON)
-OPTION(BUILD_ASCENDDEVICE  "Build ascenddevice"                        ON)
+OPTION(BUILD_ASCENDDEVICE  "Build ascenddevice"                        OFF)
 OPTION(BUILD_OPS           "Build ops"                                 ON)
 OPTION(COVERAGE            "COVERAGE"                                  OFF)
 OPTION(HITEST              "HITEST"                                    OFF)
@@ -68,5 +66,11 @@ IF(COVERAGE)
     ADD_SUBDIRECTORY(test)
 ENDIF()
 
+
 # Release Headers
 INCLUDE(${CMAKE_CURRENT_LIST_DIR}/cmake/AscendRelease.cmake)
+
+
+
+
+

@@ -50,7 +50,12 @@ AscendIndexIVFImpl::AscendIndexIVFImpl(AscendIndex *intf, int dims, faiss::Metri
 
     pQuantizerImpl = std::make_shared<AscendIndexQuantizerImpl>();
     pQuantizerImpl->cpuQuantizer = std::make_shared<IndexFlatL2>(dims);
+}
 
+AscendIndexIVFImpl::~AscendIndexIVFImpl() {}
+
+void AscendIndexIVFImpl::initFlatAT()
+{
     if (this->ivfConfig.useKmeansPP) {
         // Now npuQuantizer use only in add stage
         faiss::ascend::AscendIndexFlatATConfig npuConf(ivfConfig.deviceList, ivfConfig.resourceSize);
@@ -60,8 +65,6 @@ AscendIndexIVFImpl::AscendIndexIVFImpl(AscendIndex *intf, int dims, faiss::Metri
             std::make_shared<AscendClustering>(this->intf_->d, this->nlist, this->intf_->metric_type, npuClusConf);
     }
 }
-
-AscendIndexIVFImpl::~AscendIndexIVFImpl() {}
 
 void AscendIndexIVFImpl::checkIVFParams()
 {

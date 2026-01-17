@@ -20,6 +20,7 @@
 #ifndef ASCEND_INDEX_IVFFLAT_INCLUDED
 #define ASCEND_INDEX_IVFFLAT_INCLUDED
 
+#include <faiss/IndexIVFFlat.h>
 #include <faiss/Clustering.h>
 #include "ascend/AscendIndexIVF.h"
 
@@ -44,6 +45,12 @@ public:
                        AscendIndexIVFFlatConfig config = AscendIndexIVFFlatConfig());
 
     virtual ~AscendIndexIVFFlat();
+
+    // Initialize ourselves from the given CPU index; will overwrite
+    void copyFrom(const faiss::IndexIVFFlat *index);
+
+    // Copy ourselves to the given CPU index; will overwrite all data
+    void copyTo(faiss::IndexIVFFlat *index) const;
 
     AscendIndexIVFFlat(const AscendIndexIVFFlat&) = delete;
     AscendIndexIVFFlat& operator=(const AscendIndexIVFFlat&) = delete;

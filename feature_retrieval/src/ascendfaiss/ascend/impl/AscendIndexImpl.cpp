@@ -640,7 +640,7 @@ void AscendIndexImpl::checkParameters(int dims, faiss::MetricType metric,
                            "device list should be in range (0, %zu]!", DEVICE_LIST_SIZE_MAX);
     FAISS_THROW_IF_NOT_FMT(indexConfig.resourceSize == -1 ||
                            (indexConfig.resourceSize >= 0 && indexConfig.resourceSize <= INDEX_MAX_MEM),
-                           "resourceSize:%ld should be -1 or in range [0, 4096MB]!", indexConfig.resourceSize);
+                           "resourceSize:%ld should be -1 or in range [0, 10GB]!", indexConfig.resourceSize);
 
     std::set<int> uniqueDeviceList(indexConfig.deviceList.begin(), indexConfig.deviceList.end());
     if (uniqueDeviceList.size() != indexConfig.deviceList.size()) {

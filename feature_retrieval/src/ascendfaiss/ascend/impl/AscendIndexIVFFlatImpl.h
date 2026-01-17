@@ -37,7 +37,7 @@ public:
 
     virtual ~AscendIndexIVFFlatImpl();
 
-    void train(idx_t n, const float *x);
+    void train(idx_t n, const float *x, bool clearNpuData = true);
     size_t getAddElementSize() const override;
 
     AscendIndexIVFFlatImpl(const AscendIndexIVFFlatImpl&) = delete;
@@ -45,6 +45,16 @@ public:
     void addPaged(int n, const float* x, const idx_t* ids);
     size_t getAddPagedSize(int n) const;
     void searchImpl(int n, const float *x, int k, float *distances, idx_t *labels) const override;
+
+    void copyFrom(const faiss::IndexIVFFlat* index);
+
+    void copyFromCentroids(const faiss::IndexIVFFlat* index);
+
+    void copyFromIVF(const faiss::IndexIVFFlat* index);
+
+    void copyTo(faiss::IndexIVFFlat* index) const;
+
+    void indexIVFFlatGetListCodes(int deviceId, int nlist, InvertedLists *ivf) const;
 
 protected:
     void indexSearch(IndexParam<float, float, ascend_idx_t> &param) const;
@@ -67,8 +77,10 @@ protected:
     }
     void updateCoarseCenter(std::vector<float> &centerData);
     void copyVectorToDevice(int n);
+    void initFlatAtFp32();
     AscendIndexIVFFlat *intf_;
     std::vector<float> centroidsData;
+    std::unique_ptr<::ascend::IndexIVFFlat> assignIndex; // 复用ivfflat一阶段检索能力加速add过程和npu聚类
 
 private:
     AscendIndexIVFFlatConfig ivfflatConfig;

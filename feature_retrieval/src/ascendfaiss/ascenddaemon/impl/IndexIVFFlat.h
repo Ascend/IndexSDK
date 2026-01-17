@@ -25,7 +25,6 @@
 
 namespace ascend {
 namespace {
-const int THREADS_CNT = 4;
 const int IVF_FLAT_BURST_LEN = 64;
 constexpr uint8_t BURST_LEN_LOW = 32;
 constexpr uint8_t BURST_LEN_HIGH = 64;
@@ -53,8 +52,11 @@ public:
     
     APP_ERROR resizeBaseFp32(int listId, size_t numVecs);
 
+    APP_ERROR getListVectors(int listId, std::vector<float>& codes) const;
+
     size_t getListLength(int listId) const;
     std::unique_ptr<DeviceVector<float>> centroidsOnDevice;
+    std::unique_ptr<DeviceVector<float>> centroidsSqrSumOnDevice;
     static int GetBurstsOfBlock(int nq, int blockSize, int &burstLen)
     {
         if (faiss::ascend::SocUtils::GetInstance().IsAscend910B()) {
@@ -65,20 +67,26 @@ public:
         return utils::divUp(blockSize, burstLen) * BURST_BLOCK_RATIO;
     }
     APP_ERROR searchImpl(int n, const float* x, int k, float* distances, idx_t* labels);
+    APP_ERROR updateCentroidsSqrSum(AscendTensor<float, DIMS_2> &centroidata);
+    APP_ERROR searchImplL1(AscendTensor<float, DIMS_2> &queries,
+                           AscendTensor<int64_t, DIMS_2> &l1TopNprobeIndicesHost);
+    APP_ERROR addVectorsAsCentroid(AscendTensor<float, DIMS_2> &centroidata);
+    APP_ERROR assign(AscendTensor<float, DIMS_2> &queries,
+                     AscendTensor<int64_t, DIMS_2> &l1TopNprobeIndicesHost);
+
 protected:
     APP_ERROR addCodes(int listId, AscendTensor<uint8_t, DIMS_2> &codesData);
     APP_ERROR resetL1TopkOp();
     void runL1TopkOp(AscendTensor<float, DIMS_2> &dists,
-                           AscendTensor<float, DIMS_2> &vmdists,
-                           AscendTensor<uint32_t, DIMS_2> &sizes,
-                           AscendTensor<uint16_t, DIMS_2> &flags,
-                           AscendTensor<int64_t, DIMS_1> &attrs,
-                           AscendTensor<float, DIMS_2> &outdists,
-                           AscendTensor<int64_t, DIMS_2> &outlabel,
-                           aclrtStream stream);
+                     AscendTensor<float, DIMS_2> &vmdists,
+                     AscendTensor<uint32_t, DIMS_2> &sizes,
+                     AscendTensor<uint16_t, DIMS_2> &flags,
+                     AscendTensor<int64_t, DIMS_1> &attrs,
+                     AscendTensor<float, DIMS_2> &outdists,
+                     AscendTensor<int64_t, DIMS_2> &outlabel,
+                     aclrtStream stream);
     APP_ERROR resetL1DistOp();
     void runL1DistOp();
-    APP_ERROR searchImplL1(AscendTensor<float, DIMS_2> &queries, AscendTensor<int64_t, DIMS_2> &l1TopNprobeIndicesHost);
     void runL1DistOp(int batch, AscendTensor<float, DIMS_2> &queries,
                      AscendTensor<float, DIMS_2> &centroidsDev, AscendTensor<float, DIMS_2> &dists,
                      AscendTensor<float, DIMS_2> &vmdists, AscendTensor<uint16_t, DIMS_2> &opFlag,

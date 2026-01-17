@@ -50,8 +50,10 @@ public:
     virtual ~AscendClustering();
 
     void Add(idx_t n, const float *x) const;
+    void AddFp32(idx_t n, const float *x) const;
 
     void Train(int niter, float *centroids, bool clearData = true) const;
+    void TrainFp32(int niter, float *centroids, bool clearData = true)  const;
 
 #ifdef HOSTCPU
     void DistributedTrain(int niter, float *centroids, const std::vector<int> &deviceList, bool clearData) const;

@@ -30,6 +30,7 @@
 #include "common/AscendFp16.h"
 
 #include "index_custom/IndexFlatATSubAicpu.h"
+#include "ascenddaemon/impl/IndexIVFFlat.h"
 
 class AscendThreadPool;
 
@@ -47,8 +48,13 @@ public:
     virtual ~AscendClusteringImpl();
 
     void add(idx_t n, const float *x);
+    void addFp32(idx_t n, const float *x);
 
     void train(int niter, float *centroids, bool clearData);
+
+    void trainFp32(int niter, float *centroids, bool clearData);
+
+    void randomCentrodataFp32(AscendTensor<float, DIMS_2> &centrodata);
 
     void distributedTrain(int niter, float *centroids, const std::vector<int> &deviceList, bool clearData);
 
@@ -63,6 +69,8 @@ public:
     void updateVDM(uint16_t *vmin, uint16_t *vdiff);
 
     int getSubBucketNum(int seq);
+
+    void normalizeVecByHost(float *centrodataHost, AscendTensor<float, DIMS_2> &centrodataDev);
 
     AscendClusteringImpl(const AscendClusteringImpl&) = delete;
     AscendClusteringImpl& operator=(const AscendClusteringImpl&) = delete;
@@ -95,6 +103,8 @@ protected:
 
     void checkParaInt8(int niter, uint16_t *labels, float *centroids, int batchSubNlist, size_t batchNTotal);
 
+    void checkParaFp32(int niter, float *centroids);
+
     void execClusteringInt8(int niter, uint16_t *labels, float *centroids);
 
     void trainInt8(std::vector<float16_t> &centrodata, int ncentroids, int n, int niter, int reqCentroids,
@@ -115,6 +125,7 @@ private:
 
     // aicpu op for topk computation
     std::unique_ptr<AscendOperator> kmUpdateCentroidsComputeOp;
+    std::unique_ptr<AscendOperator> kmUpdateCentroidsComputeOpFp32;
 
     AscendClustering *intf_;
 
@@ -127,11 +138,21 @@ private:
 
     std::vector<float16_t> codes;
 
+    std::vector<float> codesFp32;
+
+    void computeCentroids(size_t d, // dim
+                          size_t k, // nlist
+                          size_t n, // ntotal
+                          const float* x,
+                          const int64_t* assign, // ntotal条向量所属桶
+                          float* centroids);
+
     std::unique_ptr<IndexFlatATAicpu> npuFlatAt;
+    std::unique_ptr<IndexIVFFlat> npuFlatAtFp32; // 复用ivfflat一阶段检索
 
     std::unique_ptr<IndexFlatATSubAicpu> npuFlatAicpu;
-
     std::unique_ptr<AscendOperator> corrComputeOp;
+    void corrPreProcess(float *corr);
 
     std::unique_ptr<AscendOperator> subCentsOp;
 

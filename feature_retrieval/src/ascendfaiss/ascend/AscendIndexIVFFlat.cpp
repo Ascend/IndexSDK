@@ -16,7 +16,7 @@
  * -------------------------------------------------------------------------
  */
 
-
+#include <faiss/IndexIVFFlat.h>
 #include "AscendIndexIVFFlat.h"
 
 #include "ascend/impl/AscendIndexIVFFlatImpl.h"
@@ -38,6 +38,18 @@ void AscendIndexIVFFlat::train(idx_t n, const float *x)
 {
     FAISS_THROW_IF_NOT_MSG(impl_ != nullptr, "impl_ is nullptr!");
     impl_->train(n, x);
+}
+
+void AscendIndexIVFFlat::copyFrom(const faiss::IndexIVFFlat *index)
+{
+    FAISS_THROW_IF_NOT_MSG(impl_ != nullptr, "impl_ is nullptr!");
+    impl_->copyFrom(index);
+}
+
+void AscendIndexIVFFlat::copyTo(faiss::IndexIVFFlat *index) const
+{
+    FAISS_THROW_IF_NOT_MSG(impl_ != nullptr, "impl_ is nullptr!");
+    impl_->copyTo(index);
 }
 } // namespace ascend
 } // namespace faiss
