@@ -61,7 +61,7 @@ class SocUtils {
     const std::string SOCNAME910_9382 = "Ascend910_9382";
     const std::string SOCNAME910_9372 = "Ascend910_9372";
     const std::string SOCNAME910_9362 = "Ascend910_9362";
-    const std::string SOCNAME910_9579 = "Ascend910_9579";
+    const std::string SOCNAME910_9579 = "Ascend910_95";
 
     enum CodeFormatType {
         FORMAT_TYPE_ZZ = 0,

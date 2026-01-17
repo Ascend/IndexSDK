@@ -36,7 +36,7 @@ def arg_parse():
     utils.op_common_parse(parser, "-m", 'm', 4, int, "number of sub space")
     utils.op_common_parse(parser, "-k", 'ksub', 256, int, "number of sub space center")
     utils.op_common_parse(parser, "-topK", 'topK', 320, int, "number of topk")
-    utils.op_common_parse(parser, "-maxSize", 'maxSize', 16384, int, "number of maxSize")
+    utils.op_common_parse(parser, "-maxSize", 'maxSize', 262144, int, "number of maxSize")
     utils.op_common_parse(parser, "-b", 'blockNum', 32, int, "Number of block")
     utils.op_common_parse(parser, "-p", 'process_id', 0, int, "Number of process_id")
     utils.op_common_parse(parser, "-t", 'npu_type', "910_9579", str, "NPU type, 910_9579 by default")

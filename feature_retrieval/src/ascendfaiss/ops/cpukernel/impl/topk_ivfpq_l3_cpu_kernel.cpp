@@ -95,10 +95,10 @@ uint32_t TopkIvfpqL3CpuKernel::GetInOutAndCheck(const CpuKernelContext &ctx, Inp
 
     KERNEL_CHECK_NULLPTR(inputs.topkOffsets, KERNEL_STATUS_PARAM_INVALID, "Get input[0], name[topkOffsets] failed");
     KERNEL_CHECK_NULLPTR(inputs.topkDists, KERNEL_STATUS_PARAM_INVALID, "Get input[1], name[topkDists] failed");
-    KERNEL_CHECK_NULLPTR(inputs.ids, KERNEL_STATUS_PARAM_INVALID, "Get input[1], name[ids] failed");
-    KERNEL_CHECK_NULLPTR(inputs.size, KERNEL_STATUS_PARAM_INVALID, "Get input[2], name[size] failed");
-    KERNEL_CHECK_NULLPTR(inputs.opflag, KERNEL_STATUS_PARAM_INVALID, "Get input[3], name[opflag] failed");
-    KERNEL_CHECK_NULLPTR(inputs.attr, KERNEL_STATUS_PARAM_INVALID, "Get input[4], name[attr] failed");
+    KERNEL_CHECK_NULLPTR(inputs.ids, KERNEL_STATUS_PARAM_INVALID, "Get input[2], name[ids] failed");
+    KERNEL_CHECK_NULLPTR(inputs.size, KERNEL_STATUS_PARAM_INVALID, "Get input[3], name[size] failed");
+    KERNEL_CHECK_NULLPTR(inputs.opflag, KERNEL_STATUS_PARAM_INVALID, "Get input[4], name[opflag] failed");
+    KERNEL_CHECK_NULLPTR(inputs.attr, KERNEL_STATUS_PARAM_INVALID, "Get input[5], name[attr] failed");
     KERNEL_CHECK_NULLPTR(outputs.outdists, KERNEL_STATUS_PARAM_INVALID, "Get output[0], name[outdists] failed");
     KERNEL_CHECK_NULLPTR(outputs.outlabels, KERNEL_STATUS_PARAM_INVALID, "Get output[1], name[outlabels] failed");
 
@@ -149,8 +149,6 @@ uint32_t TopkIvfpqL3CpuKernel::CheckInputShapes(const Inputs &inputs)
     auto handleBatch1 = shapeTopkDists->GetDimSize(INPUT_NUM2);
     KERNEL_CHECK_TRUE(handleBatch0 == handleBatch1, KERNEL_STATUS_PARAM_INVALID, "Handle batch of inputs must be same");
     handleBatch_ = handleBatch0;
-
-    flagSize_ = shapeOpflag->GetDimSize(INPUT_NUM3);
 
     auto attrCount = shapeAttr->GetDimSize(INPUT_NUM0);
     KERNEL_CHECK_TRUE(attrCount == TOPK_IVFPQ_L3_ATTR_IDX_COUNT,

@@ -78,13 +78,13 @@ private:
 
 private:
     int64_t nq_ = 0;
-    int64_t handleBatch_ = 0;
-    int64_t flagSize_ = 0;
+    int64_t handleBatch_ = 32;
+    int64_t flagSize_ = 16;
 
     int64_t asc_ = 1;
     int64_t k_ = 0;
     int64_t blockNum_ = 0;
-    int64_t flagNum_ = 0;
+    int64_t flagNum_ = 32;
 };
 } // namespace aicpu
 #endif
