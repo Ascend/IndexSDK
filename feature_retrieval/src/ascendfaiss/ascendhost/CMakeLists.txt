@@ -98,6 +98,7 @@ SET(ASCENDFAISS_HOST_SRC
     ${CMAKE_CURRENT_LIST_DIR}/../ascend/AscendIndexInt8Flat.cpp
     ${CMAKE_CURRENT_LIST_DIR}/../ascend/AscendIndexIVF.cpp
     ${CMAKE_CURRENT_LIST_DIR}/../ascend/AscendIndexIVFFlat.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/../ascend/AscendIndexIVFPQ.cpp
     ${CMAKE_CURRENT_LIST_DIR}/../ascend/AscendIndexIVFSQ.cpp
     ${CMAKE_CURRENT_LIST_DIR}/../ascend/AscendIndexSQ.cpp
     ${CMAKE_CURRENT_LIST_DIR}/../ascend/AscendMultiIndexSearch.cpp
@@ -112,6 +113,7 @@ SET(ASCENDFAISS_HOST_SRC
     ${CMAKE_CURRENT_LIST_DIR}/../ascend/impl/AscendIndexInt8FlatImpl.cpp
     ${CMAKE_CURRENT_LIST_DIR}/../ascend/impl/AscendIndexIVFImpl.cpp
     ${CMAKE_CURRENT_LIST_DIR}/../ascend/impl/AscendIndexIVFFlatImpl.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/../ascend/impl/AscendIndexIVFPQImpl.cpp
     ${CMAKE_CURRENT_LIST_DIR}/../ascend/impl/AscendIndexIVFSQImpl.cpp
     ${CMAKE_CURRENT_LIST_DIR}/../ascend/impl/AscendIndexSQImpl.cpp
     ${CMAKE_CURRENT_LIST_DIR}/../ascend/impl/AscendNNInferenceImpl.cpp
@@ -135,6 +137,7 @@ SET(ASCENDFAISS_HOST_SRC
     ${CMAKE_CURRENT_LIST_DIR}/../ascenddaemon/impl/IndexInt8Flat.cpp
     ${CMAKE_CURRENT_LIST_DIR}/../ascenddaemon/impl/IndexIVF.cpp
     ${CMAKE_CURRENT_LIST_DIR}/../ascenddaemon/impl/IndexIVFFlat.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/../ascenddaemon/impl/IndexIVFPQ.cpp
     ${CMAKE_CURRENT_LIST_DIR}/../ascenddaemon/impl/IndexIVFSQ.cpp
     ${CMAKE_CURRENT_LIST_DIR}/../ascenddaemon/impl/Int8L2Norm.cpp
     ${CMAKE_CURRENT_LIST_DIR}/../ascenddaemon/impl/IndexSQ.cpp

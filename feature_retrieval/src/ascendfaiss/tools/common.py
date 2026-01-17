@@ -41,7 +41,7 @@ def set_env():
         os.environ['ASCEND_VERSION'] = 'ascend-toolkit/latest'
 
     ascend_toolkit_path = os.path.join(os.environ['ASCEND_HOME'], os.environ['ASCEND_VERSION'])
-    if not os.path.exists(os.path.join(ascend_toolkit_path, "bin/atc")):
+    if not os.path.exists(os.path.join(ascend_toolkit_path, "compiler/bin/atc")):
         err_msg = "Please set right ASCEND_HOME, now ASCEND_HOME={os.environ['ASCEND_VERSION']}.\n" \
                   "Usage: export ASCEND_HOME=${driver/ascend-toolkit_install_path}\n" \
                   "export ASCEND_VERSION=ascend-toolkit/latest"
@@ -49,14 +49,15 @@ def set_env():
 
     os.environ['PATH'] = os.path.join(
         os.environ.get('PATH', ''), os.pathsep, 'usr/local/python3.7.5/bin',
-        os.pathsep, os.path.join(ascend_toolkit_path, 'bin')[1:])
+        os.pathsep, os.path.join(ascend_toolkit_path, 'compiler/ccec_compiler/bin')[1:],
+        os.pathsep, os.path.join(ascend_toolkit_path, 'compiler/bin')[1:])
 
     os.environ['LD_LIBRARY_PATH'] = os.path.join(
         os.environ.get('LD_LIBRARY_PATH', ''),
-        os.pathsep, os.path.join(ascend_toolkit_path, 'lib64')[1:])
+        os.pathsep, os.path.join(ascend_toolkit_path, 'compiler/lib64')[1:])
     os.environ['PYTHONPATH'] = os.path.join(
         os.environ.get('PYTHONPATH', ''),
-        os.pathsep, os.path.join(ascend_toolkit_path, 'python/site-packages')[1:])
+        os.pathsep, os.path.join(ascend_toolkit_path, 'compiler/python/site-packages')[1:])
     
     os.environ['ASCEND_OPP_PATH'] = os.path.join(ascend_toolkit_path, 'opp')
 
@@ -64,7 +65,7 @@ def set_env():
 def atc_model(json_file, soc_version="Ascend310"):
     # generate aicore operator model
     ascend_toolkit_path = os.path.join(os.environ['ASCEND_HOME'], os.environ['ASCEND_VERSION'])
-    atc_path = os.path.join(ascend_toolkit_path, 'bin/atc')
+    atc_path = os.path.join(ascend_toolkit_path, 'compiler/bin/atc')
     return_code = subprocess.call([
         atc_path, '--singleop=./config/%s.json' % json_file,
         '--soc_version=%s' % soc_version, '--output=op_models', '--log=error'
@@ -177,6 +178,7 @@ def get_soc_version_from_npu_type(npu_type):
         "910_9382": "Ascend910_9382",
         "910_9372": "Ascend910_9372",
         "910_9362": "Ascend910_9362",
+        "910_9579": "Ascend910_9579"
     }
     str_keys = [str(key) for key in npu_type_soc_version_dict.keys()]
     if npu_type not in npu_type_soc_version_dict.keys():
@@ -198,6 +200,7 @@ def get_core_num_by_npu_type(core_num, npu_type):
         "910_9382": 48,
         "910_9372": 40,
         "910_9362": 40,
+        "910_9579": 56,
     }
     if "--cores" in sys.argv:
         if core_num not in npu_type_core_num_dict.values():

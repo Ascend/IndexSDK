@@ -61,6 +61,16 @@ struct AscendIVFAddInfo {
         ids.push_back(static_cast<ascend_idx_t>(*id));
     }
 
+    inline void Add(uint8_t *code, const idx_t *id)
+    {
+        FAISS_THROW_IF_NOT_MSG(code != nullptr, "code is null");
+        FAISS_THROW_IF_NOT_MSG(id != nullptr, "id is null");
+        deviceAddNum[addDeviceIdx] += 1;
+        addDeviceIdx = (addDeviceIdx + 1) % deviceAddNum.size();
+        codes.insert(codes.end(), code, code + codeSize);
+        ids.push_back(static_cast<ascend_idx_t>(*id));
+    }
+
     inline int GetOffSet(int idx) const
     {
         int ret = 0;
@@ -87,6 +97,15 @@ struct AscendIVFAddInfo {
             "device idx (%d) >= total (%zu)", idx, deviceAddNum.size());
         int off = GetOffSet(idx);
         *codePtr = codesFp32.data() + static_cast<size_t>(off) * codeSize;
+        *idPtr = ids.data() + off;
+        return;
+    }
+
+    inline void GetCodeAndIdPtr(int idx, uint8_t **codePtr, ascend_idx_t **idPtr)
+    {
+        FAISS_THROW_IF_NOT_MSG(idx < static_cast<int>(deviceAddNum.size()), "idx error");
+        int off = GetOffSet(idx);
+        *codePtr = codes.data() + static_cast<size_t>(off) * codeSize;
         *idPtr = ids.data() + off;
         return;
     }

@@ -86,6 +86,7 @@ SET(ASCENDFAISS_SRC
     ${ASCEND_PROJECT_HOME}/ascend/AscendIndexInt8Flat.cpp
     ${ASCEND_PROJECT_HOME}/ascend/AscendIndexIVF.cpp
     ${ASCEND_PROJECT_HOME}/ascend/AscendIndexIVFSQ.cpp
+    ${ASCEND_PROJECT_HOME}/ascend/AscendIndexIVFFlat.cpp
     ${ASCEND_PROJECT_HOME}/ascend/AscendIndexSQ.cpp
     ${ASCEND_PROJECT_HOME}/ascend/AscendMultiIndexSearch.cpp
     ${ASCEND_PROJECT_HOME}/ascend/AscendNNInference.cpp
@@ -102,6 +103,7 @@ SET(ASCENDFAISS_SRC
     ${ASCEND_PROJECT_HOME}/ascend/impl/AscendIndexInt8FlatImpl.cpp
     ${ASCEND_PROJECT_HOME}/ascend/impl/AscendIndexIVFImpl.cpp
     ${ASCEND_PROJECT_HOME}/ascend/impl/AscendIndexIVFSQImpl.cpp
+    ${ASCEND_PROJECT_HOME}/ascend/impl/AscendIndexIVFFlatImpl.cpp
     ${ASCEND_PROJECT_HOME}/ascend/impl/AscendIndexSQImpl.cpp
     ${ASCEND_PROJECT_HOME}/ascend/impl/AscendNNInferenceImpl.cpp
     ${ASCEND_PROJECT_HOME}/ascend/custom/impl/AscendIndexFlatATImpl.cpp
@@ -120,6 +122,7 @@ SET(ASCENDFAISS_SRC
     ${ASCEND_PROJECT_HOME}/ascenddaemon/impl/IndexInt8Flat.cpp
     ${ASCEND_PROJECT_HOME}/ascenddaemon/impl/IndexIVF.cpp
     ${ASCEND_PROJECT_HOME}/ascenddaemon/impl/IndexIVFSQ.cpp
+    ${ASCEND_PROJECT_HOME}/ascenddaemon/impl/IndexIVFFlat.cpp
     ${ASCEND_PROJECT_HOME}/ascenddaemon/impl/Int8L2Norm.cpp
     ${ASCEND_PROJECT_HOME}/ascenddaemon/impl/IndexSQ.cpp
     ${ASCEND_PROJECT_HOME}/ascenddaemon/utils/AscendMemory.cpp
@@ -187,7 +190,7 @@ SET(ASCENDFAISS_INCLUDE
     ${OPEN_SOURCE_HOME}/AscendCLMock
     ${OPEN_SOURCE_HOME}/AscendCLMock/acl
     ${OPEN_SOURCE_HOME}/AscendCLMock/securec
-    ${OPEN_SOURCE_HOME}/mockcpp/output/include
+    ${OPEN_SOURCE_HOME}/mockcpp/mockcpp/output/include
     ${ASCEND_PROJECT_HOME}/../
     ${ASCEND_PROJECT_HOME}/
     ${ASCEND_PROJECT_HOME}/ascend
@@ -215,7 +218,7 @@ SET(ASCENDFAISS_LIBRARY_PATH
     ${PROTOBUF_HOME}/lib
     ${PROTOBUF_HOME}/lib
     ${OPEN_SOURCE_HOME}/AscendCLMock/acl/lib
-    ${OPEN_SOURCE_HOME}/mockcpp/output/lib
+    ${OPEN_SOURCE_HOME}/mockcpp/mockcpp/output/lib
     ${FAISS_HOME}/lib
     ${SECUREC_HOME}/lib
 )
@@ -246,7 +249,9 @@ SET(TEST_SRC_FILES TestAscendIndexUTBinaryFlat.cpp
                    TestAscendIndexUTIVFSQ.cpp
                    TestAscendIndexUTIVFSQT.cpp
                    TestAscendIndexUTSQ.cpp
-                   TestAscendIndexUTTS.cpp)
+                   TestAscendIndexUTTS.cpp
+                   TestAscendIndexUTIVFFlat.cpp
+)
 SET(TARGET_OUT TestAscendIndexUT)
 ADD_EXECUTABLE(${TARGET_OUT}  ${TEST_SRC_FILES})
 

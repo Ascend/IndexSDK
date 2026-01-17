@@ -25,7 +25,7 @@ from multiprocessing import Pool
 import common as utils
 from common import OpJsonGenerator
 
-_IVFFLAT_DIM_LIST = [128,]
+_IVFFLAT_DIM_LIST = [128, 32]
 _CODE_NUM = 16384 * 16
 
 
@@ -38,7 +38,7 @@ def arg_parse():
         description="generate distance_compute_ivf_sq8 operator model")
     utils.op_common_parse(parser, "--cores", 'core_num', 40, int, "Core number, 40 by default")
     utils.op_common_parse(parser, "-d", "dim", 128, int, "Feature dimension, 128 is only support now")
-    utils.op_common_parse(parser, "-c", "coarse_centroid_num", 16384, int, "Number of coarse centroid")
+    utils.op_common_parse(parser, "-c", "coarse_centroid_num", 2048, int, "Number of coarse centroid")
     utils.op_common_parse(parser, "-p", "process_id", 0, int, "Number of process_id")
     utils.op_common_parse(parser, "-pool", "pool_size", 10, int, "Number of pool_size")
     utils.op_common_parse(parser, "-t", 'npu_type', "910B4", str, "NPU type, 910 series. 910B4 by default")
@@ -53,6 +53,7 @@ def generate_distance_flat_l2_mins_at_fp32_json(core_num, code_num, dim, file_pa
         generator = OpJsonGenerator("DistanceFlatL2MinsAtFP32")
         generator.add_input("ND", [query_num, dim], "float32")
         generator.add_input("ND", [code_num, dim], "float32")
+        generator.add_input("ND", [code_num], "float32")
         generator.add_output("ND", [query_num, code_num], "float32")
         generator.add_output("ND", [query_num, code_num // 64 * 2], "float32")
         generator.add_output("ND", [core_num, 16], "uint16")
@@ -84,7 +85,7 @@ def generate_flat_offline_model():
     soc_version = utils.get_soc_version_from_npu_type(args.npu_type)
     core_num = utils.get_core_num_by_npu_type(args.core_num, args.npu_type)
     work_dir = "."
-    valid_centroid_num = {1024, 2048, 4096, 8192, 16384, 32768}
+    valid_centroid_num = {256, 1024, 2048, 4096, 8192, 16384, 32768}
     utils.check_param_range(args.coarse_centroid_num, valid_centroid_num, "coarse_centroid_num")
     config_path = utils.get_config_path(work_dir)
 

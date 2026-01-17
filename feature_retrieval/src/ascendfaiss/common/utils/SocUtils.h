@@ -46,6 +46,7 @@ class SocUtils {
         SOC_910_9382,
         SOC_910_9372,
         SOC_910_9362,
+        SOC_910_9579,
         SOC_INVALID,
     };
 
@@ -60,6 +61,7 @@ class SocUtils {
     const std::string SOCNAME910_9382 = "Ascend910_9382";
     const std::string SOCNAME910_9372 = "Ascend910_9372";
     const std::string SOCNAME910_9362 = "Ascend910_9362";
+    const std::string SOCNAME910_9579 = "Ascend910_9579";
 
     enum CodeFormatType {
         FORMAT_TYPE_ZZ = 0,
@@ -197,6 +199,33 @@ public:
         return socAttr.codeFormType == CodeFormatType::FORMAT_TYPE_ZZ;
     }
 
+    bool ParseA2Data(const std::string &name)
+    {
+        if (name.find(SOCNAME910B4) == 0) {
+            socAttr.socType = SOC_910B4;
+            socAttr.coreNum = 40; // Ascend910B4 has 40 aiv
+            socAttr.codeFormType = FORMAT_TYPE_ND;
+            return true;
+        } else if (name.find(SOCNAME910B3) == 0) {
+            socAttr.socType = SOC_910B3;
+            socAttr.coreNum = 40; // Ascend910B3 has 40 aiv
+            socAttr.codeFormType = FORMAT_TYPE_ND;
+            return true;
+        } else if (name.find(SOCNAME910B2) == 0) {
+            socAttr.socType = SOC_910B2;
+            socAttr.coreNum = 48; // Ascend910B2 has 48 aiv
+            socAttr.codeFormType = FORMAT_TYPE_ND;
+            return true;
+        } else if (name.find(SOCNAME910B1) == 0) {
+            socAttr.socType = SOC_910B1;
+            socAttr.coreNum = 48; // Ascend910B1 has 48 aiv
+            socAttr.codeFormType = FORMAT_TYPE_ND;
+            return true;
+        }
+
+        return false;
+    }
+
     bool ParseA3Data(const std::string &name)
     {
         if (name.find(SOCNAME910_9392) == 0) {
@@ -217,6 +246,18 @@ public:
         } else if (name.find(SOCNAME910_9362) == 0) {
             socAttr.socType = SOC_910_9362;
             socAttr.coreNum = 40; // Ascend910_9362 has 40 aiv
+            socAttr.codeFormType = FORMAT_TYPE_ND;
+            return true;
+        }
+
+        return false;
+    }
+
+    bool ParseA5Data(const std::string &name)
+    {
+        if (name.find(SOCNAME910_9579) == 0) {
+            socAttr.socType = SOC_910_9579;
+            socAttr.coreNum = 56; // Ascend910_95 has 56 aiv
             socAttr.codeFormType = FORMAT_TYPE_ND;
             return true;
         }
@@ -247,24 +288,12 @@ private:
             socAttr.socType = SOC_310;
             socAttr.coreNum = 2; // Ascend310 has 2 aicore
             socAttr.codeFormType = FORMAT_TYPE_ZZ;
-        } else if (name.find(SOCNAME910B4) == 0) {
-            socAttr.socType = SOC_910B4;
-            socAttr.coreNum = 40; // Ascend910B4 has 40 aiv
-            socAttr.codeFormType = FORMAT_TYPE_ND;
-        } else if (name.find(SOCNAME910B3) == 0) {
-            socAttr.socType = SOC_910B3;
-            socAttr.coreNum = 40; // Ascend910B3 has 40 aiv
-            socAttr.codeFormType = FORMAT_TYPE_ND;
-        } else if (name.find(SOCNAME910B2) == 0) {
-            socAttr.socType = SOC_910B2;
-            socAttr.coreNum = 48; // Ascend910B2 has 48 aiv
-            socAttr.codeFormType = FORMAT_TYPE_ND;
-        } else if (name.find(SOCNAME910B1) == 0) {
-            socAttr.socType = SOC_910B1;
-            socAttr.coreNum = 48; // Ascend910B2 has 48 aiv
-            socAttr.codeFormType = FORMAT_TYPE_ND;
+        } else if (ParseA2Data(name)) {
+            APP_LOG_INFO("find socname A2");
         } else if (ParseA3Data(name)) {
             APP_LOG_INFO("find socname A3");
+        } else if (ParseA5Data(name)) {
+            APP_LOG_INFO("find socname A5");
         } else {
             APP_LOG_ERROR("soc error. please check.");
         }

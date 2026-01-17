@@ -148,6 +148,11 @@ TEST(TestAscendIndexUTClustering, Invalid_Construct_Part2)
         MOCKER_CPP(&faiss::ascend::AscendClusteringImpl::resetCorrComputeOp).stubs()
             .will(invoke(StubResetCorrComputeOp));
         faiss::ascend::AscendClustering cluster(DIM, NLIST, faiss::MetricType::METRIC_INNER_PRODUCT, conf);
+        std::vector<float> randData(DIM * NTOTAL);
+        FeatureGenerator(randData);
+        cluster.Add(NTOTAL, randData.data());
+        std::vector<float> corr(DIM * DIM);
+        cluster.ComputeCorr(corr.data(), false);
     } catch(std::exception &e) {
         msg = e.what();
     }

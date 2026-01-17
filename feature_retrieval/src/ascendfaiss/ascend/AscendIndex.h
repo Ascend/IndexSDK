@@ -35,7 +35,7 @@ using ascend_idx_t = uint64_t;
 const idx_t MAX_N = 1e9;
 const idx_t MAX_K = 4096;
 const int64_t INDEX_DEFAULT_MEM = 0x2000000; // 0x2000000 mean 32M(resource mem pool's size)
-const int64_t INDEX_MAX_MEM = 0x100000000;    // 0x100000000 mean 4096MB
+const int64_t INDEX_MAX_MEM =  0x280000000;    //  0x280000000 mean 10GB
 const uint32_t DEFAULT_BLOCK_SIZE = 16384 * 16;
 
 struct AscendIndexConfig {

@@ -16,31 +16,32 @@
  * -------------------------------------------------------------------------
  */
 
-
 #ifndef ASCENDC_OP_HOST_DISTANCE_L2_MINS_AT_FP32_TILING_H
 #define ASCENDC_OP_HOST_DISTANCE_L2_MINS_AT_FP32_TILING_H
 #include "register/tilingdata_base.h"
-
-#define ASCENDC_RETURN_IF_NOT(X, ERRCODE)                                                                   \
-    do                                                                                                              \
-    {                                                                                                               \
-        if (!(X)) {                                                                                                 \
-            return ERRCODE;                                                                                         \
-        }                                                                                                           \
-    } while (false)
+#include "tiling/matrix/matmul_tiling.h"
 
 namespace optiling {
 BEGIN_TILING_DATA_DEF(DistanceFlatL2MinsAtFP32TilingData)
-    TILING_DATA_FIELD_DEF(int32_t, formerCoreNum);
-    TILING_DATA_FIELD_DEF(int32_t, formerCoreLength);
-    TILING_DATA_FIELD_DEF(int32_t, tailCoreNum);
-    TILING_DATA_FIELD_DEF(int32_t, tailCoreLength);
-    TILING_DATA_FIELD_DEF(int32_t, tileNum);
-    TILING_DATA_FIELD_DEF(int32_t, tileLength);
-    TILING_DATA_FIELD_DEF(int32_t, lastTileLength);
+    TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, gemm_qb_tiling);
     TILING_DATA_FIELD_DEF(int32_t, queryNumLength);
     TILING_DATA_FIELD_DEF(int32_t, codesNumLength);
     TILING_DATA_FIELD_DEF(int32_t, dimLength);
+    TILING_DATA_FIELD_DEF(int32_t, baseCodesNumLength);
+    TILING_DATA_FIELD_DEF(int32_t, formerCoreNum);
+    TILING_DATA_FIELD_DEF(int32_t, formerCoreLength);
+    TILING_DATA_FIELD_DEF(int32_t, formerTileNum);
+    TILING_DATA_FIELD_DEF(int32_t, formerTileLength);
+    TILING_DATA_FIELD_DEF(int32_t, formerLastTileLength);
+    TILING_DATA_FIELD_DEF(int32_t, tailCoreNum);
+    TILING_DATA_FIELD_DEF(int32_t, tailCoreLength);
+    TILING_DATA_FIELD_DEF(int32_t, tailTileNum);
+    TILING_DATA_FIELD_DEF(int32_t, tailTileLength);
+    TILING_DATA_FIELD_DEF(int32_t, tailLastTileLength);
+    TILING_DATA_FIELD_DEF(int32_t, codesTileNum);
+    TILING_DATA_FIELD_DEF(int32_t, codesTileLength);
+    TILING_DATA_FIELD_DEF(int32_t, codesLastTileLength);
+    TILING_DATA_FIELD_DEF(int32_t, bufferSize);
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(DistanceFlatL2MinsAtFP32, DistanceFlatL2MinsAtFP32TilingData)

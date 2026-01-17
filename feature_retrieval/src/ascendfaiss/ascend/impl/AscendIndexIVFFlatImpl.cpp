@@ -51,26 +51,205 @@ AscendIndexIVFFlatImpl::AscendIndexIVFFlatImpl(AscendIndexIVFFlat *intf, int dim
     initDeviceAddNumMap();
     centroidsData.resize(nlist);
     this->intf_->is_trained = false;
+    initFlatAtFp32();
 }
 
 AscendIndexIVFFlatImpl::~AscendIndexIVFFlatImpl() {}
 
+void AscendIndexIVFFlatImpl::initFlatAtFp32()
+{
+    APP_LOG_INFO("AscendIndexIVFFlatImpl initFlatAtFp32 started.\n");
+    assignIndex = CREATE_UNIQUE_PTR(::ascend::IndexIVFFlat, nlist, intf_->d, 1, -1);
+    assignIndex->init();
+    if (this->ivfConfig.useKmeansPP) {
+        AscendClusteringConfig npuClusConf({ ivfConfig.deviceList[0] }, ivfConfig.resourceSize);
+        pQuantizerImpl->npuClus =
+            std::make_shared<AscendClustering>(this->intf_->d, this->nlist, this->intf_->metric_type, npuClusConf);
+    }
+    APP_LOG_INFO("AscendIndexIVFFlatImpl initFlatAtFp32 finished.\n");
+}
+
 void AscendIndexIVFFlatImpl::checkParams() const
 {
     FAISS_THROW_IF_NOT_MSG(this->intf_->metric_type == MetricType::METRIC_INNER_PRODUCT, "Unsupported metric type");
-    FAISS_THROW_IF_NOT_MSG(!this->ivfflatConfig.useKmeansPP, "Unsupported NPU clustering");
     FAISS_THROW_IF_NOT_MSG(std::find(NLISTS.begin(), NLISTS.end(), this->nlist) != NLISTS.end(), "Unsupported nlists");
     FAISS_THROW_IF_NOT_MSG(std::find(DIMS.begin(), DIMS.end(), this->intf_->d) != DIMS.end(), "Unsupported dims");
 }
 
+void AscendIndexIVFFlatImpl::copyFrom(const faiss::IndexIVFFlat* index)
+{
+    auto lock = ::ascend::AscendMultiThreadManager::GetWriteLock(mtx);
+    APP_LOG_INFO("AscendIndexIVFFlat copyFrom operation started.\n");
+
+    FAISS_THROW_IF_NOT_MSG(index != nullptr, "index is nullptr.");
+    FAISS_THROW_IF_NOT_MSG(index->is_trained, "Source index is not trained");
+
+    this->intf_->d = index->d;
+    this->intf_->metric_type = index->metric_type;
+    this->intf_->is_trained = index->is_trained;
+    this->nlist = index->nlist;
+    this->nprobe = index->nprobe;
+    this->ivfConfig.cp = index->cp;
+    this->intf_->ntotal = index->ntotal;
+
+    copyFromCentroids(index);
+
+    copyFromIVF(index);
+
+    APP_LOG_INFO("AscendIndexIVFFlat copyFrom finished.\n");
+}
+
+void AscendIndexIVFFlatImpl::copyFromCentroids(const faiss::IndexIVFFlat* index)
+{
+    std::vector<float> centroidsTmp(nlist * intf_->d);
+    index->quantizer->reconstruct_n(0, nlist, centroidsTmp.data());
+    const float* centroids = centroidsTmp.data();
+    size_t centroidsSize = static_cast<size_t>(nlist * this->intf_->d);
+
+    for (size_t i = 0; i < indexConfig.deviceList.size(); i++) {
+        int deviceId = indexConfig.deviceList[i];
+        auto pIndex = getActualIndex(deviceId);
+        if (!pIndex) {
+            APP_LOG_WARNING("Device %d not available, skipping", deviceId);
+            continue;
+        }
+        pIndex->centroidsOnDevice->resize(nlist * intf_->d);
+
+        auto ret = aclrtMemcpy(pIndex->centroidsOnDevice->data(),
+                               centroidsSize * sizeof(float),
+                               centroids, centroidsSize * sizeof(float),
+                               ACL_MEMCPY_HOST_TO_DEVICE);
+        FAISS_THROW_IF_NOT_FMT(ret == ACL_SUCCESS,
+                               "Failed to copy centroids to device %d: %d", deviceId, ret);
+    }
+}
+
+void AscendIndexIVFFlatImpl::copyFromIVF(const faiss::IndexIVFFlat* index)
+{
+    const faiss::InvertedLists* ivf = index->invlists;
+    FAISS_THROW_IF_NOT_MSG(ivf, "Source index inverted lists is null");
+
+    size_t deviceCnt = indexConfig.deviceList.size();
+    size_t dim = static_cast<size_t>(this->intf_->d);
+
+    for (int listId = 0; listId < nlist; listId++) {
+        deviceAddNumMap[listId] = std::vector<int>(deviceCnt, 0);
+    }
+
+    for (int listId = 0; listId < nlist; listId++) {
+        size_t listSize = ivf->list_size(listId);
+        if (listSize == 0) continue;
+
+        const float* vectors = reinterpret_cast<const float*>(ivf->get_codes(listId));
+        const idx_t* ids = ivf->get_ids(listId);
+        assignCounts.emplace(listId, AscendIVFAddInfo(0, deviceCnt, dim));
+        for (size_t i = 0; i < listSize; i++) {
+            size_t devIdx = 0;
+            for (size_t j = 1; j < deviceCnt; j++) {
+                devIdx = (deviceAddNumMap[listId][j] < deviceAddNumMap[listId][devIdx]) ? j : devIdx;
+            }
+            assignCounts.at(listId).Add(const_cast<float*>(vectors + i * dim),
+                                        ids ? (ids + i) : nullptr);
+            deviceAddNumMap[listId][devIdx]++;
+        }
+    }
+    auto uploadFunctor = [&](int idx) {
+        int deviceId = indexConfig.deviceList[idx];
+        for (auto& centroid : assignCounts) {
+            idx_t listId = centroid.first;
+            int num = centroid.second.GetAddNum(idx);
+            if (num == 0) continue;
+            float* codePtr = nullptr;
+            ascend_idx_t* idPtr = nullptr;
+            centroid.second.GetCodeAndIdPtr(idx, &codePtr, &idPtr);
+            IndexParam<float, float, ascend_idx_t> param(deviceId, num, 0, 0);
+            param.listId = listId;
+            param.query = codePtr;
+            param.label = idPtr;
+            indexIVFFlatAdd(param);
+        }
+    };
+    CALL_PARALLEL_FUNCTOR(deviceCnt, pool, uploadFunctor);
+    assignCounts.clear();
+}
+
+void AscendIndexIVFFlatImpl::copyTo(faiss::IndexIVFFlat* index) const
+{
+    auto lock = ::ascend::AscendMultiThreadManager::GetReadLock(mtx);
+    APP_LOG_INFO("AscendIndexIVFFlat copyTo operation started.\n");
+    FAISS_THROW_IF_NOT_MSG(index != nullptr, "index is nullptr.");
+    FAISS_THROW_IF_NOT_MSG(this->intf_->is_trained, "Index is not trained");
+    index->reset();
+    index->d = this->intf_->d;
+    index->metric_type = this->intf_->metric_type;
+    index->is_trained = this->intf_->is_trained;
+    index->nlist = nlist;
+    index->nprobe = nprobe;
+    index->cp = this->ivfConfig.cp;
+
+    faiss::IndexFlat* quantizer = nullptr;
+    if (this->intf_->metric_type == faiss::METRIC_INNER_PRODUCT) {
+        quantizer = new faiss::IndexFlatIP(this->intf_->d);
+    } else {
+        quantizer = new faiss::IndexFlatL2(this->intf_->d);
+    }
+    if (!indexConfig.deviceList.empty()) {
+        int deviceId = indexConfig.deviceList[0];
+        auto pIndex = getActualIndex(deviceId);
+        std::vector<float> centroids(intf_->d * nlist);
+        auto ret = aclrtMemcpy(centroids.data(),
+                               intf_->d * nlist * sizeof(float),
+                               pIndex->centroidsOnDevice->data(),
+                               pIndex->centroidsOnDevice->size() * sizeof(float),
+                               ACL_MEMCPY_DEVICE_TO_HOST);
+        FAISS_THROW_IF_NOT_FMT(ret == ACL_SUCCESS, "aclrtMemcpy error %d", ret);
+        quantizer->add(nlist, centroids.data());
+    }
+    index->quantizer = quantizer;
+    index->own_fields = true;
+    faiss::InvertedLists* ivf = new faiss::ArrayInvertedLists(
+            nlist, index->d * sizeof(float)
+    );
+    index->replace_invlists(ivf, true);
+    if (this->intf_->is_trained) {
+        for (size_t i = 0; i < indexConfig.deviceList.size(); i++) {
+            int deviceId = indexConfig.deviceList[i];
+            indexIVFFlatGetListCodes(deviceId, nlist, ivf);
+        }
+    }
+    index->ntotal = this->intf_->ntotal;
+    APP_LOG_INFO("AscendIndexIVFFlat copyTo operation finished.\n");
+}
+
+void AscendIndexIVFFlatImpl::indexIVFFlatGetListCodes(int deviceId, int nlist, InvertedLists *ivf) const
+{
+    auto pIndex = getActualIndex(deviceId);
+    using namespace ::ascend;
+    for (int listId = 0; listId < nlist; listId++) {
+        if (pIndex->getListLength(listId) == 0) {
+            continue;
+        }
+        std::vector<float> hostVec;
+        auto appRet = pIndex->getListVectors(listId, hostVec);
+        FAISS_THROW_IF_NOT_FMT(appRet == APP_ERR_OK, "failed to get vector shaped, ret: %d", appRet);
+        DeviceVector<::ascend::Index::idx_t> &idsVec = pIndex->getListIndices(listId);
+        std::vector<faiss::idx_t> ids(idsVec.size());
+        auto ret = aclrtMemcpy(ids.data(), ids.size() * sizeof(::ascend::Index::idx_t),
+                               idsVec.data(), idsVec.size() * sizeof(faiss::idx_t), ACL_MEMCPY_DEVICE_TO_HOST);
+        FAISS_THROW_IF_NOT_FMT(ret == ACL_SUCCESS, "failed to memcpy ids, ret: %d", ret);
+        const uint8_t* codes = reinterpret_cast<const uint8_t*>(hostVec.data());
+        ivf->add_entries(listId, ids.size(), ids.data(), codes);
+    }
+}
+
 void AscendIndexIVFFlatImpl::addL1(int n, const float *x, std::unique_ptr<idx_t[]> &assign)
 {
-    if (this->ivfflatConfig.useKmeansPP) {
-        APP_LOG_ERROR("not support npu clustering!!");
-        return;
-    } else {
-        pQuantizerImpl->cpuQuantizer->assign(n, x, assign.get());
-    }
+    // 使用npu能力加速add过程
+    FAISS_THROW_IF_NOT_MSG(assignIndex != nullptr, "assignIndex is not init");
+    ::ascend::AscendTensor<float, ::ascend::DIMS_2> codes(const_cast<float *>(x), {n, this->intf_->d});
+    ::ascend::AscendTensor<idx_t, ::ascend::DIMS_2> indices(assign.get(), {n, 1});
+    auto ret = assignIndex->assign(codes, indices);
+    FAISS_THROW_IF_NOT_FMT(ret == ::ascend::APP_ERR_OK, "assign failed %d", ret);
 }
 
 void AscendIndexIVFFlatImpl::addImpl(int n, const float *x, const idx_t *ids)
@@ -199,31 +378,49 @@ void AscendIndexIVFFlatImpl::updateCoarseCenter(std::vector<float> &centerData)
                                centerData.data(), intf_->d * nlist * sizeof(float),
                                ACL_MEMCPY_HOST_TO_DEVICE);
         FAISS_THROW_IF_NOT_FMT(ret == ACL_SUCCESS, "aclrtMemcpy error %d", ret);
+        ::ascend::AscendTensor<float, ::ascend::DIMS_2> centroids(centerData.data(), {nlist, intf_->d});
+        ret = pIndex->updateCentroidsSqrSum(centroids);
+        FAISS_THROW_IF_NOT_FMT(ret == ::ascend::APP_ERR_OK, "updateCentroidsSqrSum error %d", ret);
     }
 }
 
-void AscendIndexIVFFlatImpl::train(idx_t n, const float *x)
+void AscendIndexIVFFlatImpl::train(idx_t n, const float *x, bool clearNpuData)
 {
     APP_LOG_INFO("AscendIndexIVFFlat start to train with %ld vector(s).\n", n);
     FAISS_THROW_IF_NOT_MSG(x, "x can not be nullptr.");
     FAISS_THROW_IF_NOT_FMT((n > 0) && (n < MAX_N), "n must be > 0 and < %ld", MAX_N);
-
     if (this->intf_->is_trained) {
         FAISS_THROW_IF_NOT_MSG(pQuantizerImpl->cpuQuantizer->is_trained, "cpuQuantizer must be trained");
         FAISS_THROW_IF_NOT_MSG(pQuantizerImpl->cpuQuantizer->ntotal == nlist, "cpuQuantizer.size must be nlist");
         FAISS_THROW_IF_NOT_MSG(indexes.size() > 0, "indexes.size must be >0");
         return;
     }
-    FAISS_THROW_IF_NOT_MSG(!ivfConfig.useKmeansPP, "AscendIndexIVFFlat is not support NPU clustering now");
     if (this->intf_->metric_type == MetricType::METRIC_INNER_PRODUCT) {
         APP_LOG_INFO("METRIC_INNER_PRODUCT must set spherical to true in cpu train case\n");
         this->ivfConfig.cp.spherical = true;
     }
-    Clustering clus(this->intf_->d, nlist, this->ivfConfig.cp);
-    clus.verbose = this->intf_->verbose;
-    FAISS_THROW_IF_NOT_MSG(pQuantizerImpl->cpuQuantizer, "cpuQuantizer is not init.");
-    clus.train(n, x, *(pQuantizerImpl->cpuQuantizer));
-    updateCoarseCenter(clus.centroids);
+    if (ivfConfig.useKmeansPP) {
+        pQuantizerImpl->npuClus->verbose = this->intf_->verbose;
+        std::vector<float> tmpCentroids(nlist * this->intf_->d);
+        if (pQuantizerImpl->npuClus->GetNTotal() == 0) {
+            pQuantizerImpl->npuClus->AddFp32(n, x);
+        }
+        if (this->intf_->verbose) {
+            printf("Ascend cluster start training %zu vectors\n", pQuantizerImpl->npuClus->GetNTotal());
+        }
+        pQuantizerImpl->npuClus->TrainFp32(this->ivfConfig.cp.niter, tmpCentroids.data(), clearNpuData);
+        ::ascend::AscendTensor<float, ::ascend::DIMS_2> centroidsTrained(tmpCentroids.data(), {nlist, intf_->d});
+        updateCoarseCenter(tmpCentroids);
+        assignIndex->addVectorsAsCentroid(centroidsTrained);
+    } else {
+        Clustering clus(this->intf_->d, nlist, this->ivfConfig.cp);
+        clus.verbose = this->intf_->verbose;
+        FAISS_THROW_IF_NOT_MSG(pQuantizerImpl->cpuQuantizer, "cpuQuantizer is not init.");
+        clus.train(n, x, *(pQuantizerImpl->cpuQuantizer));
+        updateCoarseCenter(clus.centroids);
+        ::ascend::AscendTensor<float, ::ascend::DIMS_2> centroidsTrained(clus.centroids.data(), {nlist, intf_->d});
+        assignIndex->addVectorsAsCentroid(centroidsTrained);
+    }
     this->intf_->is_trained = true;
     APP_LOG_INFO("AscendIndexIVFFlat train operation finished.\n");
 }

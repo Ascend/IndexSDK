@@ -18,9 +18,11 @@
 
 
 #include "AscendClusteringImpl.h"
-
+#include <omp.h>
 #include <algorithm>
 #include <faiss/impl/FaissAssert.h>
+#include <faiss/utils/distances.h>
+#include <faiss/utils/random.h>
 
 #include "ascend/utils/fp16.h"
 #include "ascenddaemon/utils/Limits.h"
@@ -94,8 +96,6 @@ void AscendClusteringImpl::init()
                            "Device %d is invalid, total device %u", deviceId, devCount);
     ACL_REQUIRE_OK(aclrtSetDevice(deviceId));
     resources = CREATE_UNIQUE_PTR(AscendResourcesProxy);
-
-    FAISS_THROW_IF_NOT_MSG(resetCorrComputeOp() == APP_ERR_OK, "Failed to reset corrcompute op");
 }
 
 void AscendClusteringImpl::add(idx_t n, const float *x)
@@ -145,6 +145,24 @@ void AscendClusteringImpl::add(idx_t n, const float *x)
     ntotal += static_cast<size_t>(n);
 
     APP_LOG_INFO("AscendClustering add finished, ntotal %zu", ntotal);
+}
+
+void AscendClusteringImpl::addFp32(idx_t n, const float *x)
+{
+    APP_LOG_INFO("AscendClustering addFp32 start: searchNum=%ld, d %zu, k %zu", n, intf_->d, intf_->k);
+
+    FAISS_THROW_IF_NOT_MSG(x, "x can not be nullptr.");
+    ASCEND_THROW_IF_NOT_FMT((n > 0) && (n < CLUSTERING_MAX_N),
+        "n must be > 0 and n < %ld", CLUSTERING_MAX_N);
+    ASCEND_THROW_IF_NOT_FMT((n > 0) && (ntotal + static_cast<size_t>(n) < CLUSTERING_MAX_N),
+        "n must be > 0 and ntotal+n < %ld", CLUSTERING_MAX_N);
+    FAISS_THROW_IF_NOT_FMT(
+        static_cast<size_t>(CLUSTERING_MAX_N) * static_cast<size_t>(intf_->d) < static_cast<size_t>(INT_MAX),
+        "dim*n must be > 0 and < %zu", static_cast<size_t>(INT_MAX));
+    codesFp32.resize((ntotal + n) * intf_->d);
+    std::copy(x, x + n * static_cast<idx_t>(intf_->d), codesFp32.begin() + ntotal);
+    ntotal += static_cast<size_t>(n);
+    APP_LOG_INFO("AscendClustering addFp32 finished, ntotal %zu", ntotal);
 }
 
 void AscendClusteringImpl::distributedTrain(int niter, float *centroids,
@@ -362,19 +380,150 @@ void AscendClusteringImpl::train(int niter, float *centroids, bool clearData)
     APP_LOG_INFO("AscendClustering train finished.\n");
 }
 
+void AscendClusteringImpl::computeCentroids(size_t d, // dim
+                                            size_t k, // nlist
+                                            size_t n, // ntotal
+                                            const float* x,
+                                            const int64_t* assign, // ntotal条向量所属桶
+                                            float* centroids)
+{
+    auto ret = memset_s(centroids, d * k * sizeof(float), 0, d * k * sizeof(float));
+    ASCEND_THROW_IF_NOT_FMT(ret == EOK, "set centroids to 0 failed %d", ret);
+    std::vector<int32_t> hassign(k);
+#pragma omp parallel
+    {
+        int nt = omp_get_num_threads(); // 总线程数
+        int rank = omp_get_thread_num(); // 获取当前的线程ID
+
+        // this thread is taking care of centroids c0:c1
+        size_t c0 = (k * rank) / nt;
+        size_t c1 = (k * (rank + 1)) / nt;
+        for (size_t i = 0; i < n; i++) {
+            ASCEND_THROW_IF_NOT_FMT(assign[i] >= 0, "assign[%zu] %jd < 0 is invalid", i, assign[i]);
+            size_t ci = static_cast<size_t>(assign[i]);
+            FAISS_THROW_IF_NOT_FMT(ci < k, "assign %zu >= nlist is invalid.", ci);
+            if (ci >= c0 && ci < c1) {
+                float* c = centroids + ci * d;
+                const float* xi = x + i * d;
+                hassign[ci] += 1;
+                for (size_t j = 0; j < d; j++) {
+                    c[j] += xi[j];
+                }
+            }
+        }
+    }
+#pragma omp parallel for
+    for (size_t ci = 0; ci < k; ci++) {
+        if (hassign[ci] == 0) {
+            continue;
+        }
+        float norm = 1 / static_cast<float>(hassign[ci]);
+        float* c = centroids + ci * d;
+        for (size_t j = 0; j < d; j++) {
+            c[j] *= norm;
+        }
+    }
+}
+
+void AscendClusteringImpl::normalizeVecByHost(float *centrodataHost,
+                                              AscendTensor<float, DIMS_2> &centrodataDev)
+{
+    fvec_renorm_L2(intf_->d, intf_->k, centrodataHost);
+    auto ret = aclrtMemcpy(centrodataDev.data(), centrodataDev.getSizeInBytes(),
+                           centrodataHost, intf_->d * intf_->k * sizeof(float), ACL_MEMCPY_HOST_TO_DEVICE);
+    FAISS_THROW_IF_NOT_MSG(ret == ACL_SUCCESS, "Failed to copy centrodata to device");
+}
+
+void AscendClusteringImpl::checkParaFp32(int niter, float *centroids)
+{
+    FAISS_THROW_IF_NOT_MSG(centroids, "distances can not be nullptr.");
+    FAISS_THROW_IF_NOT_FMT(niter > 0 && niter <= MAX_NITER,
+        "Niter must be in range (0, %d], but given %d \n", MAX_NITER, niter);
+    FAISS_THROW_IF_NOT_FMT((ntotal > 0) && (ntotal < CLUSTERING_MAX_N),
+        "ntotal %zu must be > 0 and < %ld", ntotal, CLUSTERING_MAX_N);
+    FAISS_THROW_IF_NOT_FMT(intf_->k > 0 && intf_->k <= MAX_NCENTROIDS,
+        "Invalid number of ncentroids, should be in range (0, %d]", MAX_NCENTROIDS);
+    FAISS_THROW_IF_NOT_FMT(ntotal >= static_cast<size_t>(intf_->k),
+        "Number of training points (%zu) should be at least as large as number of clusters (%zu)",
+        ntotal, static_cast<size_t>(intf_->k));
+}
+
+void AscendClusteringImpl::trainFp32(int niter, float *centroids, bool clearData)
+{
+    // Here k means num of centroids/nlist
+    checkParaFp32(niter, centroids);
+    APP_LOG_INFO("AscendClustering train start: ntotal=%zu, ncentroids=%d, dim=%d, niter=%d\n",
+        ntotal, intf_->k, intf_->d, niter);
+    ACL_REQUIRE_OK(aclrtSetDevice(config.deviceList[0]));
+    npuFlatAtFp32 = CREATE_UNIQUE_PTR(IndexIVFFlat, intf_->k, intf_->d, 1, -1);
+    auto ret = npuFlatAtFp32->init();
+    FAISS_THROW_IF_NOT_FMT(ret == ::ascend::APP_ERR_OK, "Failed to create index ivf flat, result is %d", ret);
+
+    auto streamPtr = resources->getDefaultStream();
+    auto stream = streamPtr->GetStream();
+    auto &mem = resources->getMemoryManager();
+
+    AscendTensor<float, DIMS_2> centrodata(mem, {static_cast<int>(intf_->k), static_cast<int>(intf_->d)}, stream);
+    AscendTensor<float, DIMS_2> centroidsHost(centroids, {static_cast<int>(intf_->k), static_cast<int>(intf_->d)});
+    randomCentrodataFp32(centroidsHost);
+    // 聚类中心进行归一化
+    normalizeVecByHost(centroids, centrodata);
+    AscendTensor<float, DIMS_2> codesTensor(codesFp32.data(), {static_cast<int>(ntotal), static_cast<int>(intf_->d)});
+    AscendTensor<int64_t, DIMS_1> assign(mem, { static_cast<int>(ntotal) }, stream);
+    std::vector<int64_t> indices(ntotal);
+    AscendTensor<int64_t, DIMS_2> indicesHost{indices.data(), {static_cast<int>(ntotal), 1}};
+    double tSearchTotal = 0.0;
+    double t0 = 0.0;
+    double t0s = 0.0;
+
+    if (this->intf_->verbose) {
+        t0 = utils::getMillisecs();
+    }
+    for (int i = 0; i < niter; i++) {
+        ret = npuFlatAtFp32->addVectorsAsCentroid(centroidsHost);
+        ASCEND_THROW_IF_NOT_FMT(ret == APP_ERR_OK, "Failed to centrodata, ret %d", ret);
+        if (this->intf_->verbose) {
+            t0s = utils::getMillisecs();
+        }
+        ret = npuFlatAtFp32->assign(codesTensor, indicesHost);
+        FAISS_THROW_IF_NOT_MSG(ret == APP_ERR_OK, "Failed to exec search centroids!");
+        if (this->intf_->verbose) {
+            tSearchTotal += utils::getMillisecs() - t0s;
+            printf("Ascend Cluster Iteration %d (%.2f s, search %.2f s)  \r",
+                i, (utils::getMillisecs() - t0) / 1000, tSearchTotal / 1000); // 除以 1000 将单位转换为s
+            fflush(stdout);
+        }
+        // aicpu速度不如cpu，直接使用cpu更新
+        computeCentroids(intf_->d, intf_->k, ntotal, codesFp32.data(),  indicesHost.data(), centroids);
+        normalizeVecByHost(centroids, centrodata);
+    }
+    if (clearData) {
+        std::vector<float>().swap(codesFp32);
+        ntotal = 0;
+    }
+    APP_LOG_INFO("AscendClustering train finished.\n");
+}
+
 size_t AscendClusteringImpl::getNTotal()
 {
     return ntotal;
 }
 
-void AscendClusteringImpl::computeCorr(float *corr, bool clearData)
+void AscendClusteringImpl::corrPreProcess(float *corr)
 {
     APP_LOG_INFO("AscendClusteringImpl::computeCorr start");
     FAISS_THROW_IF_NOT_MSG(corr, "correlation result ptr can not be nullptr.");
     ASCEND_THROW_IF_NOT_FMT((ntotal >= intf_->k) && (ntotal < CLUSTERING_MAX_N),
         "ntotal must be >= %zu and < %ld", intf_->k, CLUSTERING_MAX_N);
     ACL_REQUIRE_OK(aclrtSetDevice(config.deviceList[0]));
+    if (!corrComputeOp) {
+        FAISS_THROW_IF_NOT_MSG(resetCorrComputeOp() == APP_ERR_OK, "Failed to reset corrcompute op");
+    }
+}
 
+void AscendClusteringImpl::computeCorr(float *corr, bool clearData)
+{
+    corrPreProcess(corr);
     auto streamPtr = resources->getDefaultStream();
     auto stream = streamPtr->GetStream();
     auto &mem = resources->getMemoryManager();
@@ -819,6 +968,30 @@ void AscendClusteringImpl::randomCentrodata(AscendTensor<float16_t, DIMS_2> &cen
     auto ret = aclrtMemcpy(centrodata.data(), centrodata.getSizeInBytes(),
                            centrodataTmp.data(), centrodataTmp.size() * sizeof(float16_t), ACL_MEMCPY_HOST_TO_DEVICE);
     ASCEND_THROW_IF_NOT_FMT(ret == ACL_SUCCESS, "Failed to copy centrodata to device (error %d)", (int)ret);
+}
+
+uint64_t get_actual_rng_seed(const int seed)
+{
+    return (seed >= 0) ? seed : static_cast<uint64_t>(std::chrono::high_resolution_clock::now()
+                                            .time_since_epoch()
+                                            .count());
+}
+
+void AscendClusteringImpl::randomCentrodataFp32(AscendTensor<float, DIMS_2> &centrodata)
+{
+    std::vector<int> perm(ntotal, 0);
+    const uint64_t actual_seed = get_actual_rng_seed(RAND_SEED);
+    rand_perm(perm.data(), ntotal, actual_seed + 1);
+    std::vector<float> centrodataTmp(intf_->k * intf_->d);
+    for (size_t i = 0; i < intf_->k; i++) {
+        size_t offset = i * intf_->d;
+        auto ret = memcpy_s(centrodataTmp.data() + offset, (centrodataTmp.size() - offset) * sizeof(float),
+                            codesFp32.data() + perm[i] * intf_->d, intf_->d * sizeof(float));
+        ASCEND_THROW_IF_NOT_FMT(ret == EOK, "Failed to copy to centrodata (error %d)", ret);
+    }
+    auto ret = aclrtMemcpy(centrodata.data(), centrodata.getSizeInBytes(),
+                           centrodataTmp.data(), centrodataTmp.size() * sizeof(float), ACL_MEMCPY_HOST_TO_DEVICE);
+    ASCEND_THROW_IF_NOT_FMT(ret == ACL_SUCCESS, "Failed to copy centrodata to device (error %d)", ret);
 }
 
 void AscendClusteringImpl::trainPostProcess(AscendTensor<float16_t, DIMS_2> &centrodata, float *centroids)

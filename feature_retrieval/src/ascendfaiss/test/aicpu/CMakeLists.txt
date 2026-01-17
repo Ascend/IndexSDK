@@ -22,6 +22,7 @@ set(OP_IMPL_FILES
     ${OP_PATH}/topk_flat_cpu_kernel.cpp
     ${OP_PATH}/topk_ivf_cpu_kernel.cpp
     ${OP_PATH}/topk_ivf_fp32_cpu_kernel.cpp
+    ${OP_PATH}/topk_ivfpq_l3_cpu_kernel.cpp
     ${OP_PATH}/topk_ivf_fuzzy_cpu_kernel.cpp
     ${OP_PATH}/topk_ivfsqt_l1_cpu_kernel.cpp
 )

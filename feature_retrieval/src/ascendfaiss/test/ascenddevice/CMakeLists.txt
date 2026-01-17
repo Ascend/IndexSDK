@@ -24,16 +24,14 @@ INCLUDE_DIRECTORIES(
         ${CMAKE_CURRENT_LIST_DIR}/../../common
         ${GTEST_DIR}/include/
         ${DEVICE_INSTALL_HOME}/include
-        ${ASCEND_MINIOS_HOME}/acllib/include
         ${DRIVER_HOME}/driver/include/dvpp
         ${DRIVER_HOME}/driver/kernel/inc/driver)
 LINK_DIRECTORIES(
         ${DEVICE_INSTALL_HOME}/lib
-        ${DRIVER_HOME}/develop/lib64
-        ${ASCEND_MINIOS_HOME}/acllib/lib64)
-LINK_LIBRARIES(${TARGET_GTEST}  c_sec  ascendcl  ascend_hal ascendfaiss_minios)
+        ${DRIVER_HOME}/develop/lib64)
+LINK_LIBRARIES(${TARGET_GTEST}  c_sec  ascendcl  ascend_hal)
 
-SET(RPATH "/lib/aarch64-linux-gnu:${${DEVICE_INSTALL_HOME}/lib}:${ASCEND_MINIOS_HOME}/acllib/lib64:${DRIVER_HOME}/develop/lib64:${DRIVER_HOME}/driver/lib64")
+SET(RPATH "/lib/aarch64-linux-gnu:${${DEVICE_INSTALL_HOME}/lib}:${DRIVER_HOME}/develop/lib64:${DRIVER_HOME}/driver/lib64")
 SET(CMAKE_EXE_LINKER_FLAGS "-Wl,-rpath-link,${RPATH}")
 
 # Test executables

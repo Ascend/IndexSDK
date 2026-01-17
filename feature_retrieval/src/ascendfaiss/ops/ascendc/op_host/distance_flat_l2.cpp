@@ -262,7 +262,7 @@ public:
         this->AICore()
             .SetTiling(optiling::TilingFunc);
         this->AICore().AddConfig("ascend910b")
-            .AddConfig("ascend910_93");
+            .AddConfig("ascend910_93").AddConfig("ascend910_95");
     }
 };
 

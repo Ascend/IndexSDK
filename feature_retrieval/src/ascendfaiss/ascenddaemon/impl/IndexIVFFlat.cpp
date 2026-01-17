@@ -45,6 +45,8 @@ IndexIVFFlat::IndexIVFFlat(int numList, int dim, int nprobes, int64_t resourceSi
     searchBatchSizes = {64, 32, 16, 8, 4, 2, 1};
     listVecNum = std::vector<size_t>(numList, 0);
     baseFp32.resize(numList);
+    centroidsSqrSumOnDevice = CREATE_UNIQUE_PTR(DeviceVector<float>, MemorySpace::DEVICE_HUGEPAGE);
+    centroidsSqrSumOnDevice->resize(numList);
     pBaseFp32 = reinterpret_cast<float*>(0xffffffffffffffff);  // 基地址初始化为最大的无效值 0xffffffffffffffff
     centroidsOnDevice = CREATE_UNIQUE_PTR(DeviceVector<float>, MemorySpace::DEVICE_HUGEPAGE);
     centroidsOnDevice->resize(numList * dims);
@@ -135,6 +137,57 @@ APP_ERROR IndexIVFFlat::addVectors(int listId, size_t numVecs, const float *code
     return APP_ERR_OK;
 }
 
+APP_ERROR IndexIVFFlat::addVectorsAsCentroid(AscendTensor<float, DIMS_2> &centroidata)
+{
+    int n = centroidata.getSize(0);
+    int d = centroidata.getSize(1);
+    APPERR_RETURN_IF_NOT_FMT(n == numLists, APP_ERR_INNER_ERROR, "vector num of centroidata %d less nlist!", n);
+    APPERR_RETURN_IF_NOT_FMT(d == dims, APP_ERR_INNER_ERROR, "dim of centroidata %d invalid!", d);
+    auto ret = aclrtMemcpy(centroidsOnDevice->data(), n * d * sizeof(float), centroidata.data(),
+                           n * d * sizeof(float), ACL_MEMCPY_HOST_TO_DEVICE);
+    APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, APP_ERR_INNER_ERROR, "add centroidata to device failed %d", ret);
+    ret = updateCentroidsSqrSum(centroidata);
+    APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, APP_ERR_INNER_ERROR, "update SqrSum of centroids failed %d", ret);
+    return APP_ERR_OK;
+}
+
+APP_ERROR IndexIVFFlat::getListVectors(int listId, std::vector<float>& codes) const
+{
+    APPERR_RETURN_IF_NOT_FMT(listId >= 0 && listId < numLists, APP_ERR_INVALID_PARAM,
+                             "the listId is %d, out of numLists(%d)", listId, numLists);
+
+    size_t listLength = getListLength(listId);
+    APPERR_RETURN_IF(listLength == 0, APP_ERR_OK);
+
+    size_t codeSize = listLength * static_cast<size_t>(dims);
+    codes.resize(codeSize);
+
+    size_t copiedVecs = 0;
+    auto& blockList = baseFp32[listId];
+
+    for (auto& block : blockList) {
+        size_t vecsInBlock = block->size() / dims;
+        if (vecsInBlock == 0) continue;
+
+        size_t vecsToCopy = std::min(vecsInBlock, listLength - copiedVecs);
+        if (vecsToCopy == 0) break;
+
+        float* devicePtr = block->data();
+        float* hostPtr = codes.data() + copiedVecs * dims;
+        size_t bytesToCopy = vecsToCopy * dims * sizeof(float);
+
+        auto ret = aclrtMemcpy(hostPtr, bytesToCopy,
+                               devicePtr, bytesToCopy,
+                               ACL_MEMCPY_DEVICE_TO_HOST);
+        APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR,
+                                 "Failed to copy ivf vector from device to host: %d", ret);
+
+        copiedVecs += vecsToCopy;
+    }
+
+    return APP_ERR_OK;
+}
+
 APP_ERROR IndexIVFFlat::resetL1TopkOp()
 {
     auto topkCompOpReset = [&](std::unique_ptr<AscendOperator> &op, int64_t batch) {
@@ -209,12 +262,13 @@ APP_ERROR IndexIVFFlat::resetL1DistOp()
         AscendOpDesc desc("DistanceFlatL2MinsAtFP32");
         std::vector<int64_t> queryShape({ batch, dims });
         std::vector<int64_t> codesShape({ numLists, dims });
-        
+        std::vector<int64_t> codesSqrSum({ numLists });
         std::vector<int64_t> distResultShape({ batch, numLists });
         std::vector<int64_t> minResultShape({ batch, numLists / IVF_FLAT_BURST_LEN * 2});
         std::vector<int64_t> flagShapeShape({ CORE_NUM, 16 });
         desc.addInputTensorDesc(ACL_FLOAT, queryShape.size(), queryShape.data(), ACL_FORMAT_ND);
         desc.addInputTensorDesc(ACL_FLOAT, codesShape.size(), codesShape.data(), ACL_FORMAT_ND);
+        desc.addInputTensorDesc(ACL_FLOAT, codesSqrSum.size(), codesSqrSum.data(), ACL_FORMAT_ND);
         desc.addOutputTensorDesc(ACL_FLOAT, distResultShape.size(), distResultShape.data(), ACL_FORMAT_ND);
         desc.addOutputTensorDesc(ACL_FLOAT, minResultShape.size(), minResultShape.data(), ACL_FORMAT_ND);
         desc.addOutputTensorDesc(ACL_UINT16, flagShapeShape.size(), flagShapeShape.data(), ACL_FORMAT_ND);
@@ -240,10 +294,12 @@ void IndexIVFFlat::runL1DistOp(int batch, AscendTensor<float, DIMS_2> &queries,
         op = l1DistFp32Ops[batch].get();
     }
     ASCEND_THROW_IF_NOT(op);
+    AscendTensor<float, DIMS_1> centroidsSqrSum(centroidsSqrSumOnDevice->data(), {numLists});
     std::shared_ptr<std::vector<const aclDataBuffer *>> topkOpInput(
         new std::vector<const aclDataBuffer *>(), CommonUtils::AclInputBufferDelete);
     topkOpInput->emplace_back(aclCreateDataBuffer(queries.data(), queries.getSizeInBytes()));
     topkOpInput->emplace_back(aclCreateDataBuffer(centroidsDev.data(), centroidsDev.getSizeInBytes()));
+    topkOpInput->emplace_back(aclCreateDataBuffer(centroidsSqrSum.data(), centroidsSqrSum.getSizeInBytes()));
 
     std::shared_ptr<std::vector<aclDataBuffer *>> topkOpOutput(
         new std::vector<aclDataBuffer *>(), CommonUtils::AclOutputBufferDelete);
@@ -377,7 +433,6 @@ void IndexIVFFlat::runL2DistOp(AscendTensor<float, DIMS_2, size_t> &subQuery,
     topkOpOutput->emplace_back(aclCreateDataBuffer(subVcMaxDis.data(), subVcMaxDis.getSizeInBytes()));
     topkOpOutput->emplace_back(aclCreateDataBuffer(subOpFlag.data(), subOpFlag.getSizeInBytes()));
     op->exec(*topkOpInput, *topkOpOutput, stream);
-    return;
 }
 
 void IndexIVFFlat::fillDisOpInputDataByBlock(size_t qIdx, size_t tIdx, size_t segIdx,
@@ -449,6 +504,7 @@ APP_ERROR IndexIVFFlat::fillDisOpInputData(int k, size_t batch, size_t tileNum, 
     attrsVec[aicpu::TOPK_IVF_ATTR_BURST_LEN_IDX] = IVF_FLAT_BURST_LEN;
     attrsVec[aicpu::TOPK_IVF_ATTR_BLOCK_NUM_IDX] = static_cast<int64_t>(tileNum * segNum);
     attrsVec[aicpu::TOPK_IVF_ATTR_FLAG_NUM_IDX] = static_cast<int64_t>(coreNum);
+    attrsVec[aicpu::TOPK_IVF_ATTR_QUICK_HEAP] = 0;
     ret = aclrtMemcpy(attrs.data(), attrs.getSizeInBytes(),
                       attrsVec.data(), attrsVec.size() * sizeof(int64_t), ACL_MEMCPY_HOST_TO_DEVICE);
     APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, APP_ERR_INNER_ERROR, "copy attrs to device failed %d", ret);
@@ -555,6 +611,40 @@ APP_ERROR IndexIVFFlat::searchImplL2(AscendTensor<float, DIMS_2> &queries,
     return APP_ERR_OK;
 }
 
+APP_ERROR IndexIVFFlat::assign(AscendTensor<float, DIMS_2> &queries,
+                               AscendTensor<int64_t, DIMS_2> &l1TopNprobeIndicesHost)
+{
+    auto &mem = resources.getMemoryManager();
+    auto streamPtr = resources.getDefaultStream();
+    auto stream = streamPtr->GetStream();
+    int64_t n = queries.getSize(0);
+    AscendTensor<float, DIMS_2> queriesDevice(mem, {static_cast<int>(n), dims}, stream);
+    auto ret = aclrtMemcpy(queriesDevice.data(), queriesDevice.getSizeInBytes(),
+                           queries.data(), queries.getSizeInBytes(), ACL_MEMCPY_HOST_TO_DEVICE);
+    APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "Failed to copy queries to device %d", ret);
+    if (n == 1 || searchBatchSizes.empty()) {
+        return searchImplL1(queriesDevice, l1TopNprobeIndicesHost);
+    }
+    size_t size = searchBatchSizes.size();
+    int64_t searched = 0;
+    for (size_t i = 0; i < size; i++) {
+        int batchSize = static_cast<int>(searchBatchSizes[i]);
+        if ((n - searched) >= batchSize) {
+            int64_t page = (n - searched) / batchSize;
+            for (int64_t j = 0; j < page; j++) {
+                AscendTensor<float, DIMS_2>
+                    subQuery(queriesDevice[searched].data(), {batchSize, dims});
+                AscendTensor<int64_t, DIMS_2>
+                    subL1TopNprobeIndices(l1TopNprobeIndicesHost[searched].data(), {batchSize, nprobe});
+                auto ret = searchImplL1(subQuery, subL1TopNprobeIndices);
+                APPERR_RETURN_IF(ret, ret);
+                searched += batchSize;
+            }
+        }
+    }
+    return APP_ERR_OK;
+}
+
 APP_ERROR IndexIVFFlat::searchImplL1(AscendTensor<float, DIMS_2> &queries,
                                      AscendTensor<int64_t, DIMS_2> &l1TopNprobeIndicesHost)
 {
@@ -582,7 +672,7 @@ APP_ERROR IndexIVFFlat::searchImplL1(AscendTensor<float, DIMS_2> &queries,
     attrs[aicpu::TOPK_FLAT_ATTR_PAGE_IDX] = 0;
     attrs[aicpu::TOPK_FLAT_ATTR_PAGE_NUM_IDX] = 1;
     attrs[aicpu::TOPK_FLAT_ATTR_PAGE_SIZE_IDX] = 0;
-    attrs[aicpu::TOPK_FLAT_ATTR_QUICK_HEAP] = 0;
+    attrs[aicpu::TOPK_FLAT_ATTR_QUICK_HEAP] = 1;
     attrs[aicpu::TOPK_FLAT_ATTR_BLOCK_SIZE] = numLists;
 
     auto ret = aclrtMemcpy(attrsInput.data(), attrsInput.getSizeInBytes(),
@@ -591,14 +681,13 @@ APP_ERROR IndexIVFFlat::searchImplL1(AscendTensor<float, DIMS_2> &queries,
 
     AscendTensor<float, DIMS_2> l1TopNprobeDists(mem, {n, nprobe}, stream);
     AscendTensor<int64_t, DIMS_2> l1TopNprobeIndices(mem, {n, nprobe}, stream);
-
     // run l1 distance calculation
     AscendTensor<float, DIMS_2> centroidsDev(centroidsOnDevice->data(), {numLists, dims});
+    runL1TopkOp(dists, vmdists, opSize, opFlag, attrsInput, l1TopNprobeDists, l1TopNprobeIndices, streamAicpu);
     runL1DistOp(n, queries, centroidsDev, dists, vmdists, opFlag, stream);
     ret = synchronizeStream(stream);
     APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR,
         "synchronizeStream default stream: %i\n", ret);
-    runL1TopkOp(dists, vmdists, opSize, opFlag, attrsInput, l1TopNprobeDists, l1TopNprobeIndices, streamAicpu);
 
     ret = synchronizeStream(streamAicpu);
     APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR,
@@ -609,6 +698,25 @@ APP_ERROR IndexIVFFlat::searchImplL1(AscendTensor<float, DIMS_2> &queries,
                       ACL_MEMCPY_DEVICE_TO_HOST);
     APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "Mem operator error %d", ret);
 
+    return APP_ERR_OK;
+}
+APP_ERROR IndexIVFFlat::updateCentroidsSqrSum(AscendTensor<float, DIMS_2> &centroidata)
+{
+    APPERR_RETURN_IF_NOT_LOG(centroidsSqrSumOnDevice->data() != nullptr,
+                             APP_ERR_INNER_ERROR, "centroidsSqrSumOnDevice is empty\n");
+    std::vector<float> centroidsSqrSum(numLists, 0.0);
+    int n = centroidata.getSize(0);
+    int d = centroidata.getSize(1);
+    for (int i = 0; i < n; i++) {
+        float sqrSum = 0.0;
+        for (int j = 0; j < d; j++) {
+            sqrSum += centroidata[i][j].value() * centroidata[i][j].value();
+        }
+        centroidsSqrSum[i] = sqrSum;
+    }
+    auto ret = aclrtMemcpy(centroidsSqrSumOnDevice->data(), numLists * sizeof(float),
+                           centroidsSqrSum.data(), numLists * sizeof(float), ACL_MEMCPY_HOST_TO_DEVICE);
+    APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "copy centroidsSqrSum failed: %i\n", ret);
     return APP_ERR_OK;
 }
 

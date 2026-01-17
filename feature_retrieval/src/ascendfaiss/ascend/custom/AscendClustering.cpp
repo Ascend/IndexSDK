@@ -34,10 +34,20 @@ void AscendClustering::Add(idx_t n, const float *x) const
     impl_->add(n, x);
 }
 
+void AscendClustering::AddFp32(idx_t n, const float *x)  const
+{
+    impl_->addFp32(n, x);
+}
+
 // Use fast add to transfer data to dev
 void AscendClustering::Train(int niter, float *centroids, bool clearData) const
 {
     impl_->train(niter, centroids, clearData);
+}
+
+void AscendClustering::TrainFp32(int niter, float *centroids, bool clearData)  const
+{
+    impl_->trainFp32(niter, centroids, clearData);
 }
 
 #ifdef HOSTCPU
