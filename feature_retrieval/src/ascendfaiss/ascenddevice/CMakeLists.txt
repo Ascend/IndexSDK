@@ -29,6 +29,7 @@ INCLUDE_DIRECTORIES(
 
 LINK_DIRECTORIES(
     ${DRIVER_HOME}/develop/lib64
+    ${ASCEND_MINIOS_HOME}/runtime/lib64/stub
     ${ASCEND_MINIOS_HOME}/lib64)
 
 ADD_COMPILE_OPTIONS(-fPIE -fstack-protector-all -Wall -fno-strict-aliasing -Wreturn-type
