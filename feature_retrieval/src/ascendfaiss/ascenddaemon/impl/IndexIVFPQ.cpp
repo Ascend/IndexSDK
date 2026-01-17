@@ -1052,7 +1052,7 @@ APP_ERROR IndexIVFPQ::resetL3DistOp()
         std::vector<int64_t> codeBaseShape({ M });
         std::vector<int64_t> codeOffsetShape({ blockNum });
         std::vector<int64_t> codeSizeShape({ blockNum });
-        std::vector<int64_t> topk({ MAX_TOPK, 16384 });
+        std::vector<int64_t> topk({ MAX_TOPK, IVF_PQ_BLOCK_SIZE });
         std::vector<int64_t> distResultShape({ blockNum, blockSize });
         std::vector<int64_t> topkIndex({ blockNum, MAX_TOPK });
         std::vector<int64_t> topkValue({ blockNum, MAX_TOPK });
@@ -1452,7 +1452,7 @@ APP_ERROR IndexIVFPQ::searchImplL3(AscendTensor<int64_t, DIMS_2> &l1TopNprobeInd
     AscendTensor<int64_t, DIMS_3, size_t> ids(mem, {batch, tileNum, segNum * coreNum}, stream);
 
     AscendTensor<int64_t, DIMS_1> attrs(mem, {aicpu::TOPK_IVFPQ_L3_ATTR_IDX_COUNT}, stream);
-    AscendTensor<int32_t, DIMS_2, size_t> topk(mem, {kAligned, 16384}, stream);
+    AscendTensor<int32_t, DIMS_2, size_t> topk(mem, {kAligned, IVF_PQ_BLOCK_SIZE}, stream);
 
     fillDisOpInputDataPQ(k, batch, tileNum, segNum, coreNum, offset, baseSize, ids, attrs, l1TopNprobeIndicesHost);
 
