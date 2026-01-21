@@ -26,20 +26,26 @@ namespace faiss {
 namespace ascend {
 
 struct AscendIndexIVFRabitQConfig : public AscendIndexIVFConfig {
-    inline AscendIndexIVFRabitQConfig() : AscendIndexIVFConfig({ 0 }, IVF_DEFAULT_MEM), needRefine(false) {}
+    inline AscendIndexIVFRabitQConfig() : AscendIndexIVFConfig({ 0 }, IVF_DEFAULT_MEM), useRandomOrthogonalMatrix(true),
+                                          needRefine(false), matrixSeed(12345), refineAlpha(2) {}
     
     explicit inline AscendIndexIVFRabitQConfig(std::initializer_list<int> devices,
                                                int64_t resourceSize = IVF_DEFAULT_MEM)
-        : AscendIndexIVFConfig(devices, resourceSize), needRefine(false) {}
+        : AscendIndexIVFConfig(devices, resourceSize), useRandomOrthogonalMatrix(true),
+          needRefine(false), matrixSeed(12345), refineAlpha(2) {}
     
     explicit inline AscendIndexIVFRabitQConfig(std::vector<int> devices, int64_t resourceSize = IVF_DEFAULT_MEM)
-        : AscendIndexIVFConfig(devices, resourceSize), needRefine(false) {}
+        : AscendIndexIVFConfig(devices, resourceSize), useRandomOrthogonalMatrix(true),
+          needRefine(false), matrixSeed(12345), refineAlpha(2) {}
 
-    explicit inline AscendIndexIVFRabitQConfig(std::vector<int> devices, bool needRefine,
-                                               float alpha, int64_t resourceSize = IVF_DEFAULT_MEM)
-        : AscendIndexIVFConfig(devices, resourceSize), needRefine(needRefine), refineAlpha(alpha) {}
-
+    explicit inline AscendIndexIVFRabitQConfig(std::vector<int> devices, bool useRandomOrthogonalMatrix_,
+                                               bool needRefine_, int matrixSeed_, float alpha_,
+                                               int64_t resourceSize = IVF_DEFAULT_MEM)
+        : AscendIndexIVFConfig(devices, resourceSize), useRandomOrthogonalMatrix(useRandomOrthogonalMatrix_),
+          needRefine(needRefine_), matrixSeed(matrixSeed_), refineAlpha(alpha_) {}
+    bool useRandomOrthogonalMatrix;
     bool needRefine;
+    int matrixSeed;
     float refineAlpha;
 };
 

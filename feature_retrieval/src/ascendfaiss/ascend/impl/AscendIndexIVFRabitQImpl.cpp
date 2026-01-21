@@ -346,7 +346,14 @@ void AscendIndexIVFRabitQImpl::updateCoarseCenter(std::vector<float> &centerData
 void AscendIndexIVFRabitQImpl::randomOrthogonalGivens(int n, std::vector<float> &orthogonalMatrix)
 {
     APP_LOG_INFO("AscendIndexIVFRabitQ  create randomOrthogonalMatrix started\n");
-    orthonormalinit(orthogonalMatrix, 12345, n, n);
+    if (ivfrabitqConfig.useRandomOrthogonalMatrix) {
+        orthonormalinit(orthogonalMatrix, ivfrabitqConfig.matrixSeed, n, n);
+    } else {
+        // 使用单位矩阵
+        for (int i = 0; i < n; ++i) {
+            orthogonalMatrix[i * n + i] = 1.0;
+        }
+    }
 }
 
 void AscendIndexIVFRabitQImpl::uploadorthogonalMatrix(std::vector<float> &orthogonalMatrix)
