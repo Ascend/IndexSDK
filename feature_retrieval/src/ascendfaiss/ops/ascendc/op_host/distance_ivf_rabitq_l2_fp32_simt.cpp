@@ -37,10 +37,10 @@ static void SetLutAndCodeTilingInfo(gert::TilingContext *context, DistanceIVFRab
                                     int32_t ubSize)
 {
     if (!context->GetInputTensor(0)) {
-        return ge::GRAPH_FAILED;
+        return;
     }
     if (!context->GetInputTensor(QUERYLUT)) {
-        return ge::GRAPH_FAILED;
+        return;
     }
     int32_t lutLength = context->GetInputShape(0)->GetStorageShape().GetDim(1) / 8;
     int32_t lutDimLength = context->GetInputShape(QUERYLUT)->GetStorageShape().GetDim(1);  // 一般为固定值256
