@@ -145,6 +145,7 @@ protected:
 
     // indices data list
     std::vector<std::unique_ptr<DeviceVector<idx_t>>> deviceListIndices;
+    std::vector<std::vector<idx_t>> listIndices;
 
     std::map<int, std::unique_ptr<AscendOperator>> l1TopkOps;
     std::map<int, std::unique_ptr<AscendOperator>> l1DistOps;

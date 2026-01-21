@@ -279,7 +279,7 @@ void TopkIvfpqL3CpuKernel::ComputeBlock(int64_t qidx,
         }
         int32_t offset = topkOffsets[i];
         UpdateHeapByPos(0, outdists, i, topkDists, 0,
-                        *(id + offset), outlabel, 0, cmp);
+                        reinterpret_cast<int64_t>(id + offset), outlabel, 0, cmp);
     }
 
     if (isLastBlock) {

@@ -348,7 +348,7 @@ function parse_script_args() {
             ;;
         --platform=*)
             ascend_type=$(echo "$1" | cut -d"=" -f2)
-            if [[ $ascend_type != 310 && $ascend_type != 310P && $ascend_type != 910B && $ascend_type != A3 ]]; then
+            if [[ $ascend_type != 310 && $ascend_type != 310P && $ascend_type != 910B && $ascend_type != A3 && $ascend_type != A5 ]]; then
                 echo "not support ascend platform"
                 log "ERROR" "not support ascend platform"
                 exit 1
@@ -416,6 +416,8 @@ function UnTAR()
             tar_package_name="*gcc4.8.5*910B.tar.gz"
         elif [ "$ascend_type" = "A3" ]; then
             tar_package_name="*gcc4.8.5*910B.tar.gz"
+         elif [ "$ascend_type" = "A5" ]; then
+            tar_package_name="*gcc4.8.5*910B.tar.gz"
         fi
     else
         if [ "$ascend_type" == "310" ]; then
@@ -425,6 +427,8 @@ function UnTAR()
         elif [ "$ascend_type" = "910B" ]; then
             tar_package_name="*gcc7.3.0*910B.tar.gz"
         elif [ "$ascend_type" = "A3" ]; then
+            tar_package_name="*gcc7.3.0*910B.tar.gz"
+        elif [ "$ascend_type" = "A5" ]; then
             tar_package_name="*gcc7.3.0*910B.tar.gz"
         fi
     fi

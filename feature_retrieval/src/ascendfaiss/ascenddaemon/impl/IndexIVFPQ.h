@@ -245,6 +245,7 @@ namespace ascend {
         int ksub;
         int blockNum;
         uint8_t* pBasePQCoder;
+        idx_t* pBaseIndices;
         int devPQVecCapacity;
     };
 }  // namespace ascend

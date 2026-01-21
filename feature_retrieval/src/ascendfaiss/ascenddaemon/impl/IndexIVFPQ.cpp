@@ -56,6 +56,7 @@ IndexIVFPQ::IndexIVFPQ(int numList, int dim, int M, int nbits, int nprobes, int6
     listVecNum = std::vector<size_t>(numList, 0);
     basePQCoder.resize(numList);
     pBasePQCoder = reinterpret_cast<uint8_t*>(0xffffffffffffffff);
+    pBaseIndices = reinterpret_cast<idx_t*>(0xffffffffffffffff);
     blockNum = 32;
     this->nbits = nbits;
     ksub = (1 << nbits);
@@ -64,6 +65,7 @@ IndexIVFPQ::IndexIVFPQ(int numList, int dim, int M, int nbits, int nprobes, int6
     centroidsOnDevice->resize(numList * dim);
     centroidsSqrSumOnDevice = CREATE_UNIQUE_PTR(DeviceVector<float>, MemorySpace::DEVICE_HUGEPAGE);
     centroidsSqrSumOnDevice->resize(numList);
+    listIndices.resize(numList);
     initializeCodeBook(M, nbits, dim/M);
     auto ret = resetL1TopkOp();
     ASCEND_THROW_IF_NOT_MSG(ret == APP_ERR_OK, "resetL1TopkOp failed!");
@@ -204,6 +206,11 @@ APP_ERROR IndexIVFPQ::addPQCodes(int listId, size_t numVecs, const uint8_t *pqCo
     IndexIVF::ntotal += numVecs;
 
     deviceListIndices[listId]->append(indices, numVecs, true);
+    listIndices[listId].reserve(listIndices[listId].size() + numVecs);
+    listIndices[listId].insert(listIndices[listId].end(), const_cast<idx_t *>(indices),
+                               const_cast<idx_t *>(indices + numVecs));
+    pBaseIndices = listIndices[listId].data() < pBaseIndices ?
+                   listIndices[listId].data() : pBaseIndices;
 
     return APP_ERR_OK;
 }
@@ -412,6 +419,7 @@ APP_ERROR IndexIVFPQ::updateDeviceData(int listId, size_t newVecNum, std::vector
 {
     basePQCoder[listId].clear();
     deviceListIndices[listId]->resize(0, true);
+    listIndices[listId].clear();
 
     if (newVecNum > 0) {
         listVecNum[listId] = 0;
@@ -429,6 +437,10 @@ APP_ERROR IndexIVFPQ::updateDeviceData(int listId, size_t newVecNum, std::vector
                                  "Failed to add PQ codes to device: %d", ret);
 
         deviceListIndices[listId]->append(newIds.data(), newVecNum, true);
+        listIndices[listId].reserve(listIndices[listId].size() + newVecNum);
+        listIndices[listId].insert(listIndices[listId].end(), newIds.begin(), newIds.end());
+        pBaseIndices = listIndices[listId].data() < pBaseIndices ?
+                       listIndices[listId].data() : pBaseIndices;
 
         listVecNum[listId] = newVecNum;
     } else {
@@ -511,9 +523,11 @@ APP_ERROR IndexIVFPQ::initTraining(int totalSize, int dim, int nlist, const floa
     ASCEND_THROW_IF_NOT_FMT(ret == EOK, "trainData memcpy_s failed %d", ret);
 
     size_t data_bytes = totalSize * dim * sizeof(float);
-    ret = aclrtMalloc((void**)&data_dev, data_bytes, ACL_MEM_MALLOC_HUGE_FIRST);
+    float* tmp_ptr = nullptr;
+    ret = aclrtMalloc((void**)&tmp_ptr, data_bytes, ACL_MEM_MALLOC_HUGE_FIRST);
     APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR,
                              "allocate data mem failed %d", ret);
+    data_dev.reset(tmp_ptr);
     ret = aclrtMemcpy(data_dev.get(), data_bytes, trainData.data(),
                       data_bytes, ACL_MEMCPY_HOST_TO_DEVICE);
     APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR,
@@ -533,6 +547,8 @@ APP_ERROR IndexIVFPQ::initTraining(int totalSize, int dim, int nlist, const floa
 
 APP_ERROR IndexIVFPQ::resetTrainOp(int nlist, int dim)
 {
+    trainDistOps.clear();
+    trainTopkOps.clear();
     APP_ERROR ret = resetTrainDistOp(nlist, dim);
     APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, APP_ERR_INNER_ERROR,
                              "reset dist op failed %d", ret);
@@ -630,6 +646,8 @@ APP_ERROR IndexIVFPQ::trainBatchImpl(int batchSize, int nlist, int dim, int proc
     APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, ret,
                              "Failed to execute train batch, batchSize=%d, nlist=%d, dim=%d, ret=%d",
                              batchSize, nlist, dim, ret);
+    ret = synchronizeStream(stream);
+    APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "synchronizeStream default stream: %i\n", ret);
     return APP_ERR_OK;
 }
 
@@ -1333,7 +1351,7 @@ void IndexIVFPQ::fillDisOpInputDataByBlockPQ(size_t qIdx, size_t tIdx, size_t se
             size_t listNum = deviceListIndices[listId]->size();
             size_t proccessLen = std::min(listNum - segIdx * ivfpqBlockSize, ivfpqBlockSize);
             baseSizeHostVec[qIdx][tIdx][segIdx * coreNum + cIdx].value(proccessLen);
-            int64_t idAddr = reinterpret_cast<int64_t>(deviceListIndices[listId]->data() +
+            int64_t idAddr = reinterpret_cast<int64_t>(listIndices[listId].data() +
                                                       ((segIdx * coreNum + cIdx) % segNum) * ivfpqBlockSize);
             idsHostVec[qIdx][tIdx][cIdx + segIdx * coreNum].value(idAddr);
             size_t lastBlock = (segIdx * coreNum + cIdx) % segNum;
@@ -1457,9 +1475,10 @@ APP_ERROR IndexIVFPQ::searchImplL3(AscendTensor<int64_t, DIMS_2> &l1TopNprobeInd
     fillDisOpInputDataPQ(k, batch, tileNum, segNum, coreNum, offset, baseSize, ids, attrs, l1TopNprobeIndicesHost);
 
     AscendTensor<float, DIMS_2, size_t> outDist(mem, {batch, static_cast<size_t>(k)}, stream);
-    AscendTensor<idx_t, DIMS_2, size_t> outLabel(mem, {batch, static_cast<size_t>(k)}, stream);
+    AscendTensor<idx_t, DIMS_2, size_t> outLabelAddr(mem, {batch, static_cast<size_t>(k)}, stream);
+    std::vector<idx_t> outLabelAddrVec(batch * k, 0);
 
-    runL3TopkOp(topkIndex, topkValue, ids, baseSize, opFlag, attrs, outDist, outLabel, streamAicpu);
+    runL3TopkOp(topkIndex, topkValue, ids, baseSize, opFlag, attrs, outDist, outLabelAddr, streamAicpu);
     callL3DistanceOp(batch, tileNum, segNum, coreNum, kAligned, l2SubspaceDistsDev, offset, baseSize, topk,
                      opFlag, distResult, topkIndex, topkValue, codeBase, stream);
     auto ret = synchronizeStream(stream);
@@ -1471,9 +1490,17 @@ APP_ERROR IndexIVFPQ::searchImplL3(AscendTensor<int64_t, DIMS_2> &l1TopNprobeInd
     ret = aclrtMemcpy(distances, batch * k * sizeof(float), outDist.data(),
                       outDist.getSizeInBytes(), ACL_MEMCPY_DEVICE_TO_HOST);
     APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, APP_ERR_INNER_ERROR, "copy distances to host failed %d", ret);
-    ret = aclrtMemcpy(labels, batch * k * sizeof(idx_t), outLabel.data(),
-                      outLabel.getSizeInBytes(), ACL_MEMCPY_DEVICE_TO_HOST);
-    APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, APP_ERR_INNER_ERROR, "copy outLabel to host failed %d", ret);
+    ret = aclrtMemcpy(outLabelAddrVec.data(), batch * k * sizeof(idx_t), outLabelAddr.data(),
+                      outLabelAddr.getSizeInBytes(), ACL_MEMCPY_DEVICE_TO_HOST);
+    APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, APP_ERR_INNER_ERROR, "copy outLabel addr to host failed %d", ret);
+    for (size_t i = 0; i < batch; i++) {
+        for (size_t j = 0; j < k; j++) {
+            idx_t* labelHostAddr = reinterpret_cast<idx_t *>(outLabelAddrVec[i * k + j]);
+            if (labelHostAddr >= pBaseIndices) {
+                labels[i * k + j] = reinterpret_cast<idx_t>(*labelHostAddr);
+            }
+        }
+    }
     return APP_ERR_OK;
 }
 
