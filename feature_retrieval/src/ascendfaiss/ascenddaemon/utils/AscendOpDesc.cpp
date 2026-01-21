@@ -21,6 +21,11 @@
 #include "ascenddaemon/utils/AscendUtils.h"
 
 namespace ascend {
+AscendOpDesc::AscendOpDesc()
+{
+    opAttr = aclopCreateAttr();
+}
+
 AscendOpDesc::AscendOpDesc(std::string opName)
     : opType(std::move(opName))
 {
@@ -51,6 +56,11 @@ AscendOpDesc::~AscendOpDesc()
         aclopDestroyAttr(opAttr);
         opAttr = nullptr;
     }
+}
+
+void AscendOpDesc::setOpName(std::string opName)
+{
+    opType = std::move(opName);
 }
 
 AscendOpDesc &AscendOpDesc::addInputTensorDesc(aclDataType dataType,
