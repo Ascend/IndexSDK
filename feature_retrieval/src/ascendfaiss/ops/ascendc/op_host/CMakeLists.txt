@@ -26,6 +26,11 @@ set(ops_srcs
     ${CMAKE_CURRENT_LIST_DIR}/ascendc_ivfpq_search_distance_ip.cpp
     ${CMAKE_CURRENT_LIST_DIR}/ascendc_ivfpq_search_distance_l2.cpp
     ${CMAKE_CURRENT_LIST_DIR}/ascendc_ivfpq_subspace_distance.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/distance_ivf_rabitq_l2_fp32.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/distance_ivf_rabitq_l2_fp32_simt.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/index_code_and_precompute.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/matmul_at_fp32.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/rotate_and_l2_at_fp32.cpp
 )
 
 set(ascend_search_ops_srcs

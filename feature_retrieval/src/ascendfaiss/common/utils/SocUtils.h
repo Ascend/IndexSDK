@@ -143,6 +143,11 @@ public:
             (socAttr.socType == SOC_910_9372) || (socAttr.socType == SOC_910_9362);
     }
 
+    bool IsAscendA5() const
+    {
+        return (socAttr.socType == SOC_910_9579);
+    }
+
     int GetExtremeListSize() const
     {
         // Extreme list size is 1024 for Ascend310 cases and extreme list size is 2048 for Ascend310P cases

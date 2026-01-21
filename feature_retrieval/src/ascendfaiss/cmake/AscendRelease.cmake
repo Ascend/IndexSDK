@@ -7,6 +7,7 @@ FILE(GLOB  ASCEND_SRC_HEADERS
      ${CMAKE_CURRENT_LIST_DIR}/../ascend/AscendIndexIVF.h
      ${CMAKE_CURRENT_LIST_DIR}/../ascend/AscendIndexIVFFlat.h
      ${CMAKE_CURRENT_LIST_DIR}/../ascend/AscendIndexIVFPQ.h
+     ${CMAKE_CURRENT_LIST_DIR}/../ascend/AscendIndexIVFRabitQ.h
      ${CMAKE_CURRENT_LIST_DIR}/../ascend/AscendIndexIVFSQ.h
      ${CMAKE_CURRENT_LIST_DIR}/../ascend/ivfsp/AscendIndexIVFSP.h
      ${CMAKE_CURRENT_LIST_DIR}/../ascend/AscendIndexInt8.h
