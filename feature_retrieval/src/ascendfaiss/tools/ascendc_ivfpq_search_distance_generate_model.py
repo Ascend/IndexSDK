@@ -2,10 +2,10 @@
 # -*- coding: utf-8 -*-
 """
 -------------------------------------------------------------------------
-This file is part of the MindStudio project.
+This file is part of the IndexSDK project.
 Copyright (c) 2025 Huawei Technologies Co.,Ltd.
 
-MindStudio is licensed under Mulan PSL v2.
+IndexSDK is licensed under Mulan PSL v2.
 You can use this software according to the terms and conditions of the Mulan PSL v2.
 You may obtain a copy of Mulan PSL v2 at:
 
