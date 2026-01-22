@@ -57,6 +57,7 @@ IndexIVFPQ::IndexIVFPQ(int numList, int dim, int M, int nbits, int nprobes, int6
     basePQCoder.resize(numList);
     pBasePQCoder = reinterpret_cast<uint8_t*>(0xffffffffffffffff);
     pBaseIndices = reinterpret_cast<idx_t*>(0xffffffffffffffff);
+    pMaxBaseIndices = reinterpret_cast<idx_t*>(0x0);
     blockNum = 32;
     this->nbits = nbits;
     ksub = (1 << nbits);
@@ -211,6 +212,8 @@ APP_ERROR IndexIVFPQ::addPQCodes(int listId, size_t numVecs, const uint8_t *pqCo
                                const_cast<idx_t *>(indices + numVecs));
     pBaseIndices = listIndices[listId].data() < pBaseIndices ?
                    listIndices[listId].data() : pBaseIndices;
+    pMaxBaseIndices = &listIndices[listId].back() > pMaxBaseIndices ?
+                   &listIndices[listId].back() : pMaxBaseIndices;
 
     return APP_ERR_OK;
 }
@@ -441,6 +444,8 @@ APP_ERROR IndexIVFPQ::updateDeviceData(int listId, size_t newVecNum, std::vector
         listIndices[listId].insert(listIndices[listId].end(), newIds.begin(), newIds.end());
         pBaseIndices = listIndices[listId].data() < pBaseIndices ?
                        listIndices[listId].data() : pBaseIndices;
+        pMaxBaseIndices = &listIndices[listId].back() > pMaxBaseIndices ?
+                          &listIndices[listId].back() : pMaxBaseIndices;
 
         listVecNum[listId] = newVecNum;
     } else {
@@ -1496,7 +1501,7 @@ APP_ERROR IndexIVFPQ::searchImplL3(AscendTensor<int64_t, DIMS_2> &l1TopNprobeInd
     for (size_t i = 0; i < batch; i++) {
         for (size_t j = 0; j < k; j++) {
             idx_t* labelHostAddr = reinterpret_cast<idx_t *>(outLabelAddrVec[i * k + j]);
-            if (labelHostAddr >= pBaseIndices) {
+            if (labelHostAddr >= pBaseIndices && labelHostAddr <= pMaxBaseIndices) {
                 labels[i * k + j] = reinterpret_cast<idx_t>(*labelHostAddr);
             }
         }
