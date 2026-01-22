@@ -19,10 +19,15 @@ set -e
 
 readonly CUR_DIR=$(dirname "$(readlink -f "$0")")
 readonly RUN_PKG_PATH="${CUR_DIR}/../.."
-readonly PRESMOKE_DIR="/home/indexPreSmoke"
+readonly PRESMOKE_DIR="/home/indexSDK/preSmokeTestFiles"
 export MX_INDEX_INSTALL_PATH=/usr/local/Ascend/mxIndex
 export MX_INDEX_MODELPATH=$PRESMOKE_DIR/pkg/modelpath_512
 export MX_INDEX_FINALIZE=1
+export LD_LIBRARY_PATH=/opt/OpenBLAS/lib:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=/usr/local/Ascend/mxIndex/host/lib/:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=/usr/local/Ascend/driver/lib64/driver:$LD_LIBRARY_PATH
+source /usr/local/Ascend/ascend-toolkit/set_env.sh
 
 echo "[PRESMOKE_INFO] indexPreSmoke start"
 
@@ -55,7 +60,6 @@ echo "[PRESMOKE_INFO] start installing run pkg"
 # ============== 2. generate ops ==============
 echo "[PRESMOKE_INFO] start generate ops..."
 
-source /etc/profile
 bash /usr/local/Ascend/mxIndex/ops/custom_opp_*.run
 cd $MX_INDEX_INSTALL_PATH/tools
 python3 aicpu_generate_model.py -t 910B4
