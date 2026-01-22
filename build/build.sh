@@ -102,28 +102,6 @@ function package()
     bash "${CUR_DIR}/package.sh"
 }
 
-function prepare()
-{
-    if [ "${BUILDTYPE}" = "ut" ]; then
-        echo "building googletest..."
-        cd "${TOP_DIR}/googletest"
-        cmake -DBUILD_SHARED_LIBS=ON -DCMAKE_INSTALL_PREFIX="${TOP_DIR}/gtest_install" -DCMAKE_MAKE_PROGRAM=make .
-        make -j
-        make install
-
-        cd "${TOP_DIR}/mockcpp" && patch -p1 < ../mockcpp_patch/mockcpp-2.7_py3-h3.patch
-        CMAKELISTS="${TOP_DIR}/mockcpp/CMakeLists.txt"
-        if [ ! -f "$CMAKELISTS" ]; then
-            echo "Error: $CMAKELISTS not found!"
-            exit 1
-        fi
-        sed -i '/target_compile_definitions(mockcpp PRIVATE/,/)/s/_GLIBCXX_USE_CXX11_ABI=0/_GLIBCXX_USE_CXX11_ABI=1/' "$CMAKELISTS"
-        echo "Successfully updated _GLIBCXX_USE_CXX11_ABI from 0 to 1 in $CMAKELISTS"
-    else
-        cd "${TOP_DIR}/makeself" && patch -p1 < ../makeself_patch/makeself-2.5.0.patch
-    fi
-}
-
 function main()
 {
     clean
@@ -153,7 +131,7 @@ function main()
 }
 
 BUILDTYPE=$1
-prepare
+bash ${CUR_DIR}/install_deps.sh ${BUILDTYPE}
 if [ "${BUILDTYPE}" = "ut" ]; then
     run_ut
 else

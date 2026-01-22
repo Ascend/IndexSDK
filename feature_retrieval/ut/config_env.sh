@@ -31,10 +31,6 @@ dependcy_package_install() {
     apt-get install -y libboost-all-dev
     echo -e "${GREEN} boost ok ${END}"
 
-    echo -e "${YELLOW} check lcov ${END}"
-    apt-get install -y lcov
-    echo -e "${GREEN} lcov ok ${END}"
-
     echo -e "${YELLOW} check linux_tools ${END}"
     apt-get install -y linux-tools-generic linux-tools-common
     echo -e "${GREEN} perf ok ${END}"

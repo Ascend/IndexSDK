@@ -45,156 +45,29 @@ Index SDK版本配套和特性变更
 	| CANN软件包   | Ascend-cann-toolkit_{version}_linux-{arch}.run       | 昇腾社区下载 |
 	| 开放态场景包 | Ascend-cann-device-sdk_{version}_linux-{arch}.run    | 昇腾社区商用版资源申请 |
 
-2. 安装OpenBLAS到默认路径
-	```bash
-	# 下载OpenBLAS v0.3.10源码压缩包并解压
-	wget https://github.com/xianyi/OpenBLAS/archive/v0.3.10.tar.gz -O OpenBLAS-0.3.10.tar.gz
-	tar -xf OpenBLAS-0.3.10.tar.gz
+2. 安装依赖
 
-	# 进入OpenBLAS目录
-	cd OpenBLAS-0.3.10
+	若执行后续 `bash build/build.sh` 编译流程可跳过此步骤，脚本下载OpenBLAS或faiss时遇到网络问题，可手动下载安装包到项目根目录下。
 
-	# 编译安装
-	make FC=gfortran USE_OPENMP=1 -j
-	# 默认将OpenBLAS安装在/opt/OpenBLAS目录下
-	make install
-	# 或执行如下命令可以安装在指定路径
-	# make PREFIX=/your_install_path install
+	手动安装运行和构建依赖可执行 `bash build/install_deps.sh`，安装ut运行依赖可执行 `bash build/install_deps.sh ut`。
 
-	# 配置库路径的环境变量
-	ln -s /opt/OpenBLAS/lib/libopenblas.so /usr/lib/libopenblas.so
-	# 配置/etc/profile
-	vim /etc/profile
-	# 在/etc/profile中添加export LD_LIBRARY_PATH=/opt/OpenBLAS/lib:$LD_LIBRARY_PATH
-	source /etc/profile
-
-	# 验证是否安装成功, 如果正确显示软件的版本信息，则表示安装成功
-	cat /opt/OpenBLAS/lib/cmake/openblas/OpenBLASConfigVersion.cmake | grep 'PACKAGE_VERSION "'
-	```
-
-3. 安装Faiss到 ```/usr/local/faiss```
-	```bash
-	# 下载Faiss源码包并解压
-	wget https://github.com/facebookresearch/faiss/archive/v1.10.0.tar.gz
-	tar -xf faiss-1.10.0.tar.gz && cd faiss-1.10.0/faiss
-
-	# 创建install_faiss_sh.sh脚本
-	vi install_faiss_sh.sh
-	```
-	在install_faiss_sh.sh脚本中写入如下内容:
-	```bash
-	# modify source code
-	# 步骤1：修改Faiss源码
-	arch="$(uname -m)"
-	if [ "${arch}" = "aarch64" ]; then
-	gcc_version="$(gcc -dumpversion)"
-	if [ "${gcc_version}" = "4.8.5" ];then
-		sed -i '20i /*' utils/simdlib.h
-		sed -i '24i */' utils/simdlib.h
-	fi
-	fi
-	sed -i "149 i\\
-		\\
-		virtual void search_with_filter (idx_t n, const float *x, idx_t k,\\
-										float *distances, idx_t *labels, const void *mask = nullptr) const {}\\
-	" Index.h
-	sed -i "49 i\\
-		\\
-	template <typename IndexT>\\
-	IndexIDMapTemplate<IndexT>::IndexIDMapTemplate (IndexT *index, std::vector<idx_t> &ids):\\
-		index (index),\\
-		own_fields (false)\\
-	{\\
-		this->is_trained = index->is_trained;\\
-		this->metric_type = index->metric_type;\\
-		this->verbose = index->verbose;\\
-		this->d = index->d;\\
-		id_map = ids;\\
-	}\\
-	" IndexIDMap.cpp
-	sed -i "30 i\\
-		\\
-		explicit IndexIDMapTemplate (IndexT *index, std::vector<idx_t> &ids);\\
-	" IndexIDMap.h
-	sed -i "217 i\\
-	utils/sorting.h
-	" CMakeLists.txt
-	# modify source code end
-	cd ..
-	ls
-	# 步骤2：Faiss编译配置
-	cmake -B build . -DFAISS_ENABLE_GPU=OFF -DFAISS_ENABLE_PYTHON=OFF -DBUILD_TESTING=OFF -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=Release
-	# 步骤3：编译安装
-	cd build && make -j && make install
-	cd ../.. && rm -f faiss-1.10.0.tar.gz && rm -rf faiss-1.10.0
-	```
-	使用脚本进行安装：
-	```bash
-	bash install_faiss_sh.sh
-
-	# Faiss默认安装目录为"/usr/local/lib"，如需指定安装目录，例如"install_path=/usr/local/faiss"，则在CMake编译配置加-DCMAKE_INSTALL_PREFIX=${install_path}选项即可。
-	install_path=/usr/local/faiss
-	cmake -B build . -DFAISS_ENABLE_GPU=OFF -DFAISS_ENABLE_PYTHON=OFF -DBUILD_TESTING=OFF -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${install_path}
-
-	# 配置系统库查找路径的环境变量
-	vim /etc/profile
-	# 在/etc/profile中添加: export LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
-	# /usr/local/lib是Faiss的安装目录, 如果安装在其他目录下, 将/usr/local/lib替换为Faiss实际安装路径，部分操作系统和环境中, Faiss可能会安装在其他目录下。
-	source /etc/profile
-
-	# 验证是否安装成功, 如果正确显示软件的版本信息，则表示安装成功
-	cat /usr/local/share/faiss/faiss-config-version.cmake | grep 'PACKAGE_VERSION "'
-	```
-
-4. 安装Index SDK
+3. 安装Index SDK
 
 # 编译流程
-本节以CANN 8.3.RC2相关配套为例，介绍如何通过源码编译生成 Index SDK，其中NPU驱动、固件和CANN软件包可以通过昇腾社区下载，开放态场景包可以通过登录 ```https://support.huawei.com``` 搜索CANN 8.3.RC2，在相关页面申请商业版下载。
+本节以CANN 8.3.RC2相关配套为例，介绍如何通过源码编译生成Index SDK，其中NPU驱动、固件和CANN软件包可以通过昇腾社区下载，开放态场景包可以通过登录 ```https://support.huawei.com``` 搜索CANN 8.3.RC2，在相关页面申请商业版下载。
 
-1. 编译依赖下载
-
-	```bash
-	# 依赖均下载在项目根目录，脚本会自动进行patch/编译
-	cd IndexSDK
-
-	# 项目使用定制版的makeself进行打包，需要下载makeselfv2.5和对应的patch
-	git clone -b v2.5.0.x https://gitcode.com/cann-src-third-party/makeself.git makeself_patch
-	git clone -b release-2.5.0 https://gitcode.com/gh_mirrors/ma/makeself.git
-	```
-
-	若需要运行测试用例，则还要下载以下源码：
-	```bash
-	# mockcpp
-	git clone -b v2.7.x-h3 https://gitcode.com/cann-src-third-party/mockcpp.git mockcpp_patch
-	git clone -b v2.7 https://gitee.com/sinojelly/mockcpp.git
-	# huawei_secure_c
-	git clone -b v1.1.16 https://gitee.com/openeuler/libboundscheck.git huawei_secure_c
-	# googletest
-	git clone -b release-1.11.0 https://gitcode.com/GitHub_Trending/go/googletest.git googletest
-	```
-
-2. 执行编译
+1. 执行编译
 	
 	执行以下命令编译：
     ```bash
-	source /path/to/Ascend/ascend-toolkit/set_env.sh
     bash build/build.sh
 	```
 
-3. 生成的 run 包在 ```build/output``` 下：```Ascend-mindxsdk-mxindex_{version}_linux-{arch}.run```
+2. 生成的 run 包在 ```build/output``` 下：```Ascend-mindxsdk-mxindex_{version}_linux-{arch}.run```
 
-4. 执行测试用例
+3. 执行测试用例
 
-	首先安装lcov2.0用于统计测试覆盖率和生成可视化报告：
-	```bash
-	apt update
-	apt install -y libcapture-tiny-perl libdatetime-perl libtimedate-perl
-	wget https://github.com/linux-test-project/lcov/releases/download/v2.0/lcov-2.0.tar.gz
-	tar -xzf lcov-2.0.tar.gz && cd lcov-2.0
-	make install
-	```
-
-	然后执行以下命令运行测试用例：
+	执行以下命令运行测试用例：
 	```bash
 	bash build/build.sh ut
 	```
