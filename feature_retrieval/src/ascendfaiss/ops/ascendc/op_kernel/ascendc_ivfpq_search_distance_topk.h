@@ -29,6 +29,8 @@ constexpr uint32_t IVFPQ_FLAG_ALIGN = 16;
 constexpr uint32_t IVFPQ_THREAD_NUM = 1024;
 constexpr uint8_t IVFPQ_UNROLL_FACTOR = 4;
 constexpr uint32_t IVFPQ_CODE_BLOCK_SIZE = 262144;
+constexpr uint32_t IVFPQ_BLOCK_MAX_SIZE = 16384;
+
 constexpr float IVFPQ_MAX_FLOAT = std::numeric_limits<float>::max();
 constexpr float IVFPQ_MIN_FLOAT = -std::numeric_limits<float>::max();
 
@@ -179,34 +181,39 @@ __aicore__ inline void AscendcIvfpqSearchDistanceTopK::Init(GM_ADDR queryPQ, GM_
         return;
     }
     pipe = *tPipe;
-    ParseTilingData(tilingData);
 
     this->queryPQGm.SetGlobalBuffer((__gm__ float *)queryPQ);
     this->codeBaseGm.SetGlobalBuffer((__gm__ uint8_t *)codeBase);
     this->codeOffsetGm.SetGlobalBuffer((__gm__ int64_t *)codeOffset);
     this->codeSizeGm.SetGlobalBuffer((__gm__ int64_t *)codeSize);
     this->distResultGm.SetGlobalBuffer((__gm__ float *)distResult);
-
     this->topkIndexGm.SetGlobalBuffer((__gm__ int32_t *)topkIndex);
-
     this->topkValueGm.SetGlobalBuffer((__gm__ float *)topkValue);
     this->flagGm.SetGlobalBuffer((__gm__ uint16_t *)flag);
 
+    ParseTilingData(tilingData);
     InitReduceUbTensor();
 }
 
 __aicore__ inline void AscendcIvfpqSearchDistanceTopK::ParseTilingData(
     const AscendcIvfpqSearchDistanceTopKTilingData *__restrict tilingData)
 {
+    this->codeBlockSize = 0;
+    for (int i = 0; i < tilingData->codeBlockNum; i++) {
+        int64_t codeBlockSizeTmp = codeSizeGm.GetValue(i);
+        if (this->codeBlockSize < codeBlockSizeTmp) {
+            this->codeBlockSize = codeBlockSizeTmp;
+        }
+    }
+    this->codeBlockSize = (this->codeBlockSize + IVFPQ_BLOCK_MAX_SIZE - 1) /
+            IVFPQ_BLOCK_MAX_SIZE * IVFPQ_BLOCK_MAX_SIZE;
     this->usedAivNum = tilingData->usedAivNum;
 
     this->reduceMode = tilingData->reduceMode;
     this->subSpaceNum = tilingData->subSpaceNum;
     this->ksub = tilingData->ksub;
     this->codeBaseSize = tilingData->codeBaseSize;
-    this->codeBlockSize = tilingData->codeBlockSize;
     this->codeBlockNum = tilingData->codeBlockNum;
-
     this->perCoreInnerBlockDealSize = tilingData->perCoreInnerBlockDealSize;
 
     if (reduceMode == 0) {
@@ -384,7 +391,7 @@ __aicore__ inline void AscendcIvfpqSearchDistanceTopK::Process()
                     innerBlockindex,
                     blockIndex,
                     usedAivNum);
-                AscendC::PipeBarrier<PIPE_V>();
+                AscendC::PipeBarrier<PIPE_ALL>();
             }
             SingleBlockTopKAndIndexAlign(dst_local_value, dst_local_index, distResultUb, tmp_local, innerBlockindex);
             WholeBlockTopK(dst_local_value_whole,
@@ -394,6 +401,7 @@ __aicore__ inline void AscendcIvfpqSearchDistanceTopK::Process()
                 tmp_local_whole,
                 tmp_local_single,
                 innerBlockindex);
+
             AscendC::DataCopy(
                 dst_local_value[top_k_result_value_single_num], dst_local_value_whole, topk);  // 从GM->VECIN搬运40字节
             AscendC::DataCopy(
@@ -403,6 +411,7 @@ __aicore__ inline void AscendcIvfpqSearchDistanceTopK::Process()
                                            codeBlockSize / perCoreInnerBlockLoopNum * innerBlockindex],
                 distResultUb,
                 this->perCoreInnerBlockDealSize);
+            AscendC::SyncAll();
             distResultQueue.FreeTensor(distResultUb);
         }
         AscendC::DataCopy(topkValueGm[(blockOffsetNum)*topk], dst_local_value_whole, topk);

@@ -83,9 +83,9 @@ public:
             reduceMode_ = 1;
         }
 
-        if (GetNpuInfo() != ge::GRAPH_SUCCESS || ProcessInput() != ge::GRAPH_SUCCESS || Split() != ge::GRAPH_SUCCESS ||
-            FillDistResult() != ge::GRAPH_SUCCESS || TopKTiling() != ge::GRAPH_SUCCESS ||
-            FillTilingData() != ge::GRAPH_SUCCESS || SetExtraConfig() != ge::GRAPH_SUCCESS) {
+        if (GetNpuInfo() != ge::GRAPH_SUCCESS || ProcessInput() != ge::GRAPH_SUCCESS ||
+            TopKTiling() != ge::GRAPH_SUCCESS || FillTilingData() != ge::GRAPH_SUCCESS ||
+            SetExtraConfig() != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
 
@@ -114,7 +114,7 @@ private:
         uint32_t blockSize = IVFPQ_TOPK_OUTTER_NUM;
         uint32_t dtypeSize = sizeof(float);
 
-        perCoreInnerBlockDealSize_ = (codeBlockSize_ < IVFPQ_BLOCK_MAX_SIZE) ? codeBlockSize_ : IVFPQ_BLOCK_MAX_SIZE;
+        perCoreInnerBlockDealSize_ = IVFPQ_BLOCK_MAX_SIZE;
         singleCoretotalBlock_ = perCoreInnerBlockDealSize_ / IVFPQ_TOPK_OUTTER_NUM;
         bool isLargest = (reduceMode_ == 1);
 
@@ -262,9 +262,7 @@ private:
         codeSizeNum_ = static_cast<uint32_t>(codeSizeShape.GetDim(0));
 
         topk_ = static_cast<uint32_t>(topkShape.GetDim(0));
-        uint32_t max_code_size = static_cast<uint32_t>(topkShape.GetDim(1));
-
-        codeBlockSize_ = (max_code_size + IVFPQ_BLOCK_MAX_SIZE - 1) / IVFPQ_BLOCK_MAX_SIZE * IVFPQ_BLOCK_MAX_SIZE;
+        codeBlockSize_ = IVFPQ_BLOCK_MAX_SIZE;
 
         if (codeBlockNum_ <= aivNum_) {
             aivNum_ = codeBlockNum_;
@@ -275,13 +273,6 @@ private:
         return ret;
     }
 
-    ge::graphStatus Split()
-    {
-        uint32_t totalReduceBlockNum = codeBlockSize_ / IVFPQ_REDUCE_BASE_SIZE;
-        usedAivNum_ = std::max(std::min(totalReduceBlockNum, aivNum_), IVFPQ_ONE);
-        return ge::GRAPH_SUCCESS;
-    }
-
     ge::graphStatus FillTilingData()
     {
         tilingData_->set_subSpaceNum(subSpaceNum_);
@@ -290,10 +281,8 @@ private:
         tilingData_->set_codeBlockSize(codeBlockSize_);
         tilingData_->set_codeBlockNum(codeBlockNum_);
         tilingData_->set_reduceBaseSize(IVFPQ_REDUCE_BASE_SIZE);
-        tilingData_->set_usedAivNum(usedAivNum_);
+        tilingData_->set_usedAivNum(aivNum_);
         tilingData_->set_headAivNum(headAivNum_);
-        tilingData_->set_headAivDealDistResultNum(headAivDealDistResultNum_);
-        tilingData_->set_tailAivDealDistResultNum(tailAivDealDistResultNum_);
         tilingData_->set_reduceMode(reduceMode_);
         tilingData_->set_tilingKey(tilingKey_);
 
@@ -305,13 +294,6 @@ private:
         tilingData_->set_perCoreInnerBlockDealSize(perCoreInnerBlockDealSize_);
         tilingData_->set_topkOutterNum(IVFPQ_TOPK_OUTTER_NUM);
 
-        return ge::GRAPH_SUCCESS;
-    }
-
-    ge::graphStatus FillDistResult()
-    {
-        headAivDealDistResultNum_ = (codeBlockSize_ * codeBlockNum_ + usedAivNum_ - 1) / usedAivNum_;
-        tailAivDealDistResultNum_ = codeBlockSize_ * codeBlockNum_ - headAivDealDistResultNum_ * (usedAivNum_ - 1);
         return ge::GRAPH_SUCCESS;
     }
 
@@ -352,9 +334,6 @@ private:
     uint32_t headAivNum_ = 0;
     uint32_t reduceBlockNumPerTailCore_ = 0;
     uint32_t reduceMode_ = 0;
-
-    uint32_t headAivDealDistResultNum_ = 0;
-    uint32_t tailAivDealDistResultNum_ = 0;
 
     uint32_t codeBlockSize_ = 0;
 
