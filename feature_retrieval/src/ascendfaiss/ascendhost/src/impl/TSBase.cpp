@@ -45,6 +45,7 @@ APP_ERROR TSBase::initialize(int deviceId)
     pResources->initialize();
     resetMaskGenerateComputeOp();
     resetExtraMaskGenerateComputeOp();
+    resetValMaskGenerateComputeOp();
     auto ret = resetBatchMaskGenerateComputeOp();
     APPERR_RETURN_IF_NOT_LOG(ret == APP_ERR_OK, ret, "failed to resetBatchMaskGenerateComputeOp");
     ret = resetBatchValMaskGenerateComputeOp();
@@ -721,6 +722,24 @@ void TSBase::InitTimeAndTokenId(AscendTensor<int32_t, DIMS_1>& queryTime, Ascend
     ASCEND_THROW_IF_NOT_FMT(ret == ACL_SUCCESS, "Copy token ids data to device failed, ret: %d.\n", ret);
 }
 
+void TSBase::InitTimeAndTokenIdWithVal(AscendTensor<int32_t, DIMS_1>& queryTime,
+    AscendTensor<uint8_t, DIMS_1>& tokenIds, const faiss::ascend::AttrFilter *attrFilter,
+    const faiss::ascend::ExtraValFilter *extraValFilter, AscendTensor<int16_t, DIMS_1> &valFilter)
+{
+    APP_LOG_INFO("TSBase InitTimeAndTokenIdWithVal operation started.\n");
+    InitTimeAndTokenId(queryTime, tokenIds, attrFilter);
+
+    std::vector<int16_t> valVec(EXTRA_VAL_ALIGN, 0);
+    valVec[0] = this->enableValFilter ? extraValFilter->filterVal : std::numeric_limits<int16_t>::max();
+    valVec[1] = this->enableValFilter ? extraValFilter->matchVal : -1;
+
+    auto ret = aclrtMemcpy(valFilter.data(), valFilter.getSizeInBytes(), valVec.data(),
+                           EXTRA_VAL_ALIGN * sizeof(int16_t), ACL_MEMCPY_HOST_TO_DEVICE);
+    ASCEND_THROW_IF_NOT_FMT(ret == ACL_SUCCESS, "Copy valFilter data to device failed, ret: %d.\n", ret);
+
+    APP_LOG_INFO("TSBase InitTimeAndTokenIdWithVal operation end.\n");
+}
+
 void TSBase::generateMaskWithExtra(const faiss::ascend::AttrFilter *attrFilter, int batchIndex,
                                    const uint8_t *extraMask, const uint64_t extraMaskLen,
                                    const bool extraMaskIsAtDevice,
@@ -807,7 +826,8 @@ void TSBase::generateMaskWithExtra(const faiss::ascend::AttrFilter *attrFilter, 
     APP_LOG_INFO("TSBase generateMaskWithExtra operation end.\n");
 }
 
-void TSBase::generateMask(const faiss::ascend::AttrFilter *attrFilter, uint8_t *masks)
+void TSBase::generateMask(const faiss::ascend::AttrFilter *attrFilter, uint8_t *masks,
+    const faiss::ascend::ExtraValFilter *extraValFilter)
 {
     ASCEND_THROW_IF_NOT_MSG(attrFilter, "Invalid filter.\n");
     auto streamPtr = pResources->getDefaultStream();
@@ -816,7 +836,14 @@ void TSBase::generateMask(const faiss::ascend::AttrFilter *attrFilter, uint8_t *
     AscendTensor<int32_t, DIMS_1> queryTime(mem, {OPS_DATA_TYPE_ALIGN}, stream);
     AscendTensor<uint8_t, DIMS_1> tokenIds(mem,
         {static_cast<int32_t>(utils::divUp(tokenNum, OPS_DATA_TYPE_ALIGN) * OPS_DATA_TYPE_TIMES)}, stream);
-    InitTimeAndTokenId(queryTime, tokenIds, attrFilter);
+
+    AscendTensor<int16_t, DIMS_1> valFilter(mem, { EXTRA_VAL_ALIGN }, stream);
+    if (this->enableValFilter) {
+        InitTimeAndTokenIdWithVal(queryTime, tokenIds, attrFilter, extraValFilter, valFilter);
+    } else {
+        InitTimeAndTokenId(queryTime, tokenIds, attrFilter);
+    }
+
     int32_t blockNum = static_cast<int32_t>(utils::divUp(attrTotal, static_cast<int32_t>(featureAttrBlockSize)));
     int blockMaskLen = static_cast<int32_t>(utils::divUp(featureAttrBlockSize, OPS_DATA_TYPE_ALIGN));
     for (int32_t blockId = 0; blockId < blockNum; blockId += ATTR_MEM_BLOCK_COUNT) {
@@ -829,8 +856,16 @@ void TSBase::generateMask(const faiss::ascend::AttrFilter *attrFilter, uint8_t *
             {static_cast<int32_t>(multiFeaAttrBlkSize * OPS_DATA_TYPE_TIMES)});
         AscendTensor<uint8_t, DIMS_1> subMask(masks + blockId * blockMaskLen,
             {static_cast<int32_t>(blockMaskLen * ATTR_MEM_BLOCK_COUNT)});
-        runMaskGenerateCompute(queryTime, tokenIds, baseTimes, baseTokenQs, baseTokenRs, subMask,
-                               ATTR_MEM_BLOCK_COUNT, stream);
+
+        if (this->enableValFilter) {
+            AscendTensor<int16_t, DIMS_1> baseVals(calcAttrStartAddress(attrVal, blockId),
+                {static_cast<int32_t>(multiFeaAttrBlkSize)});
+            runValMaskGenerateCompute(queryTime, tokenIds, baseTimes, baseTokenQs, baseTokenRs, valFilter, baseVals,
+                subMask, ATTR_MEM_BLOCK_COUNT, stream);
+        } else {
+            runMaskGenerateCompute(queryTime, tokenIds, baseTimes, baseTokenQs, baseTokenRs, subMask,
+                ATTR_MEM_BLOCK_COUNT, stream);
+        }
     }
     auto ret = synchronizeStream(stream);
     ASCEND_THROW_IF_NOT_FMT(ret == ACL_SUCCESS, "synchronizeStream default stream: %i.\n", ret);
@@ -961,6 +996,48 @@ void TSBase::setSaveHostMemory()
     enableSaveHostMemory = true;
 }
 
+void TSBase::resetValMaskGenerateComputeOp()
+{
+    APP_LOG_INFO("TSBase resetValMaskGenerateComputeOp operation started.\n");
+    auto maskCompOpReset = [&](std::unique_ptr<AscendOperator> &op, uint32_t blockCount) {
+        AscendOpDesc desc("DistanceValMaskGenerator");
+
+        const uint32_t featureAttrNum = featureAttrBlockSize * blockCount;
+        std::vector<int64_t> input_shape0({OPS_DATA_TYPE_ALIGN});
+        std::vector<int64_t> input_shape1({utils::divUp(tokenNum, OPS_DATA_TYPE_ALIGN) * OPS_DATA_TYPE_TIMES});
+        std::vector<int64_t> input_shape2({featureAttrNum});
+        std::vector<int64_t> input_shape3({featureAttrNum});
+        std::vector<int64_t> input_shape4({featureAttrNum * OPS_DATA_TYPE_TIMES});
+        std::vector<int64_t> input_shape5({EXTRA_VAL_ALIGN});
+        std::vector<int64_t> input_shape6({featureAttrNum});
+    
+        std::vector<int64_t> output_shape0({utils::divUp(featureAttrNum,
+                                                         OPS_DATA_TYPE_ALIGN)});
+        desc.addInputTensorDesc(ACL_INT32, input_shape0.size(), input_shape0.data(), ACL_FORMAT_ND);
+        desc.addInputTensorDesc(ACL_UINT8, input_shape1.size(), input_shape1.data(), ACL_FORMAT_ND);
+        desc.addInputTensorDesc(ACL_INT32, input_shape2.size(), input_shape2.data(), ACL_FORMAT_ND);
+        desc.addInputTensorDesc(ACL_INT32, input_shape3.size(), input_shape3.data(), ACL_FORMAT_ND);
+        desc.addInputTensorDesc(ACL_UINT8, input_shape4.size(), input_shape4.data(), ACL_FORMAT_ND);
+        desc.addInputTensorDesc(ACL_INT16, input_shape5.size(), input_shape5.data(), ACL_FORMAT_ND);
+        desc.addInputTensorDesc(ACL_INT16, input_shape6.size(), input_shape6.data(), ACL_FORMAT_ND);
+
+        desc.addOutputTensorDesc(ACL_UINT8, output_shape0.size(), output_shape0.data(), ACL_FORMAT_ND);
+
+        op.reset();
+        op = CREATE_UNIQUE_PTR(AscendOperator, desc);
+        return op->init();
+    };
+
+    maskValGenerateComputeOpMap[DEFAULT_ATTR_MEM_BLOCK_COUNT] = std::unique_ptr<AscendOperator>(nullptr);
+    maskValGenerateComputeOpMap[ATTR_MEM_BLOCK_COUNT] = std::unique_ptr<AscendOperator>(nullptr);
+    ASCEND_THROW_IF_NOT_MSG(maskCompOpReset(maskValGenerateComputeOpMap[DEFAULT_ATTR_MEM_BLOCK_COUNT],
+        DEFAULT_ATTR_MEM_BLOCK_COUNT), "DistanceValMaskGenerator op init failed.\n");
+    ASCEND_THROW_IF_NOT_MSG(maskCompOpReset(maskValGenerateComputeOpMap[ATTR_MEM_BLOCK_COUNT], ATTR_MEM_BLOCK_COUNT),
+        "DistanceValMaskGenerator op init failed.\n");
+    APP_LOG_INFO("TSBase resetValMaskGenerateComputeOp resetDistCompOp operation end.\n");
+}
+
+
 void TSBase::resetMaskGenerateComputeOp()
 {
     APP_LOG_INFO("TSBase resetMaskGenerateComputeOp operation started.\n");
@@ -1033,6 +1110,41 @@ void TSBase::resetExtraMaskGenerateComputeOp()
         ATTR_MEM_BLOCK_COUNT), "DistanceMaskGeneratorWithExtra op init failed.\n");
     APP_LOG_INFO("TSBase resetExtraMaskGenerateComputeOp operation end.\n");
 }
+
+void TSBase::runValMaskGenerateCompute(const AscendTensor<int32_t, DIMS_1> &queryTime,
+                                       const AscendTensor<uint8_t, DIMS_1> &tokenBitSet,
+                                       const AscendTensor<int32_t, DIMS_1> &attrTimes,
+                                       const AscendTensor<int32_t, DIMS_1> &attrTokenQs,
+                                       const AscendTensor<uint8_t, DIMS_1> &attrTokenRs,
+                                       const AscendTensor<int16_t, DIMS_1> &valFilter,
+                                       const AscendTensor<int16_t, DIMS_1> &baseVals,
+                                       AscendTensor<uint8_t, DIMS_1> &outMask,
+                                       uint32_t blockCount,
+                                       aclrtStream stream)
+{
+    APP_LOG_INFO("TSBase runValMaskGenerateCompute operation started.\n");
+
+    AscendOperator *op = maskValGenerateComputeOpMap[blockCount].get();
+    ASCEND_THROW_IF_NOT(op);
+
+    std::shared_ptr<std::vector<const aclDataBuffer *>> distOpInput(
+        new std::vector<const aclDataBuffer *>(), CommonUtils::AclInputBufferDelete);
+    distOpInput->emplace_back(aclCreateDataBuffer(queryTime.data(), queryTime.getSizeInBytes()));
+    distOpInput->emplace_back(aclCreateDataBuffer(tokenBitSet.data(), tokenBitSet.getSizeInBytes()));
+    distOpInput->emplace_back(aclCreateDataBuffer(attrTimes.data(), attrTimes.getSizeInBytes()));
+    distOpInput->emplace_back(aclCreateDataBuffer(attrTokenQs.data(), attrTokenQs.getSizeInBytes()));
+    distOpInput->emplace_back(aclCreateDataBuffer(attrTokenRs.data(), attrTokenRs.getSizeInBytes()));
+    distOpInput->emplace_back(aclCreateDataBuffer(valFilter.data(), valFilter.getSizeInBytes()));
+    distOpInput->emplace_back(aclCreateDataBuffer(baseVals.data(), baseVals.getSizeInBytes()));
+
+    std::shared_ptr<std::vector<aclDataBuffer *>> distOpOutput(
+        new std::vector<aclDataBuffer *>(), CommonUtils::AclOutputBufferDelete);
+    distOpOutput->emplace_back(aclCreateDataBuffer(outMask.data(), outMask.getSizeInBytes()));
+
+    op->exec(*distOpInput, *distOpOutput, stream);
+    APP_LOG_INFO("TSBase runValMaskGenerateCompute operation end.\n");
+}
+
 
 void TSBase::runMaskGenerateCompute(const AscendTensor<int32_t, DIMS_1> &queryTime,
                                     const AscendTensor<uint8_t, DIMS_1> &tokenBitSet,

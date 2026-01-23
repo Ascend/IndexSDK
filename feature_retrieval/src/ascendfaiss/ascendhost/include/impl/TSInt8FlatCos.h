@@ -48,7 +48,7 @@ public:
                                   bool enableTimeFilter, const float16_t *extraScore) override;
     APP_ERROR searchBatched(int n, const int8_t *x, const faiss::ascend::AttrFilter *attrFilter, int k,
                             float16_t *distance, idx_t *labels, const uint8_t *extraMask, uint64_t extraMaskLen,
-                            bool extraMaskIsAtDevice);
+                            bool extraMaskIsAtDevice, const faiss::ascend::ExtraValFilter *extraValFilter);
     APP_ERROR getBaseByRange(uint32_t offset, uint32_t num, int64_t *labels, void *features,
         faiss::ascend::FeatureAttr *attributes, faiss::ascend::ExtraValAttr *extraVal);
     APP_ERROR getFeatureAttrsByLabel(int64_t n, const int64_t *labels,
@@ -80,7 +80,7 @@ private:
         const faiss::ascend::AttrFilter *attrFilter, uint32_t topk, const uint8_t *extraMask, int64_t *labels,
         float *distances, const float16_t *extraScore = nullptr);
     APP_ERROR createMask(uint32_t count, const faiss::ascend::AttrFilter *attrFilter,
-                         AscendTensor<uint8_t, DIMS_1> &genMasks);
+                         AscendTensor<uint8_t, DIMS_1> &genMasks, const faiss::ascend::ExtraValFilter *extraValFilter);
     APP_ERROR createMask(uint32_t count, const faiss::ascend::AttrFilter *attrFilter, const uint8_t *extraMask,
                          uint64_t extraMaskLen, bool extraMaskIsAtDevice, AscendTensor<uint8_t, DIMS_1> &genMasks);
     APP_ERROR getFeatureByLabelInOrder(int64_t n, const int64_t *labels, void *features) const;

@@ -844,7 +844,7 @@ APP_ERROR TSInt8FlatCos::search(uint32_t count, const void *features, const fais
         std::vector<float16_t> fp16Distance(static_cast<size_t>(count) * static_cast<size_t>(topk));
         std::vector<idx_t> fp16Indexs(static_cast<size_t>(count) * static_cast<size_t>(topk));
         ret = searchBatched(static_cast<idx_t>(count), tensorDevQueries.data(), attrFilter,
-            static_cast<idx_t>(topk), fp16Distance.data(), fp16Indexs.data(), nullptr, 0, false);
+            static_cast<idx_t>(topk), fp16Distance.data(), fp16Indexs.data(), nullptr, 0, false, extraValFilter);
         APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "search error %d", ret);
         postProcess(count, topk, fp16Distance.data(), distances, fp16Indexs.data(), labels, validNums);
     }
@@ -947,7 +947,7 @@ APP_ERROR TSInt8FlatCos::searchWithExtraMask(uint32_t count, const void *feature
         std::vector<float16_t> fp16Distance(static_cast<size_t>(count) * static_cast<size_t>(topk));
         std::vector<idx_t> fp16Indexs(static_cast<size_t>(count) * static_cast<size_t>(topk));
         ret = searchBatched(static_cast<idx_t>(count), tensorDevQueries.data(), attrFilter, static_cast<idx_t>(topk),
-            fp16Distance.data(), fp16Indexs.data(), extraMask, extraMaskLen, extraMaskIsAtDevice);
+            fp16Distance.data(), fp16Indexs.data(), extraMask, extraMaskLen, extraMaskIsAtDevice, nullptr);
         APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "search error %d", ret);
         postProcess(count, topk, fp16Distance.data(), distances, fp16Indexs.data(), labels, validNums);
     }
@@ -956,13 +956,14 @@ APP_ERROR TSInt8FlatCos::searchWithExtraMask(uint32_t count, const void *feature
 }
 
 APP_ERROR TSInt8FlatCos::createMask(uint32_t count, const faiss::ascend::AttrFilter *attrFilter,
-                                    AscendTensor<uint8_t, DIMS_1> &genMasks)
+                                    AscendTensor<uint8_t, DIMS_1> &genMasks,
+                                    const faiss::ascend::ExtraValFilter *extraValFilter)
 {
     int idxMaskLen = static_cast<int>(utils::divUp(this->ntotal, OPS_DATA_TYPE_ALIGN));
     this->maskOnDevice = true;
     this->maskData = genMasks.data();
     if (this->shareAttrFilter) {
-        generateMask(attrFilter, genMasks.data());
+        generateMask(attrFilter, genMasks.data(), extraValFilter);
         // copy to other query mask
         for (uint32_t i = 1; i < count; ++i) {
             auto ret = aclrtMemcpy(genMasks.data() + i * idxMaskLen, idxMaskLen, genMasks.data(), idxMaskLen,
@@ -973,7 +974,11 @@ APP_ERROR TSInt8FlatCos::createMask(uint32_t count, const faiss::ascend::AttrFil
         return APP_ERR_OK;
     }
     for (uint32_t i = 0; i < count; i++) {
-        generateMask(attrFilter + i, genMasks.data() + i * idxMaskLen);
+        if (extraValFilter != nullptr) {
+            generateMask(attrFilter + i, genMasks.data() + i * idxMaskLen, extraValFilter + i);
+        } else {
+            generateMask(attrFilter + i, genMasks.data() + i * idxMaskLen);
+        }
     }
     return APP_ERR_OK;
 }
@@ -1006,7 +1011,8 @@ APP_ERROR TSInt8FlatCos::createMask(uint32_t count, const faiss::ascend::AttrFil
 
 APP_ERROR TSInt8FlatCos::searchBatched(int n, const int8_t *x, const faiss::ascend::AttrFilter *attrFilter, int k,
                                        float16_t *distance, idx_t *labels, const uint8_t *extraMask,
-                                       uint64_t extraMaskLen, bool extraMaskIsAtDevice)
+                                       uint64_t extraMaskLen, bool extraMaskIsAtDevice,
+                                       const faiss::ascend::ExtraValFilter *extraValFilter)
 {
     int ntotalAlign = static_cast<int>(utils::roundUp(ntotal, multiFeaAttrBlkSize));
     int genLen = utils::divUp(ntotalAlign, OPS_DATA_TYPE_ALIGN);
@@ -1024,7 +1030,7 @@ APP_ERROR TSInt8FlatCos::searchBatched(int n, const int8_t *x, const faiss::asce
                 APPERR_RETURN_IF(ret, ret);
             } else {
                 auto ret = createMask(static_cast<uint32_t>(batch),
-                    this->shareAttrFilter ? attrFilter : attrFilter + offset, genMasks);
+                    this->shareAttrFilter ? attrFilter : attrFilter + offset, genMasks, extraValFilter);
                 APPERR_RETURN_IF(ret, ret);
             }
             auto ret = searchImpl(batch, x + offset * this->dims, k, distance + offset * k, labels + offset * k);

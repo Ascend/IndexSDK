@@ -98,7 +98,8 @@ public:
     APP_ERROR getCustomAttrByBlockId(uint32_t blockId, uint8_t *&customAttr) const override;
     APP_ERROR getFeatureAttrsByLabel(int64_t n, const int64_t *labels,
         faiss::ascend::FeatureAttr *attrs) const override;
-    void generateMask(const faiss::ascend::AttrFilter *attrFilter, uint8_t *masks);
+    void generateMask(const faiss::ascend::AttrFilter *attrFilter, uint8_t *masks,
+        const faiss::ascend::ExtraValFilter *extraValFilter = nullptr);
     void generateMask(const faiss::ascend::AttrFilter *attrFilter, int batchIndex,
         std::vector<std::unique_ptr<DeviceVector<uint8_t>>> &masks);
     void generateMaskWithExtra(const faiss::ascend::AttrFilter *attrFilter, int batchIndex, const uint8_t *extraMask,
@@ -126,6 +127,7 @@ protected:
     void addCustomAttrsImpl(int64_t n, const uint8_t *customAttr);
     void removeIndvalidAttr(uint64_t originTotal, uint64_t removeCnt);
     void resetMaskGenerateComputeOp();
+    void resetValMaskGenerateComputeOp();
     void runMaskGenerateCompute(const AscendTensor<int32_t, DIMS_1> &queryTime,
                                 const AscendTensor<uint8_t, DIMS_1> &tokenBitSet,
                                 const AscendTensor<int32_t, DIMS_1> &attrTimes,
@@ -134,6 +136,18 @@ protected:
                                 AscendTensor<uint8_t, DIMS_1> &outMask,
                                 uint32_t blockCount,
                                 aclrtStream stream);
+
+    void runValMaskGenerateCompute(const AscendTensor<int32_t, DIMS_1> &queryTime,
+                                   const AscendTensor<uint8_t, DIMS_1> &tokenBitSet,
+                                   const AscendTensor<int32_t, DIMS_1> &attrTimes,
+                                   const AscendTensor<int32_t, DIMS_1> &attrTokenQs,
+                                   const AscendTensor<uint8_t, DIMS_1> &attrTokenRs,
+                                   const AscendTensor<int16_t, DIMS_1> &valFilter,
+                                   const AscendTensor<int16_t, DIMS_1> &baseVals,
+                                   AscendTensor<uint8_t, DIMS_1> &outMask,
+                                   uint32_t blockCount,
+                                   aclrtStream stream);
+
     APP_ERROR resetBatchMaskGenerateComputeOp() const;
     APP_ERROR resetBatchValMaskGenerateComputeOp() const;
 
@@ -240,6 +254,7 @@ protected:
 
     std::unordered_map<uint32_t, std::unique_ptr<AscendOperator>> maskGenerateComputeOpMap;
     std::unordered_map<uint32_t, std::unique_ptr<AscendOperator>> extraMaskGenerateComputeOpMap;
+    std::unordered_map<uint32_t, std::unique_ptr<AscendOperator>> maskValGenerateComputeOpMap;
     std::map<int, std::unique_ptr<AscendOperator>> topkComputeOps;
     std::map<int, std::unique_ptr<AscendOperator>> distComputeOps;
 
@@ -264,6 +279,10 @@ private:
 
     void InitTimeAndTokenId(AscendTensor<int32_t, DIMS_1>& queryTime, AscendTensor<uint8_t, DIMS_1>& tokenIds,
         const faiss::ascend::AttrFilter *attrFilter);
+
+    void InitTimeAndTokenIdWithVal(AscendTensor<int32_t, DIMS_1>& queryTime, AscendTensor<uint8_t, DIMS_1>& tokenIds,
+        const faiss::ascend::AttrFilter *attrFilter, const faiss::ascend::ExtraValFilter *extraValFilter,
+        AscendTensor<int16_t, DIMS_1> &valFilter);
 
     uint32_t customAttrLen = 0;
     uint32_t customAttrBlockSize = 0;

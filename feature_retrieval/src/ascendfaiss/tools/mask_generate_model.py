@@ -59,6 +59,24 @@ def generate_ts_masks_json(max_token_num, file_path):
     utils.generate_op_config(ts_masks_json_obj, file_path)
 
 
+def generate_ts_val_masks_json(max_token_num, file_path):
+    # write ts val masks op json
+    ts_val_masks_json_obj = []
+    for block_count in (1, 60, 64):
+        generator = OpJsonGenerator("DistanceValMaskGenerator")
+        generator.add_input("ND", [8], "int32")
+        generator.add_input("ND", [(max_token_num + 7) // 8 * 2], "uint8")
+        generator.add_input("ND", [_BLOCK_SIZE * block_count], "int32")
+        generator.add_input("ND", [_BLOCK_SIZE * block_count], "int32")
+        generator.add_input("ND", [_BLOCK_SIZE * block_count * 2], "uint8")
+        generator.add_input("ND", [16], "int16")
+        generator.add_input("ND", [_BLOCK_SIZE * block_count], "int16")
+        generator.add_output("ND", [(_BLOCK_SIZE * block_count + 7) // 8], "uint8")
+        obj = generator.generate_obj()
+        ts_val_masks_json_obj.append(obj)
+    utils.generate_op_config(ts_val_masks_json_obj, file_path)
+
+
 def generate_ts_extra_masks_json(max_token_num, file_path):
     # write ts extra masks op json
     ts_extra_masks_json_obj = []
@@ -145,6 +163,7 @@ def generate_ts_masks_offline_model():
     ts_batch_val_masks_generate_op_name = "ts_batch_val_masks_generate_op{}_batch{}_pid{}"
 
     ts_masks_generate_op_name = "ts_masks_generate_op{}_pid{}"
+    ts_val_masks_generate_op_name = "ts_val_masks_generate_op{}_pid{}"
     ts_extra_masks_generate_op_name = "ts_extra_masks_generate_op{}_pid{}"
 
     map_args = []
@@ -152,11 +171,16 @@ def generate_ts_masks_offline_model():
     file_path = os.path.join(config_path, '{}.json'.format(ts_masks_generate_op_name_))
     generate_ts_masks_json(max_token_cnt, file_path)
 
+    ts_val_masks_generate_op_name_ = ts_val_masks_generate_op_name.format(max_token_cnt, process_id)
+    file_path = os.path.join(config_path, '{}.json'.format(ts_val_masks_generate_op_name_))
+    generate_ts_val_masks_json(max_token_cnt, file_path)
+
     ts_extra_masks_generate_op_name_ = ts_extra_masks_generate_op_name.format(max_token_cnt, process_id)
     extra_file_path = os.path.join(config_path, '{}.json'.format(ts_extra_masks_generate_op_name_))
     generate_ts_extra_masks_json(max_token_cnt, extra_file_path)
 
     map_args.append((ts_masks_generate_op_name_, soc_version))
+    map_args.append((ts_val_masks_generate_op_name_, soc_version))
     map_args.append((ts_extra_masks_generate_op_name_, soc_version))
 
     for batch in batch_sizes:
