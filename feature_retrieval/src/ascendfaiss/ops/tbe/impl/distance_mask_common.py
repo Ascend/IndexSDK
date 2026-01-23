@@ -99,12 +99,42 @@ class DistanceMaskGenerator:
                                                                self.shape_extra_mask,
                                                                name="extra_mask_gm",
                                                                scope=tik.scope_gm)
+
         # 输出1：距离结果掩码
         self.distance_mask_gm       = self.tik_instance.Tensor(self.dtype_distance_mask, 
                                                                self.shape_distance_mask, 
                                                                name="distance_mask_gm", 
                                                                scope=tik.scope_gm)
+
+        self.use_extra_val = False
+
+
+    def set_val(self, extra_val_filter, extra_val_attr):
+        self.shape_extra_val_filter = extra_val_filter.get("shape")
+        self.dtype_extra_val_filter = extra_val_filter.get("dtype")
+        self.shape_extra_val_attr = extra_val_attr.get("shape")
+        self.dtype_extra_val_attr = extra_val_attr.get("dtype")
+        self.use_extra_val = True
+
+        # 输入7：用户自定义的附加属性filter，可选。
+        self.extra_val_filter_gm = self.tik_instance.Tensor(self.dtype_extra_val_filter,
+                                                            self.shape_extra_val_filter,
+                                                            name="extra_val_filter_gm",
+                                                            scope=tik.scope_gm)
+        # 输入8：自定义附加属性信息
+        self.extra_val_attr_gm = self.tik_instance.Tensor(self.dtype_extra_val_attr, 
+                                                          self.shape_extra_val_attr, 
+                                                          name="extra_val_attr_gm", 
+                                                          scope=tik.scope_gm)
     
+        self.val_filter_sc = self.tik_instance.Scalar(dtype="int16", 
+                                                      name="val_filter_sc", 
+                                                      init_value=0)
+        self.val_filter_model_sc = self.tik_instance.Scalar(dtype="int16", 
+                                                            name="val_filter_model_sc", 
+                                                            init_value=0)
+
+
     def set_optimize_policy(self):
         self.db_stride_each_call    = 8192
         self.core_num               = AI_CORE_NUM * 2
@@ -125,12 +155,24 @@ class DistanceMaskGenerator:
             self.execute_task(tid)
        
         if self.use_extra_mask is not True:
-            inputs = [self.query_time_stamp_gm,
-                      self.query_token_set_gm,
-                      self.db_time_stamp_gm,
-                      self.db_divisor_gm,
-                      self.db_remainder_gm]
-            outputs = [self.distance_mask_gm]
+            if self.use_extra_val is not True:
+                inputs = [self.query_time_stamp_gm,
+                          self.query_token_set_gm,
+                          self.db_time_stamp_gm,
+                          self.db_divisor_gm,
+                          self.db_remainder_gm
+                ]
+                outputs = [self.distance_mask_gm]
+            else:
+                inputs = [self.query_time_stamp_gm,
+                          self.query_token_set_gm,
+                          self.db_time_stamp_gm,
+                          self.db_divisor_gm,
+                          self.db_remainder_gm,
+                          self.extra_val_filter_gm,
+                          self.extra_val_attr_gm
+                ]
+                outputs = [self.distance_mask_gm] 
         else:
             inputs = [self.query_time_stamp_gm,
                       self.query_token_set_gm,
@@ -166,6 +208,17 @@ class DistanceMaskGenerator:
                                                         (div_up(self.shape_query_token_set[0], 32) * 32,),
                                                         name="query_token_set_ub",
                                                         scope=tik.scope_ubuf)
+
+        extra_val_filter_ub_tmp = self.tik_instance.Tensor("int16", 
+                                                            (16, ),
+                                                            name="extra_val_filter_ub_tmp",
+                                                            scope=tik.scope_ubuf)
+        
+        extra_val_filter_ub = self.tik_instance.Tensor("int16", 
+                                                        (self.db_stride_each_call, ),
+                                                        name="extra_val_filter_ub",
+                                                        scope=tik.scope_ubuf)
+
         with self.tik_instance.for_range(0, 1):
             # 读取查询开始时间戳和结束时间戳
             query_time_stamp_ub = self.tik_instance.Tensor("int32",
@@ -197,9 +250,22 @@ class DistanceMaskGenerator:
             extra_mask_gm = self.extra_mask_gm[db_vector_offset_sc // 8 :]
         else:
             extra_mask_gm = None
+
+        if self.use_extra_val is True:
+            self.tik_instance.data_move(extra_val_filter_ub_tmp[0],
+                                        self.extra_val_filter_gm[0],
+                                        0, 1, 1, 0, 0)
+
+            self.val_filter_sc.set_as(extra_val_filter_ub_tmp[0])
+            self.val_filter_model_sc.set_as(extra_val_filter_ub_tmp[1])
+
+            # 一次计算8192条 extra_val_filter_ub大小为8192
+            self.tik_instance.vec_dup(128, extra_val_filter_ub, self.val_filter_sc, 8192 // 128, 8)
+
         self.compute_distance_mask_each_task(start_time_stamp_sc,
                                              end_time_stamp_sc,
                                              query_token_set_ub,
+                                             extra_val_filter_ub,
                                              self.db_time_stamp_gm[db_vector_offset_sc :],
                                              self.db_divisor_gm[db_vector_offset_sc :],
                                              self.db_remainder_gm[db_vector_offset_sc * 2 :],
@@ -211,6 +277,7 @@ class DistanceMaskGenerator:
                                          query_start_time, 
                                          query_end_time, 
                                          query_token_set,
+                                         extra_val_filter_ub,
                                          db_time_stamp_gm, 
                                          db_divisor_gm, 
                                          db_remainder_gm,
@@ -223,6 +290,7 @@ class DistanceMaskGenerator:
             query_start_time：查询起始时间戳
             query_end_time: 查询结束时间戳
             query_token_set: 查询token id集
+            extra_val_filter_ub: 附加属性过滤条件
             db_time_stamp_gm: 底库特征向量对应的时间戳
             db_divisor_gm: 底库特征向量对应的token id除以8的除数
             db_remainder_gm: 底库特征向量对应的token id除以8的余数
@@ -245,6 +313,11 @@ class DistanceMaskGenerator:
                                                            (self.db_stride_each_call // 8,),
                                                            name="dst_res_ub",
                                                            scope=tik.scope_ubuf)
+
+        val_cmp_res_ub = self.tik_instance.Tensor("int16",
+                                                  (self.db_stride_each_call,),
+                                                  name="val_cmp_res_ub",
+                                                  scope=tik.scope_ubuf)
 
         # 判断是否需要进行时间戳属性过滤
         enable_time_filter_sc   = self.tik_instance.Scalar(dtype="int32",
@@ -302,13 +375,123 @@ class DistanceMaskGenerator:
                 with self.tik_instance.for_range(0, 1):
                     self.process_with_extra_mask(dst_res_ub_int16[0 :], 
                                                  extra_mask_gm[lid * self.db_stride_each_call // 8:])
+
+            # 与用户的extra_val进行与操作，可选。
+            if self.use_extra_val is True:
+                self.process_with_extra_val(extra_val_filter_ub,
+                                            self.extra_val_attr_gm[lid * self.db_stride_each_call:],
+                                            self.db_stride_each_call,
+                                            val_cmp_res_ub,
+                                            dst_res_ub_int16)
                 
             # 保存结果
             self.tik_instance.data_move(distance_mask_gm[lid * self.db_stride_each_call // 8 :],
                                         dst_res_ub_uint8[0],
                                         0,
                                         1, (self.db_stride_each_call // 8) // 32,
-                                        0, 0)                                      
+                                        0, 0)
+
+    def process_with_extra_val(self, extra_val_filter_ub, extra_val_attr_gm, db_vector_cnt, res_ub, dst_res_ub_int16):
+        extra_val_attr_ub = self.tik_instance.Tensor("int16",
+                                                     (db_vector_cnt, ),
+                                                     name="extra_val_attr_ub",
+                                                     scope=tik.scope_ubuf)
+
+        self.tik_instance.data_move(extra_val_attr_ub,
+                                    extra_val_attr_gm,
+                                    0, 1, db_vector_cnt * 2 // 32, 0, 0)
+
+        repeat = db_vector_cnt // 128
+        last_remain = db_vector_cnt % 128
+        with self.tik_instance.if_scope(repeat != 0):
+            self.tik_instance.vand(128,
+                                   res_ub,
+                                   extra_val_filter_ub,
+                                   extra_val_attr_ub,
+                                   repeat,
+                                   1, 1, 1, 8, 8, 8)
+        with self.tik_instance.if_scope(last_remain != 0):
+            self.tik_instance.vand(last_remain,
+                                   res_ub[repeat * 128:],
+                                   extra_val_filter_ub[repeat * 128:],
+                                   extra_val_attr_ub[repeat * 128:],
+                                   1, 1, 1, 1, 8, 8, 8)
+        
+        mask_val_ub = self.tik_instance.Tensor("uint8",
+                                               (db_vector_cnt // 8,),
+                                               name="mask_val_ub",
+                                               scope=tik.scope_ubuf)
+
+        # 附加属性模式0
+        with self.tik_instance.if_scope(self.val_filter_model_sc == 0):
+            self.compute_model0(extra_val_filter_ub, res_ub, mask_val_ub)
+
+        # 附加属性模式1
+        with self.tik_instance.else_scope():
+            self.compute_model1(res_ub, mask_val_ub, db_vector_cnt)
+
+        # 附加属性mask和time及其tokenid的mask进行按位与
+        mask_val_ub_int16 = mask_val_ub.reinterpret_cast_to("int16")
+        repeat = dst_res_ub_int16.shape[0] // 128
+        with self.tik_instance.if_scope(repeat != 0):
+            self.tik_instance.vand(128,
+                                   dst_res_ub_int16, 
+                                   mask_val_ub_int16,
+                                   dst_res_ub_int16,
+                                   repeat,
+                                   1, 1, 1, 8, 8, 8)
+        last_remain = dst_res_ub_int16.shape[0] % 128
+        with self.tik_instance.if_scope(last_remain != 0):
+            self.tik_instance.vand(last_remain,
+                                   dst_res_ub_int16[repeat * 128:],
+                                   mask_val_ub_int16[repeat * 128:],
+                                   dst_res_ub_int16[repeat * 128:],
+                                   1, 1, 1, 1, 8, 8, 8)
+
+    def compute_model0(self, extra_val_filter_ub, res_ub, mask_val_ub):
+        extra_val_filter = self.tik_instance.Scalar(dtype="float16", 
+                                                    name="extra_val_filter", 
+                                                    init_value=0)
+        extra_val_filter_int16 = self.tik_instance.Scalar(dtype="int16", 
+                                                          name="extra_val_filter_int16",
+                                                          init_value=0)
+        extra_val_filter_int16.set_as(extra_val_filter_ub[0])
+
+        # float16的Scalar无法直接set_as int16ub的值
+        # 通过int16 Scalar接一下再进行转换
+        repeat = res_ub.shape[0] // 128
+        extra_val_filter.set_as(extra_val_filter_int16)
+        res_ub_fp16 = res_ub.reinterpret_cast_to("float16")
+        self.tik_instance.vconv(128,
+                                "none",
+                                res_ub_fp16,
+                                res_ub,
+                                repeat,
+                                1, 1, 8, 8)
+
+        with self.tik_instance.if_scope(repeat != 0):
+            self.tik_instance.vcmpvs_eq(mask_val_ub, 
+                                        res_ub_fp16,
+                                        extra_val_filter,
+                                        repeat,
+                                        1, 8)
+
+    def compute_model1(self, res_ub, mask_val_ub, db_vector_cnt):
+        res_ub_fp16 = res_ub.reinterpret_cast_to("float16")
+        repeat = db_vector_cnt // 128
+        with self.tik_instance.if_scope(repeat != 0):
+            self.tik_instance.vconv(128,
+                                    "none",
+                                    res_ub_fp16,
+                                    res_ub,
+                                    repeat,
+                                    1, 1, 8, 8)
+
+            self.tik_instance.vcmpvs_gt(mask_val_ub, 
+                                        res_ub_fp16,
+                                        0.0,
+                                        repeat,
+                                        1, 8)
     
     def process_with_extra_mask(self, dst_ub_int16, extra_mask_gm):
         extra_mask_ub_uint8 = self.tik_instance.Tensor("uint8",

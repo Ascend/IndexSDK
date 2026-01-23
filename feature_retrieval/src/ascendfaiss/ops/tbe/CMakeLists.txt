@@ -40,6 +40,7 @@ SET(NEED_COPY_FILE_LIST
     ${310_INI_DIR}/distance_ivf_sq8_l2.ini
     ${310_INI_DIR}/distance_marked_sq8_ip_maxs_dim64.ini
     ${310_INI_DIR}/distance_mask_generator.ini
+    ${310_INI_DIR}/distance_val_mask_generator.ini
     ${310_INI_DIR}/distance_mask_generator_with_extra.ini
     ${310_INI_DIR}/distance_batch_mask_generator.ini
     ${310_INI_DIR}/distance_batch_val_mask_generator.ini
