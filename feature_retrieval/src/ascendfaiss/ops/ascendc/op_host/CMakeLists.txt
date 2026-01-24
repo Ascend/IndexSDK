@@ -22,6 +22,8 @@ set(ops_srcs
     ${CMAKE_CURRENT_LIST_DIR}/ascendc_dist_int8_flat_l2.cpp
     ${CMAKE_CURRENT_LIST_DIR}/distance_flat_l2_mins_at_fp32.cpp
     ${CMAKE_CURRENT_LIST_DIR}/distance_ivf_flat_ip_fp32.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/ascendc_distance_batch_mask_generator.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/ascendc_distance_batch_mask_generator_with_extra.cpp
 )
 
 set(ascend_search_ops_srcs

@@ -18,6 +18,8 @@
 
 
 #include "ascendhost/include/impl/TSBase.h"
+#include "common/utils/SocUtils.h"
+
 
 namespace ascend {
 TSBase::TSBase(uint32_t tokenNum, uint32_t customAttrLen, uint32_t customAttrBlockSize)
@@ -1101,6 +1103,11 @@ APP_ERROR TSBase::resetBatchMaskGenerateComputeOp() const
     APP_LOG_INFO("TSBase resetBatchMaskGenerateComputeOp operation started.\n");
     std::string opTypeName = "DistanceBatchMaskGenerator";
     IndexTypeIdx indexMaskType = IndexTypeIdx::ITI_MASK_GENERATOR;
+    
+    if (faiss::ascend::SocUtils::GetInstance().IsAscend910B()) {
+        opTypeName = "AscendcDistanceBatchMaskGenerator";
+        indexMaskType = IndexTypeIdx::ASCENDC_ITI_MASK_GENERATOR;
+    }
 
     for (auto batch : MASK_BATCH) {
         std::vector<int64_t> queryTime({ batch, OPS_DATA_TYPE_ALIGN });
@@ -1175,6 +1182,11 @@ APP_ERROR TSBase::resetBatchExtraMaskGenerateComputeOp(bool withBaseMask) const
     IndexTypeIdx indexMaskType = withBaseMask ? IndexTypeIdx::ITI_MASK_WITH_EXTRA_AND_BASEMASK_GENERATOR :
                                  IndexTypeIdx::ITI_MASK_WITH_EXTRA_GENERATOR;
 
+    if (faiss::ascend::SocUtils::GetInstance().IsAscend910B()) {
+        opTypeName = "AscendcDistanceBatchMaskGeneratorWithExtra";
+        indexMaskType = IndexTypeIdx::ASCENDC_ITI_MASK_WITH_EXTRA_GENERATOR;
+    }
+
     for (auto batch : MASK_BATCH) {
         std::vector<int64_t> queryTime({ batch, OPS_DATA_TYPE_ALIGN });
         std::vector<int64_t> tokenBitSet({ batch, utils::divUp(tokenNum, OPS_DATA_TYPE_ALIGN) * OPS_DATA_TYPE_TIMES });
@@ -1216,6 +1228,9 @@ void TSBase::runBatchMaskGenerateCompute(int batch, const std::vector<const Asce
 {
     APP_LOG_INFO("TSBase runBatchMaskGenerateCompute operation started.\n");
     IndexTypeIdx indexType = IndexTypeIdx::ITI_MASK_GENERATOR;
+    if (faiss::ascend::SocUtils::GetInstance().IsAscend910B()) {
+        indexType = IndexTypeIdx::ASCENDC_ITI_MASK_GENERATOR;
+    }
     std::vector<int> keys({batch, static_cast<int>(tokenNum)});
     OpsMngKey opsKey(keys);
     auto ret = DistComputeOpsManager::getInstance().runOp(indexType, opsKey, input, output, stream);
@@ -1240,6 +1255,9 @@ void TSBase::runBatchExtraMaskGenerateCompute(int batch, const std::vector<const
 {
     APP_LOG_INFO("TSBase runBatchExtraMaskGenerateCompute operation started.\n");
     IndexTypeIdx indexType = IndexTypeIdx::ITI_MASK_WITH_EXTRA_GENERATOR;
+    if (faiss::ascend::SocUtils::GetInstance().IsAscend910B()) {
+        indexType = IndexTypeIdx::ASCENDC_ITI_MASK_WITH_EXTRA_GENERATOR;
+    }
     std::vector<int> keys({batch, static_cast<int>(tokenNum)});
     OpsMngKey opsKey(keys);
     auto ret = DistComputeOpsManager::getInstance().runOp(indexType, opsKey, input, output, stream);
