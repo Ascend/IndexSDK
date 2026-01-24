@@ -29,7 +29,6 @@
 #include "common/utils/CommonUtils.h"
 #include "common/utils/LogUtils.h"
 #include "common/utils/SocUtils.h"
-
 namespace ascend {
 enum class IndexTypeIdx {
     ITI_FLAT_IP = 0,
@@ -83,6 +82,8 @@ enum class IndexTypeIdx {
     ITI_FLAT_IP_SHARE_MASK_EXTRA_SCORE,
     ITI_FLAT_IP_EXTRA_SCORE_AND_SCALE,
     ITI_FLAT_IP_NOSCORE_AND_SCALE,
+    ITI_ASCENDC_FLAT_IP_MASK,
+    ITI_ASCENDC_FLAT_IP_SHARE_MASK,
     ASCENDC_ITI_MASK_GENERATOR,
     ASCENDC_ITI_MASK_WITH_EXTRA_GENERATOR,
     ITI_MAX
@@ -163,7 +164,6 @@ public:
             "op init failed, index type: %d, name:%s\n", static_cast<int>(indexType), opTypeName.c_str());
         return APP_ERR_OK;
     }
-
     virtual APP_ERROR runOp(IndexTypeIdx indexType,
                             OpsMngKey &opsKey,
                             const std::vector<const AscendTensorBase *> &input,

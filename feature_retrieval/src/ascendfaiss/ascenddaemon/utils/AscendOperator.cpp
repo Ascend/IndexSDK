@@ -106,7 +106,6 @@ size_t AscendOperator::getOutputSize(int index)
     ASCEND_THROW_IF_NOT(index < static_cast<int>(opDesc.outputDesc.size()));
     return aclGetTensorDescSize(opDesc.outputDesc[index]);
 }
-
 void AscendOperator::exec(std::vector<const aclDataBuffer *>& inputBuffers,
                           std::vector<aclDataBuffer *>& outputBuffers, aclrtStream stream)
 {

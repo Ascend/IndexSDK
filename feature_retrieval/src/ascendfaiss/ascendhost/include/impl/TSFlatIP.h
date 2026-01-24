@@ -61,7 +61,10 @@ protected:
 
 private:
     void resetDistMaskCompOp(int numLists);
+    void resetAscendcDistMaskCompOp(int numLists);
     void runDistMaskCompute(int batch, bool shareMask, const std::vector<const AscendTensorBase *> &input,
+        const std::vector<const AscendTensorBase *> &output, aclrtStream stream);
+    void runAscendcDistMaskCompute(int batch, bool shareMask, const std::vector<const AscendTensorBase *> &input,
         const std::vector<const AscendTensorBase *> &output, aclrtStream stream);
     void runDistMaskComputeWithScale(int batch, bool isUsedExtraScore,
         const std::vector<const AscendTensorBase *> &input,

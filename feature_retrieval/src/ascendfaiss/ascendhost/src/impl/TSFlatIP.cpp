@@ -24,7 +24,7 @@
 #include "ascend/utils/fp16.h"
 #include "faiss/impl/FaissAssert.h"
 #include "ops/cpukernel/impl/utils/kernel_shared_def.h"
-
+#include "common/utils/SocUtils.h"
 namespace ascend {
 const int INT8_LOWER_BOUND = -128;
 const int INT8_UPPER_BOUND = 127;
@@ -43,10 +43,13 @@ TSFlatIP::TSFlatIP(uint32_t deviceId, uint32_t dim, uint32_t tokenNum, uint64_t 
     ret = IndexFlatIPAicpu::init();
     FAISS_THROW_IF_NOT_FMT(APP_ERR_OK == ret, "failed to init IndexFlatIPAicpu, ERRCODE:%d", ret);
     searchBatchSizes = {48, 36, 32, 30, 24, 18, 16, 12, 8, 6, 4, 2, 1};
-    resetDistMaskCompOp(this->blockSize);
-    resetDistMaskExtraScoreCompOp(this->blockSize);
-    resetDistMaskWithScaleCompOp(this->blockSize);
-
+    if (faiss::ascend::SocUtils::GetInstance().IsAscend910B()) {
+        resetAscendcDistMaskCompOp(this->blockSize);
+    } else {
+        resetDistMaskCompOp(this->blockSize);
+        resetDistMaskExtraScoreCompOp(this->blockSize);
+        resetDistMaskWithScaleCompOp(this->blockSize);
+    }
     // 配置scale说明要进行底库特征的量化
     if (!scale.empty()) {
         auto ret = SetScale(scale);
@@ -388,7 +391,46 @@ APP_ERROR TSFlatIP::delFeatureWithLabels(int64_t n, const int64_t *labels)
     APP_LOG_INFO("TSFlatIP::delFeatureWithLabels delete count:%d", removeIds.size());
     return APP_ERR_OK;
 }
+// resetresetAscendcDistMaskCompOp
+void TSFlatIP::resetAscendcDistMaskCompOp(int numLists)
+{
+    APP_LOG_INFO("TSFlatIP resetAscendcDistMaskCompOp operation started.\n");
+    std::string opTypeName = "AscendcDistanceFlatIPMaxsWithMask";
+    int FLAG_NUM_910 = faiss::ascend::SocUtils::GetInstance().GetCoreNum();
+    auto distCompMaskOpReset = [&](int batch, bool shareMask) {
+        IndexTypeIdx indexMaskType = shareMask ?
+            IndexTypeIdx::ITI_ASCENDC_FLAT_IP_SHARE_MASK : IndexTypeIdx::ITI_ASCENDC_FLAT_IP_MASK;
+        std::vector<int64_t> queryShape({ batch, dims });
+        std::vector<int64_t> coarseCentroidsShape(
+            { utils::divUp(numLists, CUBE_ALIGN), utils::divUp(dims, CUBE_ALIGN), CUBE_ALIGN, CUBE_ALIGN });
+        std::vector<int64_t> sizeShape({ FLAG_NUM_910, SIZE_ALIGN });
+        std::vector<int64_t> maskShape({ shareMask ? 1 : batch, utils::divUp(numLists, 8) });
+        std::vector<int64_t> distResultShape({ batch, numLists });
+        std::vector<int64_t> maxResultShape({ batch, this->burstsOfBlock });
+        std::vector<int64_t> flagShape({ FLAG_NUM_910, FLAG_SIZE });
 
+        std::vector<std::pair<aclDataType, std::vector<int64_t>>> input {
+            { ACL_FLOAT16, queryShape },
+            { ACL_UINT8, maskShape },
+            { ACL_FLOAT16, coarseCentroidsShape },
+            { ACL_UINT32, sizeShape },
+        };
+        std::vector<std::pair<aclDataType, std::vector<int64_t>>> output {
+            { ACL_FLOAT16, distResultShape },
+            { ACL_FLOAT16, maxResultShape },
+            { ACL_UINT16, flagShape }
+        };
+        std::vector<int> keys({batch, dims, static_cast<int>(tokenNum)});
+        OpsMngKey opsKey(keys);
+        return DistComputeOpsManager::getInstance().resetOp(opTypeName, indexMaskType, opsKey, input, output);
+    };
+
+    for (auto batch : searchBatchSizes) {
+        FAISS_THROW_IF_NOT_MSG(!distCompMaskOpReset(batch, false), "no share op init failed");
+    }
+
+    APP_LOG_INFO("TSFlatIP resetAscendcDistMaskCompOp operation end.\n");
+}
 void TSFlatIP::resetDistMaskCompOp(int numLists)
 {
     APP_LOG_INFO("TSFlatIP resetDistMaskCompOp operation started.\n");
@@ -552,7 +594,17 @@ void TSFlatIP::runDistMaskExtraScoreCompute(int batch, bool shareMask,
     ASCEND_THROW_IF_NOT_FMT(ret == APP_ERR_OK, "run operator failed: %i\n", ret);
     APP_LOG_INFO("TSFlatIP runDistMaskExtraScoreCompute operation end.\n");
 }
-
+void TSFlatIP::runAscendcDistMaskCompute(int batch, bool shareMask, const std::vector<const AscendTensorBase *> &input,
+    const std::vector<const AscendTensorBase *> &output, aclrtStream stream)
+{
+    APP_LOG_INFO("TSFlatIP runAscendcDistMaskCompute operation started.\n");
+    IndexTypeIdx indexType = IndexTypeIdx::ITI_ASCENDC_FLAT_IP_MASK;
+    std::vector<int> keys({batch, dims, static_cast<int>(tokenNum)});
+    OpsMngKey opsKey(keys);
+    auto ret = DistComputeOpsManager::getInstance().runOp(indexType, opsKey, input, output, stream);
+    ASCEND_THROW_IF_NOT_FMT(ret == APP_ERR_OK, "run operator failed: %i\n", ret);
+    APP_LOG_INFO("TSFlatIP runAscendcDistMaskCompute operation end.\n");
+}
 void TSFlatIP::runDistMaskCompute(int batch, bool shareMask, const std::vector<const AscendTensorBase *> &input,
     const std::vector<const AscendTensorBase *> &output, aclrtStream stream)
 {
@@ -742,11 +794,11 @@ APP_ERROR TSFlatIP::searchBatchWithExtraNonshareMasks(int batch, const uint16_t 
     auto streamPtr = resources.getDefaultStream();
     auto stream = streamPtr->GetStream();
     auto &mem = resources.getMemoryManager();
-
     AscendTensor<float16_t, DIMS_2> outDistanceOnDevice(mem, { batch, topK }, stream);
     AscendTensor<int64_t, DIMS_2> outIndicesOnDevice(mem, { batch, topK }, stream);
 
     // 2. compute distance by code page
+    // searchBatchWithExtraNonshareMasks调用入口
     size_t pageNum = utils::divUp(this->ntotal, pageSize);
     for (size_t pageId = 0; pageId < pageNum; ++pageId) {
         size_t pageOffset = pageId * static_cast<size_t>(this->pageSize);
@@ -764,7 +816,7 @@ APP_ERROR TSFlatIP::searchBatchWithExtraNonshareMasks(int batch, const uint16_t 
         }
         AscendTensor<uint8_t, DIMS_3> subMasks(mem,
             { blockNum, this->shareAttrFilter ? 1 : batch, utils::divUp(this->blockSize, MASK_ALIGN) }, stream);
-
+            
         generateMaskWithExtra(batch, blockOffset, blockNum, queryTimes, tokenIds, extraMask, subMasks, baseMaskDev);
         APP_ERROR ret = searchPagedWithMasks(pageId, pageNum, batch, x, subMasks, outDistanceOnDevice,
             outIndicesOnDevice, extraScore);
@@ -780,7 +832,7 @@ APP_ERROR TSFlatIP::searchBatchWithExtraNonshareMasks(int batch, const uint16_t 
     return APP_ERR_OK;
 }
 
-
+// searchPagedWithMasks入口
 APP_ERROR TSFlatIP::searchPagedWithMasks(size_t pageId, size_t pageNum, int batch, const uint16_t *x,
     AscendTensor<uint8_t, DIMS_3> &masks, AscendTensor<float16_t, DIMS_2> &maxDistances,
     AscendTensor<int64_t, DIMS_2> &maxIndices, float16_t *extraScore)
@@ -848,7 +900,7 @@ APP_ERROR TSFlatIP::searchPagedWithMasks(size_t pageId, size_t pageNum, int batc
     AscendTensor<uint32_t, DIMS_3> opSize(opSizeMem, { blockNum, CORE_NUM, SIZE_ALIGN });
     int64_t *attrMem = reinterpret_cast<int64_t *>(continuousMem.data() + opFlagSize + opSizeLen);
     AscendTensor<int64_t, DIMS_1> attrsInput(attrMem, { aicpu::TOPK_FLAT_ATTR_IDX_COUNT });
-
+    
     // 1. run the topk operator to wait for distance result and compute topk
     runTopkCompute(distResult, maxDistResult, opSize, opFlag, attrsInput, maxDistances, maxIndices, streamAicpu);
     // 2. run the disance operator to compute the distance
@@ -890,7 +942,12 @@ APP_ERROR TSFlatIP::searchPagedWithMasks(size_t pageId, size_t pageNum, int batc
                 AscendTensor<float16_t, DIMS_4> shaped(baseShaped[blockOffset + static_cast<size_t>(i)]->data(),
                     { dim1, dim2, CUBE_ALIGN, CUBE_ALIGN });
                 std::vector<const AscendTensorBase *> input = { &queries, &shaped, &actualSize, &mask };
-                runDistMaskCompute(batch, this->shareAttrFilter, input, output, stream);
+                if (faiss::ascend::SocUtils::GetInstance().IsAscend910B()) {
+                    input  = { &queries, &mask, &shaped, &actualSize};
+                    runAscendcDistMaskCompute(batch, this->shareAttrFilter, input, output, stream);
+                } else {
+                    runDistMaskCompute(batch, this->shareAttrFilter, input, output, stream);
+                }
             }
         }
     }
@@ -1012,7 +1069,9 @@ APP_ERROR TSFlatIP::searchWithExtraMask(uint32_t count, const void *features,
             APP_ERR_INVALID_PARAM, "TSFlatIP is not suport Extra Score when shareAttrFilter is true!");
         APPERR_RETURN_IF_NOT_LOG(scale.empty(),
             APP_ERR_INVALID_PARAM, "TSFlatIP is not suport scale when shareAttrFilter is true!");
-        APP_ERROR ret = runSharedAttrFilter(queryNum, topk, attrFilter, extraMask, queryFeatures, labels, distances);
+        
+            APP_ERROR ret = runSharedAttrFilter(queryNum, topk, attrFilter, extraMask,
+                queryFeatures, labels, distances);
         APPERR_RETURN_IF_NOT_FMT(ret == 0, APP_ERR_INNER_ERROR, "runSharedAttrFilter failed(%d).", ret);
     } else {
         APP_ERROR ret = runNonSharedAttrFilter(queryNum, topk, extraMaskLen, attrFilter, extraMask,

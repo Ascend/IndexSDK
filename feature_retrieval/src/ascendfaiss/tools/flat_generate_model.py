@@ -544,6 +544,50 @@ def generate_910b_flat_ip_json(core_num, search_page_sizes, dim, zregion_height,
     utils.generate_op_config(dist_flat_ip_obj, file_path)
 
 
+def generate_ascendc_distance_flat_ip_maxs_with_mask_json(core_num, search_page_sizes, dim, zregion_height, file_path):
+    # write dist_compute_flat_mins json
+    dist_flat_ip_obj = []
+    for query_num in search_page_sizes:
+        burst_len = 64
+        obj = {
+            "op":
+                "AscendcDistanceFlatIPMaxsWithMask",
+            "input_desc": [{
+                FORMAT: ND,
+                SHAPE: [query_num, dim],
+                TYPE: "float16"
+            }, {
+                FORMAT: ND,
+                SHAPE: [query_num, (_CODE_NUM + 7) // 8],
+                TYPE: "uint8"
+            }, {
+                FORMAT: ND,
+                SHAPE: [_CODE_NUM // zregion_height, dim // 16, zregion_height, 16],
+                TYPE: "float16"
+            }, {
+                FORMAT: ND,
+                SHAPE: [core_num, 8],
+                TYPE: "uint32"
+            }],
+            "output_desc": [{
+                FORMAT: ND,
+                SHAPE: [query_num, _CODE_NUM],
+                TYPE: "float16"
+            }, {
+                FORMAT: ND,
+                SHAPE: [query_num, (_CODE_NUM + burst_len - 1) // burst_len * 2],
+                TYPE: "float16"
+            }, {
+                FORMAT: ND,
+                SHAPE: [core_num, 16],
+                TYPE: "uint16"
+            }]
+        }
+        dist_flat_ip_obj.append(obj)
+
+    utils.generate_op_config(dist_flat_ip_obj, file_path)
+
+
 def generate_910b_flat_l2_json(core_num, search_page_sizes, dim, zregion_height, file_path):
     # write dist_compute_flat_mins json
     dist_flat_l2_obj = []
@@ -609,6 +653,14 @@ def generate_910b_flat_offline_model(map_args, args, zregion_height, config_path
     op_name_ = flat_l2_op_name.format(process_id)
     file_path_ = os.path.join(config_path, '{}.json'.format(op_name_))
     generate_910b_flat_l2_json(core_num, search_page_sizes, dim, zregion_height, file_path_)
+    map_args.append((op_name_, soc_version))
+
+    flat_ip_op_name = "ascendc_distance_flat_ip_maxs_with_mask_op_pid{}"
+
+    search_page_sizes = (128, 64, 48, 36, 32, 30, 24, 18, 16, 12, 8, 6, 4, 2, 1)
+    op_name_ = flat_ip_op_name.format(process_id)
+    file_path_ = os.path.join(config_path, '{}.json'.format(op_name_))
+    generate_ascendc_distance_flat_ip_maxs_with_mask_json(core_num, search_page_sizes, dim, zregion_height, file_path_)
     map_args.append((op_name_, soc_version))
 
 
