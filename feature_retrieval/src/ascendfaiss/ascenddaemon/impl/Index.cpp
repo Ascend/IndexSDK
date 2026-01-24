@@ -290,6 +290,7 @@ APP_ERROR Index::searchBatched(int64_t n, const float16_t *x, int64_t k, float16
                 int64_t page = (n - searched) / batchSize;
                 for (int64_t j = 0; j < page; j++) {
                     maskOffset = static_cast<uint64_t>(searched) * maskLen;
+                    // 调用searchFilterImpl
                     APP_ERROR ret = searchFilterImpl(batchSize, x + searched * this->dims, k, distance + searched * k,
                         labels + searched * k, masks + maskOffset, maskLen);
                     APPERR_RETURN_IF(ret, ret);

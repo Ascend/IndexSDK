@@ -45,16 +45,20 @@ APP_ERROR TSBase::initialize(int deviceId)
     }
     // 由子类进行pResource内存管理，此处只使用
     pResources->initialize();
-    resetMaskGenerateComputeOp();
-    resetExtraMaskGenerateComputeOp();
-    auto ret = resetBatchMaskGenerateComputeOp();
-    APPERR_RETURN_IF_NOT_LOG(ret == APP_ERR_OK, ret, "failed to resetBatchMaskGenerateComputeOp");
-    ret = resetBatchValMaskGenerateComputeOp();
-    APPERR_RETURN_IF_NOT_LOG(ret == APP_ERR_OK, ret, "failed to resetBatchValMaskGenerateComputeOp");
-    ret = resetBatchExtraMaskGenerateComputeOp(false);
-    APPERR_RETURN_IF_NOT_LOG(ret == APP_ERR_OK, ret, "failed to resetBatchExtraMaskGenerateComputeOp");
-    ret = resetBatchExtraMaskGenerateComputeOp(true);
-    APPERR_RETURN_IF_NOT_LOG(ret == APP_ERR_OK, ret, "failed to resetBatchExtraMaskGenerateComputeOp with baseMask");
+    if (faiss::ascend::SocUtils::GetInstance().IsAscend910B()) {
+    } else {
+        resetMaskGenerateComputeOp();
+        resetExtraMaskGenerateComputeOp();
+        auto ret = resetBatchMaskGenerateComputeOp();
+        APPERR_RETURN_IF_NOT_LOG(ret == APP_ERR_OK, ret, "failed to resetBatchMaskGenerateComputeOp");
+        ret = resetBatchValMaskGenerateComputeOp();
+        APPERR_RETURN_IF_NOT_LOG(ret == APP_ERR_OK, ret, "failed to resetBatchValMaskGenerateComputeOp");
+        ret = resetBatchExtraMaskGenerateComputeOp(false);
+        APPERR_RETURN_IF_NOT_LOG(ret == APP_ERR_OK, ret, "failed to resetBatchExtraMaskGenerateComputeOp");
+        ret = resetBatchExtraMaskGenerateComputeOp(true);
+        APPERR_RETURN_IF_NOT_LOG(ret == APP_ERR_OK, ret,
+            "failed to resetBatchExtraMaskGenerateComputeOp with baseMask");
+    }
     is_initialized = true;
     APP_LOG_INFO("TSBase Initialize operation end.\n");
     return APP_ERR_OK;
