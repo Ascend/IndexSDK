@@ -242,7 +242,7 @@ def generate_ascendc_masks_offline_model():
         ascendc_batch_extra_masks_generate_op_name_ = ascendc_batch_extra_masks_generate_op_name.format(max_token_cnt,
                                                                                               batch, process_id)
         extra_file_path = os.path.join(config_path, '{}.json'.format(ascendc_batch_extra_masks_generate_op_name_))
-        generate_ascendc_batch_extra_masks_json(max_token_cnt, batch, extra_file_path, False)
+        generate_ascendc_batch_extra_masks_json(max_token_cnt, batch, extra_file_path)
 
         map_args.append((ascendc_batch_masks_generate_op_name_, soc_version))
         map_args.append((ascendc_batch_extra_masks_generate_op_name_, soc_version))
@@ -250,5 +250,5 @@ def generate_ascendc_masks_offline_model():
     utils.run_generate_model_task(args, map_args)  
 
 if __name__ == '__main__':
-    generate_ts_masks_offline_model()
+    #generate_ts_masks_offline_model()
     generate_ascendc_masks_offline_model()

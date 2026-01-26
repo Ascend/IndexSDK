@@ -274,7 +274,7 @@ private:
         SetFlag<HardEvent::MTE2_V>(1);
         WaitFlag<HardEvent::MTE2_V>(1);
         LocalTensor<uint32_t> dbDivisorUint32Local = this->dbDivisorLocal.ReinterpretCast<uint32_t>();
-        Gather(this->tmpRemainderLocal, queryTokenSetInt16Local, dbDivisorUint32Local, this->dbDivisorLenAlign);
+        Gather(this->tmpRemainderLocal, queryTokenSetInt16Local, dbDivisorUint32Local, 0, this->dbDivisorLenAlign);
         LocalTensor<int16_t> dbRemainderInt16Local = this->dbRemainderLocal.ReinterpretCast<int16_t>();
         And(this->resRemainderLocal, this->tmpRemainderLocal, dbRemainderInt16Local, this->dbDivisorLenAlign);
         LocalTensor<float16_t> resRemainderFloat16Local = this->resRemainderLocal.ReinterpretCast<float16_t>();

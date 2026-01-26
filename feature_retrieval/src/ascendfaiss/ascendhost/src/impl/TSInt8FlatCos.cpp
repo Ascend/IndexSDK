@@ -1139,22 +1139,36 @@ void TSInt8FlatCos::addWithIdsImpl(int n, const int8_t *x)
 
 void TSInt8FlatCos::queryVectorByIdx(int64_t idx, uint8_t *dis) const
 {
-    int reshapeDim2 = utils::divUp(this->dims, CUBE_ALIGN_INT8);
-    size_t total = static_cast<size_t>(idx);
-    size_t offsetInBlock = total % static_cast<size_t>(this->codeBlockSize);
-    size_t blockIdx = total / static_cast<size_t>(this->codeBlockSize);
-    // we can make sure the size of offsetInblock is small
-    int hoffset1 = static_cast<int>(offsetInBlock) / CUBE_ALIGN;
-    int hoffset2 = static_cast<int>(offsetInBlock) % CUBE_ALIGN;
-    int disOffset = 0;
-    int srcOffset = hoffset1 * code_size * CUBE_ALIGN + hoffset2 * CUBE_ALIGN_INT8;
-    for (int i = 0; i < reshapeDim2; ++i) {
-        auto ret =
-            aclrtMemcpy(dis + disOffset, CUBE_ALIGN_INT8 * sizeof(int8_t), baseShaped[blockIdx]->data() + srcOffset,
-                        CUBE_ALIGN_INT8 * sizeof(int8_t), ACL_MEMCPY_DEVICE_TO_HOST);
+    if (faiss::ascend::SocUtils::GetInstance().IsAscend910B()) {
+        size_t total = static_cast<size_t>(idx);
+        size_t offsetInBlock = total % static_cast<size_t>(this->blockSize);
+        size_t blockIdx = total / static_cast<size_t>(this->blockSize);
+
+        int disOffset = 0;
+        int srcOffset = offsetInBlock * code_size;
+        std::vector<uint8_t> xb(this->code_size);
+
+        auto ret = aclrtMemcpy(xb.data(), this->code_size * sizeof(uint8_t),
+        baseShaped[blockIdx]->data() + srcOffset, this->code_size * sizeof(uint8_t), ACL_MEMCPY_DEVICE_TO_HOST);
         FAISS_THROW_IF_NOT_MSG(ret == ACL_SUCCESS, "Failed to copy to host");
-        disOffset += CUBE_ALIGN_INT8;
-        srcOffset += CUBE_ALIGN_INT8 * CUBE_ALIGN;
+    } else {
+        int reshapeDim2 = utils::divUp(this->dims, CUBE_ALIGN_INT8);
+        size_t total = static_cast<size_t>(idx);
+        size_t offsetInBlock = total % static_cast<size_t>(this->codeBlockSize);
+        size_t blockIdx = total / static_cast<size_t>(this->codeBlockSize);
+        // we can make sure the size of offsetInblock is small
+        int hoffset1 = static_cast<int>(offsetInBlock) / CUBE_ALIGN;
+        int hoffset2 = static_cast<int>(offsetInBlock) % CUBE_ALIGN;
+        int disOffset = 0;
+        int srcOffset = hoffset1 * code_size * CUBE_ALIGN + hoffset2 * CUBE_ALIGN_INT8;
+        for (int i = 0; i < reshapeDim2; ++i) {
+            auto ret =
+                aclrtMemcpy(dis + disOffset, CUBE_ALIGN_INT8 * sizeof(int8_t), baseShaped[blockIdx]->data() + srcOffset,
+                            CUBE_ALIGN_INT8 * sizeof(int8_t), ACL_MEMCPY_DEVICE_TO_HOST);
+            FAISS_THROW_IF_NOT_MSG(ret == ACL_SUCCESS, "Failed to copy to host");
+            disOffset += CUBE_ALIGN_INT8;
+            srcOffset += CUBE_ALIGN_INT8 * CUBE_ALIGN;
+        }
     }
 }
 

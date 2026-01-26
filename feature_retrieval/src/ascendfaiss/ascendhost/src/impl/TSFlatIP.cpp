@@ -1116,52 +1116,81 @@ void TSFlatIP::addWithIdsImpl(int n, uint16_t *x)
 
 void TSFlatIP::queryVectorByIdx(int64_t idx, float *dis) const
 {
-    int reshapeDim2 = utils::divUp(this->code_size, CUBE_ALIGN);
-    size_t total = static_cast<size_t>(idx);
-    size_t offsetInBlock = total % static_cast<size_t>(this->blockSize);
-    size_t blockIdx = total / static_cast<size_t>(this->blockSize);
-    // we can make sure the size of offsetInblock is small
-    int hoffset1 = static_cast<int>(offsetInBlock) / CUBE_ALIGN;
-    int hoffset2 = static_cast<int>(offsetInBlock) % CUBE_ALIGN;
-    int disOffset = 0;
-    int srcOffset = hoffset1 * code_size * CUBE_ALIGN + hoffset2 * CUBE_ALIGN;
-    std::vector<uint16_t> xb(this->code_size);
-    for (int i = 0; i < reshapeDim2; ++i) {
-        auto ret = aclrtMemcpy(xb.data() + disOffset, CUBE_ALIGN * sizeof(uint16_t),
-            baseShaped[blockIdx]->data() + srcOffset, CUBE_ALIGN * sizeof(uint16_t), ACL_MEMCPY_DEVICE_TO_HOST);
+    if (faiss::ascend::SocUtils::GetInstance().IsAscend910B()) {
+        size_t total = static_cast<size_t>(idx);
+        size_t offsetInBlock = total % static_cast<size_t>(this->blockSize);
+        size_t blockIdx = total / static_cast<size_t>(this->blockSize);
+        int disOffset = 0;
+        int srcOffset =  offsetInBlock * code_size;
+        std::vector<uint16_t> xb(this->code_size);
+        auto ret = aclrtMemcpy(xb.data(), this->code_size * sizeof(uint16_t),
+        baseShaped[blockIdx]->data() + srcOffset, this->code_size * sizeof(uint16_t), ACL_MEMCPY_DEVICE_TO_HOST);
         FAISS_THROW_IF_NOT_MSG(ret == ACL_SUCCESS, "Failed to copy to host");
-        disOffset += CUBE_ALIGN;
-        srcOffset += CUBE_ALIGN * CUBE_ALIGN;
-    }
+        std::transform(xb.data(), xb.data() + this->code_size, dis,
+        [&](const uint16_t temp) -> float {return (float) faiss::ascend::fp16(temp);});
+    } else {
+        int reshapeDim2 = utils::divUp(this->code_size, CUBE_ALIGN);
+        size_t total = static_cast<size_t>(idx);
+        size_t offsetInBlock = total % static_cast<size_t>(this->blockSize);
+        size_t blockIdx = total / static_cast<size_t>(this->blockSize);
+        // we can make sure the size of offsetInblock is small
+        int hoffset1 = static_cast<int>(offsetInBlock) / CUBE_ALIGN;
+        int hoffset2 = static_cast<int>(offsetInBlock) % CUBE_ALIGN;
+        int disOffset = 0;
+        int srcOffset = hoffset1 * code_size * CUBE_ALIGN + hoffset2 * CUBE_ALIGN;
+        std::vector<uint16_t> xb(this->code_size);
+        for (int i = 0; i < reshapeDim2; ++i) {
+            auto ret = aclrtMemcpy(xb.data() + disOffset, CUBE_ALIGN * sizeof(uint16_t),
+                baseShaped[blockIdx]->data() + srcOffset, CUBE_ALIGN * sizeof(uint16_t), ACL_MEMCPY_DEVICE_TO_HOST);
+            FAISS_THROW_IF_NOT_MSG(ret == ACL_SUCCESS, "Failed to copy to host");
+            disOffset += CUBE_ALIGN;
+            srcOffset += CUBE_ALIGN * CUBE_ALIGN;
+        }
 
-    std::transform(xb.data(), xb.data() + this->code_size, dis,
-        [&](const uint16_t temp) -> float { return (float)faiss::ascend::fp16(temp); });
+        std::transform(xb.data(), xb.data() + this->code_size, dis,
+            [&](const uint16_t temp) -> float { return (float)faiss::ascend::fp16(temp); });
+    }
 }
 
 // 获取单条的量化后的特征，需要注意按照CUBE_ALIGN_INT8对齐的
 void TSFlatIP::queryInt8VectorByIdx(int64_t idx, float *dis) const
 {
-    int reshapeDim2 = utils::divUp(this->code_size, CUBE_ALIGN_INT8);
-    size_t total = static_cast<size_t>(idx);
-    size_t offsetInBlock = total % static_cast<size_t>(this->blockSize);
-    size_t blockIdx = total / static_cast<size_t>(this->blockSize);
-    // we can make sure the size of offsetInblock is small
-    int hoffset1 = static_cast<int>(offsetInBlock) / CUBE_ALIGN;
-    int hoffset2 = static_cast<int>(offsetInBlock) % CUBE_ALIGN;
-    int disOffset = 0;
-    int srcOffset = hoffset1 * code_size * CUBE_ALIGN + hoffset2 * CUBE_ALIGN_INT8;
-    std::vector<int8_t> xb(this->code_size);
-    for (int i = 0; i < reshapeDim2; ++i) {
-        auto ret = aclrtMemcpy(xb.data() + disOffset, CUBE_ALIGN_INT8 * sizeof(int8_t),
-            baseShapedInt8[blockIdx]->data() + srcOffset, CUBE_ALIGN_INT8 * sizeof(int8_t),
-            ACL_MEMCPY_DEVICE_TO_HOST);
+    if (faiss::ascend::SocUtils::GetInstance().IsAscend910B()) {
+        size_t total = static_cast<size_t>(idx);
+        size_t offsetInBlock = total % static_cast<size_t>(this->blockSize);
+        size_t blockIdx = total / static_cast<size_t>(this->blockSize);
+        int disOffset = 0;
+        int srcOffset =  offsetInBlock * code_size;
+        std::vector<int8_t> xb(this->code_size);
+        auto ret = aclrtMemcpy(xb.data(), this->code_size * sizeof(int8_t),
+        baseShaped[blockIdx]->data() + srcOffset, this->code_size * sizeof(int8_t), ACL_MEMCPY_DEVICE_TO_HOST);
         FAISS_THROW_IF_NOT_MSG(ret == ACL_SUCCESS, "Failed to copy to host");
-        disOffset += CUBE_ALIGN_INT8;
-        srcOffset += CUBE_ALIGN_INT8 * CUBE_ALIGN;
-    }
+        for (int i = 0; i < this->code_size; i++) {
+            dis[i] = static_cast<float>(xb[i]) / scale[i];
+        }
+    } else {
+        int reshapeDim2 = utils::divUp(this->code_size, CUBE_ALIGN_INT8);
+        size_t total = static_cast<size_t>(idx);
+        size_t offsetInBlock = total % static_cast<size_t>(this->blockSize);
+        size_t blockIdx = total / static_cast<size_t>(this->blockSize);
+        // we can make sure the size of offsetInblock is small
+        int hoffset1 = static_cast<int>(offsetInBlock) / CUBE_ALIGN;
+        int hoffset2 = static_cast<int>(offsetInBlock) % CUBE_ALIGN;
+        int disOffset = 0;
+        int srcOffset = hoffset1 * code_size * CUBE_ALIGN + hoffset2 * CUBE_ALIGN_INT8;
+        std::vector<int8_t> xb(this->code_size);
+        for (int i = 0; i < reshapeDim2; ++i) {
+            auto ret = aclrtMemcpy(xb.data() + disOffset, CUBE_ALIGN_INT8 * sizeof(int8_t),
+                baseShapedInt8[blockIdx]->data() + srcOffset, CUBE_ALIGN_INT8 * sizeof(int8_t),
+                ACL_MEMCPY_DEVICE_TO_HOST);
+            FAISS_THROW_IF_NOT_MSG(ret == ACL_SUCCESS, "Failed to copy to host");
+            disOffset += CUBE_ALIGN_INT8;
+            srcOffset += CUBE_ALIGN_INT8 * CUBE_ALIGN;
+        }
 
-    for (int i = 0; i < this->code_size; i++) {
-        dis[i] = static_cast<float>(xb[i]) / scale[i];
+        for (int i = 0; i < this->code_size; i++) {
+            dis[i] = static_cast<float>(xb[i]) / scale[i];
+        }
     }
 }
 
