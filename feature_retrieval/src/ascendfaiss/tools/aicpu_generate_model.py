@@ -32,7 +32,7 @@ def arg_parse():
     utils.op_common_parse(parser, "--cores", 'core_num', 2, int, "Core number")
     utils.op_common_parse(parser, "-p", 'process_id', 0, int, "Number of process_id")
     utils.op_common_parse(parser, "-t", 'npu_type', "310", str,
-        "NPU type, 310 / 310P / 910B1 / 910B2 / 910B3 / 910B4 / 910_{NPU Name}. 310 by default")
+        "NPU type, 310 / 310P / 910B1 / 910B2 / 910B3 / 910B4 / 910_{NPU Name} / Ascend950PR. 310 by default")
     return parser.parse_args()
 
 

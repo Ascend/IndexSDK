@@ -26,7 +26,7 @@ from multiprocessing import Pool
 import common as utils
 from common import OpJsonGenerator
 
-_IVFFLAT_DIM_LIST = [128]
+_IVFRABITQ_DIM_LIST = [128]
 _CODE_NUM = 16384 * 2
 _SCAN_BIT = 8
 _LUT_NUM = 2 ** _SCAN_BIT
@@ -177,38 +177,36 @@ def generate_rabitq_offline_model():
     utils.check_param_range(args.coarse_centroid_num, valid_centroid_num, "coarse_centroid_num")
     config_path = utils.get_config_path(work_dir)
 
-    if args.npu_type.find('910') != -1:
-        valid_dim = _IVFFLAT_DIM_LIST
-        utils.check_param_range(dim, valid_dim, "dim")
-        
-        op_name_ = f"rotate_and_l2_at_fp32_op_pid{process_id}"
-        file_path_ = os.path.join(config_path, f"{op_name_}.json")
-        generate_910b_rotate_and_l2_at_fp32_json(args.coarse_centroid_num, dim, file_path_)
-        utils.atc_model(op_name_, soc_version)
-        
-        if args.npu_type == '910_9579':
-            op_name_ = f"distance_rabitq_l2_fp32_simt_op_pid{process_id}"
-            file_path_ = os.path.join(config_path, f"{op_name_}.json")
-            generate_distance_rabitq_l2_fp32_simt_json(core_num, args.coarse_centroid_num, dim, file_path_)
-            utils.atc_model(op_name_, soc_version)
-        else:
-            op_name_ = f"distance_rabitq_l2_fp32_op_pid{process_id}"
-            file_path_ = os.path.join(config_path, f"{op_name_}.json")
-            generate_distance_rabitq_l2_fp32_json(core_num, args.coarse_centroid_num, dim, file_path_)
-            utils.atc_model(op_name_, soc_version)
 
-        op_name_ = f"index_code_and_precompute_op_pid{process_id}"
+    valid_dim = _IVFRABITQ_DIM_LIST
+    utils.check_param_range(dim, valid_dim, "dim")
+
+    op_name_ = f"rotate_and_l2_at_fp32_op_pid{process_id}"
+    file_path_ = os.path.join(config_path, f"{op_name_}.json")
+    generate_910b_rotate_and_l2_at_fp32_json(args.coarse_centroid_num, dim, file_path_)
+    utils.atc_model(op_name_, soc_version)
+
+    if args.npu_type == 'Ascend950PR':
+        op_name_ = f"distance_rabitq_l2_fp32_simt_op_pid{process_id}"
         file_path_ = os.path.join(config_path, f"{op_name_}.json")
-        generate_910b_index_code_and_precompute_json(dim, file_path_)
+        generate_distance_rabitq_l2_fp32_simt_json(core_num, args.coarse_centroid_num, dim, file_path_)
         utils.atc_model(op_name_, soc_version)
-        
-        op_name_ = f"matmul_at_fp32_op_pid{process_id}"
-        file_path_ = os.path.join(config_path, f"{op_name_}.json")
-        generate_910b_matmul_at_fp32_json(args.coarse_centroid_num, dim, file_path_)
-        utils.atc_model(op_name_, soc_version)
-        
     else:
-        raise ValueError(f"IVFFlat is not support {args.npu_type[:24]}")
+        op_name_ = f"distance_rabitq_l2_fp32_op_pid{process_id}"
+        file_path_ = os.path.join(config_path, f"{op_name_}.json")
+        generate_distance_rabitq_l2_fp32_json(core_num, args.coarse_centroid_num, dim, file_path_)
+        utils.atc_model(op_name_, soc_version)
+
+    op_name_ = f"index_code_and_precompute_op_pid{process_id}"
+    file_path_ = os.path.join(config_path, f"{op_name_}.json")
+    generate_910b_index_code_and_precompute_json(dim, file_path_)
+    utils.atc_model(op_name_, soc_version)
+
+    op_name_ = f"matmul_at_fp32_op_pid{process_id}"
+    file_path_ = os.path.join(config_path, f"{op_name_}.json")
+    generate_910b_matmul_at_fp32_json(args.coarse_centroid_num, dim, file_path_)
+    utils.atc_model(op_name_, soc_version)
+
 
 
 if __name__ == "__main__":
