@@ -45,7 +45,7 @@ const size_t DEFAULT_NBIT = 8;
 const std::vector<int> DIMS = {128};
 
 // The value range of nlist
-const std::vector<int> NLISTS = {1024, 2048, 4096};
+const std::vector<int> NLISTS = {1024, 2048, 4096, 8192, 16384};
 
 // The value range of msub
 const std::vector<int> MSUBS = {4};

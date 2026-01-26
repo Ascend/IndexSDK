@@ -89,20 +89,17 @@ def generate_flat_offline_model():
     utils.check_param_range(args.coarse_centroid_num, valid_centroid_num, "coarse_centroid_num")
     config_path = utils.get_config_path(work_dir)
 
-    if args.npu_type.find('910') != -1:
-        valid_dim = _IVFFLAT_DIM_LIST
-        utils.check_param_range(dim, valid_dim, "dim")
-        op_name_ = f"flat_l2_mins_at_fp32_op_pid{process_id}"
-        file_path_ = os.path.join(config_path, f"{op_name_}.json")
-        generate_distance_flat_l2_mins_at_fp32_json(core_num, args.coarse_centroid_num, dim, file_path_)
-        utils.atc_model(op_name_, soc_version)
+    valid_dim = _IVFFLAT_DIM_LIST
+    utils.check_param_range(dim, valid_dim, "dim")
+    op_name_ = f"flat_l2_mins_at_fp32_op_pid{process_id}"
+    file_path_ = os.path.join(config_path, f"{op_name_}.json")
+    generate_distance_flat_l2_mins_at_fp32_json(core_num, args.coarse_centroid_num, dim, file_path_)
+    utils.atc_model(op_name_, soc_version)
 
-        op_name_ = f"distance_flat_ip_fp32_op_pid{process_id}"
-        file_path_ = os.path.join(config_path, f"{op_name_}.json")
-        generate_910b_flat_ip_fp32_json(core_num, dim, file_path_)
-        utils.atc_model(op_name_, soc_version)
-    else:
-        raise ValueError(f"IVFFlat is not support {args.npu_type[:24]}")
+    op_name_ = f"distance_flat_ip_fp32_op_pid{process_id}"
+    file_path_ = os.path.join(config_path, f"{op_name_}.json")
+    generate_910b_flat_ip_fp32_json(core_num, dim, file_path_)
+    utils.atc_model(op_name_, soc_version)
 
 
 if __name__ == "__main__":

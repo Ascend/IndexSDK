@@ -43,7 +43,7 @@ def arg_parse():
     utils.op_common_parse(parser, "-topK", 'topK', 320, int, "number of topk")
     utils.op_common_parse(parser, "-b", 'blockNum', 32, int, "Number of block")
     utils.op_common_parse(parser, "-p", 'process_id', 0, int, "Number of process_id")
-    utils.op_common_parse(parser, "-t", 'npu_type', "910_9579", str, "NPU type, 910_9579 by default")
+    utils.op_common_parse(parser, "-t", 'npu_type', "Ascend950PR", str, "NPU type, Ascend950PR by default")
 
     return parser.parse_args()
 
