@@ -38,6 +38,7 @@ public:
 protected:
     virtual APP_ERROR searchImpl(int n, const int8_t *x, int k, float16_t *distances, idx_t *labels) override;
     APP_ERROR resetDistCompOp(int codeNum) const;
+    APP_ERROR resetAscendcDistCompOp(int codeNum) const;
     void runDistCompute(int batch,
                         const std::vector<const AscendTensorBase *> &input,
                         const std::vector<const AscendTensorBase *> &output,

@@ -20,6 +20,7 @@
 #include "ascenddaemon/utils/AscendTensor.h"
 #include "ascenddaemon/utils/Limits.h"
 #include "common/utils/CommonUtils.h"
+#include "common/utils/SocUtils.h"
 #include "ops/cpukernel/impl/utils/kernel_shared_def.h"
 #include "index/IndexInt8FlatCosAicpu.h"
 
@@ -56,7 +57,11 @@ APP_ERROR IndexInt8FlatCosAicpu::init()
     ret = resetMultisearchTopkCompOp();
     APPERR_RETURN_IF_NOT_LOG(ret == APP_ERR_OK, ret, "failed to reset multisearch topk op");
     APPERR_RETURN_IF_NOT_OK(int8L2Norm->init());
-    APPERR_RETURN_IF_NOT_OK(resetDistCompOp(codeBlockSize));
+    if (faiss::ascend::SocUtils::GetInstance().IsAscend910B()) {
+        APPERR_RETURN_IF_NOT_OK(resetAscendcDistCompOp(codeBlockSize));
+    } else {
+        APPERR_RETURN_IF_NOT_OK(resetDistCompOp(codeBlockSize));
+    }
     return APP_ERR_OK;
 }
 
@@ -525,6 +530,49 @@ APP_ERROR IndexInt8FlatCosAicpu::resetDistCompOp(int codeNum) const
     }
     IndexTypeIdx indexType = deviceMemMng.GetStrategy() == DevMemStrategy::HETERO_MEM ?
         IndexTypeIdx::ITI_INT8_COS_FILTER : IndexTypeIdx::ITI_INT8_COS;
+    for (auto batch : searchBatchSizes) {
+        std::vector<int64_t> queryShape({ batch, dims });
+        std::vector<int64_t> maskShape({ batch, utils::divUp(codeNum, 8) }); // divUp to 8
+        std::vector<int64_t> codeShape({ codeNum / CUBE_ALIGN, dims / CUBE_ALIGN_INT8, CUBE_ALIGN, CUBE_ALIGN_INT8 });
+        std::vector<int64_t> queriesNormShape({ (batch + FP16_ALGIN - 1) / FP16_ALGIN * FP16_ALGIN });
+        std::vector<int64_t> codesNormShape({ codeNum });
+        std::vector<int64_t> sizeShape({ CORE_NUM, SIZE_ALIGN });
+        std::vector<int64_t> resultShape({ batch, codeNum });
+        std::vector<int64_t> minResultShape({ batch, this->burstsOfBlock });
+        std::vector<int64_t> flagShape({ flagNum, FLAG_SIZE });
+
+        std::vector<std::pair<aclDataType, std::vector<int64_t>>> input {
+            { ACL_INT8, queryShape },
+            { ACL_UINT8, maskShape },
+            { ACL_INT8, codeShape },
+            { ACL_FLOAT16, queriesNormShape },
+            { ACL_FLOAT16, codesNormShape },
+            { ACL_UINT32, sizeShape },
+        };
+        if (opTypeName == "DistanceInt8CosMaxsFilter") {
+            // number of vectors to deal with in each loop per core in dist op
+            int numThresholds = calNumThresholds(batch, dims, BURST_LEN);
+            std::vector<int64_t> thresholdShape({ batch, numThresholds });
+            input.push_back({ACL_FLOAT16, thresholdShape});
+        }
+
+        std::vector<std::pair<aclDataType, std::vector<int64_t>>> output {
+            { ACL_FLOAT16, resultShape },
+            { ACL_FLOAT16, minResultShape },
+            { ACL_UINT16, flagShape }
+        };
+        std::vector<int> keys({batch, dims, codeBlockSize});
+        OpsMngKey opsKey(keys);
+        auto ret = DistComputeOpsManager::getInstance().resetOp(opTypeName, indexType, opsKey, input, output);
+        APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, ret, "op init failed: %i", ret);
+    }
+    return APP_ERR_OK;
+}
+
+APP_ERROR IndexInt8FlatCosAicpu::resetAscendcDistCompOp(int codeNum) const
+{
+    std::string opTypeName = "AscendcDistanceInt8CosMaxsWithMask";
+    IndexTypeIdx indexType = IndexTypeIdx::ASCENDC_ITI_INT8_COS_MASK;
     for (auto batch : searchBatchSizes) {
         std::vector<int64_t> queryShape({ batch, dims });
         std::vector<int64_t> maskShape({ batch, utils::divUp(codeNum, 8) }); // divUp to 8

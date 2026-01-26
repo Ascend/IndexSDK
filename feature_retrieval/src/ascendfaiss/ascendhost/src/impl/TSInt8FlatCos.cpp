@@ -21,6 +21,7 @@
 #include <iostream>
 #include <set>
 #include "common/utils/DataType.h"
+#include "common/utils/SocUtils.h"
 #include "faiss/impl/FaissAssert.h"
 #include "fp16.h"
 
@@ -47,14 +48,19 @@ TSInt8FlatCos::TSInt8FlatCos(uint32_t deviceId, uint32_t dim, uint32_t tokenNum,
     this->searchBatchSizes = { 64, 48, 36, 32, 24, 18, 16, 12, 8, 6, 4, 2, 1 };
     ret = IndexInt8FlatCosAicpu::init();
     FAISS_THROW_IF_NOT_FMT(APP_ERR_OK == ret, "failed to init IndexInt8FlatCosAicpu, ERRCODE:%d", ret);
-    ret = resetInt8CosDistCompute(codeBlockSize, false);
-    FAISS_THROW_IF_NOT_FMT(APP_ERR_OK == ret, "failed to resetDistCompOp, ERRCODE:%d", ret);
-    ret = resetInt8CosDistCompute(codeBlockSize, true);
-    FAISS_THROW_IF_NOT_FMT(APP_ERR_OK == ret, "failed to resetDistCompOp, ERRCODE:%d", ret);
-    ret = resetInt8CosExtraScore(codeBlockSize, false);
-    FAISS_THROW_IF_NOT_FMT(APP_ERR_OK == ret, "failed to resetExtraScoreCompOp, ERRCODE:%d", ret);
-    ret = resetInt8CosExtraScore(codeBlockSize, true);
-    FAISS_THROW_IF_NOT_FMT(APP_ERR_OK == ret, "failed to resetExtraScoreCompOp, ERRCODE:%d", ret);
+    if (faiss::ascend::SocUtils::GetInstance().IsAscend910B()) {
+        ret = resetAscendcInt8CosDistCompute(codeBlockSize);
+        FAISS_THROW_IF_NOT_FMT(APP_ERR_OK == ret, "failed to resetAscendcDistCompOp, ERRCODE:%d", ret);
+    } else {
+        ret = resetInt8CosDistCompute(codeBlockSize, false);
+        FAISS_THROW_IF_NOT_FMT(APP_ERR_OK == ret, "failed to resetDistCompOp, ERRCODE:%d", ret);
+        ret = resetInt8CosDistCompute(codeBlockSize, true);
+        FAISS_THROW_IF_NOT_FMT(APP_ERR_OK == ret, "failed to resetDistCompOp, ERRCODE:%d", ret);
+        ret = resetInt8CosExtraScore(codeBlockSize, false);
+        FAISS_THROW_IF_NOT_FMT(APP_ERR_OK == ret, "failed to resetExtraScoreCompOp, ERRCODE:%d", ret);
+        ret = resetInt8CosExtraScore(codeBlockSize, true);
+        FAISS_THROW_IF_NOT_FMT(APP_ERR_OK == ret, "failed to resetExtraScoreCompOp, ERRCODE:%d", ret);
+    }
 }
 
 APP_ERROR TSInt8FlatCos::addFeatureWithLabels(int64_t n, const void *features,
@@ -529,6 +535,7 @@ APP_ERROR TSInt8FlatCos::searchPagedWithMasks(int pageIdx, int batch, const int8
     AscendTensor<uint8_t, DIMS_3> &masks, AscendTensor<float16_t, DIMS_2> &outDistanceOnDevice,
     AscendTensor<int64_t, DIMS_2> &outIndicesOnDevice, const float16_t *extraScore)
 {
+    const int FLAG_NUM = faiss::ascend::SocUtils::GetInstance().GetCoreNum();
     auto streamPtr = resources.getDefaultStream();
     auto stream = streamPtr->GetStream();
     auto streamAicpuPtr = resources.getAlternateStreams()[0];
@@ -606,7 +613,11 @@ APP_ERROR TSInt8FlatCos::searchPagedWithMasks(int pageIdx, int batch, const int8
         } else {
             std::vector<const AscendTensorBase *> input { &queries, &mask,
                                                           &shaped, &queriesNorm, &codesNorm, &actualSize };
-            runInt8CosDistCompute(batch, this->shareAttrFilter, input, output, stream);
+            if (faiss::ascend::SocUtils::GetInstance().IsAscend910B()) {
+                runAscendcInt8CosDistCompute(batch, this->shareAttrFilter, input, output, stream);
+            } else {
+                runInt8CosDistCompute(batch, this->shareAttrFilter, input, output, stream);
+            }
         }
     }
     ret = synchronizeStream(stream);
@@ -1157,6 +1168,17 @@ void TSInt8FlatCos::runInt8CosDistCompute(int batch, bool shareMask, const std::
     ASCEND_THROW_IF_NOT_FMT(ret == APP_ERR_OK, "run operator failed: %i\n", ret);
 }
 
+void TSInt8FlatCos::runAscendcInt8CosDistCompute(int batch, bool shareMask,
+    const std::vector<const AscendTensorBase*>& input,
+    const std::vector<const AscendTensorBase*>& output, aclrtStream stream) const
+{
+    IndexTypeIdx indexType = IndexTypeIdx::ASCENDC_ITI_INT8_COS_MASK;
+    std::vector<int> keys({ batch, dims, static_cast<int>(tokenNum) });
+    OpsMngKey opsKey(keys);
+    auto ret = DistComputeOpsManager::getInstance().runOp(indexType, opsKey, input, output, stream);
+    ASCEND_THROW_IF_NOT_FMT(ret == APP_ERR_OK, "run operator failed: %i\n", ret);
+}
+
 void TSInt8FlatCos::runInt8CosExtraScore(int batch, bool shareMask, const std::vector<const AscendTensorBase *> &input,
     const std::vector<const AscendTensorBase *> &output, aclrtStream stream) const
 {
@@ -1176,6 +1198,43 @@ APP_ERROR TSInt8FlatCos::resetInt8CosDistCompute(int codeNum, bool shareMask) co
     for (auto batch : searchBatchSizes) {
         std::vector<int64_t> queryShape({ batch, dims });
         std::vector<int64_t> maskShape({ shareMask ? 1 : batch, utils::divUp(codeNum, 8) }); // divUp to 8
+        std::vector<int64_t> codeShape({ codeNum / CUBE_ALIGN, dims / CUBE_ALIGN_INT8, CUBE_ALIGN, CUBE_ALIGN_INT8 });
+        std::vector<int64_t> queriesNormShape({ (batch + FP16_ALGIN - 1) / FP16_ALGIN * FP16_ALGIN });
+        std::vector<int64_t> codesNormShape({ codeNum });
+        std::vector<int64_t> sizeShape({ CORE_NUM, SIZE_ALIGN });
+        std::vector<int64_t> resultShape({ batch, codeNum });
+        std::vector<int64_t> minResultShape({ batch, this->burstsOfBlock });
+        std::vector<int64_t> flagShape({ FLAG_NUM, FLAG_SIZE });
+
+        std::vector<std::pair<aclDataType, std::vector<int64_t>>> input {
+            { ACL_INT8, queryShape },
+            { ACL_UINT8, maskShape },
+            { ACL_INT8, codeShape },
+            { ACL_FLOAT16, queriesNormShape },
+            { ACL_FLOAT16, codesNormShape },
+            { ACL_UINT32, sizeShape },
+        };
+        std::vector<std::pair<aclDataType, std::vector<int64_t>>> output {
+            { ACL_FLOAT16, resultShape },
+            { ACL_FLOAT16, minResultShape },
+            { ACL_UINT16, flagShape }
+        };
+        std::vector<int> keys({batch, dims, static_cast<int>(tokenNum)});
+        OpsMngKey opsKey(keys);
+        auto ret = DistComputeOpsManager::getInstance().resetOp(opTypeName, indexMaskType, opsKey, input, output);
+        APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, ret, "op init failed: %i", ret);
+    }
+    return APP_ERR_OK;
+}
+
+APP_ERROR TSInt8FlatCos::resetAscendcInt8CosDistCompute(int codeNum) const
+{
+    std::string opTypeName = "AscendcDistanceInt8CosMaxsWithMask";
+    IndexTypeIdx indexMaskType = IndexTypeIdx::ASCENDC_ITI_INT8_COS_MASK;
+    const int FLAG_NUM = faiss::ascend::SocUtils::GetInstance().GetCoreNum();
+    for (auto batch : searchBatchSizes) {
+        std::vector<int64_t> queryShape({ batch, dims });
+        std::vector<int64_t> maskShape({ batch, utils::divUp(codeNum, 8) }); // divUp to 8
         std::vector<int64_t> codeShape({ codeNum / CUBE_ALIGN, dims / CUBE_ALIGN_INT8, CUBE_ALIGN, CUBE_ALIGN_INT8 });
         std::vector<int64_t> queriesNormShape({ (batch + FP16_ALGIN - 1) / FP16_ALGIN * FP16_ALGIN });
         std::vector<int64_t> codesNormShape({ codeNum });

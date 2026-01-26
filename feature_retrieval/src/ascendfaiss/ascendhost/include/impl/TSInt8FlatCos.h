@@ -99,9 +99,14 @@ private:
                             const std::vector<const AscendTensorBase *> &input,
                             const std::vector<const AscendTensorBase *> &output,
                             aclrtStream stream) const;
+    void runAscendcInt8CosDistCompute(int batch, bool shareMask,
+                            const std::vector<const AscendTensorBase *> &input,
+                            const std::vector<const AscendTensorBase *> &output,
+                            aclrtStream stream) const;
     void runInt8CosExtraScore(int batch, bool shareMask, const std::vector<const AscendTensorBase *> &input,
                               const std::vector<const AscendTensorBase *> &output, aclrtStream stream) const;
     APP_ERROR resetInt8CosDistCompute(int codeNum, bool shareMask) const;
+    APP_ERROR resetAscendcInt8CosDistCompute(int codeNum) const;
     APP_ERROR resetInt8CosExtraScore(int codeNum, bool shareMask) const;
     int64_t getInt8LabelsInIds(int64_t offset, const int64_t *labels) const;
 

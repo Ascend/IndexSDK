@@ -382,6 +382,37 @@ def generate_ascendc_dist_int8_flat_cos_json(core_num, search_page_sizes, dim, f
     utils.generate_op_config(ascendc_dist_int8_flat_cos_obj, file_path)
 
 
+def generate_ascendc_distance_int8_cos_maxs_with_mask_json(core_num, search_page_sizes, dim, file_path, code_num_list):
+    ascendc_dist_int8_flat_cos_obj = []
+    for code_num in code_num_list:
+        for queries_num in search_page_sizes:
+            generator = OpJsonGenerator("AscendcDistanceInt8CosMaxsWithMask")
+            # query
+            generator.add_input("ND", [queries_num, dim], "int8")
+            # mask
+            generator.add_input("ND", [queries_num, (code_num + MASK_BIT_NUM - 1) // MASK_BIT_NUM], "uint8")
+            # base
+            generator.add_input("ND", [code_num // CUBE_ALIGN, dim // INT8_CUBU_ALIGN, CUBE_ALIGN, INT8_CUBU_ALIGN],
+                                "int8")
+            # queryNorm
+            generator.add_input("ND", [(queries_num + CUBE_ALIGN - 1) // CUBE_ALIGN * CUBE_ALIGN], "float16")
+            # baseNorm
+            generator.add_input("ND", [code_num], "float16")
+            # actualNum
+            generator.add_input("ND", [core_num, ACTUAL_NUM_LEN], "uint32")
+            # dist
+            generator.add_output("ND", [queries_num, code_num], "float16")
+            # distMax
+            generator.add_output("ND", [queries_num, (code_num + BURST_LEN - 1) // BURST_LEN * BURST_RESULT_SIZE],
+                                 "float16")
+            # flag
+            generator.add_output("ND", [core_num, FLAG_SIZE], "uint16")
+            obj = generator.generate_obj()
+            ascendc_dist_int8_flat_cos_obj.append(obj)
+
+    utils.generate_op_config(ascendc_dist_int8_flat_cos_obj, file_path)
+
+
 def generate_910b_int8_offline_model(args, config_path, core_num, soc_version, code_num_list):
     map_args = []
     dim = args.dim
@@ -389,6 +420,12 @@ def generate_910b_int8_offline_model(args, config_path, core_num, soc_version, c
     op_name_ = "ascendc_l2_norm_d{}_pid{}".format(dim, process_id)
     file_path_ = os.path.join(config_path, JSON_FILE.format(op_name_))
     generate_ascendc_l2_norm_json([NORM_CODE_NUM], dim, file_path_)
+    map_args.append((op_name_, soc_version))
+
+    search_page_sizes = (128, 112, 96, 80, 64, 48, 36, 32, 24, 18, 16, 12, 8, 6, 4, 2, 1)
+    op_name_ = "ascendc_distance_int8_cos_maxs_with_mask_d{}_pid{}".format(dim, process_id)
+    file_path_ = os.path.join(config_path, JSON_FILE.format(op_name_))
+    generate_ascendc_distance_int8_cos_maxs_with_mask_json(core_num, search_page_sizes, dim, file_path_, code_num_list)
     map_args.append((op_name_, soc_version))
 
     search_page_sizes = (128, 112, 96, 80, 64, 48, 36, 32, 24, 18, 16, 12, 8, 6, 4, 2, 1)
