@@ -395,49 +395,58 @@ void IndexInt8Flat<P>::setPageSize(uint16_t pageBlockNum)
 template<typename P>
 APP_ERROR IndexInt8Flat<P>::getVectorsAiCpu(uint32_t offset, uint32_t num, std::vector<int8_t> &vectors)
 {
-    std::string opName = "TransdataRaw";
-    auto streamPtr = resources.getAlternateStreams().back();
-    auto stream = streamPtr->GetStream();
-    int blockNum = utils::divUp(static_cast<int>(ntotal), codeBlockSize);
-    // dataVec、attrsVec需要使用完后清理
-    dataVec.resize(static_cast<size_t>(num) * static_cast<size_t>(dims), true);
-    attrsVec.resize(blockNum * aicpu::TRANSDATA_RAW_ATTR_IDX_COUNT, true);
-
-    AscendTensor<int8_t, DIMS_2> data(dataVec.data(), {static_cast<int>(num), dims});
-    AscendTensor<int64_t, DIMS_2> attrs(attrsVec.data(), {blockNum, aicpu::TRANSDATA_RAW_ATTR_IDX_COUNT});
-
-    size_t blockSize = static_cast<size_t>(this->codeBlockSize);
-    for (size_t i = 0; i < num;) {
-        size_t total = offset + i;
-        size_t offsetInBlock = total % blockSize;
-        size_t leftInBlock = blockSize - offsetInBlock;
-        size_t leftInData = num - i;
-        size_t copyCount = std::min(leftInBlock, leftInData);
+    if (faiss::ascend::SocUtils::GetInstance().IsAscend910B()) {
+        size_t blockSize = static_cast<size_t>(this->codeBlockSize);
+        size_t total = offset;
         size_t blockIdx = total / blockSize;
+        size_t offsetInBlock = total % blockSize;
+        int srcOffset = offsetInBlock * dim;
+        auto ret = aclrtMemcpy(vectors.data(), vectors.size() * sizeof(int8_t),
+            baseShaped[BlockIdx]->data() + srcOffset, vectors.size() * sizeof(int8_t), ACL_MEMCPY_DEVICE_TO_HOST);
+        APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "Mem operator error %d", (int)ret);
+    } else {
+        std::string opName = "TransdataRaw";
+        auto streamPtr = resources.getAlternateStreams().back();
+        auto stream = streamPtr->GetStream();
+        int blockNum = utils::divUp(static_cast<int>(ntotal), codeBlockSize);
+        // dataVec、attrsVec需要使用完后清理
+        dataVec.resize(static_cast<size_t>(num) * static_cast<size_t>(dims), true);
+        attrsVec.resize(blockNum * aicpu::TRANSDATA_RAW_ATTR_IDX_COUNT, true);
 
-        int copy = static_cast<int>(copyCount);
-        AscendTensor<int8_t, DIMS_2> dst(data[i].data(), {copy, dims});
-        AscendTensor<int8_t, DIMS_4> src(baseShaped[blockIdx]->data(),
-            {utils::divUp(this->codeBlockSize, CUBE_ALIGN), utils::divUp(dims, CUBE_ALIGN_INT8),
-            CUBE_ALIGN, CUBE_ALIGN_INT8});
-        AscendTensor<int64_t, DIMS_1> attr = attrs[blockIdx].view();
-        attr[aicpu::TRANSDATA_RAW_ATTR_OFFSET_IDX] = offsetInBlock;
+        AscendTensor<int8_t, DIMS_2> data(dataVec.data(), {static_cast<int>(num), dims});
+        AscendTensor<int64_t, DIMS_2> attrs(attrsVec.data(), {blockNum, aicpu::TRANSDATA_RAW_ATTR_IDX_COUNT});
 
-        LaunchOpTwoInOneOut<int8_t, DIMS_4, ACL_INT8,
-                            int64_t, DIMS_1, ACL_INT64,
-                            int8_t, DIMS_2, ACL_INT8>(opName, stream, src, attr, dst);
+        size_t blockSize = static_cast<size_t>(this->codeBlockSize);
+        for (size_t i = 0; i < num;) {
+            size_t total = offset + i;
+            size_t offsetInBlock = total % blockSize;
+            size_t leftInBlock = blockSize - offsetInBlock;
+            size_t leftInData = num - i;
+            size_t copyCount = std::min(leftInBlock, leftInData);
+            size_t blockIdx = total / blockSize;
 
-        i += copyCount;
+            int copy = static_cast<int>(copyCount);
+            AscendTensor<int8_t, DIMS_2> dst(data[i].data(), {copy, dims});
+            AscendTensor<int8_t, DIMS_4> src(baseShaped[blockIdx]->data(),
+                {utils::divUp(this->codeBlockSize, CUBE_ALIGN), utils::divUp(dims, CUBE_ALIGN_INT8),
+                CUBE_ALIGN, CUBE_ALIGN_INT8});
+            AscendTensor<int64_t, DIMS_1> attr = attrs[blockIdx].view();
+            attr[aicpu::TRANSDATA_RAW_ATTR_OFFSET_IDX] = offsetInBlock;
+
+            LaunchOpTwoInOneOut<int8_t, DIMS_4, ACL_INT8,
+                                int64_t, DIMS_1, ACL_INT64,
+                                int8_t, DIMS_2, ACL_INT8>(opName, stream, src, attr, dst);
+
+            i += copyCount;
+        }
+        auto ret = synchronizeStream(stream);
+        APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR,
+            "synchronizeStream addVector stream failed: %i\n", ret);
+
+        ret = aclrtMemcpy(vectors.data(), vectors.size() * sizeof(int8_t),
+        data.data(), data.getSizeInBytes(), ACL_MEMCPY_DEVICE_TO_HOST);
+        APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "Mem operator error %d", (int)ret);
     }
-
-    auto ret = synchronizeStream(stream);
-    APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR,
-        "synchronizeStream addVector stream failed: %i\n", ret);
-
-    ret = aclrtMemcpy(vectors.data(), vectors.size() * sizeof(int8_t),
-                      data.data(), data.getSizeInBytes(), ACL_MEMCPY_DEVICE_TO_HOST);
-    APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "Mem operator error %d", (int)ret);
-
     return APP_ERR_OK;
 }
 
