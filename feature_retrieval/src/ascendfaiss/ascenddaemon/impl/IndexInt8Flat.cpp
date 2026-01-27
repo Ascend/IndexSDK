@@ -400,9 +400,9 @@ APP_ERROR IndexInt8Flat<P>::getVectorsAiCpu(uint32_t offset, uint32_t num, std::
         size_t total = offset;
         size_t blockIdx = total / blockSize;
         size_t offsetInBlock = total % blockSize;
-        int srcOffset = offsetInBlock * dim;
+        int srcOffset = offsetInBlock * dims;
         auto ret = aclrtMemcpy(vectors.data(), vectors.size() * sizeof(int8_t),
-            baseShaped[BlockIdx]->data() + srcOffset, vectors.size() * sizeof(int8_t), ACL_MEMCPY_DEVICE_TO_HOST);
+            baseShaped[blockIdx]->data() + srcOffset, vectors.size() * sizeof(int8_t), ACL_MEMCPY_DEVICE_TO_HOST);
         APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "Mem operator error %d", (int)ret);
     } else {
         std::string opName = "TransdataRaw";

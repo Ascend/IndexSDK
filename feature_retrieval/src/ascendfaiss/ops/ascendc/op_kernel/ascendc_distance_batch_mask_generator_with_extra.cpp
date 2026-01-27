@@ -53,7 +53,7 @@ public:
                   8;
         this->dbTimeStampGm.SetGlobalBuffer((__gm__ int32_t*)dbTimeStamp + this->offset);
         this->dbDivisorGm.SetGlobalBuffer((__gm__ int32_t*)dbDivisor + this->offset);
-        this->dbRemainderGm.SetGlobalBuffer((__gm__ uint8_t*)dbRemainder + this->offset);
+        this->dbRemainderGm.SetGlobalBuffer((__gm__ uint8_t*)dbRemainder + this->offset * 2);
         this->distanceMaskGm.SetGlobalBuffer((__gm__ uint8_t*)distanceMask + this->offset / 8);
 
         pipe->InitBuffer(this->queryTimeStampBuf, this->queryTimeStampLenAlign * sizeof(int32_t));
@@ -63,7 +63,7 @@ public:
         pipe->InitBuffer(this->dbDivisorBuf, this->dbDivisorLenAlign * sizeof(int32_t));
         pipe->InitBuffer(this->dbRemainderBuf, this->dbRemainderLenAlign * sizeof(uint8_t));
         pipe->InitBuffer(this->distanceMaskBuf, this->distanceMaskLenAlign * sizeof(uint8_t));
-        pipe->InitBuffer(this->timeStampCmpResBuf, this->distanceMaskLenAlign * sizeof(uint8_t));
+        pipe->InitBuffer(this->timeStampCmpResBuf, 3 * this->distanceMaskLenAlign * sizeof(uint8_t));
         pipe->InitBuffer(this->tmpRemainderBuf, this->dbDivisorLenAlign * sizeof(int16_t));
         pipe->InitBuffer(this->resRemainderBuf, this->dbDivisorLenAlign * sizeof(int16_t));
         pipe->InitBuffer(this->tokenCmpResBuf, this->dbDivisorLenAlign * sizeof(uint8_t));
@@ -99,7 +99,7 @@ public:
         for (uint32_t bid = 0; bid < this->batchSize; ++bid) {
             DataCopyPad(
                 this->queryTokenSetLocal, this->queryTokenSetGm[bid * this->queryTokenSetLen],
-                {1, static_cast<uint16_t>(this->queryTokenSetLenAlign), 0, 0}, {false, 0, 0, 0});
+                {1, static_cast<uint32_t>(this->queryTokenSetLen), 0, 0, 0}, {false, 0, 0, 0});
             SetFlag<HardEvent::V_MTE2>(0);
             SetFlag<HardEvent::V_MTE2>(1);
             SetFlag<HardEvent::MTE3_V>(2);
@@ -205,7 +205,7 @@ private:
     uint32_t distanceMaskLenAlign;
 
 private:
-    __aicore__ inline void InitTiling(const AscendcDistanceBatchMaskGeneratorTilingData* tilingData)
+    __aicore__ inline void InitTiling(const AscendcDistanceBatchMaskGeneratorWithExtraTilingData* tilingData)
     {
         this->batchSize = tilingData->batchSize;
         this->tokenCnt = tilingData->tokenCnt;
@@ -219,8 +219,8 @@ private:
             this->repeatNum = tilingData->tailRepeatNum;
         }
         this->queryTimeStampLen = 8 * this->batchSize;
-        this->queryTokenSetLen = this->tileLen;
-        this->dbTimeStampLen = this->tokenCnt;
+        this->queryTokenSetLen = this->tokenCnt;
+        this->dbTimeStampLen = this->tileLen;
         this->dbDivisorLen = this->tileLen;
         this->dbRemainderLen = 2 * this->tileLen;
         this->distanceMaskLen = this->tileLen / 8;
@@ -248,7 +248,7 @@ private:
             return;
         }
         Cast(
-            this->dbTimeStampFloat32Local, this->dbTimeStampLocal, AscnedC::RoundMode::CAST_NONE,
+            this->dbTimeStampFloat32Local, this->dbTimeStampLocal, AscendC::RoundMode::CAST_NONE,
             this->dbTimeStampLenAlign);
         Adds(
             this->dbTimeStampFloat32Local, this->dbTimeStampFloat32Local, (float32_t)startTime,
@@ -302,7 +302,7 @@ private:
                 int32_t curNum = currentExtraMaskOffset % 32;
                 if (curNum != 0) {
                     uint64_t mask1 = (0xFFFF >> ((curNum + 1) / 2)) << ((curNum + 1) / 2);
-                    uint64_t mask[] = {mask1, 0};
+                    uint64_t mask[2] = {mask1, 0};
                     SetFlag<HardEvent::S_V>(2);
                     WaitFlag<HardEvent::S_V>(2);
                     Duplicate(distanceMaskInt16Local[curDataBlockId * 16], (int16_t)0, mask, 1, 1, 8);
@@ -313,7 +313,7 @@ private:
                 Duplicate(
                     distanceMaskInt16Local[curDataBlockId * 16], (int16_t)0,
                     (int32_t)(this->distanceMaskLenAlign - curDataBlockId * 32) / 2);
-                if (currentExtraMaskOffset % 2 = 1) {
+                if (currentExtraMaskOffset % 2 == 1) {
                     SetFlag<HardEvent::V_S>(2);
                     WaitFlag<HardEvent::V_S>(2);
                     this->distanceMaskLocal.SetValue(currentExtraMaskOffset, 0);
@@ -321,7 +321,7 @@ private:
             }
             SetFlag<HardEvent::S_MTE2>(2);
             WaitFlag<HardEvent::S_MTE2>(2);
-            DataCopypad(
+            DataCopyPad(
                 this->extraMaskLocal, this->extraMaskGm[bid * extraMaskLen + currentOffset],
                 {1, static_cast<uint16_t>(actualMaskLen), 0, 0}, {false, 0, 0, 0});
             SetFlag<HardEvent::MTE2_V>(2);

@@ -46,6 +46,10 @@ APP_ERROR TSBase::initialize(int deviceId)
     // 由子类进行pResource内存管理，此处只使用
     pResources->initialize();
     if (faiss::ascend::SocUtils::GetInstance().IsAscend910B()) {
+        auto ret = resetBatchMaskGenerateComputeOp();
+        APPERR_RETURN_IF_NOT_LOG(ret == APP_ERR_OK, ret, "failed to resetBatchMaskGenerateComputeOp");
+        ret = resetBatchExtraMaskGenerateComputeOp(false);
+        APPERR_RETURN_IF_NOT_LOG(ret == APP_ERR_OK, ret, "failed to resetBatchExtraMaskGenerateComputeOp");
     } else {
         resetMaskGenerateComputeOp();
         resetExtraMaskGenerateComputeOp();
