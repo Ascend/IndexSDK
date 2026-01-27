@@ -120,7 +120,12 @@ function prepare()
         sed -i '/target_compile_definitions(mockcpp PRIVATE/,/)/s/_GLIBCXX_USE_CXX11_ABI=0/_GLIBCXX_USE_CXX11_ABI=1/' "$CMAKELISTS"
         echo "Successfully updated _GLIBCXX_USE_CXX11_ABI from 0 to 1 in $CMAKELISTS"
     else
-        cd "${TOP_DIR}/makeself" && patch -p1 < ../makeself_patch/makeself-2.5.0.patch
+        if grep -A1 'cat << EOF  > "\$archname"' "$MAKESELF_HEADER" | tail -n1 | grep -q '^#!/bin/bash$'; then
+            echo "makeself patch already applied."
+        else
+            echo "start patching makeself..."
+            cd "${TOP_DIR}/makeself" && patch -p1 < ../makeself_patch/makeself-2.5.0.patch
+        fi
     fi
 }
 
