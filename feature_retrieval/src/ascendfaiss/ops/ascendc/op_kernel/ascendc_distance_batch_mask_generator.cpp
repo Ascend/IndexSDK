@@ -51,7 +51,7 @@ public:
                   8;
         this->dbTimeStampGm.SetGlobalBuffer((__gm__ int32_t*)dbTimeStamp + this->offset);
         this->dbDivisorGm.SetGlobalBuffer((__gm__ int32_t*)dbDivisor + this->offset);
-        this->dbRemainderGm.SetGlobalBuffer((__gm__ uint8_t*)dbRemainder + this->offset);
+        this->dbRemainderGm.SetGlobalBuffer((__gm__ uint8_t*)dbRemainder + this->offset * 2);
         this->distanceMaskGm.SetGlobalBuffer((__gm__ uint8_t*)distanceMask + this->offset / 8);
 
         pipe->InitBuffer(this->queryTimeStampBuf, this->queryTimeStampLenAlign * sizeof(int32_t));
@@ -61,7 +61,7 @@ public:
         pipe->InitBuffer(this->dbDivisorBuf, this->dbDivisorLenAlign * sizeof(int32_t));
         pipe->InitBuffer(this->dbRemainderBuf, this->dbRemainderLenAlign * sizeof(uint8_t));
         pipe->InitBuffer(this->distanceMaskBuf, this->distanceMaskLenAlign * sizeof(uint8_t));
-        pipe->InitBuffer(this->timeStampCmpResBuf, this->distanceMaskLenAlign * sizeof(uint8_t));
+        pipe->InitBuffer(this->timeStampCmpResBuf, 3 * this->distanceMaskLenAlign * sizeof(uint8_t));
         pipe->InitBuffer(this->tmpRemainderBuf, this->dbDivisorLenAlign * sizeof(int16_t));
         pipe->InitBuffer(this->resRemainderBuf, this->dbDivisorLenAlign * sizeof(int16_t));
         pipe->InitBuffer(this->tokenCmpResBuf, this->dbDivisorLenAlign * sizeof(uint8_t));
@@ -90,7 +90,7 @@ public:
         for (uint32_t bid = 0; bid < this->batchSize; ++bid) {
             DataCopyPad(
                 this->queryTokenSetLocal, this->queryTokenSetGm[bid * this->queryTokenSetLen],
-                {1, static_cast<uint16_t>(this->queryTokenSetLenAlign), 0, 0}, {false, 0, 0, 0});
+                {1, static_cast<uint32_t>(this->queryTokenSetLen), 0, 0, 0}, {false, 0, 0, 0});
             SetFlag<HardEvent::V_MTE2>(0);
             SetFlag<HardEvent::V_MTE2>(1);
             SetFlag<HardEvent::MTE3_V>(2);
@@ -203,8 +203,8 @@ private:
             this->repeatNum = tilingData->tailRepeatNum;
         }
         this->queryTimeStampLen = 8 * this->batchSize;
-        this->queryTokenSetLen = this->tileLen;
-        this->dbTimeStampLen = this->tokenCnt;
+        this->queryTokenSetLen = this->tokenCnt;
+        this->dbTimeStampLen = this->tileLen;
         this->dbDivisorLen = this->tileLen;
         this->dbRemainderLen = 2 * this->tileLen;
         this->distanceMaskLen = this->tileLen / 8;

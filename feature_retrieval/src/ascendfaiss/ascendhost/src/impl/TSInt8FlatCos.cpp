@@ -1141,8 +1141,8 @@ void TSInt8FlatCos::queryVectorByIdx(int64_t idx, uint8_t *dis) const
 {
     if (faiss::ascend::SocUtils::GetInstance().IsAscend910B()) {
         size_t total = static_cast<size_t>(idx);
-        size_t offsetInBlock = total % static_cast<size_t>(this->blockSize);
-        size_t blockIdx = total / static_cast<size_t>(this->blockSize);
+        size_t offsetInBlock = total % static_cast<size_t>(this->codeBlockSize);
+        size_t blockIdx = total / static_cast<size_t>(this->codeBlockSize);
 
         int disOffset = 0;
         int srcOffset = offsetInBlock * code_size;

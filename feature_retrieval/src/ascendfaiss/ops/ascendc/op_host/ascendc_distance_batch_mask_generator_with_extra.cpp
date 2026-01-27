@@ -64,11 +64,14 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     uint32_t formerRepeatNum;
     uint32_t tailNum;
     uint32_t tailRepeatNum;
+    uint32_t tileLen = TILE_LEN;
     dbLen = dbTimeStampShape.GetDim(DB_TIME_STAMP_SIZE_DIM);
     batchSize = queryTokenSetShape.GetDim(QUERY_TOKEN_SET_BATCH_DIM);
     tokenCnt = queryTokenSetShape.GetDim(QUERY_TOKEN_SET_TOKEN_CNT_DIM);
-
-    totalTileNum = dbLen / TILE_LEN;
+    if (tokenCnt > 32768) {
+        tileLen = 4096;
+    }
+    totalTileNum = dbLen / tileLen;
     if (totalTileNum <= coreNum) {
         coreNum = totalTileNum;
     }
@@ -85,7 +88,7 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
 
     tiling.set_batchSize(batchSize);
     tiling.set_tokenCnt(tokenCnt);
-    tiling.set_tileLen(TILE_LEN);
+    tiling.set_tileLen(tileLen);
     tiling.set_formerNum(formerNum);
     tiling.set_formerRepeatNum(formerRepeatNum);
     tiling.set_tailRepeatNum(tailRepeatNum);
@@ -154,9 +157,15 @@ public:
             .Format({ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND});
 
-        this->Output("extra_mask_attr")
+        this->Input("extra_mask_attr")
             .ParamType(REQUIRED)
             .DataType({ge::DT_INT32})
+            .Format({ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND});
+
+        this->Output("distance_mask")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_UINT8})
             .Format({ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND});
 
