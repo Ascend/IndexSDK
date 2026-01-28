@@ -60,5 +60,11 @@ void AscendIndexIVFPQ::remove_ids(size_t n, const idx_t* ids)
     FAISS_THROW_IF_NOT_MSG(impl_ != nullptr, "impl_ is nullptr!");
     impl_->deleteImpl(static_cast<int>(n), ids);
 }
+
+std::vector<idx_t> AscendIndexIVFPQ::update(idx_t n, const float* x, const idx_t* ids)
+{
+    FAISS_THROW_IF_NOT_MSG(impl_ != nullptr, "impl_ is nullptr!");
+    return impl_->update(n, x, ids);
+}
 }  // namespace ascend
 }  // namespace faiss

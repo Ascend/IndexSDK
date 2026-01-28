@@ -58,6 +58,8 @@ public:
 
     void remove_ids(size_t n, const idx_t* ids);
 
+    std::vector<idx_t> update(idx_t n, const float* x, const idx_t* ids);
+
 protected:
     std::shared_ptr<AscendIndexIVFPQImpl> impl_;
 };
