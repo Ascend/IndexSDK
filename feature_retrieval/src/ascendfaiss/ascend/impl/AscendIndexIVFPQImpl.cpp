@@ -395,6 +395,60 @@ void AscendIndexIVFPQImpl::initProductQuantizer()
     APP_LOG_INFO("AscendIndexIVFPQImpl initProductQuantizer operation finished\n");
 }
 
+std::vector<idx_t> AscendIndexIVFPQImpl::update(idx_t n, const float* x, const idx_t* ids)
+{
+    FAISS_THROW_IF_NOT_MSG(x != nullptr, "vector list is nullptr!");
+    FAISS_THROW_IF_NOT_MSG(ids != nullptr, "vector ID list is nullptr!");
+    FAISS_THROW_IF_NOT_MSG(n > 0, "update vector number must be greater than 0!");
+    FAISS_THROW_IF_NOT_MSG(static_cast<size_t>(n) * this->intf_->d == std::distance(x, x + n * this->intf_->d),
+                           "vector list size is not match!");
+    FAISS_THROW_IF_NOT_MSG(static_cast<size_t>(n) == std::distance(ids, ids + n),
+                           "vector ID list size is not match!");
+    FAISS_THROW_IF_NOT_MSG(this->intf_->is_trained, AscendIndexIVFPQ is not trained!);
+    APP_LOG_INFO("AscendIndexIVFPQImpl update operation started: n=%ld.\n", n);
+    std::lock_guard<std::mutex> lock(mapMutex);
+
+    std::vector<idx_t> noExistIds;
+    std::vector<idx_t> existIds;
+    std::vector<float> existVectors;
+    idx_t noExistNum = 0;
+    idx_t existNum = 0;
+
+    for (idx_t i = 0; i < n; ++i) {
+        idx_t id = ids[i];
+        if (idToListMap.find(id) == idToListMap.end()) {
+            noExistIds.push_back(id);
+            noExistNum++;
+            continue;
+        }
+        idx_t listId = idToListMap[id];
+        if (listInfos[listId].idSet.find(id) == listInfos[listId].idSet.end()) {
+            noExistIds.push_back(id);
+            noExistNum++;
+            continue;
+        }
+        existIds.push_back(id);
+        const float* vector = x + i * this->intf_->d;
+        existVectors.insert(existVectors.end(), vector, vector + this->intf_->d);
+        existNum++;
+    }
+
+    if (!noExistIds.empty()) {
+        APP_LOG_WARNING("The following %d IDs do not exist: \n", noExistNum);
+        for (idx_t i = 0; i < noExistNum; i++) {
+            APP_LOG_WARNING("ID: %ld\n", noExistIds[i]);
+        }
+        APP_LOG_WARNING("Updating other vectors with ids\n");
+    }
+    if (existNum > 0) {
+        deleteImpl(existNum, existIds.data());
+        addImpl(existNum, existVectors.data(), existIds.data());
+    }
+    APP_LOG_INFO("AscendIndexIVFPQ update operation finished.\n");
+    
+    return noExistIds;
+}
+
 void AscendIndexIVFPQImpl::addL1(int n, const float* x, std::unique_ptr<idx_t[]>& assign)
 {
     pQuantizerImpl->cpuQuantizer->assign(n, x, assign.get());

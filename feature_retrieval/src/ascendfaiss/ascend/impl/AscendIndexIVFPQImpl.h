@@ -65,6 +65,8 @@ public:
 
     void removeIdMapping(const std::vector<idx_t>& ids);
 
+    std::vector<idx_t> update(idx_t n, const float* x, const idx_t* ids);
+
 protected:
     void copyFromCentroids(const faiss::IndexIVFPQ* index);
 
