@@ -98,14 +98,18 @@ function install_ut_deps()
         git clone -b v2.7.x-h3 https://gitcode.com/cann-src-third-party/mockcpp.git mockcpp_patch
         git clone -b v2.7 https://gitee.com/sinojelly/mockcpp.git
     fi
-    cd "${TOP_DIR}/mockcpp" && patch -p1 < ../mockcpp_patch/mockcpp-2.7_py3-h3.patch
     CMAKELISTS="${TOP_DIR}/mockcpp/CMakeLists.txt"
     if [ ! -f "$CMAKELISTS" ]; then
-        echo "Error: $CMAKELISTS not found!"
+        echo "[INSTALL_ERROR]: $CMAKELISTS not found!"
         exit 1
     fi
-    sed -i '/target_compile_definitions(mockcpp PRIVATE/,/)/s/_GLIBCXX_USE_CXX11_ABI=0/_GLIBCXX_USE_CXX11_ABI=1/' "$CMAKELISTS"
-    echo "[INSTALL_INFO] successfully updated _GLIBCXX_USE_CXX11_ABI from 0 to 1 in $CMAKELISTS"
+    if grep -q '_GLIBCXX_USE_CXX11_ABI=1' "$CMAKELISTS"; then
+        echo "[INSTALL_INFO] mockcpp patch already applied, _GLIBCXX_USE_CXX11_ABI already set to 1."
+    else 
+        cd "${TOP_DIR}/mockcpp" && patch -p1 < ../mockcpp_patch/mockcpp-2.7_py3-h3.patch
+        sed -i '/target_compile_definitions(mockcpp PRIVATE/,/)/s/_GLIBCXX_USE_CXX11_ABI=0/_GLIBCXX_USE_CXX11_ABI=1/' "$CMAKELISTS"
+        echo "[INSTALL_INFO] successfully updated _GLIBCXX_USE_CXX11_ABI from 0 to 1 in $CMAKELISTS"
+    fi
 
     # huawei_secure_c
     if [ ! -d "${TOP_DIR}/huawei_secure_c" ]; then

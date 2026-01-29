@@ -37,6 +37,7 @@ FILE(GLOB_RECURSE KERNELS_SRCS KERNELS_SRCS
 )
 INCLUDE_DIRECTORIES(${ASCEND_TOOLKIT_PATH}/${AICPU_LIB_SUB_DIR}/../inc)
 INCLUDE_DIRECTORIES(${DRIVER_HOME}/driver/include/dvpp)
+INCLUDE_DIRECTORIES(${DRIVER_HOME}/driver/kernel/libc_sec/include)
 INCLUDE_DIRECTORIES(${CMAKE_CURRENT_LIST_DIR}/impl/utils)
 INCLUDE_DIRECTORIES(${CMAKE_CURRENT_LIST_DIR}/../../ascenddaemon/utils)
 INCLUDE_DIRECTORIES(${CMAKE_CURRENT_LIST_DIR}/../../common/utils)
@@ -46,21 +47,9 @@ ADD_LIBRARY(${AICPU_KERNEL_TARGET} SHARED
     ${CMAKE_CURRENT_LIST_DIR}/../../ascenddaemon/utils/Random.cpp
 )
 
-
-
-# Compatible with CI CANN version.
-SET(CI_NPU_TYPE  ${NPU_TYPE})
-IF(NPU_TYPE  STREQUAL  310P)
-    IF(NOT  EXISTS  ${ASCEND_TOOLKIT_PATH}/${AICPU_LIB_SUB_DIR}/Ascend${CI_NPU_TYPE})
-        SET(CI_NPU_TYPE  710)
-    ENDIF()
-ELSEIF(NPU_TYPE MATCHES 910)
-    SET(CI_NPU_TYPE 910)
-ENDIF()
-
 TARGET_LINK_LIBRARIES(${AICPU_KERNEL_TARGET} PRIVATE
     -Wl,--whole-archive
-    ${ASCEND_TOOLKIT_PATH}/${AICPU_LIB_SUB_DIR}/Ascend${CI_NPU_TYPE}/libascend_protobuf.a
+    ${ASCEND_TOOLKIT_PATH}/${AICPU_LIB_SUB_DIR}/Ascend/libascend_protobuf.a
     -Wl,--no-whole-archive
     -s
     -Wl,-Bsymbolic
@@ -68,5 +57,5 @@ TARGET_LINK_LIBRARIES(${AICPU_KERNEL_TARGET} PRIVATE
 
 TARGET_LINK_LIBRARIES(${AICPU_KERNEL_TARGET} PRIVATE
     -Wl,--whole-archive
-    ${ASCEND_TOOLKIT_PATH}/${AICPU_LIB_SUB_DIR}/Ascend${CI_NPU_TYPE}/libcpu_kernels_context.a
+    ${ASCEND_TOOLKIT_PATH}/${AICPU_LIB_SUB_DIR}/Ascend/libcpu_kernels_context.a
     -Wl,--no-whole-archive)
