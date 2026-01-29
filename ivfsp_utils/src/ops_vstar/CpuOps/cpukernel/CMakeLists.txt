@@ -32,9 +32,9 @@ ADD_CUSTOM_TARGET(aicpu_ops_config_json  ALL DEPENDS  ${OUTPUT_FILES})
 
 # =========================kernel compile============================
 SET(AICPU_LIB_SUB_DIR opp/built-in/op_impl/aicpu/aicpu_kernel/lib)
-IF (NOT EXISTS ${ASCEND_TOOLKIT_PATH}/${AICPU_LIB_SUB_DIR}/libcpu_kernels_context.a)
+IF (NOT EXISTS ${ASCEND_TOOLKIT_PATH}/${AICPU_LIB_SUB_DIR}/Ascend/libcpu_kernels_context.a)
     SET(AICPU_LIB_SUB_DIR opp/op_impl/built-in/aicpu/aicpu_kernel/lib)
-    IF (NOT EXISTS ${ASCEND_TOOLKIT_PATH}/${AICPU_LIB_SUB_DIR}/libcpu_kernels_context.a)
+    IF (NOT EXISTS ${ASCEND_TOOLKIT_PATH}/${AICPU_LIB_SUB_DIR}/Ascend/libcpu_kernels_context.a)
         MESSAGE(FATAL_ERROR "libcpu_kernels_context.a not found in opp")
     ENDIF()
 ENDIF()
@@ -52,17 +52,9 @@ ADD_LIBRARY(${AICPU_KERNEL_TARGET} SHARED
         ${KERNELS_SRCS}
 )
 
-# Compatible with CI CANN version.
-SET(CI_NPU_TYPE  ${NPU_TYPE})
-IF(NPU_TYPE  STREQUAL  310P)
-    IF(NOT  EXISTS  ${ASCEND_TOOLKIT_PATH}/${AICPU_LIB_SUB_DIR}/Ascend${CI_NPU_TYPE})
-        SET(CI_NPU_TYPE  710)
-    ENDIF()
-ENDIF()
-
 TARGET_LINK_LIBRARIES(${AICPU_KERNEL_TARGET} PRIVATE
     -Wl,--whole-archive
-    ${ASCEND_TOOLKIT_PATH}/${AICPU_LIB_SUB_DIR}/Ascend${CI_NPU_TYPE}/libascend_protobuf.a
+    ${ASCEND_TOOLKIT_PATH}/${AICPU_LIB_SUB_DIR}/Ascend/libascend_protobuf.a
     -Wl,--no-whole-archive
     -s
     -Wl,-Bsymbolic
@@ -70,5 +62,5 @@ TARGET_LINK_LIBRARIES(${AICPU_KERNEL_TARGET} PRIVATE
 
 TARGET_LINK_LIBRARIES(${AICPU_KERNEL_TARGET} PRIVATE
         -Wl,--whole-archive
-        ${ASCEND_TOOLKIT_PATH}/${AICPU_LIB_SUB_DIR}/Ascend${CI_NPU_TYPE}/libcpu_kernels_context.a
+        ${ASCEND_TOOLKIT_PATH}/${AICPU_LIB_SUB_DIR}/Ascend/libcpu_kernels_context.a
         -Wl,--no-whole-archive)
