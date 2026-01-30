@@ -376,7 +376,7 @@ std::vector<idx_t> AscendIndexIVFPQImpl::update(idx_t n, const float* x, const i
                            "vector list size is not match!");
     FAISS_THROW_IF_NOT_MSG(static_cast<size_t>(n) == std::distance(ids, ids + n),
                            "vector ID list size is not match!");
-    FAISS_THROW_IF_NOT_MSG(this->intf_->is_trained, AscendIndexIVFPQ is not trained!);
+    FAISS_THROW_IF_NOT_MSG(this->intf_->is_trained, "AscendIndexIVFPQ is not trained!");
     APP_LOG_INFO("AscendIndexIVFPQImpl update operation started: n=%ld.\n", n);
     std::lock_guard<std::mutex> lock(mapMutex);
 
