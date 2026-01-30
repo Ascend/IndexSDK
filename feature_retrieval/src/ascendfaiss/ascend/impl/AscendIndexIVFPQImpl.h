@@ -101,7 +101,7 @@ protected:
 
     uint8_t findCentroidInSubQuantizer(size_t subq_idx, const float* sub_vector);
 
-    double calDistance(const float* a, const float* b, size_t dim);
+    float calDistance(const float* a, const float* b, size_t dim);
 
     inline ::ascend::IndexIVFPQ* getActualIndex(int deviceId) const
     {

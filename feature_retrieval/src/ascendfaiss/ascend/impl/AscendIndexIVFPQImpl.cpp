@@ -65,7 +65,6 @@ AscendIndexIVFPQImpl::AscendIndexIVFPQImpl(AscendIndexIVFPQ* intf, int dims, int
     initDeviceAddNumMap();
     centroidsData.resize(nlist * dims);
     initProductQuantizer();
-
     this->intf_->is_trained = false;
 }
 
@@ -78,38 +77,10 @@ void AscendIndexIVFPQImpl::copyFromCentroids(const faiss::IndexIVFPQ* index)
     // copy centroids from index
     APP_LOG_INFO("Uploading centroids to devices...\n");
 
-    const float* centroids_data = nullptr;
-    size_t centroids_count = 0;
-
     std::vector<float> centroids_buffer(nlist * intf_->d);
     index->quantizer->reconstruct_n(0, nlist, centroids_buffer.data());
-    centroids_data = centroids_buffer.data();
-    centroids_count = static_cast<size_t>(nlist);
 
-    for (int deviceId : indexConfig.deviceList) {
-        auto pIndex = getActualIndex(deviceId);
-        if (!pIndex) {
-            APP_LOG_WARNING("Device %d not available, skipping", deviceId);
-            continue;
-        }
-
-        size_t centroids_elements = static_cast<size_t>(nlist * intf_->d);
-        size_t centroids_bytes = centroids_elements * sizeof(float);
-
-        if (pIndex->centroidsOnDevice->size() != centroids_elements) {
-            pIndex->centroidsOnDevice->resize(centroids_elements);
-        }
-
-        auto ret = aclrtMemcpy(pIndex->centroidsOnDevice->data(), centroids_bytes,
-                               centroids_data, centroids_bytes,
-                               ACL_MEMCPY_HOST_TO_DEVICE);
-
-        FAISS_THROW_IF_NOT_FMT(ret == ACL_SUCCESS,
-                               "Failed to upload centroids to device %d: %d",
-                               deviceId, ret);
-    }
-    APP_LOG_INFO("Uploaded %zu centroids to %zu devices\n",
-                 centroids_count, indexConfig.deviceList.size());
+    updateCoarseCenter(centroids_buffer);
 }
 
 void AscendIndexIVFPQImpl::copyFromCodebook(const faiss::IndexIVFPQ* index)
@@ -281,7 +252,8 @@ void AscendIndexIVFPQImpl::copyFrom(const faiss::IndexIVFPQ* index)
     this->intf_->is_trained = index->is_trained;
     this->intf_->ntotal = index->ntotal;
     this->ivfConfig.cp = index->cp;
-
+    this->intf_->d = index->d;
+    nlist = index->nlist;
     nprobe = index->nprobe;
 
     copyFromCentroids(index);
@@ -568,7 +540,7 @@ uint8_t AscendIndexIVFPQImpl::findCentroidInSubQuantizer(size_t subq_idx, const 
 
     for (size_t k = 0; k < this->pq.ksub; k++) {
         const float* centroid = this->pq.codeBook[subq_idx][k].data();
-        double dist = calDistance(sub_vector, centroid, this->pq.dsub);
+        float dist = calDistance(sub_vector, centroid, this->pq.dsub);
         if (dist < min_dist) {
             min_dist = dist;
             find_centroid = static_cast<uint8_t>(k);
@@ -578,22 +550,14 @@ uint8_t AscendIndexIVFPQImpl::findCentroidInSubQuantizer(size_t subq_idx, const 
     return find_centroid;
 }
 
-double AscendIndexIVFPQImpl::calDistance(const float* a, const float* b, size_t dim)
+float AscendIndexIVFPQImpl::calDistance(const float* a, const float* b, size_t dim)
 {
-    if (this->intf_->metric_type == faiss::METRIC_L2) {
-        double dist = 0.0;
-        for (size_t i = 0; i < dim; i++) {
-            double diff = static_cast<double>(a[i]) - static_cast<double>(b[i]);
-            dist += diff * diff;
-        }
-        return dist;
-    } else {
-        double product = 0.0;
-        for (size_t i = 0; i < dim; i++) {
-            product += static_cast<double>(a[i]) * static_cast<double>(b[i]);
-        }
-        return -product;
+    float dist = 0.0;
+    for (size_t i = 0; i < dim; i++) {
+        float diff = a[i] - b[i];
+        dist += diff * diff;
     }
+    return dist;
 }
 
 std::shared_ptr<::ascend::Index> AscendIndexIVFPQImpl::createIndex(int deviceId)
