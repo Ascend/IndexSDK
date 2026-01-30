@@ -247,17 +247,24 @@ private:
             Duplicate(this->timeStampCmpResInt16Local, (int16_t)(-1), this->distanceMaskLenAlign / 2);
             return;
         }
-        Cast(
-            this->dbTimeStampFloat32Local, this->dbTimeStampLocal, AscendC::RoundMode::CAST_NONE,
+        if (startTime < endTime) {
+            Duplicate(this->timeStampCmpResInt16Local, (int16_t)(0), this->distanceMaskLenAlign / 2);
+            return;
+        }
+        Adds(this->dbTimeStampLocal, this->dbTimeStampLocal, startTime, this->dbTimeStampLenAlign);
+        Cast(this->dbTimeStampFloat32Local,
+            this->dbTimeStampLocal,
+            AscendC::RoundMode::CAST_NONE,
             this->dbTimeStampLenAlign);
-        Adds(
-            this->dbTimeStampFloat32Local, this->dbTimeStampFloat32Local, (float32_t)startTime,
+        CompareScalar(this->timeStampCmpResTmpLocal1,
+            this->dbTimeStampFloat32Local,
+            (float32_t)(0.0),
+            AscendC::CMPMODE::GE,
             this->dbTimeStampLenAlign);
-        CompareScalar(
-            this->timeStampCmpResTmpLocal1, this->dbTimeStampFloat32Local, (float32_t)(0.0), AscendC::CMPMODE::GE,
-            this->dbTimeStampLenAlign);
-        Adds(
-            this->dbTimeStampFloat32Local, this->dbTimeStampFloat32Local, (float32_t)(endTime - startTime),
+        Adds(this->dbTimeStampLocal, this->dbTimeStampLocal, (endTime - startTime), this->dbTimeStampLenAlign);
+        Cast(this->dbTimeStampFloat32Local,
+            this->dbTimeStampLocal,
+            AscendC::RoundMode::CAST_NONE,
             this->dbTimeStampLenAlign);
         CompareScalar(
             this->timeStampCmpResTmpLocal2, this->dbTimeStampFloat32Local, (float32_t)(0.0), AscendC::CMPMODE::LE,
