@@ -236,6 +236,8 @@ void TopkIvfpqL3CpuKernel::DoCompute(size_t startQidx, size_t queryCount,
             auto flagPtr = opflag.GetSubTensorDim1(qidx, bidx);
             for (int64_t i = 0; i < flagNum_; ++i) {
                 WAITING_FLAG_READY(*(flagPtr + i * flagSize_), TIMEOUT_CHECK_TICK, TIMEOUT_MS);
+            }
+            for (int64_t i = 0; i < handleBatch_; ++i) {
                 bool isLastBlock = (bidx + 1 == blockNum_ && i + 1 == handleBatch_);
                 ComputeBlock(qidx, bidx, i, topkOffsets, topkDists, ids, outdists, outlabels, isLastBlock, cmp);
             }
