@@ -181,13 +181,13 @@ int main(int argc, char **argv)
     -   头文件：mxIndex/device/include/IndexILFlat.h
     -   动态库：mxIndex/device/lib/libascendfaiss\_minios.so
 
-2.  代码需要使用CANN内置的HCC编译器（默认CANN安装路径下，编译器路径为“/usr/local/Ascend/ascend-toolkit/latest/toolkit/toolchain/hcc/bin/aarch64-target-linux-gnu-g++“）进行编译，编译完成后部署到Device侧（具体请参见《CANN 软件安装指南 （开放态,  Atlas 推理系列产品）》的“定制文件系统”章节进行部署）。
+2.  代码需要使用CANN内置的HCC编译器（默认CANN安装路径下，编译器路径为“/usr/local/Ascend/ascend-toolkit/latest/toolkit/toolchain/hcc/bin/aarch64-target-linux-gnu-g++”）进行编译，编译完成后部署到Device侧（具体请参见《CANN 软件安装指南 （开放态,  Atlas 推理系列产品）》的“定制文件系统”章节进行部署）。
 
     如果需通过SSH服务直接拷贝依赖到Device侧或通过SSH登录到Device上直接运行样例，则需要参考《CANN 软件安装指南 \(开放态,  Atlas 推理系列产品\)》的“使用DSMI接口打开SSH服务”章节解除SSH服务的50M内存占用限制，否则无法发送全部依赖文件，用例无法执行。
 
 3.  算子om文件生成。
 
-    执行以下命令，会在Host侧“mxIndex/modelpath“目录下会生成相关算子文件，算子也需要部署到Device侧。
+    执行以下命令，会在Host侧“mxIndex/modelpath”目录下会生成相关算子文件，算子也需要部署到Device侧。
 
     ```
     cd mxIndex
@@ -199,7 +199,7 @@ int main(int argc, char **argv)
 
 4.  编译用例代码。
 
-    在Index SDK工程内新建test路径（mxIndex/test），在test路径下创建“IndexILDemo.cpp“源文件，复制[参考用例代码](#section15454820982)，编译命令参考如下。
+    在Index SDK工程内新建test路径（mxIndex/test），在test路径下创建“IndexILDemo.cpp”源文件，复制[参考用例代码](#section15454820982)，编译命令参考如下。
 
     ```
     /usr/local/Ascend/ascend-toolkit/latest/toolkit/toolchain/hcc/bin/aarch64-target-linux-gnu-g++ -fPIC -fPIE -fstack-protector-all -D_FORTIFY_SOURCE=2 -O2 \ 
@@ -215,9 +215,9 @@ int main(int argc, char **argv)
     ```
 
 5.  部署依赖。
-    -   在可执行二进制文件的同级路径下需要配置路径“modelpath“，放置步骤3生成的算子文件。
-    -   CANN的相关库依赖，需要将“/usr/local/AscendMiniOs/aarch64-linux/lib64“部署到Device侧，并配置到“LD\_LIBRARY\_PATH“。
-    -   将动态库（mxIndex/device/lib/libascendfaiss\_minios.so）部署到Device侧，并配置到环境变量“LD\_LIBRARY\_PATH“。
+    -   在可执行二进制文件的同级路径下需要配置路径“modelpath”，放置步骤3生成的算子文件。
+    -   CANN的相关库依赖，需要将“/usr/local/AscendMiniOs/aarch64-linux/lib64”部署到Device侧，并配置到“LD\_LIBRARY\_PATH”。
+    -   将动态库（mxIndex/device/lib/libascendfaiss\_minios.so）部署到Device侧，并配置到环境变量“LD\_LIBRARY\_PATH”。
 
 
 
@@ -227,7 +227,7 @@ int main(int argc, char **argv)
 
 **前提条件<a name="section178968232301"></a>**
 
--   已经按照开放态的流程安装CANN，确保“/usr/local/AscendMiniOSRun/“文件夹已存在。具体操作请参见《CANN 软件安装指南 \(开放态, Atlas 推理系列产品\)》。
+-   已经按照开放态的流程安装CANN，确保“/usr/local/AscendMiniOSRun/”文件夹已存在。具体操作请参见《CANN 软件安装指南 \(开放态, Atlas 推理系列产品\)》。
 -   已经解除SSH服务的50M内存占用限制，确保可以发送全部依赖文件。具体操作可参考《CANN 软件安装指南 \(开放态,  Atlas 推理系列产品\)》的“使用DSMI接口打开SSH服务”章节。
 -   Host侧需为ARM架构。
 -   P2P内存在device侧预留4G，该部分内存默认不可用。若要使用这部分内存，达到最大库容，需使用**npu-smi info set -t p2p-mem-cfg -i "id" -d "value"**命令设置芯片BAR空间拷贝使能状态为“禁用”状态。命令使用可参考《Atlas 中心推理卡 25.3.RC1 npu-smi 命令参考》中的“[设置指定芯片BAR空间拷贝使能状态](https://support.huawei.com/enterprise/zh/doc/EDOC1100523602/dbbc4954)”章节。
@@ -236,14 +236,14 @@ int main(int argc, char **argv)
 
 1.  生成要运行的算法所需要的算子。算法介绍请参考[算法介绍](./user_guide.md#算法介绍)。
 2.  将以下依赖的库传输到Device侧上。
-    -   openblas_：/opt/OpenBLAS_/lib
-    -   Faiss_：/usr/local_/faiss/faiss1.10.0/lib
-    -   运行态toolkit so：_/usr/local_/AscendMiniOSRun/acllib/lib64和_/usr/local_/AscendMiniOSRun/aarch64-linux/data
-    -   检索so：$_\{MX\_INDEX\_HOME__\}_/mxIndex/host/lib，其中_\{MX\_INDEX\_HOME\}_为Index SDK的安装目录。
-    -   Host侧编译器中的libgfortran.so：_/usr/lib_/aarch64-linux-gnu/libgfortran.so\*
+    -   openblas：/opt/OpenBLAS/lib
+    -   Faiss：/usr/local/faiss/faiss1.10.0/lib
+    -   运行态toolkit so/usr/local/AscendMiniOSRun/acllib/lib64和/usr/local/AscendMiniOSRun/aarch64-linux/data
+    -   检索so：$\{MX\_INDEX\_HOME\}/mxIndex/host/lib，其中\{MX\_INDEX\_HOME\}为Index SDK的安装目录。
+    -   Host侧编译器中的libgfortran.so：/usr/lib/aarch64-linux-gnu/libgfortran.so\*
     -   Demo编译出来的二进制
     -   toolkit目录下的latest/opp/version.info文件
-    -   算子文件：$_\{MX\_INDEX\_HOME__\}_/modelpath/
+    -   算子文件：$\{MX\_INDEX\_HOME\}/modelpath/
 
         > [!NOTE] 说明 
         >算子文件必须保证只有Atlas 推理系列产品的算子，不能有其他产品的算子，否则可能导致Device侧运行失败。

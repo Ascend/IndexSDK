@@ -108,7 +108,7 @@
 
 **解决方案<a name="section1477773713218"></a>**
 
-在运行算子生成脚本时通过降低“-pool“参数值，重新运行脚本，可从**-pool 1**开始尝试设置。
+在运行算子生成脚本时通过降低“-pool”参数值，重新运行脚本，可从**-pool 1**开始尝试设置。
 
 
 ### NumPy的数据类型np.float\_ 已被移除<a name="ZH-CN_TOPIC_0000002252367678"></a>
@@ -206,7 +206,7 @@ export CPLUS_INCLUDE_PATH=/usr/include/c++/12:/usr/include/c++/12/aarch64-openEu
 
 **解决方案<a name="section18586112214564"></a>**
 
-可以设置环境变量“MX\_INDEX\_FINALIZE”为0，则Index SDK不调用aclFinalize；设置为“1“表示仍调用aclFinalize。其他为无效设置。
+可以设置环境变量“MX\_INDEX\_FINALIZE”为0，则Index SDK不调用aclFinalize；设置为“1”表示仍调用aclFinalize。其他为无效设置。
 
 用户需要确保进程退出时调用一次aclFinalize进行释放，否则仍可能在进程退出时出现错误。
 
@@ -215,7 +215,7 @@ export CPLUS_INCLUDE_PATH=/usr/include/c++/12:/usr/include/c++/12/aarch64-openEu
 
 **问题现象<a name="section7388731387"></a>**
 
-执行查询操作，当查询的条数大于100时，出现了性能波动。
+执行查询操作，当查询的条数大于1000时，出现了性能波动。
 
 **问题原因<a name="section2012040380"></a>**
 
@@ -225,12 +225,12 @@ Host侧CPU并发处理时，调度到非亲和性的CPU核上，导致耗时增�
 
 需对检索应用进行绑核操作，具体过程参考如下。
 
-1.  获取对应的NUMA node信息。如[图1](#fig7992105655611)可以看到当前查询的NPU属于“NUMA node 0“。
+1.  获取对应的NUMA node信息。如[图1](#fig7992105655611)可以看到当前查询的NPU属于“NUMA node 0”。
 
     **图 1**  获取NUMA node信息<a id="fig7992105655611"></a>  
     ![](figures/获取NUMA-node信息.png "获取NUMA-node信息")
 
-2.  使用**lscpu**查看NUMA node 0上包含的CPU核信息，如[图2](#fig1614971412517)所示，可以看到“NUMA node 0“所拥有的CPU核为“0-13,28-41“。
+2.  使用**lscpu**查看NUMA node 0上包含的CPU核信息，如[图2](#fig1614971412517)所示，可以看到“NUMA node 0”所拥有的CPU核为“0-13,28-41”。
 
     **图 2**  使用命令确认CPU核信息<a id="fig1614971412517"></a>  
     ![](figures/使用命令确认CPU核信息.png "使用命令确认CPU核信息")
@@ -241,7 +241,7 @@ Host侧CPU并发处理时，调度到非亲和性的CPU核上，导致耗时增�
     taskset -c 0-13,28-41 ./mxIndexApp
     ```
 
-    其中，_mxIndexApp_为待绑定的检索应用，请根据实际应用名称进行替换。
+    其中，mxIndexApp为待绑定的检索应用，请根据实际应用名称进行替换。
 
 
 
@@ -255,16 +255,16 @@ Host侧CPU并发处理时，调度到非亲和性的CPU核上，导致耗时增�
 
 **问题原因<a name="section147095251275"></a>**
 
-未能通过环境变量中的路径找到“libascendfaiss.so“文件。
+未能通过环境变量中的路径找到“libascendfaiss.so”文件。
 
 **解决方案<a name="section19641271973"></a>**
 
-请确认“libascendfaiss.so“的路径（位于安装包host/lib下），并将其添加进“LD\_LIBRARY\_PATH“环境变量中。
+请确认“libascendfaiss.so”的路径（位于安装包host/lib下），并将其添加进“LD\_LIBRARY\_PATH”环境变量中。
 
 
 ### 链接libfaiss.so时，返回**undefined reference**错误。<a name="ZH-CN_TOPIC_0000002287001049"></a>
 
-在openEuler release 22.03 \(LTS\)系统中，通过系统默认的Cmake和gcc编译安装Faiss后，在链接“libfaiss.so“时，返回**undefined reference**错误。
+在openEuler release 22.03 \(LTS\)系统中，通过系统默认的Cmake和gcc编译安装Faiss后，在链接“libfaiss.so”时，返回**undefined reference**错误。
 
 **问题原因<a name="section5819920577"></a>**
 

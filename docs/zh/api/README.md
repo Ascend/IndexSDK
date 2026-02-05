@@ -1,5 +1,16 @@
 # API参考<a name="ZH-CN_TOPIC_0000001456534960"></a>
 
+|目录|导航链接|
+|--|--|
+|全量检索|[full_retrieval](./full_retrieval.md)|
+|近似检索|[approximate_retrieval](./approximate_retrieval.md)|
+|属性过滤检索|[attribute_filtering-based_retrieva](./attribute_filtering-based_retrieva.md)|
+|多index批量检索|[multi-index_batch_retrieval](./multi-index_batch_retrieval.md)|
+|其他功能|[more_functions](./more_functions.md)|
+|未使用接口|[unused_apis](./unused_apis.md)|
+|接口调用返回值参考|[return_code_reference](./return_code_reference.md)|
+
+
 ## 接口变更说明<a name="ZH-CN_TOPIC_0000001691057326"></a>
 
 本章节的接口变更说明包括新增、修改、删除和退出声明。接口变更只体现代码层面的修改，不包含文档本身在语言、格式、链接等方面的优化改进。
@@ -66,7 +77,7 @@
 >-   本文档不再描述基类faiss::Index的成员函数和变量。
 >-   关于Config类中的resourceSize变量，其作用是预留特征检索过程存储中间结果的内存大小，单位为Byte，当底库特征较大（如超过300万）且查询请求数较大时需要调大，避免检索过程中因申请临时内存导致性能抖动（衰退），建议设置为1024 \* 1024 \* 1024 Byte。
 >    创建新的Index时，将会与已申请的resources进行对比，如存在差异则会释放原有内存资源并参照最新Index的resources重新申请，建议保持Index整体的resources值一致。
->-   用户可以通过设置“MX\_INDEX\_SYNCHRONIZE\_STREAM\_TIME“环境变量设置算子执行的超时时间，单位为“ms“，取值范围\[60000, 1800000\]，默认为“300000“。
+>-   用户可以通过设置“MX\_INDEX\_SYNCHRONIZE\_STREAM\_TIME”环境变量设置算子执行的超时时间，单位为“ms”，取值范围\[60000, 1800000\]，默认为“300000”。
 
 
 ## 头文件列表说明<a name="ZH-CN_TOPIC_0000001698168801"></a>
@@ -82,7 +93,7 @@
 |AscendIndexCluster.h|${mxIndex_install_path}/mxIndex/include/faiss/ascend/|AscendIndexCluster对外接口。|
 |AscendIndexFlat.h|${mxIndex_install_path}/mxIndex/include/faiss/ascend/|该类主要提供Flat-FP16的对外接口。|
 |AscendIndexIVF.h|${mxIndex_install_path}/mxIndex/include/faiss/ascend/|AscendIndexIVF是近似检索的基类，不能直接使用。|
-|AscendIndexIVFSP.h|${mxIndex_install_path}/mxIndex/include/faiss/ascend/|该类提供IVFSP的对外接口，核心接口包括add，add_with_ids，search和search_with_filter构造函数。|
+|AscendIndexIVFSP.h|${mxIndex_install_path}/mxIndex/include/faiss/ascend/|该类提供IVFSP的对外接口，核心接口包括add，add_with_ids，search和search_with_filter。|
 |AscendIndexIVFSQ.h|${mxIndex_install_path}/mxIndex/include/faiss/ascend/|IVFSQ对外接口，包括train，copyto，copyfrom，构造函数。|
 |AscendIndexInt8.h|${mxIndex_install_path}/mxIndex/include/faiss/ascend/|AscendIndex作为特征检索组件中的int8类型的Index的基类，向上承接Faiss，向下为特征检索中的IndexInt8Flat定义接口。|
 |AscendIndexInt8Flat.h|${mxIndex_install_path}/mxIndex/include/faiss/ascend/|该类主要提供Flat-Int8的对外接口。|
