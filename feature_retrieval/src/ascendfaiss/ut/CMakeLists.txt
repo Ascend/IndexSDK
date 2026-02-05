@@ -77,108 +77,31 @@ ADD_DEFINITIONS(
     -DHOSTCPU
 )
 
-SET(ASCENDFAISS_SRC
-    ${ASCEND_PROJECT_HOME}/ascend/AscendCloner.cpp
-    ${ASCEND_PROJECT_HOME}/ascend/AscendClonerOptions.cpp
-    ${ASCEND_PROJECT_HOME}/ascend/AscendIndex.cpp
-    ${ASCEND_PROJECT_HOME}/ascend/AscendIndexFlat.cpp
-    ${ASCEND_PROJECT_HOME}/ascend/AscendIndexInt8.cpp
-    ${ASCEND_PROJECT_HOME}/ascend/AscendIndexInt8Flat.cpp
-    ${ASCEND_PROJECT_HOME}/ascend/AscendIndexIVF.cpp
-    ${ASCEND_PROJECT_HOME}/ascend/AscendIndexIVFSQ.cpp
-    ${ASCEND_PROJECT_HOME}/ascend/AscendIndexIVFFlat.cpp
-    ${ASCEND_PROJECT_HOME}/ascend/AscendIndexSQ.cpp
-    ${ASCEND_PROJECT_HOME}/ascend/AscendMultiIndexSearch.cpp
-    ${ASCEND_PROJECT_HOME}/ascend/AscendNNInference.cpp
-    ${ASCEND_PROJECT_HOME}/ascend/custom/AscendClustering.cpp
-    ${ASCEND_PROJECT_HOME}/ascend/custom/AscendIndexFlatAT.cpp
-    ${ASCEND_PROJECT_HOME}/ascend/custom/AscendIndexFlatATInt8.cpp
-    ${ASCEND_PROJECT_HOME}/ascend/custom/AscendIndexIVFSQT.cpp
-    ${ASCEND_PROJECT_HOME}/ascend/custom/IReduction.cpp
-    ${ASCEND_PROJECT_HOME}/ascend/custom/PcarReduction.cpp
-    ${ASCEND_PROJECT_HOME}/ascend/custom/NNReduction.cpp
-    ${ASCEND_PROJECT_HOME}/ascend/impl/AscendIndexFlatImpl.cpp
-    ${ASCEND_PROJECT_HOME}/ascend/impl/AscendIndexImpl.cpp
-    ${ASCEND_PROJECT_HOME}/ascend/impl/AscendIndexInt8Impl.cpp
-    ${ASCEND_PROJECT_HOME}/ascend/impl/AscendIndexInt8FlatImpl.cpp
-    ${ASCEND_PROJECT_HOME}/ascend/impl/AscendIndexIVFImpl.cpp
-    ${ASCEND_PROJECT_HOME}/ascend/impl/AscendIndexIVFSQImpl.cpp
-    ${ASCEND_PROJECT_HOME}/ascend/impl/AscendIndexIVFFlatImpl.cpp
-    ${ASCEND_PROJECT_HOME}/ascend/impl/AscendIndexSQImpl.cpp
-    ${ASCEND_PROJECT_HOME}/ascend/impl/AscendNNInferenceImpl.cpp
-    ${ASCEND_PROJECT_HOME}/ascend/custom/impl/AscendIndexFlatATImpl.cpp
-    ${ASCEND_PROJECT_HOME}/ascend/custom/impl/AscendIndexFlatATInt8Impl.cpp
-    ${ASCEND_PROJECT_HOME}/ascend/custom/impl/AscendIndexIVFSQFuzzyImpl.cpp
-    ${ASCEND_PROJECT_HOME}/ascend/custom/impl/AscendIndexIVFSQCImpl.cpp
-    ${ASCEND_PROJECT_HOME}/ascend/custom/impl/AscendIndexIVFSQTImpl.cpp
-    ${ASCEND_PROJECT_HOME}/ascend/utils/fp16.cpp
-    ${ASCEND_PROJECT_HOME}/ascend/utils/MergeResUtils.cpp
-    ${ASCEND_PROJECT_HOME}/ascenddaemon/StandardAscendResources.cpp
-    ${ASCEND_PROJECT_HOME}/ascenddaemon/ThreadSafeStandardAscendResources.cpp
-    ${ASCEND_PROJECT_HOME}/ascenddaemon/impl/AuxIndexStructures.cpp
-    ${ASCEND_PROJECT_HOME}/ascenddaemon/impl/Index.cpp
-    ${ASCEND_PROJECT_HOME}/ascenddaemon/impl/IndexFlat.cpp
-    ${ASCEND_PROJECT_HOME}/ascenddaemon/impl/IndexInt8.cpp
-    ${ASCEND_PROJECT_HOME}/ascenddaemon/impl/IndexInt8Flat.cpp
-    ${ASCEND_PROJECT_HOME}/ascenddaemon/impl/IndexIVF.cpp
-    ${ASCEND_PROJECT_HOME}/ascenddaemon/impl/IndexIVFSQ.cpp
-    ${ASCEND_PROJECT_HOME}/ascenddaemon/impl/IndexIVFFlat.cpp
-    ${ASCEND_PROJECT_HOME}/ascenddaemon/impl/Int8L2Norm.cpp
-    ${ASCEND_PROJECT_HOME}/ascenddaemon/impl/IndexSQ.cpp
-    ${ASCEND_PROJECT_HOME}/ascenddaemon/utils/AscendMemory.cpp
-    ${ASCEND_PROJECT_HOME}/ascenddaemon/utils/AscendOpDesc.cpp
-    ${ASCEND_PROJECT_HOME}/ascenddaemon/utils/AscendOperator.cpp
-    ${ASCEND_PROJECT_HOME}/ascenddaemon/utils/AscendStackMemory.cpp
-    ${ASCEND_PROJECT_HOME}/ascenddaemon/utils/AscendUtils.cpp
-    ${ASCEND_PROJECT_HOME}/ascenddaemon/utils/MemorySpace.cpp
-    ${ASCEND_PROJECT_HOME}/ascenddaemon/utils/Random.cpp
-    ${ASCEND_PROJECT_HOME}/ascenddaemon/utils/TopkOp.cpp
-    ${ASCEND_PROJECT_HOME}/ascenddaemon/utils/ModelInference.cpp
-    ${ASCEND_PROJECT_HOME}/ascenddaemon/utils/ModelExecuter.cpp
-    ${ASCEND_PROJECT_HOME}/ascenddaemon/utils/DeviceMemMng.cpp
-    ${ASCEND_PROJECT_HOME}/ascenddaemon/utils/ThreadSafeDistComputeOpsManager.cpp
-    ${ASCEND_PROJECT_HOME}/ascenddaemon/utils/DistComputeOpsManager.cpp
-    ${ASCEND_PROJECT_HOME}/ascendhost/src/impl/AscendClusteringImpl.cpp
-    ${ASCEND_PROJECT_HOME}/ascendhost/src/impl/AscendIndexBinaryFlatImpl.cpp
-    ${ASCEND_PROJECT_HOME}/ascendhost/src/impl/TSBase.cpp
-    ${ASCEND_PROJECT_HOME}/ascendhost/src/impl/TSBinaryFlat.cpp
-    ${ASCEND_PROJECT_HOME}/ascendhost/src/impl/TSFlatIP.cpp
-    ${ASCEND_PROJECT_HOME}/ascendhost/src/impl/TSInt8FlatCos.cpp
-    ${ASCEND_PROJECT_HOME}/ascendhost/src/impl/TSInt8FlatL2.cpp
-    ${ASCEND_PROJECT_HOME}/ascendhost/src/impl/HeteroBlockGroupMgrImpl.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/../ascendhost/src/impl/AscendIndexClusterImpl.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/../ascendhost/src/impl/AscendIndexILFlatImpl.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/../ascendhost/src/index/AscendIndexCluster.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/../ascendhost/src/index/AscendIndexILFlat.cpp
-    ${ASCEND_PROJECT_HOME}/ascendhost/src/index/IndexFlatIPAicpu.cpp
-    ${ASCEND_PROJECT_HOME}/ascendhost/src/index/IndexFlatL2Aicpu.cpp
-    ${ASCEND_PROJECT_HOME}/ascendhost/src/index/IndexInt8FlatL2Aicpu.cpp
-    ${ASCEND_PROJECT_HOME}/ascendhost/src/index/IndexInt8FlatCosAicpu.cpp
-    ${ASCEND_PROJECT_HOME}/ascendhost/src/index/IndexIVFSQIPAicpu.cpp
-    ${ASCEND_PROJECT_HOME}/ascendhost/src/index/IndexIVFSQL2Aicpu.cpp
-    ${ASCEND_PROJECT_HOME}/ascendhost/src/index/IndexSQIPAicpu.cpp
-    ${ASCEND_PROJECT_HOME}/ascendhost/src/index/IndexSQL2Aicpu.cpp
-    ${ASCEND_PROJECT_HOME}/ascendhost/src/index/AscendIndexTS.cpp
-    ${ASCEND_PROJECT_HOME}/ascendhost/src/index/AscendIndexBinaryFlat.cpp
-    ${ASCEND_PROJECT_HOME}/ascendhost/src/index_custom/IndexFlatAT.cpp
-    ${ASCEND_PROJECT_HOME}/ascendhost/src/index_custom/IndexFlatATAicpu.cpp
-    ${ASCEND_PROJECT_HOME}/ascendhost/src/index_custom/IndexFlatATInt8Aicpu.cpp
-    ${ASCEND_PROJECT_HOME}/ascendhost/src/index_custom/IndexFlatATSubAicpu.cpp
-    ${ASCEND_PROJECT_HOME}/ascendhost/src/index_custom/IndexIVFSQCIPAicpu.cpp
-    ${ASCEND_PROJECT_HOME}/ascendhost/src/index_custom/IndexIVFSQTIPAicpu.cpp
-    ${ASCEND_PROJECT_HOME}/ascendhost/src/index_custom/IndexInt8FlatApproxL2Aicpu.cpp
-    ${ASCEND_PROJECT_HOME}/common/threadpool/AscendThreadPool.cpp
-    ${ASCEND_PROJECT_HOME}/common/hmm/TSInt8FlatHPPCosFactoryStub.cpp
+# 包括CPP源文件的所有路径
+SET(ASCEND_CORE_DIRS
+    ${ASCEND_PROJECT_HOME}/ascend
+    ${ASCEND_PROJECT_HOME}/ascenddaemon
+    ${ASCEND_PROJECT_HOME}/ascendhost/src
+    ${ASCEND_PROJECT_HOME}/common
+)
+
+SET(ASCENDFAISS_SRC "")
+
+# 收集目录中的源文件
+FOREACH(DIR ${ASCEND_CORE_DIRS})
+    IF(EXISTS ${DIR})
+        FILE(GLOB_RECURSE DIR_SOURCES "${DIR}/*.cpp")
+        LIST(APPEND ASCENDFAISS_SRC ${DIR_SOURCES})
+    ENDIF()
+ENDFOREACH()
+
+LIST(APPEND ASCENDFAISS_SRC
     ${CMAKE_CURRENT_LIST_DIR}/stub/hmm/HmmMock.cpp
     # for ilflat
-    ${ASCEND_PROJECT_HOME}/ascenddaemon/impl_device/IndexILFlat.cpp
-    ${ASCEND_PROJECT_HOME}/ascenddaemon/utils/AscendRWLock.cpp
     ${CMAKE_CURRENT_LIST_DIR}/Common.cpp
     # for great
-    ${ASCEND_PROJECT_HOME}/ascend/mixsearch/great/AscendIndexGreat.cpp
     ${CMAKE_CURRENT_LIST_DIR}/stub/great/GreatMock.cpp
     # vstar
-    ${ASCEND_PROJECT_HOME}/ascend/mixsearch/vstar/AscendIndexVStar.cpp
     ${CMAKE_CURRENT_LIST_DIR}/stub/vstar/VstarMock.cpp
 )
 
@@ -239,19 +162,8 @@ target_link_directories(ascendfaiss PRIVATE ${ASCENDFAISS_LIBRARY_PATH})
 TARGET_LINK_LIBRARIES(ascendfaiss PRIVATE ${ASCENDFAISS_LIBRARY})
 INSTALL(TARGETS  ascendfaiss  DESTINATION  lib)
 
-SET(TEST_SRC_FILES TestAscendIndexUTBinaryFlat.cpp
-                   TestAscendIndexILFlatUT.cpp
-                   TestAscendIndexUTCluster.cpp
-                   TestAscendIndexUTClustering.cpp
-                   TestAscendIndexUTFlatAT.cpp
-                   TestAscendIndexUTILFlat.cpp
-                   TestAscendIndexUTInt8.cpp
-                   TestAscendIndexUTIVFSQ.cpp
-                   TestAscendIndexUTIVFSQT.cpp
-                   TestAscendIndexUTSQ.cpp
-                   TestAscendIndexUTTS.cpp
-                   TestAscendIndexUTIVFFlat.cpp
-)
+FILE(GLOB TEST_SRC_FILES "${CMAKE_CURRENT_LIST_DIR}/Test*.cpp")
+
 SET(TARGET_OUT TestAscendIndexUT)
 ADD_EXECUTABLE(${TARGET_OUT}  ${TEST_SRC_FILES})
 
