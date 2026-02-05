@@ -9,8 +9,8 @@
 
 当前支持以下算法：
 
--   二值化特征检索（汉明距离）：使用前需要手动生成[BinaryFlat](../user_guide.md#binaryflat)、[Mask](../user_guide.md#mask)算子并移动到对应的“modelpath“目录中。
--   Int8Flat（cos距离）、FP16Flat（IP距离）、Int8Flat（L2距离）：使用前需要手动生成[Mask](../user_guide.md#mask)算子并移动到对应的“modelpath“目录中。
+-   二值化特征检索（汉明距离）：使用前需要手动生成[BinaryFlat](../user_guide.md#binaryflat)、[Mask](../user_guide.md#mask)算子并移动到对应的“modelpath”目录中。
+-   Int8Flat（cos距离）、FP16Flat（IP距离）、Int8Flat（L2距离）：使用前需要手动生成[Mask](../user_guide.md#mask)算子并移动到对应的“modelpath”目录中。
 -   支持多线程并发调用，需要设置“MX\_INDEX\_MULTITHREAD”环境变量为1，即export MX\_INDEX\_MULTITHREAD=1，设置为其他值或者不设置，则表示不开启多线程功能。当前的特征检索内部会使用OMP做性能加速，OMP不支持与其他多线程机制混用。反复创建新线程使用OMP会导致内存持续累加，因此建议使用固定的线程来运行检索任务。
 
 
@@ -307,7 +307,7 @@
 </tr>
 <tr id="row122155911383"><th class="firstcol" valign="top" width="20.03%" id="mcps1.1.3.3.1"><p id="p112195910383"><a name="p112195910383"></a><a name="p112195910383"></a>输入</p>
 </th>
-<td class="cellrowborder" valign="top" width="79.97%" headers="mcps1.1.3.3.1 "><p id="p960115103339"><a name="p960115103339"></a><a name="p960115103339"></a><strong id="b29989101715"><a name="b29989101715"></a><a name="b29989101715"></a>int64_t count</strong>：Token的长度。</p>
+<td class="cellrowborder" valign="top" width="79.97%" headers="mcps1.1.3.3.1 "><p id="p960115103339"><a name="p960115103339"></a><a name="p960115103339"></a><strong id="b29989101715"><a name="b29989101715"></a><a name="b29989101715"></a>int64_t count</strong>：待删除的Token数量。</p>
 <p id="p871394423613"><a name="p871394423613"></a><a name="p871394423613"></a><strong id="b2814139201"><a name="b2814139201"></a><a name="b2814139201"></a>const uint32_t *tokens</strong>：Token对应的ID。</p>
 </td>
 </tr>
@@ -384,7 +384,7 @@
 <tr id="row119504292414"><th class="firstcol" valign="top" width="20.03%" id="mcps1.1.3.3.1"><p id="p09501729114112"><a name="p09501729114112"></a><a name="p09501729114112"></a>输入</p>
 </th>
 <td class="cellrowborder" valign="top" width="79.97%" headers="mcps1.1.3.3.1 "><p id="p114134413433"><a name="p114134413433"></a><a name="p114134413433"></a><strong id="b124422894315"><a name="b124422894315"></a><a name="b124422894315"></a>int64_t start：</strong>批量删除的特征起始位置。</p>
-<p id="p1741320420433"><a name="p1741320420433"></a><a name="p1741320420433"></a><strong id="b1149672012430"><a name="b1149672012430"></a><a name="b1149672012430"></a>Int64_t count：</strong>批量删除的特征数量。</p>
+<p id="p1741320420433"><a name="p1741320420433"></a><a name="p1741320420433"></a><strong id="b1149672012430"><a name="b1149672012430"></a><a name="b1149672012430"></a>int64_t count：</strong>批量删除的特征数量。</p>
 </td>
 </tr>
 <tr id="row1795015292412"><th class="firstcol" valign="top" width="20.03%" id="mcps1.1.3.4.1"><p id="p4950102984115"><a name="p4950102984115"></a><a name="p4950102984115"></a>输出</p>
@@ -819,8 +819,10 @@
 <p id="p580191612428"><a name="p580191612428"></a><a name="p580191612428"></a><strong id="b1137774510218"><a name="b1137774510218"></a><a name="b1137774510218"></a>uint32_t dim</strong>：底库向量的维度。</p>
 <p id="p1916155584617"><a name="p1916155584617"></a><a name="p1916155584617"></a><strong id="b1192712462213"><a name="b1192712462213"></a><a name="b1192712462213"></a>uint32_t tokenNum</strong>：当前时空库Token的最大数量，需要和生成对应的Mask算子Token数量一致。</p>
 <p id="p19371341202917"><a name="p19371341202917"></a><a name="p19371341202917"></a><strong id="b88105533316"><a name="b88105533316"></a><a name="b88105533316"></a>uint64_t resources</strong>：共享内存大小。</p>
-<p id="p13858143610478"><a name="p13858143610478"></a><a name="p13858143610478"></a><strong id="b12145453824"><a name="b12145453824"></a><a name="b12145453824"></a>AlgorithmType algType</strong>：底层使用的距离比对算法，默认为<span class="parmvalue" id="parmvalue69446331337"><a name="parmvalue69446331337"></a><a name="parmvalue69446331337"></a>“AlgorithmType::FLAT_HAMMING”</span>。</p>
-<p id="p511515103547"><a name="p511515103547"></a><a name="p511515103547"></a><strong id="b18177046143817"><a name="b18177046143817"></a><a name="b18177046143817"></a>MemoryStrategy memoryStrategy</strong>：底层使用的内存策略，默认为<span class="parmvalue" id="parmvalue132807333394"><a name="parmvalue132807333394"></a><a name="parmvalue132807333394"></a>“MemoryStrategy::PURE_DEVICE_MEMORY”</span>。</p>
+<p id="p13858143610478"><a name="p13858143610478"></a><a name="p13858143610478"></a><strong id="b12145453824"><a name="b12145453824"></a><a name="b12145453824"></a>AlgorithmType algType</strong>：底层使用的距离比对算法，默认为<span class="parmvalue" id="parmvalue69446331337"><a name="parmvalue69446331337"></a><a name="parmvalue69446331337"></a>“AlgorithmType::FLAT_HAMMING”。</span>可选算法参见如下。</p>
+<a name="ul7984114704715"></a><a name="ul7984114704715"></a><ul id="ul7984114704715"><li><span class="parmvalue" id="parmvalue19768835143"><a name="parmvalue19768835143"></a><a name="parmvalue19768835143"></a>“AlgorithmType::FLAT_HAMMING”</span>：二值化特征检索（汉明距离）。</li><li><span class="parmvalue" id="parmvalue4540183574817"><a name="parmvalue4540183574817"></a><a name="parmvalue4540183574817"></a>“AlgorithmType::FLAT_COS_INT8”</span>：Int8Flat（cos距离）。</li></ul>
+<div class="p" id="p511515103547"><a name="p511515103547"></a><a name="p511515103547"></a><strong id="b18177046143817"><a name="b18177046143817"></a><a name="b18177046143817"></a>MemoryStrategy memoryStrategy</strong>：底层使用的内存策略，默认为<span class="parmvalue" id="parmvalue132807333394"><a name="parmvalue132807333394"></a><a name="parmvalue132807333394"></a>“MemoryStrategy::PURE_DEVICE_MEMORY”</span>，可选策略参见如下。<a name="ul6481121833912"></a><a name="ul6481121833912"></a><ul id="ul6481121833912"><li>MemoryStrategy::PURE_DEVICE_MEMORY：纯Device内存策略。</li><li>MemoryStrategy::HETERO_MEMORY：异构内存策略。</li></ul>
+</div>
 <p id="p14841631173010"><a name="p14841631173010"></a><a name="p14841631173010"></a><strong id="b1383382923017"><a name="b1383382923017"></a><a name="b1383382923017"></a>customAttrLen</strong>：自定义属性长度。</p>
 <p id="p133252511308"><a name="p133252511308"></a><a name="p133252511308"></a><strong id="b92382483110"><a name="b92382483110"></a><a name="b92382483110"></a>customAttrBlockSize</strong>：自定义属性blocksize的大小。</p>
 <p id="p195521819124"><a name="p195521819124"></a><a name="p195521819124"></a><strong id="b19493104084719"><a name="b19493104084719"></a><a name="b19493104084719"></a>maxFeatureRowCount：</strong>底库最大向量条数。</p>
@@ -1220,7 +1222,7 @@ uint8\_t\*：特征token ID的列表，每个uint8\_t成员从低位到高位，
 例如：一个过滤器的token列表包含两个非零的uint8\_t成员：\[7, 15, 0, 0, ……, 0\]，非零成员的二进制表示为00000111、00001111，则它们表达的有效token ID为：0，1，2，8，9，10，11。
 
 > [!NOTE] 说明 
->“tokenBitSet“长度应为“tokenBitSetLen“，否则可能出现越界读写错误并引起程序崩溃。
+>“tokenBitSet”长度应为“tokenBitSetLen”，否则可能出现越界读写错误并引起程序崩溃。
 
 
 #### tokenBitSetLen接口<a name="ZH-CN_TOPIC_0000001458687402"></a>
@@ -1240,7 +1242,7 @@ uint32\_t：指定过滤器AttrFilter中tokenBitSet字段的长度。
 
 #### val接口<a name="ZH-CN_TOPIC_0000001976479160"></a>
 
-int16\_t：记录当前特征的附加属性信息，用二进制表示，“1“代表“是“，“0“代表“否“。
+int16\_t：记录当前特征的附加属性信息，用二进制表示，“1”代表“是”，“0”代表“否”。
 
 
 
@@ -1255,7 +1257,7 @@ int16\_t：记录当前特征的附加属性信息，用二进制表示，“1�
 
 #### filterVal接口<a name="ZH-CN_TOPIC_0000001976481180"></a>
 
-int16\_t：待查询的附加属性，用二进制表示，“1“表示保留附加属性，“0“表示过滤附加属性。
+int16\_t：待查询的附加属性，用二进制表示，“1”表示保留附加属性，“0”表示过滤附加属性。
 
 
 #### matchVal接口<a name="ZH-CN_TOPIC_0000002013041289"></a>

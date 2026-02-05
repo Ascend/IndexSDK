@@ -648,7 +648,7 @@ AscendIndexBinaryFlat类继承自Faiss的IndexBinary类，用于二值化特征�
 
 ### AscendIndexBinaryFlatConfig<a name="ZH-CN_TOPIC_0000001506495777"></a>
 
-AscendIndexBinaryFlat需要使用对应的AscendIndexBinaryFlatConfig执行对应资源的初始化，配置执行检索过程中的硬件资源“devices“和预置的内存池大小“resources“。
+AscendIndexBinaryFlat需要使用对应的AscendIndexBinaryFlatConfig执行对应资源的初始化，配置执行检索过程中的硬件资源“devices”和预置的内存池大小“resources”。
 
 -   AscendIndexBinaryFlat仅支持单个昇腾AI处理器的Atlas 推理系列产品，依赖AICPU算子和BinaryFlat算子，请参考[自定义算子介绍](../user_guide.md#自定义算子介绍)生成对应算子。
 -   AscendIndexBinaryFlat仅支持标准态部署方式。
@@ -657,7 +657,7 @@ AscendIndexBinaryFlat需要使用对应的AscendIndexBinaryFlatConfig执行对�
 
 |成员|类型|说明|
 |--|--|--|
-|deviceList|std::vector<int>|Device侧设备ID。AscendIndexBinaryFlat类仅支持单个Atlas 推理系列产品的加速卡。|
+|deviceList|std::vector\<int>|Device侧设备ID。AscendIndexBinaryFlat类仅支持单个Atlas 推理系列产品的加速卡。|
 |resourceSize|int64_t|Device侧内存池大小，单位为字节，默认参数值为1024MB，合法范围为[1024*1024*1024, 32*1024*1024*1024]，10million底库推荐申请5GB。|
 
 
@@ -1564,9 +1564,9 @@ AscendIndexIVFSP只支持标准态场景，且只支持Atlas 推理系列产品�
 #### AscendIndexIVFSP接口<a name="ZH-CN_TOPIC_0000001585736168"></a>
 
 > [!NOTE] 说明 
->将参数“config“传递给函数前，请根据实际情况先设置conf.handleBatch、conf.nprobe、conf.searchListSize的值（字段描述参考[公共参数](#ZH-CN_TOPIC_0000001635696057)）。
+>将参数“config”传递给函数前，请根据实际情况先设置conf.handleBatch、conf.nprobe、conf.searchListSize的值（字段描述参考[公共参数](#ZH-CN_TOPIC_0000001635696057)）。
 >其中conf.handleBatch、conf.searchListSize值需与[IVFSP](../user_guide.md#ivfsp)业务算子模型文件生成中的<nprobe handle batch\>、<search list size\>保持一致。
->conf.filterable（继承自[AscendIndexConfig](./full_retrieval.md#ascendindexconfig) ）默认为“false“，如果要使用search\_with\_filter\(\)接口，需设置**conf.filterable = true**。“conf.filterable“设置为“true“将在NPU卡上存储额外的信息，消耗更多的NPU卡上内存。
+>conf.filterable（继承自[AscendIndexConfig](./full_retrieval.md#ascendindexconfig) ）默认为“false”，如果要使用search\_with\_filter\(\)接口，需设置**conf.filterable = true**。“conf.filterable”设置为“true”将在NPU卡上存储额外的信息，消耗更多的NPU卡上内存。
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
@@ -2311,7 +2311,7 @@ AscendIndexIVFSP只支持标准态场景，且只支持Atlas 推理系列产品�
 </tr>
 <tr id="row22159193815"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.6.1"><p id="p423590386"><a name="p423590386"></a><a name="p423590386"></a>参数约束</p>
 </th>
-<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.6.1 "><p id="p8383354134415"><a name="p8383354134415"></a><a name="p8383354134415"></a>了解AscendIndexCodeBookInitFromMemParams相关说明，请参见<a href="AscendIndexCodeBookInitFromMemParams接口.md">AscendIndexCodeBookInitFromMemParams</a>。</p>
+<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.6.1 "><p id="p8383354134415"><a name="p8383354134415"></a><a name="p8383354134415"></a>了解AscendIndexCodeBookInitFromMemParams相关说明，请参见<a href="#ascendindexcodebookinitfrommemparams接口">AscendIndexCodeBookInitFromMemParams</a>。</p>
 </td>
 </tr>
 </tbody>
@@ -4206,7 +4206,7 @@ AscendIndexIVFSQT需要使用对应的AscendIndexIVFSQTConfig执行对应资源�
 **AscendIndexIVFSQTConfig<a name="section6579185362314"></a>**
 
 > [!NOTE] 说明 
->AscendIndexIVFSQTConfig继承于[AscendIndexIVFSQConfig](AscendIndexIVFSQConfig.md)。
+>AscendIndexIVFSQTConfig继承于[AscendIndexIVFSQConfig](#ascendindexivfsqconfig)。
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>

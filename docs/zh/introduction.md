@@ -122,12 +122,12 @@ openEuler 22.03<li>openEuler 24.03<li>Ubuntu 18.04<li>Ubuntu 20.04<li>EulerOS 2.
 </tr>
 <tr>
 <td >Atlas A2 推理系列产品
-<br>> [!NOTE] 说明 vAtlas A2 推理系列产品支持AscendIndexFlat及AscendIndexInt8Flat算法。</td>
+<br>说明：vAtlas A2 推理系列产品支持AscendIndexFlat及AscendIndexInt8Flat算法。</td>
 <td>Atlas 800I A2 推理服务器</td>
 <td><li>CentOS 7.6<li>openEuler 20.03<li>openEuler 22.03<li>openEuler 24.03<li>Ubuntu 18.04<li>Ubuntu 20.04<li>Ubuntu 24.04<li>EulerOS 2.12<li>UOS V20<li>KylinOS V10 SP3<li>KylinOS V11<li>BC-Linux_21.10 U4</td>
 </tr>
 <tr>
-<td >Atlas A3 推理系列产品<br>> [!NOTE] 说明 当前仅支持AscendIndexFlat算法。</td>
+<td >Atlas A3 推理系列产品<br>说明：当前仅支持AscendIndexFlat算法。</td>
 <td>Atlas 800I A3 超节点服务器</td>
 <td><li>CUbuntu 18.04<li>CUlinux 3.0<li>KylinOS V10 SP3 2403<li>KylinOS V11</td>
 </tr>

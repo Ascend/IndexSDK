@@ -17,7 +17,7 @@ Index SDK特征检索的使用，依赖NPU固件驱动包、CANN软件包、[Ope
 
 **注意事项<a name="section947444412510"></a>**
 
--   在Docker容器环境下进行检索部署时，请确保Docker容器中检索相关的文件夹挂载正确\(“/usr/local/Ascend/driver“和“/usr/local/Ascend/develop/“等\)，否则可能导致容器内的检索编译失败。
+-   在Docker容器环境下进行检索部署时，请确保Docker容器中检索相关的文件夹挂载正确\(“/usr/local/Ascend/driver”和“/usr/local/Ascend/develop/”等\)，否则可能导致容器内的检索编译失败。
 -   对于第三方的开源软件，如果该版本中存在漏洞，需要及时根据开源版本中的对应说明进行修复和更新。
 
 
@@ -27,7 +27,7 @@ Index SDK特征检索的使用，依赖NPU固件驱动包、CANN软件包、[Ope
 
 **下载依赖软件包<a name="section119752030133014"></a>**
 
-下载本软件即表示您同意[华为企业业务最终用户许可协议（EULA）](https://e.huawei.com/cn/about/eula)的条款和条件。
+
 
 **表 1**  软件包清单
 
@@ -130,7 +130,7 @@ Index SDK特征检索的使用，依赖NPU固件驱动包、CANN软件包、[Ope
 
 > [!NOTE] 说明 
 >-   如果是ARM平台，编译安装Faiss前请根据gcc版本适配Faiss源码。
->-   ARM平台上，部分旧版本的gcc（如4.8.5等）不支持直接编译Faiss 1.10.0版本，部分旧版本的编译器不支持“simdlib\_neon.h“的相关实现，需要改用默认CPU上的SIMD实现，使用该方法时功能可以正常运行，但是部分Index算法（IVF类、SQ类等）会出现较大性能退化。推荐使用gcc7.5.0进行编译和安装，高于gcc9.5.0版本可能出现兼容性问题。
+>-   ARM平台上，部分旧版本的gcc（如4.8.5等）不支持直接编译Faiss 1.10.0版本，部分旧版本的编译器不支持“simdlib\_neon.h”的相关实现，需要改用默认CPU上的SIMD实现，使用该方法时功能可以正常运行，但是部分Index算法（IVF类、SQ类等）会出现较大性能退化。推荐使用gcc7.5.0进行编译和安装，高于gcc9.5.0版本可能出现兼容性问题。
 
 **操作步骤<a name="section94317151588"></a>**
 
@@ -206,7 +206,7 @@ Index SDK特征检索的使用，依赖NPU固件驱动包、CANN软件包、[Ope
 
     > [!NOTE] 说明 
     >-   编译该Faiss 1.10.0需要CMake的版本不低于CMake 3.24.0，如果编译Faiss时提示CMake版本过低，请参考[编译Faiss 1.10.0时，CMake出现报错信息](./faq.md#编译faiss-1100时cmake出现报错信息)解决。
-    >-   Faiss默认安装目录为“/usr/local/lib“，如需指定安装目录，例如“install\_path=/usr/local/faiss/faiss1.10.0“，则在CMake编译配置加**-DCMAKE\_INSTALL\_PREFIX=$\{**_install\_path_**\}**选项即可。
+    >-   Faiss默认安装目录为“/usr/local/lib”，如需指定安装目录，例如“install\_path=/usr/local/faiss/faiss1.10.0”，则在CMake编译配置加**-DCMAKE\_INSTALL\_PREFIX=$\{**_install\_path_**\}**选项即可。
     >    ```
     >    install_path=/usr/local/faiss/faiss1.10.0
     >    cmake -B build . -DFAISS_ENABLE_GPU=OFF -DFAISS_ENABLE_PYTHON=OFF -DBUILD_TESTING=OFF -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${install_path}
@@ -214,7 +214,7 @@ Index SDK特征检索的使用，依赖NPU固件驱动包、CANN软件包、[Ope
 
 6.  配置系统库查找路径的环境变量。
 
-    动态链接依赖Faiss的程序在运行时需要知道Faiss动态库所在路径，需要在Faiss的库目录加入“LD\_LIBRARY\_PATH“环境变量。
+    动态链接依赖Faiss的程序在运行时需要知道Faiss动态库所在路径，需要在Faiss的库目录加入“LD\_LIBRARY\_PATH”环境变量。
 
     ```
     # 配置/etc/profile
@@ -240,7 +240,7 @@ Index SDK特征检索的使用，依赖NPU固件驱动包、CANN软件包、[Ope
 
 ## 获取Index SDK软件包<a name="ZH-CN_TOPIC_0000001456695124"></a>
 
-请参考本章获取所需软件包和对应的数字签名文件，下载本软件即表示您同意[华为企业业务最终用户许可协议（EULA）](https://e.huawei.com/cn/about/eula)的条款和条件。
+请参考本章获取所需软件包和对应的数字签名文件。
 
 **表 1**  软件包
 
@@ -277,7 +277,7 @@ Index SDK特征检索的使用，依赖NPU固件驱动包、CANN软件包、[Ope
 **安装步骤<a name="section109931516193714"></a>**
 
 1.  以软件包的安装用户登录安装环境。
-2.  将软件包上传到安装环境的任意路径下（如：“/home/work/FeatureRetrieval“）并进入软件包所在路径。
+2.  将软件包上传到安装环境的任意路径下（如：“/home/work/FeatureRetrieval”）并进入软件包所在路径。
 3.  增加对软件包的可执行权限。
 
     ```
@@ -298,7 +298,7 @@ Index SDK特征检索的使用，依赖NPU固件驱动包、CANN软件包、[Ope
 
 5.  创建软件包的安装路径。
     -   **若用户未指定安装路径**，软件会默认安装到软件包所在的路径。
-    -   **若用户想指定安装路径**，需要先创建安装路径。以安装路径“/home/work/FeatureRetrieval“为例：
+    -   **若用户想指定安装路径**，需要先创建安装路径。以安装路径“/home/work/FeatureRetrieval”为例：
 
         ```
         mkdir -p /home/work/FeatureRetrieval
@@ -490,15 +490,7 @@ Index SDK特征检索的使用，依赖NPU固件驱动包、CANN软件包、[Ope
     > [!NOTE] 说明 
     >--install安装命令同时支持输入可选参数，如[表2](#table7138521890)所示。输入不在列表中的参数可能正常安装或者报错。
 
-2.  安装过程中提示Do you accept the EULA to install mxIndex?时，输入Y或y，表示同意EULA协议，继续进行安装；输入其他字符时停止安装，退出程序。
-
-    安装完成后会生成目录“mxIndex-_\{version\}_“，若显示如下信息，则表示软件成功安装。
-
-    ```
-    Install package successfully   
-    ```
-
-3.  添加Index软件包路径的环境变量。以Index SDK的安装路径“/home/work/FeatureRetrieval“为例：
+2.  添加Index软件包路径的环境变量。以Index SDK的安装路径“/home/work/FeatureRetrieval”为例：
 
     ```
     export LD_LIBRARY_PATH=/home/work/FeatureRetrieval/mxIndex/host/lib/:$LD_LIBRARY_PATH
@@ -514,7 +506,7 @@ Index SDK特征检索的使用，依赖NPU固件驱动包、CANN软件包、[Ope
 |--info|查询包构建信息。|
 |--list|查询文件列表。|
 |--check|查询包完整性。|
-|--quiet\|-q|可选参数，表示静默安装。使用该参数，默认同意华为企业业务最终用户许可协议（EULA），跳过协议签署过程，并减少人机交互的信息的打印。|
+|--quiet\|-q|可选参数，表示静默安装。使用该参数，减少人机交互的信息的打印。|
 |--nox11|废弃接口，无实际作用。|
 |--noexec|解压软件包到当前目录，但不执行安装脚本。配套--extract=\<path>使用，格式为：--noexec --extract=\<path>。|
 |--extract=\<path>|解压软件包中文件到指定目录。可配套--noexec、--install、--upgrade之一参数使用。|
@@ -540,7 +532,7 @@ Index SDK特征检索的使用，依赖NPU固件驱动包、CANN软件包、[Ope
 
 -   升级操作涉及对安装目录的卸载再安装，如目录下存在其他文件，也会被一并删除。请在执行升级操作前，确保所有数据都已妥善处理。
 -   当从Index SDK的5.0.RC2版本的开放态部署变更为5.0.RC2之后版本的标准态部署时，请参见[卸载](#卸载)，卸载开放态部署后再次部署标准态特征检索。
--   部署过程中，请链接“mxIndex-_\{version\}_/host“目录下的动态库并重新生成算子和配置算子模型文件目录环境变量。
+-   部署过程中，请链接“mxIndex-_\{version\}_/host”目录下的动态库并重新生成算子和配置算子模型文件目录环境变量。
 
 
 ## 升级操作<a name="ZH-CN_TOPIC_0000001675532836"></a>
@@ -548,7 +540,7 @@ Index SDK特征检索的使用，依赖NPU固件驱动包、CANN软件包、[Ope
 特征检索包升级操作参考以下命令执行，升级操作参数说明请参见[表1](#table121021026102016)。
 
 ```
-./Ascend-mindxsdk-mxindex_{version}_linux-{arch}.run --upgrade --platform={soc_version} --install-path={mxIndex_install_path}
+./Ascend-mindxsdk-mxindex_{version}_linux-{arch}.run --upgrade --platform=form --install-path={mxIndex_install_path}
 ```
 
 **表 1**  参数名及说明<a id="table121021026102016"></a>
@@ -558,12 +550,11 @@ Index SDK特征检索的使用，依赖NPU固件驱动包、CANN软件包、[Ope
 |--upgrade|特征检索软件包升级操作命令，将特征检索升级到安装包所包含的Index SDK版本。|
 |--platform|对应昇腾AI处理器类型。<li>使用Atlas 200/300/500 推理产品请输入310。<li>使用Atlas 推理系列产品请输入310P。<li>使用Atlas 800I A3 超节点服务器请输入“A3”。<li>使用Atlas A2 推理系列产品，请在安装昇腾AI处理器的服务器执行npu-smi info命令进行查询，将查询到的“Name”最后一位数字删掉，即是--platform的取值。|
 |--install-path|（可选）自定义特征检索软件包安装根目录。如未设置，默认为当前命令执行所在目录。<br>如使用自定义目录安装，建议在升级操作时使用该参数。|
-|--quiet|加了该参数，表示默认同意华为企业业务最终用户许可协议（EULA），并跳过协议签署过程。|
 
 
 **操作步骤<a name="section1479912418555"></a>**
 
-1.  特征检索包升级命令执行示例参见如下，以安装路径“/home/work/FeatureRetrieval“为例。
+1.  特征检索包升级命令执行示例参见如下，以安装路径“/home/work/FeatureRetrieval”为例。
 
     -   对于Atlas 200/300/500 推理产品：
 
@@ -580,12 +571,11 @@ Index SDK特征检索的使用，依赖NPU固件驱动包、CANN软件包、[Ope
     -   对于Atlas A2 推理系列产品：
 
         ```
-        ./Ascend-mindxsdk-mxindex_{version}_linux-{arch}.run --upgrade --platform=platform --install-path=/home/work/FeatureRetrieval
+        ./Ascend-mindxsdk-mxindex_{version}_linux-{arch}.run --upgrade --platform=form --install-path=/home/work/FeatureRetrieval
         ```
 
-        如果无法确定_platform_的取值，请在安装昇腾AI处理器的服务器执行npu-smi info命令进行查询，将查询到的“Name”最后一位数字删掉，即是_platform_的取值
+        如果无法确定platform的取值，请在安装昇腾AI处理器的服务器执行npu-smi info命令进行查询，将查询到的“Name”最后一位数字删掉，即是platform的取值
 
-    升级过程中提示Do you accept the EULA to install mxIndex?时，输入Y或y，表示同意EULA协议，继续进行升级；输入其他字符时停止升级，退出程序。
 
     命令执行后返回如下信息，则表示特征检索包升级成功。
 
@@ -602,7 +592,7 @@ Index SDK特征检索的使用，依赖NPU固件驱动包、CANN软件包、[Ope
 >卸载操作涉及对安装目录的删除步骤，如目录下存在其他文件，也会被一并删除。请在执行卸载操作前，确保所有数据都已妥善处理。
 >算子文件需要用户手动进行删除。用户在卸载时请同时删除检索相关算子文件，其中\{ASCEND\_OPP\_PATH\}为[安装Index SDK](#安装index-sdk)时设置的环境变量目录。
 >-   Index SDK  5.0.0之前版本，算子文件安装目录为"\$\{ASCEND_OPP_PATH}/op_impl"和"\${ASCEND_OPP_PATH}/op_proto"。
->-   Index SDK  5.0.0及之后版本，算子文件安装目录为“$\{ASCEND\_OPP\_PATH\}/vendors/mxIndex“。
+>-   Index SDK  5.0.0及之后版本，算子文件安装目录为“$\{ASCEND\_OPP\_PATH\}/vendors/mxIndex”。
 >具体的算子文件，可以通过<b>./custom\_opp\_**_\{arch\}_**.run --list</b>查看。
 
 **操作步骤<a name="section2817182535117"></a>**
@@ -613,13 +603,13 @@ Index SDK特征检索的使用，依赖NPU固件驱动包、CANN软件包、[Ope
     cd mxIndex-{version}
     ```
 
-2.  进入“script“目录。
+2.  进入“script”目录。
 
     ```
     cd script
     ```
 
-3.  添加“uninstall.sh“文件可执行权限，并执行，完成卸载。
+3.  添加“uninstall.sh”文件可执行权限，并执行，完成卸载。
 
     ```
     chmod u+x uninstall.sh

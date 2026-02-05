@@ -8,7 +8,7 @@
 
 **操作步骤<a name="section13749124217108"></a>**
 
-1.  进入安装目录“mxIndex-_\{version\}_“，目录及文件名称如[表 Index SDK目录及文件名介绍](#table81133951612)所示。
+1.  进入安装目录“mxIndex-_\{version\}_”，目录及文件名称如[表 Index SDK目录及文件名介绍](#table81133951612)所示。
 
     ```
     cd mxIndex-{version}
@@ -30,7 +30,7 @@
     |version.info|包含版本相关信息。|
 
 
-2.  进入“ops“目录，编译算子前需要设置“ASCEND\_HOME“、“ASCEND\_VERSION“和“ASCEND\_OPP\_PATH“环境变量，默认分别为\~/Ascend、\~/ascend-toolkit/latest和\~/Ascend/ascend-toolkit/latest/opp。
+2.  进入“ops”目录，编译算子前需要设置“ASCEND\_HOME”、“ASCEND\_VERSION”和“ASCEND\_OPP\_PATH”环境变量，默认分别为\~/Ascend、\~/ascend-toolkit/latest和\~/Ascend/ascend-toolkit/latest/opp。
 
     ```
     export ASCEND_HOME=~/Ascend
@@ -38,12 +38,12 @@
     export ASCEND_OPP_PATH=~/Ascend/ascend-toolkit/latest/opp
     ```
 
-    -   “ASCEND\_HOME“表示CANN-toolkit软件安装后文件存储路径。
-    -   “ASCEND\_VERSION“表示当前使用的Ascend版本，如果ATC工具安装路径是“/usr/local/Ascend/ascend-toolkit/latest“则无需设置“ASCEND\_HOME“和“ASCEND\_VERSION“。
-    -   “ASCEND\_OPP\_PATH“表示算子库根目录，用户需要该目录的写权限。
+    -   “ASCEND\_HOME”表示CANN-toolkit软件安装后文件存储路径。
+    -   “ASCEND\_VERSION”表示当前使用的Ascend版本，如果ATC工具安装路径是“/usr/local/Ascend/ascend-toolkit/latest”则无需设置“ASCEND\_HOME”和“ASCEND\_VERSION”。
+    -   “ASCEND\_OPP\_PATH”表示算子库根目录，用户需要该目录的写权限。
 
     > [!NOTE] 说明
-    >“MAX\_COMPILE\_CORE\_NUMBER“环境变量用于指定图编译时可用的CPU核数，在算子运行时使用，当前默认为“1“，用户无需设置。
+    >“MAX\_COMPILE\_CORE\_NUMBER”环境变量用于指定图编译时可用的CPU核数，在算子运行时使用，当前默认为“1”，用户无需设置。
 
 3.  根据实际系统架构执行对应脚本。
 
@@ -69,7 +69,7 @@
     |--info|查询包构建信息。|
     |--list|查询文件列表。|
     |--check|查询包完整性。|
-    |--quiet\|-q|可选参数，表示静默安装。使用该参数，默认同意华为企业业务最终用户许可协议（EULA），跳过协议签署过程，并减少人机交互的信息的打印。|
+    |--quiet\|-q|可选参数，表示静默安装。减少人机交互的信息的打印。|
     |--nox11|废弃接口，无实际作用。|
     |--noexec|解压软件包到当前目录，但不执行安装脚本。配套--extract=\<path>使用，格式为：--noexec --extract=\<path>。|
     |--extract=\<path>|解压软件包中文件到指定目录。可配套--noexec参数使用。|
@@ -81,7 +81,7 @@
     >-   --xwin：使用xwin模式运行。
     >-   --phase2：要求执行第二步动作。
 
-4.  进入“tools“目录，生成所需算子。生成算子之前，需要先确认已经安装CANN的相关依赖。
+4.  进入“tools”目录，生成所需算子。生成算子之前，需要先确认已经安装CANN的相关依赖。
     -   只生成使用的算法所需要的算子：先参考[算法介绍](#算法介绍)章节，确认算法所需要生成的算子后，再参考[自定义算子介绍](#自定义算子介绍)章节，生成对应的算子。
     -   批量生成所有算法的算子，方法如[表 批量生成算子](#table03891576018)所示。
 
@@ -98,14 +98,14 @@
 
 5.  准备算子模型文件。
 
-    -   可以将算子模型文件目录配置为环境变量“MX\_INDEX\_MODELPATH“（环境变量支持以\~开头的路径、相对路径和绝对路径，**路径中不能包含软链接**；使用该变量时将统一转化为绝对路径并限制在“/home“或“/root“路径下）。
+    -   可以将算子模型文件目录配置为环境变量“MX\_INDEX\_MODELPATH”（环境变量支持以\~开头的路径、相对路径和绝对路径，**路径中不能包含软链接**；使用该变量时将统一转化为绝对路径并限制在“/home”或“/root”路径下）。
 
         ```
         mv op_models/* $PWD/../modelpath
         export MX_INDEX_MODELPATH=`realpath $PWD/../modelpath`
         ```
 
-    -   如未使用环境变量进行配置，需将算子模型文件移动到当前目录的“modelpath“目录下。
+    -   如未使用环境变量进行配置，需将算子模型文件移动到当前目录的“modelpath”目录下。
 
     算子生成后，请妥善保管相关om文件并确保文件不被篡改。
 
@@ -337,7 +337,7 @@
 -   [IVFSQ8算子](#ivfsq8)：得到IVFSQ8算法所需要的算子。
 -   [INT8Flat距离计算算子](#int8flat)：得到INT8量化的特征底库数据和待检索的INT8量化特征向量之间的距离（L2/COS）。
 -   [IVFSQT算子](#ivfsqt)：得到IVFSQT算法一二三级所需的距离算子。
--   [FlatAT算子](#flatat)：主要用于在IVF场景，减少train和add的耗时，其中“code\_num“等于“nlist“。
+-   [FlatAT算子](#flatat)：主要用于在IVF场景，减少train和add的耗时，其中“code\_num”等于“nlist”。
 -   [FlatInt8AT算子](#flatint8at)：优化在Atlas 推理系列产品下IVFSQT中train、add与update的耗时。
 -   [AICPU算子](#aicpu)：调度昇腾AI处理器的CPU完成排序等计算，充分利用硬件性能。
 -   [BinaryFlat算子](#binaryflat)：得到二值化算法所需算子。
@@ -776,7 +776,7 @@ IVFSP检索当前只支持硬件形态“310P”，涉及以下几种类型的�
 </tbody>
 </table>
 
-**IVFSP AICPU算子模型文件生成<a ID="section10476137113814"></a>**
+**IVFSP AICPU算子模型文件生成<a id="section10476137113814"></a>**
 
 <a name="table1844216303913"></a>
 <table><tbody><tr id="row124438353916"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.1.1"><p id="p1944314323914"><a name="p1944314323914"></a><a name="p1944314323914"></a>用法</p>
@@ -1058,7 +1058,7 @@ CANN 8.5.0之前版本需要单独安装nnae。具体安装步骤如下：
 
 #### 码本训练脚本<a name="ZH-CN_TOPIC_0000002008865568"></a>
 
-训练涉及“vstar\_train\_codebook.py“脚本（训练脚本位于安装目录下的“tools/train“文件夹中），注意Python版本为3.9。
+训练涉及“vstar\_train\_codebook.py”脚本（训练脚本位于安装目录下的“tools/train”文件夹中），注意Python版本为3.9。
 
 <a name="table48723587152"></a>
 <table><tbody><tr id="row4899125881510"><th class="firstcol" valign="top" width="13.62%" id="mcps1.1.3.1.1"><p id="p1089905812153"><a name="p1089905812153"></a><a name="p1089905812153"></a>命令参考</p>
@@ -1120,7 +1120,7 @@ source /usr/local/Ascend/ascend-toolkit/set_env.sh
 Index SDK提供两种训练脚本方式：
 
 -   使用IVFSP算法的[trainCodeBook接口](./api/approximate_retrieval.md#traincodebook接口)进行训练（推荐使用该方式）。
--   使用“ivfsp\_train\_codebook.py“脚本进行训练。训练脚本位于安装目录下的“tools/train“文件夹中，注意Python版本为3.9.11。为了用户执行方便，提供了“ivfsp\_train\_codebook\_example.sh“样例脚本（脚本位于安装目录下的“tools/train“文件夹中），用户可在此文件上根据实际场景修改参数值，然后执行此脚本生成码本文件。
+-   使用“ivfsp\_train\_codebook.py”脚本进行训练。训练脚本位于安装目录下的“tools/train”文件夹中，注意Python版本为3.9.11。为了用户执行方便，提供了“ivfsp\_train\_codebook\_example.sh”样例脚本（脚本位于安装目录下的“tools/train”文件夹中），用户可在此文件上根据实际场景修改参数值，然后执行此脚本生成码本文件。
 
 <a name="table48723587152"></a>
 <table><tbody><tr id="row4899125881510"><th class="firstcol" valign="top" width="13.63%" id="mcps1.1.3.1.1"><p id="p1089905812153"><a name="p1089905812153"></a><a name="p1089905812153"></a>命令参考</p>
@@ -1169,7 +1169,7 @@ Index SDK提供两种训练脚本方式：
 
 **训练模型<a name="section8422152014206"></a>**
 
-本章节涉及的脚本的默认存放路径为：“tools/train/reduction“。
+本章节涉及的脚本的默认存放路径为：“tools/train/reduction”。
 
 1.  训练模型。
 
