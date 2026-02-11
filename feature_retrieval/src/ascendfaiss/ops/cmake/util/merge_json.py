@@ -62,7 +62,7 @@ if __name__ == '__main__':
         logging.error('argv error, ascendc_json_dir tbe_json_dir')
         sys.exit(2)
 
-    npu_types = ['ascend310', 'ascend310p', 'ascend910b', 'ascend910_93', 'ascend910_95']
+    npu_types = ['ascend310', 'ascend310p', 'ascend910b', 'ascend910_93', 'ascend950']
     for npu_type in npu_types:
         file_name = "aic-{}-ops-info.json".format(npu_type)
         ascendc_json_file = os.path.join(sys.argv[1], npu_type, file_name)

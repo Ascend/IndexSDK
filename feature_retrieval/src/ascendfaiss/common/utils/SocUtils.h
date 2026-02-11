@@ -46,7 +46,7 @@ class SocUtils {
         SOC_910_9382,
         SOC_910_9372,
         SOC_910_9362,
-        SOC_910_9579,
+        SOC_950_95,
         SOC_INVALID,
     };
 
@@ -61,7 +61,7 @@ class SocUtils {
     const std::string SOCNAME910_9382 = "Ascend910_9382";
     const std::string SOCNAME910_9372 = "Ascend910_9372";
     const std::string SOCNAME910_9362 = "Ascend910_9362";
-    const std::string SOCNAME910_9579 = "Ascend910_95";
+    const std::string SOCNAME950_95 = "Ascend950PR_95";
 
     enum CodeFormatType {
         FORMAT_TYPE_ZZ = 0,
@@ -145,7 +145,7 @@ public:
 
     bool IsAscendA5() const
     {
-        return (socAttr.socType == SOC_910_9579);
+        return (socAttr.socType == SOC_950_95);
     }
 
     int GetExtremeListSize() const
@@ -260,9 +260,9 @@ public:
 
     bool ParseA5Data(const std::string &name)
     {
-        if (name.find(SOCNAME910_9579) == 0) {
-            socAttr.socType = SOC_910_9579;
-            socAttr.coreNum = 56; // Ascend910_95 has 56 aiv
+        if (name.find(SOCNAME950_95) == 0) {
+            socAttr.socType = SOC_950_95;
+            socAttr.coreNum = 56; // Ascend950 has 56 aiv
             socAttr.codeFormType = FORMAT_TYPE_ND;
             return true;
         }
