@@ -23,9 +23,11 @@ import argparse
 import common as utils
 from common import OpJsonGenerator
 
+
 _BlockSize = 16384 * 16
 _MaxSize = 1024 * 256
 _CoreNum = 56
+
 
 
 def arg_parse():

@@ -52,22 +52,9 @@ ADD_LIBRARY(${AICPU_KERNEL_TARGET} SHARED
         ${KERNELS_SRCS}
 )
 
-# Compatible with CI CANN version.
-SET(CI_NPU_TYPE  ${NPU_TYPE})
-IF(NPU_TYPE  STREQUAL  310)
-    IF(NOT  EXISTS  ${ASCEND_TOOLKIT_PATH}/${AICPU_LIB_SUB_DIR}/Ascend${CI_NPU_TYPE})
-        SET(CI_NPU_TYPE  310P)
-    ENDIF()
-ENDIF()
-IF(NPU_TYPE  STREQUAL  310P)
-    IF(NOT  EXISTS  ${ASCEND_TOOLKIT_PATH}/${AICPU_LIB_SUB_DIR}/Ascend${CI_NPU_TYPE})
-        SET(CI_NPU_TYPE  710)
-    ENDIF()
-ENDIF()
-
 TARGET_LINK_LIBRARIES(${AICPU_KERNEL_TARGET} PRIVATE
     -Wl,--whole-archive
-    ${ASCEND_TOOLKIT_PATH}/${AICPU_LIB_SUB_DIR}/Ascend${CI_NPU_TYPE}/libascend_protobuf.a
+    ${ASCEND_TOOLKIT_PATH}/${AICPU_LIB_SUB_DIR}/Ascend/libascend_protobuf.a
     -Wl,--no-whole-archive
     -s
     -Wl,-Bsymbolic
@@ -75,5 +62,5 @@ TARGET_LINK_LIBRARIES(${AICPU_KERNEL_TARGET} PRIVATE
 
 TARGET_LINK_LIBRARIES(${AICPU_KERNEL_TARGET} PRIVATE
         -Wl,--whole-archive
-        ${ASCEND_TOOLKIT_PATH}/${AICPU_LIB_SUB_DIR}/Ascend${CI_NPU_TYPE}/libcpu_kernels_context.a
+        ${ASCEND_TOOLKIT_PATH}/${AICPU_LIB_SUB_DIR}/Ascend/libcpu_kernels_context.a
         -Wl,--no-whole-archive)
