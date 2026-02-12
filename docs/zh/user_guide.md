@@ -136,7 +136,7 @@
 
     demo.cpp代码如下：
 
-    ```
+    ```cpp
     #include <faiss/ascend/AscendIndexFlat.h>
     #include <sys/time.h>
     #include <random>

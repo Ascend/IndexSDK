@@ -1,4 +1,3 @@
-
 ## 属性过滤检索<a name="ZH-CN_TOPIC_0000001482844454"></a>
 
 ### AscendIndexTS<a name="ZH-CN_TOPIC_0000001507640105"></a>
@@ -57,12 +56,12 @@
 > [!NOTE] 说明 
 >AddFeature不能与AddWithExtraVal接口混用。
 
-
 #### AddFeatureByIndice接口<a name="ZH-CN_TOPIC_0000002411433020"></a>
 
-> [!NOTE] 说明 
->-   AddFeatureByIndice接口不能和AddFeature、AddWithExtraVal接口混用。
->-   使用AddFeatureByIndice接口按位置添加底库之后，不能使用GetExtraValAttrByLabel等依赖Label的接口，AddFeatureByIndice和GetFeatureByIndice需配套使用。
+> [!NOTE] 说明
+>
+>- AddFeatureByIndice接口不能和AddFeature、AddWithExtraVal接口混用。
+>- 使用AddFeatureByIndice接口按位置添加底库之后，不能使用GetExtraValAttrByLabel等依赖Label的接口，AddFeatureByIndice和GetFeatureByIndice需配套使用。
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.01%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
@@ -102,7 +101,6 @@
 </tr>
 </tbody>
 </table>
-
 
 #### AddWithExtraVal接口<a name="ZH-CN_TOPIC_0000001976650872"></a>
 
@@ -144,7 +142,6 @@
 </tr>
 </tbody>
 </table>
-
 
 #### AscendIndexTS接口<a name="ZH-CN_TOPIC_0000001458200394"></a>
 
@@ -216,7 +213,6 @@
 </tbody>
 </table>
 
-
 #### \~AscendIndexTS接口<a name="ZH-CN_TOPIC_0000001507760865"></a>
 
 <a name="table7235918388"></a>
@@ -252,7 +248,6 @@
 </tr>
 </tbody>
 </table>
-
 
 #### DeleteFeatureByLabel接口<a name="ZH-CN_TOPIC_0000001458200398"></a>
 
@@ -291,7 +286,6 @@
 </tbody>
 </table>
 
-
 #### DeleteFeatureByToken接口<a id="ZH-CN_TOPIC_0000001458680018"></a>
 
 <a name="table7235918388"></a>
@@ -328,7 +322,6 @@
 </tr>
 </tbody>
 </table>
-
 
 #### FastDeleteFeatureByIndice接口<a name="ZH-CN_TOPIC_0000002445152089"></a>
 
@@ -367,7 +360,6 @@
 </tbody>
 </table>
 
-
 #### FastDeleteFeatureByRange接口<a name="ZH-CN_TOPIC_0000002445960745"></a>
 
 <a name="table18950829154115"></a>
@@ -404,7 +396,6 @@
 </tr>
 </tbody>
 </table>
-
 
 #### GetBaseByRange接口<a name="ZH-CN_TOPIC_0000001818301380"></a>
 
@@ -444,7 +435,6 @@
 </tr>
 </tbody>
 </table>
-
 
 #### GetBaseByRangeWithExtraVal接口<a name="ZH-CN_TOPIC_0000001976495686"></a>
 
@@ -486,7 +476,6 @@
 </tbody>
 </table>
 
-
 #### GetBaseMask接口<a name="ZH-CN_TOPIC_0000002445112157"></a>
 
 <a name="table7235918388"></a>
@@ -522,7 +511,6 @@
 </tr>
 </tbody>
 </table>
-
 
 #### GetCustomAttrByBlockId接口<a name="ZH-CN_TOPIC_0000001736682593"></a>
 
@@ -561,7 +549,6 @@
 </tbody>
 </table>
 
-
 #### GetExtraValAttrByLabel接口<a name="ZH-CN_TOPIC_0000001976655414"></a>
 
 <a name="table7235918388"></a>
@@ -599,7 +586,6 @@
 </tbody>
 </table>
 
-
 #### GetFeatureAttrByLabel接口<a name="ZH-CN_TOPIC_0000001594544301"></a>
 
 <a name="table7235918388"></a>
@@ -636,7 +622,6 @@
 </tr>
 </tbody>
 </table>
-
 
 #### GetFeatureByIndice接口<a name="ZH-CN_TOPIC_0000002411592888"></a>
 
@@ -678,7 +663,6 @@
 </tbody>
 </table>
 
-
 #### GetFeatureByLabel接口<a name="ZH-CN_TOPIC_0000001507879789"></a>
 
 <a name="table7235918388"></a>
@@ -716,7 +700,6 @@
 </tbody>
 </table>
 
-
 #### GetFeatureNum接口<a name="ZH-CN_TOPIC_0000001544946953"></a>
 
 <a name="table7235918388"></a>
@@ -752,7 +735,6 @@
 </tr>
 </tbody>
 </table>
-
 
 #### Init接口<a id="ZH-CN_TOPIC_0000001458680014"></a>
 
@@ -799,7 +781,6 @@
 </tbody>
 </table>
 
-
 #### InitWithExtraVal接口<a id="ZH-CN_TOPIC_0000002013206217"></a>
 
 <a name="table7235918388"></a>
@@ -840,12 +821,11 @@
 </tr>
 <tr id="row22159193815"><th class="firstcol" valign="top" width="20.03%" id="mcps1.1.3.6.1"><p id="p423590386"><a name="p423590386"></a><a name="p423590386"></a>约束说明</p>
 </th>
-<td class="cellrowborder" valign="top" width="79.97%" headers="mcps1.1.3.6.1 "><a name="ul1233201818419"></a><a name="ul1233201818419"></a><ul id="ul1233201818419"><li>需要紧跟在构造函数后调用。</li><li><span class="parmname" id="parmname129911241505"><a name="parmname129911241505"></a><a name="parmname129911241505"></a>“deviceId”</span>为有效的设备ID，设置范围为[0, 1024]。</li><li><span class="parmname" id="parmname1512023074919"><a name="parmname1512023074919"></a><a name="parmname1512023074919"></a>“tokenNum”</span>设置范围为(0, 3e5]。</li><li><span class="parmname" id="parmname17504112111345"><a name="parmname17504112111345"></a><a name="parmname17504112111345"></a>“uint64_t resources”</span>合法范围为[1*1024*1024*1024, 32*1024*1024*1024]，使用附加属性时推荐申请4GB。</li><li>对于二值化特征检索（汉明距离）算法，dim ∈ {256, 512, 1024}。</li><li>对于Int8Flat（cos距离）算法，dim ∈ {64, 128, 256, 384, 512, 768, 1024}<li><span class="parmname" id="parmname20787447125320"><a name="parmname20787447125320"></a><a name="parmname20787447125320"></a>“customAttrLen”</span>设置范围为[0, 32]，默认值为<span class="parmvalue" id="parmvalue297865405619"><a name="parmvalue297865405619"></a><a name="parmvalue297865405619"></a>“0”</span>，设置为<span class="parmvalue" id="parmvalue932814529584"><a name="parmvalue932814529584"></a><a name="parmvalue932814529584"></a>“0”</span>时表示无自定义属性。</li><li><span class="parmname" id="parmname8753142175415"><a name="parmname8753142175415"></a><a name="parmname8753142175415"></a>“customAttrBlockSize”</span>设置范围为[0, 262144*64]，需要为1024*256的整数倍。默认值为<span class="parmvalue" id="parmvalue124141463574"><a name="parmvalue124141463574"></a><a name="parmvalue124141463574"></a>“0”</span>，设置为<span class="parmvalue" id="parmvalue834813319594"><a name="parmvalue834813319594"></a><a name="parmvalue834813319594"></a>“0”</span>时表示无自定义属性。</li><li><span class="parmname" id="parmname435216805314"><a name="parmname435216805314"></a><a name="parmname435216805314"></a>“maxFeatureRowCount”</span>附加属性不支持HPP，默认为uint64的最大值。</li></ul>
+<td class="cellrowborder" valign="top" width="79.97%" headers="mcps1.1.3.6.1 "><a name="ul1233201818419"></a><a name="ul1233201818419"></a><ul id="ul1233201818419"><li>需要紧跟在构造函数后调用。</li><li><span class="parmname" id="parmname129911241505"><a name="parmname129911241505"></a><a name="parmname129911241505"></a>“deviceId”</span>为有效的设备ID，设置范围为[0, 1024]。</li><li><span class="parmname" id="parmname1512023074919"><a name="parmname1512023074919"></a><a name="parmname1512023074919"></a>“tokenNum”</span>设置范围为(0, 3e5]。</li><li><span class="parmname" id="parmname17504112111345"><a name="parmname17504112111345"></a><a name="parmname17504112111345"></a>“uint64_t resources”</span>合法范围为[1*1024*1024*1024, 32*1024*1024*1024]，使用附加属性时推荐申请4GB。</li><li>对于二值化特征检索（汉明距离）算法，dim ∈ {256, 512, 1024}。</li><li>对于Int8Flat（cos距离）算法，dim ∈ {64, 128, 256, 384, 512, 768, 1024}</li><li><span class="parmname" id="parmname20787447125320"><a name="parmname20787447125320"></a><a name="parmname20787447125320"></a>“customAttrLen”</span>设置范围为[0, 32]，默认值为<span class="parmvalue" id="parmvalue297865405619"><a name="parmvalue297865405619"></a><a name="parmvalue297865405619"></a>“0”</span>，设置为<span class="parmvalue" id="parmvalue932814529584"><a name="parmvalue932814529584"></a><a name="parmvalue932814529584"></a>“0”</span>时表示无自定义属性。</li><li><span class="parmname" id="parmname8753142175415"><a name="parmname8753142175415"></a><a name="parmname8753142175415"></a>“customAttrBlockSize”</span>设置范围为[0, 262144*64]，需要为1024*256的整数倍。默认值为<span class="parmvalue" id="parmvalue124141463574"><a name="parmvalue124141463574"></a><a name="parmvalue124141463574"></a>“0”</span>，设置为<span class="parmvalue" id="parmvalue834813319594"><a name="parmvalue834813319594"></a><a name="parmvalue834813319594"></a>“0”</span>时表示无自定义属性。</li><li><span class="parmname" id="parmname435216805314"><a name="parmname435216805314"></a><a name="parmname435216805314"></a>“maxFeatureRowCount”</span>附加属性不支持HPP，默认为uint64的最大值。</li></ul>
 </td>
 </tr>
 </tbody>
 </table>
-
 
 #### InitWithQuantify接口<a name="ZH-CN_TOPIC_0000002458673509"></a>
 
@@ -890,7 +870,6 @@
 </tbody>
 </table>
 
-
 #### operator = 接口<a name="ZH-CN_TOPIC_0000001507959881"></a>
 
 <a name="table7235918388"></a>
@@ -926,7 +905,6 @@
 </tr>
 </tbody>
 </table>
-
 
 #### Search接口<a name="ZH-CN_TOPIC_0000001507640109"></a>
 
@@ -970,7 +948,6 @@
 </tr>
 </tbody>
 </table>
-
 
 #### SearchWithExtraMask接口<a name="ZH-CN_TOPIC_0000001494506850"></a>
 
@@ -1017,7 +994,6 @@
 </tr>
 </tbody>
 </table>
-
 
 #### SearchWithExtraMask带额外相似度接口<a name="ZH-CN_TOPIC_0000002373091106"></a>
 
@@ -1066,7 +1042,6 @@
 </tbody>
 </table>
 
-
 #### SearchWithExtraVal接口<a name="ZH-CN_TOPIC_0000002013215285"></a>
 
 <a name="table7235918388"></a>
@@ -1114,7 +1089,6 @@
 > [!NOTE] 说明
 >SearchWithExtraVal不能与Search接口混用。
 
-
 #### SetHeteroParam接口<a name="ZH-CN_TOPIC_0000001630850578"></a>
 
 <a name="table7235918388"></a>
@@ -1153,7 +1127,6 @@
 </tbody>
 </table>
 
-
 #### SetSaveHostMemory接口<a name="ZH-CN_TOPIC_0000002106649489"></a>
 
 <a name="table7235918388"></a>
@@ -1190,8 +1163,6 @@
 </tbody>
 </table>
 
-
-
 ### AttrFilter<a id="ZH-CN_TOPIC_0000001458687398"></a>
 
 #### 功能介绍<a name="ZH-CN_TOPIC_0000001507967265"></a>
@@ -1204,16 +1175,13 @@
 
 不支持多线程并发调用，因此在多线程的场景中需要用户在使用前加锁，否则检索接口可能导致异常。并且不支持不同线程间共享一个Device。当前的特征检索内部会使用OMP做性能加速，OMP不支持与其他多线程机制混用。反复创建新线程使用OMP会导致内存持续累加，因此建议使用固定的线程来运行检索任务。
 
-
 #### timesEnd接口<a name="ZH-CN_TOPIC_0000001458367566"></a>
 
 int32\_t：过滤时间段的结束时间。
 
-
 #### timesStart接口<a name="ZH-CN_TOPIC_0000001507647493"></a>
 
 int32\_t：过滤时间段的开始时间。
-
 
 #### tokenBitSet接口<a name="ZH-CN_TOPIC_0000001507887177"></a>
 
@@ -1229,8 +1197,6 @@ uint8\_t\*：特征token ID的列表，每个uint8\_t成员从低位到高位，
 
 uint32\_t：指定过滤器AttrFilter中tokenBitSet字段的长度。
 
-
-
 ### ExtraValAttr<a id="ZH-CN_TOPIC_0000002013198657"></a>
 
 #### 功能介绍<a name="ZH-CN_TOPIC_0000002013039153"></a>
@@ -1238,7 +1204,6 @@ uint32\_t：指定过滤器AttrFilter中tokenBitSet字段的长度。
 附加属性信息，入库时和特征向量一起添加。该结构体需要结合AscendIndexTS实例来使用。
 
 不支持多线程并发调用，因此在多线程的场景中需要用户在使用前加锁，否则检索接口可能导致异常。并且不支持不同线程间共享一个Device。
-
 
 #### val接口<a name="ZH-CN_TOPIC_0000001976479160"></a>
 
@@ -1254,7 +1219,6 @@ int16\_t：记录当前特征的附加属性信息，用二进制表示，“1�
 
 不支持多线程并发调用，因此在多线程的场景中需要用户在使用前加锁，否则检索接口可能导致异常。并且不支持不同线程间共享一个Device。
 
-
 #### filterVal接口<a name="ZH-CN_TOPIC_0000001976481180"></a>
 
 int16\_t：待查询的附加属性，用二进制表示，“1”表示保留附加属性，“0”表示过滤附加属性。
@@ -1264,10 +1228,8 @@ int16\_t：待查询的附加属性，用二进制表示，“1”表示保留�
 
 int16\_t：附加属性查询模式，分为模式0和模式1。
 
--   对于模式0，匹配条件为：**ExtraValAttr::val & ExtraValFilter::filterVal == ExtraValFilter::filterVal**
--   对于模式1，匹配条件为：**ExtraValAttr::val & ExtraValFilter::filterVal  \>  0**
-
-
+- 对于模式0，匹配条件为：**ExtraValAttr::val & ExtraValFilter::filterVal == ExtraValFilter::filterVal**
+- 对于模式1，匹配条件为：**ExtraValAttr::val & ExtraValFilter::filterVal  \>  0**
 
 ### FeatureAttr<a id="ZH-CN_TOPIC_0000001507967381"></a>
 
@@ -1277,7 +1239,6 @@ int16\_t：附加属性查询模式，分为模式0和模式1。
 
 不支持多线程并发调用，因此在多线程的场景中需要用户在使用前加锁，否则检索接口可能导致异常。并且不支持不同线程间共享一个Device。
 
-
 #### time接口<a name="ZH-CN_TOPIC_0000001507647601"></a>
 
 int32\_t：记录当前特征的时间信息，以时间戳（秒级）形式表示。
@@ -1285,10 +1246,6 @@ int32\_t：记录当前特征的时间信息，以时间戳（秒级）形式表
 > [!NOTE] 说明 
 >由于昇腾硬件限制，只能处理int32类型数据，因此用户需要保证当前时间戳不会超过int32的最大值，建议在实际操作时，将当前实际时间戳减去固定的一个历史时间戳，然后再存入。
 
-
 #### tokenId接口<a name="ZH-CN_TOPIC_0000001507887269"></a>
 
 uint32\_t：特征token ID，一个token ID对应多个特征，一个特征对应一个token ID，需要小于用户初始化AscendIndexTS时传入的tokenNum的值。
-
-
-

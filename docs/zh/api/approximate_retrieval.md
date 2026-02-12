@@ -11,7 +11,6 @@ AscendIndexBinaryFlat类继承自Faiss的IndexBinary类，用于二值化特征�
 
 支持多线程并发调用，需要设置“MX\_INDEX\_MULTITHREAD”环境变量为1，即export MX\_INDEX\_MULTITHREAD=1，设置为其他值或者不设置，则表示不开启多线程功能。当前的特征检索内部会使用OMP做性能加速，OMP不支持与其他多线程机制混用。反复创建新线程使用OMP会导致内存持续累加，因此建议使用固定的线程来运行检索任务。
 
-
 #### add接口<a name="ZH-CN_TOPIC_0000001456854896"></a>
 
 <a name="table7235918388"></a>
@@ -51,9 +50,9 @@ AscendIndexBinaryFlat类继承自Faiss的IndexBinary类，用于二值化特征�
 </table>
 
 > [!NOTE] 说明 
->-   add接口不能与add\_with\_ids接口混用。
->-   使用add接口后，search结果的labels可能会重复，如果业务上对label有要求，建议使用add\_with\_ids接口。
-
+>
+>- add接口不能与add\_with\_ids接口混用。
+>- 使用add接口后，search结果的labels可能会重复，如果业务上对label有要求，建议使用add\_with\_ids接口。
 
 #### add\_with\_ids接口<a name="ZH-CN_TOPIC_0000001506414809"></a>
 
@@ -93,7 +92,6 @@ AscendIndexBinaryFlat类继承自Faiss的IndexBinary类，用于二值化特征�
 </tr>
 </tbody>
 </table>
-
 
 #### AscendIndexBinaryFlat接口<a name="ZH-CN_TOPIC_0000001456535056"></a>
 
@@ -239,7 +237,6 @@ AscendIndexBinaryFlat类继承自Faiss的IndexBinary类，用于二值化特征�
 </tbody>
 </table>
 
-
 #### \~AscendIndexBinaryFlat接口<a name="ZH-CN_TOPIC_0000001506495917"></a>
 
 <a name="table13115573310"></a>
@@ -275,7 +272,6 @@ AscendIndexBinaryFlat类继承自Faiss的IndexBinary类，用于二值化特征�
 </tr>
 </tbody>
 </table>
-
 
 #### copyFrom接口<a name="ZH-CN_TOPIC_0000001506414941"></a>
 
@@ -347,7 +343,6 @@ AscendIndexBinaryFlat类继承自Faiss的IndexBinary类，用于二值化特征�
 </tbody>
 </table>
 
-
 #### copyTo接口<a name="ZH-CN_TOPIC_0000001456855048"></a>
 
 <a name="table7235918388"></a>
@@ -418,7 +413,6 @@ AscendIndexBinaryFlat类继承自Faiss的IndexBinary类，用于二值化特征�
 </tbody>
 </table>
 
-
 #### operator= 接口<a name="ZH-CN_TOPIC_0000001456535072"></a>
 
 <a name="table7235918388"></a>
@@ -454,7 +448,6 @@ AscendIndexBinaryFlat类继承自Faiss的IndexBinary类，用于二值化特征�
 </tr>
 </tbody>
 </table>
-
 
 #### remove\_ids接口<a name="ZH-CN_TOPIC_0000001506495769"></a>
 
@@ -492,7 +485,6 @@ AscendIndexBinaryFlat类继承自Faiss的IndexBinary类，用于二值化特征�
 </tbody>
 </table>
 
-
 #### reset接口<a name="ZH-CN_TOPIC_0000001456855028"></a>
 
 <a name="table7235918388"></a>
@@ -528,7 +520,6 @@ AscendIndexBinaryFlat类继承自Faiss的IndexBinary类，用于二值化特征�
 </tr>
 </tbody>
 </table>
-
 
 #### search接口<a id="ZH-CN_TOPIC_0000001456375288"></a>
 
@@ -607,7 +598,6 @@ AscendIndexBinaryFlat类继承自Faiss的IndexBinary类，用于二值化特征�
 </tbody>
 </table>
 
-
 #### setRemoveFast接口<a name="ZH-CN_TOPIC_0000002024780673"></a>
 
 <a name="table7235918388"></a>
@@ -644,14 +634,12 @@ AscendIndexBinaryFlat类继承自Faiss的IndexBinary类，用于二值化特征�
 </tbody>
 </table>
 
-
-
 ### AscendIndexBinaryFlatConfig<a name="ZH-CN_TOPIC_0000001506495777"></a>
 
 AscendIndexBinaryFlat需要使用对应的AscendIndexBinaryFlatConfig执行对应资源的初始化，配置执行检索过程中的硬件资源“devices”和预置的内存池大小“resources”。
 
--   AscendIndexBinaryFlat仅支持单个昇腾AI处理器的Atlas 推理系列产品，依赖AICPU算子和BinaryFlat算子，请参考[自定义算子介绍](../user_guide.md#自定义算子介绍)生成对应算子。
--   AscendIndexBinaryFlat仅支持标准态部署方式。
+- AscendIndexBinaryFlat仅支持单个昇腾AI处理器的Atlas 推理系列产品，依赖AICPU算子和BinaryFlat算子，请参考[自定义算子介绍](../user_guide.md#自定义算子介绍)生成对应算子。
+- AscendIndexBinaryFlat仅支持标准态部署方式。
 
 **成员介绍<a name="section1372191465013"></a>**
 
@@ -659,7 +647,6 @@ AscendIndexBinaryFlat需要使用对应的AscendIndexBinaryFlatConfig执行对�
 |--|--|--|
 |deviceList|std::vector\<int>|Device侧设备ID。AscendIndexBinaryFlat类仅支持单个Atlas 推理系列产品的加速卡。|
 |resourceSize|int64_t|Device侧内存池大小，单位为字节，默认参数值为1024MB，合法范围为[1024*1024*1024, 32*1024*1024*1024]，10million底库推荐申请5GB。|
-
 
 **接口说明<a name="section108610580175"></a>**
 
@@ -767,7 +754,6 @@ AscendIndexBinaryFlat需要使用对应的AscendIndexBinaryFlatConfig执行对�
 </tbody>
 </table>
 
-
 ### AscendIndexIVF<a name="ZH-CN_TOPIC_0000001456375220"></a>
 
 #### 功能介绍<a name="ZH-CN_TOPIC_0000001506334721"></a>
@@ -777,8 +763,7 @@ AscendIndexIVF作为特征检索组件中的采用IVF的Index的基类，为特�
 对于IVF系列算法，在Atlas 300I Duo 推理卡上的线性增长取决于距离计算的运算量在整个search过程的占比。相较于其他计算类型，只有距离计算的运算量可以均分到多个运算单元，所以在大batch和nprobe较大的场景下，线性增长度更好，而小batch和nprobe较小的场景下线性增长度则较差。
 
 > [!NOTE] 说明 
->IVF系列算法，应遵循nlist \* 2MB +  **resourceSize**  < NPU侧内存的规则，避免程序运行时申请内存失败，例如：npu卡上内存为64GB，则nlist应小于32768，32768 \* 2MB = 64GB，程序运行可能超出NPU内存大小。造成该限制的原因是目前检索业务申请内存的规则为大页内存优先，大页内存申请粒度为2MB。当nlist个桶内都有数据时，向硬件申请内存时，硬件分配的内存按照2MB的粒度对齐。（其中**resourceSize**是AscendIndexIVFConfig中用户指定的共享内存大小，默认128MB）
-
+> IVF系列算法，应遵循nlist \* 2MB +  **resourceSize**  < NPU侧内存的规则，避免程序运行时申请内存失败，例如：npu卡上内存为64GB，则nlist应小于32768，32768 \* 2MB = 64GB，程序运行可能超出NPU内存大小。造成该限制的原因是目前检索业务申请内存的规则为大页内存优先，大页内存申请粒度为2MB。当nlist个桶内都有数据时，向硬件申请内存时，硬件分配的内存按照2MB的粒度对齐。（其中**resourceSize**是AscendIndexIVFConfig中用户指定的共享内存大小，默认128MB）
 
 #### AscendIndexIVF接口<a name="ZH-CN_TOPIC_0000001506414821"></a>
 
@@ -853,7 +838,6 @@ AscendIndexIVF作为特征检索组件中的采用IVF的Index的基类，为特�
 </tbody>
 </table>
 
-
 #### \~AscendIndexIVF接口<a name="ZH-CN_TOPIC_0000001506334765"></a>
 
 <a name="table7235918388"></a>
@@ -889,7 +873,6 @@ AscendIndexIVF作为特征检索组件中的采用IVF的Index的基类，为特�
 </tr>
 </tbody>
 </table>
-
 
 #### copyFrom接口<a name="ZH-CN_TOPIC_0000001506334601"></a>
 
@@ -927,7 +910,6 @@ AscendIndexIVF作为特征检索组件中的采用IVF的Index的基类，为特�
 </tbody>
 </table>
 
-
 #### copyTo接口<a name="ZH-CN_TOPIC_0000001506615113"></a>
 
 <a name="table7235918388"></a>
@@ -963,7 +945,6 @@ AscendIndexIVF作为特征检索组件中的采用IVF的Index的基类，为特�
 </tr>
 </tbody>
 </table>
-
 
 #### getNumLists接口<a name="ZH-CN_TOPIC_0000001506614893"></a>
 
@@ -1001,7 +982,6 @@ AscendIndexIVF作为特征检索组件中的采用IVF的Index的基类，为特�
 </tbody>
 </table>
 
-
 #### getNumProbes接口<a name="ZH-CN_TOPIC_0000001456534948"></a>
 
 <a name="table7235918388"></a>
@@ -1037,7 +1017,6 @@ AscendIndexIVF作为特征检索组件中的采用IVF的Index的基类，为特�
 </tr>
 </tbody>
 </table>
-
 
 #### getListCodesAndIds接口<a name="ZH-CN_TOPIC_0000001456854940"></a>
 
@@ -1076,7 +1055,6 @@ AscendIndexIVF作为特征检索组件中的采用IVF的Index的基类，为特�
 </tbody>
 </table>
 
-
 #### getListLength接口<a name="ZH-CN_TOPIC_0000001506614973"></a>
 
 <a name="table7235918388"></a>
@@ -1112,7 +1090,6 @@ AscendIndexIVF作为特征检索组件中的采用IVF的Index的基类，为特�
 </tr>
 </tbody>
 </table>
-
 
 #### operator = 接口<a name="ZH-CN_TOPIC_0000001506495837"></a>
 
@@ -1150,7 +1127,6 @@ AscendIndexIVF作为特征检索组件中的采用IVF的Index的基类，为特�
 </tbody>
 </table>
 
-
 #### reclaimMemory接口<a name="ZH-CN_TOPIC_0000001506615049"></a>
 
 <a name="table7235918388"></a>
@@ -1186,7 +1162,6 @@ AscendIndexIVF作为特征检索组件中的采用IVF的Index的基类，为特�
 </tr>
 </tbody>
 </table>
-
 
 #### reserveMemory接口<a name="ZH-CN_TOPIC_0000001506334617"></a>
 
@@ -1224,7 +1199,6 @@ AscendIndexIVF作为特征检索组件中的采用IVF的Index的基类，为特�
 </tbody>
 </table>
 
-
 #### reset接口<a name="ZH-CN_TOPIC_0000001506414685"></a>
 
 <a name="table7235918388"></a>
@@ -1260,7 +1234,6 @@ AscendIndexIVF作为特征检索组件中的采用IVF的Index的基类，为特�
 </tr>
 </tbody>
 </table>
-
 
 #### setNumProbes接口<a name="ZH-CN_TOPIC_0000001506614937"></a>
 
@@ -1298,8 +1271,6 @@ AscendIndexIVF作为特征检索组件中的采用IVF的Index的基类，为特�
 </tbody>
 </table>
 
-
-
 ### AscendIndexIVFConfig<a name="ZH-CN_TOPIC_0000001456535024"></a>
 
 #### 功能介绍<a name="ZH-CN_TOPIC_0000001456695128"></a>
@@ -1314,10 +1285,9 @@ AscendIndexIVF需要使用对应的AscendIndexIVFConfig执行对应资源的初�
 |useKmeansPP|bool|是否使用NPU加速IVF聚类过程。|
 |cp|ClusteringParameters|聚类相关参数，具体可以参见Faiss相关接口说明。不建议修改此参数，其中训练迭代次数参数默认为16。迭代次数设置过大，会显著增加训练时长。|
 
-
-> [!NOTE] 说明 
->AscendIndexIVFSQConfig继承于[AscendIndexConfig](./full_retrieval.md#ascendindexconfig)。
-
+> [!NOTE] 说明
+> 
+> AscendIndexIVFSQConfig继承于[AscendIndexConfig](./full_retrieval.md#ascendindexconfig)。
 
 #### AscendIndexIVFConfig接口<a name="ZH-CN_TOPIC_0000001506334629"></a>
 
@@ -1425,7 +1395,6 @@ AscendIndexIVF需要使用对应的AscendIndexIVFConfig执行对应资源的初�
 </tbody>
 </table>
 
-
 #### SetDefaultClusteringConfig接口<a name="ZH-CN_TOPIC_0000001506495669"></a>
 
 <a name="table7235918388"></a>
@@ -1462,8 +1431,6 @@ AscendIndexIVF需要使用对应的AscendIndexIVFConfig执行对应资源的初�
 </tbody>
 </table>
 
-
-
 ### AscendIndexIVFSP<a name="ZH-CN_TOPIC_0000001635576081"></a>
 
 #### 功能介绍<a name="ZH-CN_TOPIC_0000001635815481"></a>
@@ -1473,7 +1440,6 @@ AscendIndexIVF需要使用对应的AscendIndexIVFConfig执行对应资源的初�
 AscendIndexIVFSP只支持标准态场景，且只支持Atlas 推理系列产品。
 
 支持多线程并发调用，需要设置“MX\_INDEX\_MULTITHREAD”环境变量为1，即export MX\_INDEX\_MULTITHREAD=1，设置为其他值或者不设置，则表示不开启多线程功能。当前的特征检索内部会使用OMP做性能加速，OMP不支持与其他多线程机制混用。反复创建新线程使用OMP会导致内存持续累加，因此建议使用固定的线程来运行检索任务。
-
 
 #### add接口<a name="ZH-CN_TOPIC_0000001585895568"></a>
 
@@ -1513,10 +1479,10 @@ AscendIndexIVFSP只支持标准态场景，且只支持Atlas 推理系列产品�
 </table>
 
 > [!NOTE] 说明 
->-   add接口不能与add\_with\_ids接口混用。
->-   使用add接口后，search结果的labels可能会重复，如果业务上对label有要求，建议使用add\_with\_ids接口。
->-   add接口在小batch添加场景进行了性能优化，此场景根据数据集不同，精度会有所降低，建议在已有底库场景下用小batch添加。
-
+>
+>- add接口不能与add\_with\_ids接口混用。
+>- 使用add接口后，search结果的labels可能会重复，如果业务上对label有要求，建议使用add\_with\_ids接口。
+>- add接口在小batch添加场景进行了性能优化，此场景根据数据集不同，精度会有所降低，建议在已有底库场景下用小batch添加。
 
 #### add\_with\_ids接口<a name="ZH-CN_TOPIC_0000001586055512"></a>
 
@@ -1558,8 +1524,7 @@ AscendIndexIVFSP只支持标准态场景，且只支持Atlas 推理系列产品�
 </table>
 
 > [!NOTE] 说明 
->add\_with\_ids接口在小batch添加场景进行了性能优化，此场景根据数据集不同，精度会有所降低，建议在已有底库场景下用小batch添加。
-
+> add\_with\_ids接口在小batch添加场景进行了性能优化，此场景根据数据集不同，精度会有所降低，建议在已有底库场景下用小batch添加。
 
 #### AscendIndexIVFSP接口<a name="ZH-CN_TOPIC_0000001585736168"></a>
 
@@ -1750,7 +1715,6 @@ AscendIndexIVFSP只支持标准态场景，且只支持Atlas 推理系列产品�
 </tbody>
 </table>
 
-
 #### loadAllData接口<a id="ZH-CN_TOPIC_0000001585736172"></a>
 
 <a name="table7235918388"></a>
@@ -1822,7 +1786,6 @@ AscendIndexIVFSP只支持标准态场景，且只支持Atlas 推理系列产品�
 </tbody>
 </table>
 
-
 #### operator = 接口<a name="ZH-CN_TOPIC_0000001635975413"></a>
 
 <a name="table7235918388"></a>
@@ -1858,7 +1821,6 @@ AscendIndexIVFSP只支持标准态场景，且只支持Atlas 推理系列产品�
 </tr>
 </tbody>
 </table>
-
 
 #### remove\_ids接口<a name="ZH-CN_TOPIC_0000001635576085"></a>
 
@@ -1896,7 +1858,6 @@ AscendIndexIVFSP只支持标准态场景，且只支持Atlas 推理系列产品�
 </tbody>
 </table>
 
-
 #### reset接口<a name="ZH-CN_TOPIC_0000001635815485"></a>
 
 <a name="table7235918388"></a>
@@ -1932,7 +1893,6 @@ AscendIndexIVFSP只支持标准态场景，且只支持Atlas 推理系列产品�
 </tr>
 </tbody>
 </table>
-
 
 #### saveAllData接口<a name="ZH-CN_TOPIC_0000001635696053"></a>
 
@@ -2006,7 +1966,6 @@ AscendIndexIVFSP只支持标准态场景，且只支持Atlas 推理系列产品�
 </tbody>
 </table>
 
-
 #### search接口<a name="ZH-CN_TOPIC_0000001635815489"></a>
 
 <a name="table7235918388"></a>
@@ -2046,7 +2005,6 @@ AscendIndexIVFSP只支持标准态场景，且只支持Atlas 推理系列产品�
 </tr>
 </tbody>
 </table>
-
 
 #### search\_with\_filter接口<a name="ZH-CN_TOPIC_0000001585736176"></a>
 
@@ -2088,7 +2046,6 @@ AscendIndexIVFSP只支持标准态场景，且只支持Atlas 推理系列产品�
 </tbody>
 </table>
 
-
 #### setNumProbes接口<a name="ZH-CN_TOPIC_0000001635576089"></a>
 
 <a name="table7235918388"></a>
@@ -2124,7 +2081,6 @@ AscendIndexIVFSP只支持标准态场景，且只支持Atlas 推理系列产品�
 </tr>
 </tbody>
 </table>
-
 
 #### setVerbose接口<a name="ZH-CN_TOPIC_0000001586055516"></a>
 
@@ -2162,7 +2118,6 @@ AscendIndexIVFSP只支持标准态场景，且只支持Atlas 推理系列产品�
 </tbody>
 </table>
 
-
 #### trainCodeBook接口<a name="ZH-CN_TOPIC_0000002148530670"></a>
 
 <a name="table7235918388"></a>
@@ -2199,7 +2154,6 @@ AscendIndexIVFSP只支持标准态场景，且只支持Atlas 推理系列产品�
 </tbody>
 </table>
 
-
 #### addCodeBook接口<a name="ZH-CN_TOPIC_0000002148372594"></a>
 
 <a name="table7235918388"></a>
@@ -2235,7 +2189,6 @@ AscendIndexIVFSP只支持标准态场景，且只支持Atlas 推理系列产品�
 </tr>
 </tbody>
 </table>
-
 
 #### AscendIndexCodeBookInitParams接口<a name="ZH-CN_TOPIC_0000002183731529"></a>
 
@@ -2280,7 +2233,6 @@ AscendIndexIVFSP只支持标准态场景，且只支持Atlas 推理系列产品�
 </tbody>
 </table>
 
-
 #### trainCodeBookFromMem接口<a name="ZH-CN_TOPIC_0000002257319034"></a>
 
 <a name="table7235918388"></a>
@@ -2316,7 +2268,6 @@ AscendIndexIVFSP只支持标准态场景，且只支持Atlas 推理系列产品�
 </tr>
 </tbody>
 </table>
-
 
 #### AscendIndexCodeBookInitFromMemParams接口<a name="ZH-CN_TOPIC_0000002291969193"></a>
 
@@ -2365,8 +2316,6 @@ AscendIndexIVFSP只支持标准态场景，且只支持Atlas 推理系列产品�
 </tbody>
 </table>
 
-
-
 ### AscendIndexIVFSPConfig<a id="ZH-CN_TOPIC_0000001635696057"></a>
 
 AscendIndexIVFSP需要使用对应的AscendIndexIVFSPConfig执行对应资源的初始化。
@@ -2378,7 +2327,6 @@ AscendIndexIVFSP需要使用对应的AscendIndexIVFSPConfig执行对应资源的
 |handleBatch|int|检索时每次下发计算的候选桶数量，默认值为64。|
 |nprobe|int|检索时总的候选桶数量，默认值为64。|
 |searchListSize|int|检索时每次下发计算的每个桶的最大样本数量，默认值为32768。若桶太大，程序会自动根据searchListSize将桶拆成多次算子下发计算距离。|
-
 
 **接口说明<a name="section74781713710"></a>**
 
@@ -2488,7 +2436,6 @@ AscendIndexIVFSP需要使用对应的AscendIndexIVFSPConfig执行对应资源的
 </tbody>
 </table>
 
-
 ### AscendIndexIVFSQ<a name="ZH-CN_TOPIC_0000001506334625"></a>
 
 #### 功能介绍<a name="ZH-CN_TOPIC_0000001456694964"></a>
@@ -2496,7 +2443,6 @@ AscendIndexIVFSP需要使用对应的AscendIndexIVFSPConfig执行对应资源的
 AscendIndexIVFSQ利用IVF来进行加速，是二级近似检索算法。
 
 支持多线程并发调用，需要设置“MX\_INDEX\_MULTITHREAD”环境变量为1，即export MX\_INDEX\_MULTITHREAD=1，设置为其他值或者不设置，则表示不开启多线程功能。当前的特征检索内部会使用OMP做性能加速，OMP不支持与其他多线程机制混用。反复创建新线程使用OMP会导致内存持续累加，因此建议使用固定的线程来运行检索任务。
-
 
 #### AscendIndexIVFSQ接口<a name="ZH-CN_TOPIC_0000001506414893"></a>
 
@@ -2647,7 +2593,6 @@ AscendIndexIVFSQ利用IVF来进行加速，是二级近似检索算法。
 </tbody>
 </table>
 
-
 #### \~AscendIndexIVFSQ接口<a name="ZH-CN_TOPIC_0000001456534936"></a>
 
 <a name="table7235918388"></a>
@@ -2683,7 +2628,6 @@ AscendIndexIVFSQ利用IVF来进行加速，是二级近似检索算法。
 </tr>
 </tbody>
 </table>
-
 
 #### copyFrom接口<a name="ZH-CN_TOPIC_0000001456375244"></a>
 
@@ -2725,7 +2669,6 @@ AscendIndexIVFSQ利用IVF来进行加速，是二级近似检索算法。
 </tbody>
 </table>
 
-
 #### copyTo接口<a name="ZH-CN_TOPIC_0000001506334649"></a>
 
 <a name="table7235918388"></a>
@@ -2761,7 +2704,6 @@ AscendIndexIVFSQ利用IVF来进行加速，是二级近似检索算法。
 </tr>
 </tbody>
 </table>
-
 
 #### operator = 接口<a name="ZH-CN_TOPIC_0000001456854860"></a>
 
@@ -2799,7 +2741,6 @@ AscendIndexIVFSQ利用IVF来进行加速，是二级近似检索算法。
 </tbody>
 </table>
 
-
 #### train接口<a name="ZH-CN_TOPIC_0000001456854976"></a>
 
 <a name="table7235918388"></a>
@@ -2836,8 +2777,6 @@ AscendIndexIVFSQ利用IVF来进行加速，是二级近似检索算法。
 </tr>
 </tbody>
 </table>
-
-
 
 ### AscendIndexIVFSQConfig<a name="ZH-CN_TOPIC_0000001456375204"></a>
 
@@ -2985,7 +2924,6 @@ AscendIndexIVFSQ需要使用对应的AscendIndexIVFSQConfig执行对应资源的
 </tbody>
 </table>
 
-
 ### AscendIndexIVFSQT<a name="ZH-CN_TOPIC_0000001456375224"></a>
 
 #### 功能介绍<a name="ZH-CN_TOPIC_0000001506615005"></a>
@@ -2999,7 +2937,6 @@ AscendIndexIVFSQT类，包含降维算法的三级检索IVFSQ算法，需要传�
 使用流程为：1.构建index对象；2.train数据；3.add数据；4.update数据；5.search检索数据；6.析构index对象。update后不支持继续add数据。有新数据需要进行检索时，请将原来的index对象析构后，重新按照流程使用。
 
 支持多线程并发调用，需要设置“MX\_INDEX\_MULTITHREAD”环境变量为1，即export MX\_INDEX\_MULTITHREAD=1，设置为其他值或者不设置，则表示不开启多线程功能。当前的特征检索内部会使用OMP做性能加速，OMP不支持与其他多线程机制混用。反复创建新线程使用OMP会导致内存持续累加，因此建议使用固定的线程来运行检索任务。
-
 
 #### AscendIndexIVFSQT接口<a name="ZH-CN_TOPIC_0000001506495685"></a>
 
@@ -3111,7 +3048,6 @@ AscendIndexIVFSQT类，包含降维算法的三级检索IVFSQ算法，需要传�
 </tbody>
 </table>
 
-
 #### \~AscendIndexIVFSQT接口<a name="ZH-CN_TOPIC_0000001456854984"></a>
 
 <a name="table7235918388"></a>
@@ -3147,7 +3083,6 @@ AscendIndexIVFSQT类，包含降维算法的三级检索IVFSQ算法，需要传�
 </tr>
 </tbody>
 </table>
-
 
 #### copyFrom接口<a name="ZH-CN_TOPIC_0000001456695060"></a>
 
@@ -3186,7 +3121,6 @@ AscendIndexIVFSQT类，包含降维算法的三级检索IVFSQ算法，需要传�
 </tbody>
 </table>
 
-
 #### copyTo接口<a name="ZH-CN_TOPIC_0000001506495825"></a>
 
 <a name="table7235918388"></a>
@@ -3222,7 +3156,6 @@ AscendIndexIVFSQT类，包含降维算法的三级检索IVFSQ算法，需要传�
 </tr>
 </tbody>
 </table>
-
 
 #### fineTune接口<a name="ZH-CN_TOPIC_0000001456694860"></a>
 
@@ -3261,7 +3194,6 @@ AscendIndexIVFSQT类，包含降维算法的三级检索IVFSQ算法，需要传�
 </tbody>
 </table>
 
-
 #### getFuzzyK接口<a name="ZH-CN_TOPIC_0000001456855008"></a>
 
 <a name="table7235918388"></a>
@@ -3297,7 +3229,6 @@ AscendIndexIVFSQT类，包含降维算法的三级检索IVFSQ算法，需要传�
 </tr>
 </tbody>
 </table>
-
 
 #### getListCodesAndIds接口<a name="ZH-CN_TOPIC_0000001687739112"></a>
 
@@ -3336,7 +3267,6 @@ AscendIndexIVFSQT类，包含降维算法的三级检索IVFSQ算法，需要传�
 </tbody>
 </table>
 
-
 #### getListLength接口<a name="ZH-CN_TOPIC_0000001735977797"></a>
 
 <a name="table7235918388"></a>
@@ -3372,7 +3302,6 @@ AscendIndexIVFSQT类，包含降维算法的三级检索IVFSQ算法，需要传�
 </tr>
 </tbody>
 </table>
-
 
 #### getLowerBound接口<a name="ZH-CN_TOPIC_0000001506614885"></a>
 
@@ -3410,7 +3339,6 @@ AscendIndexIVFSQT类，包含降维算法的三级检索IVFSQ算法，需要传�
 </tbody>
 </table>
 
-
 #### getMergeThres接口<a name="ZH-CN_TOPIC_0000001506615073"></a>
 
 <a name="table7235918388"></a>
@@ -3446,7 +3374,6 @@ AscendIndexIVFSQT类，包含降维算法的三级检索IVFSQ算法，需要传�
 </tr>
 </tbody>
 </table>
-
 
 #### getQMax接口<a name="ZH-CN_TOPIC_0000001456535208"></a>
 
@@ -3484,7 +3411,6 @@ AscendIndexIVFSQT类，包含降维算法的三级检索IVFSQ算法，需要传�
 </tbody>
 </table>
 
-
 #### getQMin接口<a name="ZH-CN_TOPIC_0000001506615029"></a>
 
 <a name="table7235918388"></a>
@@ -3520,7 +3446,6 @@ AscendIndexIVFSQT类，包含降维算法的三级检索IVFSQ算法，需要传�
 </tr>
 </tbody>
 </table>
-
 
 #### getThreshold接口<a name="ZH-CN_TOPIC_0000001506334633"></a>
 
@@ -3558,7 +3483,6 @@ AscendIndexIVFSQT类，包含降维算法的三级检索IVFSQ算法，需要传�
 </tbody>
 </table>
 
-
 #### operator = 接口<a name="ZH-CN_TOPIC_0000001506615085"></a>
 
 <a name="table7235918388"></a>
@@ -3594,7 +3518,6 @@ AscendIndexIVFSQT类，包含降维算法的三级检索IVFSQ算法，需要传�
 </tr>
 </tbody>
 </table>
-
 
 #### remove\_ids接口<a name="ZH-CN_TOPIC_0000001506615053"></a>
 
@@ -3632,7 +3555,6 @@ AscendIndexIVFSQT类，包含降维算法的三级检索IVFSQ算法，需要传�
 </tbody>
 </table>
 
-
 #### reset接口<a name="ZH-CN_TOPIC_0000001506334789"></a>
 
 <a name="table7235918388"></a>
@@ -3668,7 +3590,6 @@ AscendIndexIVFSQT类，包含降维算法的三级检索IVFSQ算法，需要传�
 </tr>
 </tbody>
 </table>
-
 
 #### setAddTotal接口<a name="ZH-CN_TOPIC_0000001456375316"></a>
 
@@ -3706,7 +3627,6 @@ AscendIndexIVFSQT类，包含降维算法的三级检索IVFSQ算法，需要传�
 </tbody>
 </table>
 
-
 #### setFuzzyK接口<a name="ZH-CN_TOPIC_0000001456534940"></a>
 
 <a name="table7235918388"></a>
@@ -3742,7 +3662,6 @@ AscendIndexIVFSQT类，包含降维算法的三级检索IVFSQ算法，需要传�
 </tr>
 </tbody>
 </table>
-
 
 #### setLowerBound接口<a name="ZH-CN_TOPIC_0000001506334777"></a>
 
@@ -3781,7 +3700,6 @@ AscendIndexIVFSQT类，包含降维算法的三级检索IVFSQ算法，需要传�
 </tbody>
 </table>
 
-
 #### setMemoryLimit接口<a name="ZH-CN_TOPIC_0000001506614917"></a>
 
 <a name="table7235918388"></a>
@@ -3817,7 +3735,6 @@ AscendIndexIVFSQT类，包含降维算法的三级检索IVFSQ算法，需要传�
 </tr>
 </tbody>
 </table>
-
 
 #### setMergeThres接口<a name="ZH-CN_TOPIC_0000001456694900"></a>
 
@@ -3856,7 +3773,6 @@ AscendIndexIVFSQT类，包含降维算法的三级检索IVFSQ算法，需要传�
 </tbody>
 </table>
 
-
 #### setNumProbes接口<a name="ZH-CN_TOPIC_0000001736410013"></a>
 
 <a name="table7235918388"></a>
@@ -3893,7 +3809,6 @@ AscendIndexIVFSQT类，包含降维算法的三级检索IVFSQ算法，需要传�
 </tbody>
 </table>
 
-
 #### setPreciseMemControl接口<a name="ZH-CN_TOPIC_0000001506334681"></a>
 
 <a name="table7235918388"></a>
@@ -3929,7 +3844,6 @@ AscendIndexIVFSQT类，包含降维算法的三级检索IVFSQ算法，需要传�
 </tr>
 </tbody>
 </table>
-
 
 #### setSearchParams接口<a name="ZH-CN_TOPIC_0000002052679693"></a>
 
@@ -3969,7 +3883,6 @@ AscendIndexIVFSQT类，包含降维算法的三级检索IVFSQ算法，需要传�
 </tbody>
 </table>
 
-
 #### setSortMode接口<a name="ZH-CN_TOPIC_0000002165943965"></a>
 
 <a name="table7235918388"></a>
@@ -4007,7 +3920,6 @@ AscendIndexIVFSQT类，包含降维算法的三级检索IVFSQ算法，需要传�
 </tbody>
 </table>
 
-
 #### setThreshold接口<a name="ZH-CN_TOPIC_0000001456854808"></a>
 
 <a name="table7235918388"></a>
@@ -4043,7 +3955,6 @@ AscendIndexIVFSQT类，包含降维算法的三级检索IVFSQ算法，需要传�
 </tr>
 </tbody>
 </table>
-
 
 #### setUseCpuUpdate接口<a name="ZH-CN_TOPIC_0000002167379329"></a>
 
@@ -4084,7 +3995,6 @@ AscendIndexIVFSQT类，包含降维算法的三级检索IVFSQ算法，需要传�
 </tbody>
 </table>
 
-
 #### train接口<a name="ZH-CN_TOPIC_0000001456375352"></a>
 
 <a name="table7235918388"></a>
@@ -4122,7 +4032,6 @@ AscendIndexIVFSQT类，包含降维算法的三级检索IVFSQ算法，需要传�
 </tbody>
 </table>
 
-
 #### update接口<a name="ZH-CN_TOPIC_0000001506414869"></a>
 
 <a name="table7235918388"></a>
@@ -4158,7 +4067,6 @@ AscendIndexIVFSQT类，包含降维算法的三级检索IVFSQ算法，需要传�
 </tr>
 </tbody>
 </table>
-
 
 #### updateTParams接口<a name="ZH-CN_TOPIC_0000001456854936"></a>
 
@@ -4196,8 +4104,6 @@ AscendIndexIVFSQT类，包含降维算法的三级检索IVFSQ算法，需要传�
 </tr>
 </tbody>
 </table>
-
-
 
 ### AscendIndexIVFSQTConfig<a name="ZH-CN_TOPIC_0000001506495881"></a>
 
@@ -4348,7 +4254,6 @@ AscendIndexIVFSQT需要使用对应的AscendIndexIVFSQTConfig执行对应资源�
 </tbody>
 </table>
 
-
 ### AscendIndexVStar<a name="ZH-CN_TOPIC_0000002044351677"></a>
 
 #### 功能介绍<a name="ZH-CN_TOPIC_0000002044510693"></a>
@@ -4361,12 +4266,12 @@ AscendIndexIVFSQT需要使用对应的AscendIndexIVFSQTConfig执行对应资源�
 
 此算法主要针对大底库场景的近似模糊搜索，相较暴力检索精度已有一定损失。在小底库场景，建议适当加大超参值，可改善精度损失问题。
 
-
 #### AscendIndexVStar接口<a name="ZH-CN_TOPIC_0000002044513265"></a>
 
 > [!NOTE] 说明 
->-   创建Index实例时传入的参数params，需根据实际情况设置其中的params.dim。
->-   params.subSpaceDim和params.nlist应与码本训练时对应参数保持一致。
+>
+>- 创建Index实例时传入的参数params，需根据实际情况设置其中的params.dim。
+>- params.subSpaceDim和params.nlist应与码本训练时对应参数保持一致。
 
 <a name="table13851535141118"></a>
 <table><tbody><tr id="row1444303516117"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.1.1"><p id="p2443173517119"><a name="p2443173517119"></a><a name="p2443173517119"></a>API定义</p>
@@ -4471,7 +4376,6 @@ AscendIndexIVFSQT需要使用对应的AscendIndexIVFSQTConfig执行对应资源�
 </tbody>
 </table>
 
-
 #### LoadIndex接口<a name="ZH-CN_TOPIC_0000002008232688"></a>
 
 <a name="table950712481817"></a>
@@ -4509,7 +4413,6 @@ AscendIndexIVFSQT需要使用对应的AscendIndexIVFSQTConfig执行对应资源�
 </tbody>
 </table>
 
-
 #### WriteIndex接口<a name="ZH-CN_TOPIC_0000002044351681"></a>
 
 <a name="table29774016915"></a>
@@ -4545,7 +4448,6 @@ AscendIndexIVFSQT需要使用对应的AscendIndexIVFSQTConfig执行对应资源�
 </tr>
 </tbody>
 </table>
-
 
 #### AddCodeBooksByIndex接口<a name="ZH-CN_TOPIC_0000002044510697"></a>
 
@@ -4583,7 +4485,6 @@ AscendIndexIVFSQT需要使用对应的AscendIndexIVFSQTConfig执行对应资源�
 </tbody>
 </table>
 
-
 #### AddCodeBooksByPath接口<a name="ZH-CN_TOPIC_0000002008390980"></a>
 
 <a name="table1523424814919"></a>
@@ -4619,7 +4520,6 @@ AscendIndexIVFSQT需要使用对应的AscendIndexIVFSQTConfig执行对应资源�
 </tr>
 </tbody>
 </table>
-
 
 #### Add接口<a name="ZH-CN_TOPIC_0000002008232692"></a>
 
@@ -4659,9 +4559,9 @@ AscendIndexIVFSQT需要使用对应的AscendIndexIVFSQTConfig执行对应资源�
 </table>
 
 > [!NOTE] 说明 
->-   Add接口不能与AddWithIds接口混用。
->-   使用Add接口后，Search结果的labels可能会重复，如果业务上对label有要求，建议使用[AddWithIds接口](#addwithids接口)。
-
+>
+>- Add接口不能与AddWithIds接口混用。
+>- 使用Add接口后，Search结果的labels可能会重复，如果业务上对label有要求，建议使用[AddWithIds接口](#addwithids接口)。
 
 #### AddWithIds接口<a name="ZH-CN_TOPIC_0000002044351685"></a>
 
@@ -4700,7 +4600,6 @@ AscendIndexIVFSQT需要使用对应的AscendIndexIVFSQTConfig执行对应资源�
 </tbody>
 </table>
 
-
 #### DeleteByIds接口<a name="ZH-CN_TOPIC_0000002044510701"></a>
 
 <a name="table1284884631210"></a>
@@ -4736,7 +4635,6 @@ AscendIndexIVFSQT需要使用对应的AscendIndexIVFSQTConfig执行对应资源�
 </tr>
 </tbody>
 </table>
-
 
 #### DeleteById接口<a name="ZH-CN_TOPIC_0000002008390984"></a>
 
@@ -4774,7 +4672,6 @@ AscendIndexIVFSQT需要使用对应的AscendIndexIVFSQTConfig执行对应资源�
 </tbody>
 </table>
 
-
 #### DeleteByRange接口<a name="ZH-CN_TOPIC_0000002008232696"></a>
 
 <a name="table103969158136"></a>
@@ -4811,7 +4708,6 @@ AscendIndexIVFSQT需要使用对应的AscendIndexIVFSQTConfig执行对应资源�
 </tr>
 </tbody>
 </table>
-
 
 #### Search接口<a name="ZH-CN_TOPIC_0000002044351689"></a>
 
@@ -4853,7 +4749,6 @@ AscendIndexIVFSQT需要使用对应的AscendIndexIVFSQTConfig执行对应资源�
 </tbody>
 </table>
 
-
 #### SearchWithMask接口<a name="ZH-CN_TOPIC_0000002044510705"></a>
 
 <a name="table777072291418"></a>
@@ -4894,7 +4789,6 @@ AscendIndexIVFSQT需要使用对应的AscendIndexIVFSQTConfig执行对应资源�
 </tr>
 </tbody>
 </table>
-
 
 #### MultiSearch接口<a name="ZH-CN_TOPIC_0000002008390988"></a>
 
@@ -4938,7 +4832,6 @@ AscendIndexIVFSQT需要使用对应的AscendIndexIVFSQTConfig执行对应资源�
 </tr>
 </tbody>
 </table>
-
 
 #### MultiSearchWithMask接口<a name="ZH-CN_TOPIC_0000002008232700"></a>
 
@@ -4984,7 +4877,6 @@ AscendIndexIVFSQT需要使用对应的AscendIndexIVFSQTConfig执行对应资源�
 </tbody>
 </table>
 
-
 #### SetHyperSearchParams接口<a name="ZH-CN_TOPIC_0000002044351693"></a>
 
 <a name="table4215111781514"></a>
@@ -5020,7 +4912,6 @@ AscendIndexIVFSQT需要使用对应的AscendIndexIVFSQTConfig执行对应资源�
 </tr>
 </tbody>
 </table>
-
 
 #### GetHyperSearchParams接口<a name="ZH-CN_TOPIC_0000002044510709"></a>
 
@@ -5058,7 +4949,6 @@ AscendIndexIVFSQT需要使用对应的AscendIndexIVFSQTConfig执行对应资源�
 </tbody>
 </table>
 
-
 #### GetDim接口<a name="ZH-CN_TOPIC_0000002008390992"></a>
 
 <a name="table6661184351519"></a>
@@ -5094,7 +4984,6 @@ AscendIndexIVFSQT需要使用对应的AscendIndexIVFSQTConfig执行对应资源�
 </tr>
 </tbody>
 </table>
-
 
 #### GetNTotal接口<a name="ZH-CN_TOPIC_0000002008232704"></a>
 
@@ -5132,7 +5021,6 @@ AscendIndexIVFSQT需要使用对应的AscendIndexIVFSQTConfig执行对应资源�
 </tbody>
 </table>
 
-
 #### Reset接口<a name="ZH-CN_TOPIC_0000002044351697"></a>
 
 <a name="table19794117167"></a>
@@ -5168,7 +5056,6 @@ AscendIndexIVFSQT需要使用对应的AscendIndexIVFSQTConfig执行对应资源�
 </tr>
 </tbody>
 </table>
-
 
 #### operator= 接口<a name="ZH-CN_TOPIC_0000002008390996"></a>
 
@@ -5206,8 +5093,6 @@ AscendIndexIVFSQT需要使用对应的AscendIndexIVFSQTConfig执行对应资源�
 </tbody>
 </table>
 
-
-
 ### AscendIndexGreat<a name="ZH-CN_TOPIC_0000002044829945"></a>
 
 #### 功能介绍<a name="ZH-CN_TOPIC_0000002008751966"></a>
@@ -5221,10 +5106,10 @@ AscendIndexIVFSQT需要使用对应的AscendIndexIVFSQTConfig执行对应资源�
 此算法主要针对大底库场景的近似模糊搜索，相较暴力检索精度已有一定损失。在小底库场景，建议适当加大超参值，可改善精度损失问题。
 
 > [!NOTE] 说明 
->-   创建Index实例时传入的参数params，需根据实际情况设置其中的dim。
->-   Index分为两种算法模式：KMode仅使用鲲鹏侧算法，AKMode昇腾加鲲鹏算法，在AKMode模式下需要提前生成对应算子。
->-   subSpaceDimnlist应与码本训练时对应参数保持一致。
-
+>
+>- 创建Index实例时传入的参数params，需根据实际情况设置其中的dim。
+>- Index分为两种算法模式：KMode仅使用鲲鹏侧算法，AKMode昇腾加鲲鹏算法，在AKMode模式下需要提前生成对应算子。
+>- subSpaceDimnlist应与码本训练时对应参数保持一致。
 
 #### AscendIndexGreat接口<a name="ZH-CN_TOPIC_0000002044829953"></a>
 
@@ -5367,7 +5252,6 @@ AscendIndexIVFSQT需要使用对应的AscendIndexIVFSQTConfig执行对应资源�
 </tbody>
 </table>
 
-
 #### \~AscendIndexGreat接口<a name="ZH-CN_TOPIC_0000002013257524"></a>
 
 <a name="table7235918388"></a>
@@ -5403,7 +5287,6 @@ AscendIndexIVFSQT需要使用对应的AscendIndexIVFSQTConfig执行对应资源�
 </tr>
 </tbody>
 </table>
-
 
 #### operator =接口<a name="ZH-CN_TOPIC_0000002008751990"></a>
 
@@ -5441,7 +5324,6 @@ AscendIndexIVFSQT需要使用对应的AscendIndexIVFSQTConfig执行对应资源�
 </tbody>
 </table>
 
-
 #### Add接口<a name="ZH-CN_TOPIC_0000002044950953"></a>
 
 <a name="table11133547191811"></a>
@@ -5478,7 +5360,6 @@ AscendIndexIVFSQT需要使用对应的AscendIndexIVFSQTConfig执行对应资源�
 </tbody>
 </table>
 
-
 #### AddWithIds接口<a name="ZH-CN_TOPIC_0000002044829957"></a>
 
 <a name="table2436200181918"></a>
@@ -5514,7 +5395,6 @@ AscendIndexIVFSQT需要使用对应的AscendIndexIVFSQTConfig执行对应资源�
 </tr>
 </tbody>
 </table>
-
 
 #### LoadIndex接口<a name="ZH-CN_TOPIC_0000002008751978"></a>
 
@@ -5587,7 +5467,6 @@ AscendIndexIVFSQT需要使用对应的AscendIndexIVFSQTConfig执行对应资源�
 </tbody>
 </table>
 
-
 #### WriteIndex接口<a name="ZH-CN_TOPIC_0000002044950957"></a>
 
 <a name="table84194504191"></a>
@@ -5658,7 +5537,6 @@ AscendIndexIVFSQT需要使用对应的AscendIndexIVFSQTConfig执行对应资源�
 </tbody>
 </table>
 
-
 #### AddCodeBooks接口<a name="ZH-CN_TOPIC_0000002008751982"></a>
 
 <a name="table339181620207"></a>
@@ -5695,7 +5573,6 @@ AscendIndexIVFSQT需要使用对应的AscendIndexIVFSQTConfig执行对应资源�
 </tr>
 </tbody>
 </table>
-
 
 #### Search接口<a name="ZH-CN_TOPIC_0000002008910274"></a>
 
@@ -5736,7 +5613,6 @@ AscendIndexIVFSQT需要使用对应的AscendIndexIVFSQTConfig执行对应资源�
 </tr>
 </tbody>
 </table>
-
 
 #### SearchWithMask接口<a name="ZH-CN_TOPIC_0000002044950961"></a>
 
@@ -5779,7 +5655,6 @@ AscendIndexIVFSQT需要使用对应的AscendIndexIVFSQTConfig执行对应资源�
 </tbody>
 </table>
 
-
 #### GetNTotal接口<a name="ZH-CN_TOPIC_0000002044829965"></a>
 
 <a name="table971712872115"></a>
@@ -5815,7 +5690,6 @@ AscendIndexIVFSQT需要使用对应的AscendIndexIVFSQTConfig执行对应资源�
 </tr>
 </tbody>
 </table>
-
 
 #### GetDim接口<a name="ZH-CN_TOPIC_0000002008751986"></a>
 
@@ -5853,7 +5727,6 @@ AscendIndexIVFSQT需要使用对应的AscendIndexIVFSQTConfig执行对应资源�
 </tbody>
 </table>
 
-
 #### Reset接口<a name="ZH-CN_TOPIC_0000002008910278"></a>
 
 <a name="table1974793512118"></a>
@@ -5889,7 +5762,6 @@ AscendIndexIVFSQT需要使用对应的AscendIndexIVFSQTConfig执行对应资源�
 </tr>
 </tbody>
 </table>
-
 
 #### SetHyperSearchParams接口<a name="ZH-CN_TOPIC_0000002044950965"></a>
 
@@ -5927,7 +5799,6 @@ AscendIndexIVFSQT需要使用对应的AscendIndexIVFSQTConfig执行对应资源�
 </tbody>
 </table>
 
-
 #### GetHyperSearchParams接口<a name="ZH-CN_TOPIC_0000002400547905"></a>
 
 <a name="table749915518225"></a>
@@ -5964,8 +5835,6 @@ AscendIndexIVFSQT需要使用对应的AscendIndexIVFSQTConfig执行对应资源�
 </tbody>
 </table>
 
-
-
 ### AscendIndexMixSearchParams<a name="ZH-CN_TOPIC_0000002008910258"></a>
 
 #### 功能介绍<a name="ZH-CN_TOPIC_0000002045034929"></a>
@@ -5973,7 +5842,6 @@ AscendIndexIVFSQT需要使用对应的AscendIndexIVFSQTConfig执行对应资源�
 AscendIndexMixSearchParams.h文件，提供AscendIndexGreat和AscendIndexVStar需要的结构体。
 
 不支持多线程并发调用，因此在多线程的场景中需要用户在使用前加锁，否则检索接口可能导致异常。并且不支持不同线程间共享一个Device。
-
 
 #### AscendIndexGreatInitParams接口<a name="ZH-CN_TOPIC_0000002049404289"></a>
 
@@ -6034,7 +5902,6 @@ AscendIndexMixSearchParams.h文件，提供AscendIndexGreat和AscendIndexVStar�
 </tr>
 </tbody>
 </table>
-
 
 #### AscendIndexVstarInitParams接口<a name="ZH-CN_TOPIC_0000002013246410"></a>
 
@@ -6105,7 +5972,6 @@ AscendIndexMixSearchParams.h文件，提供AscendIndexGreat和AscendIndexVStar�
 </tbody>
 </table>
 
-
 #### AscendIndexVstarHyperParams接口<a name="ZH-CN_TOPIC_0000002013404694"></a>
 
 <a name="table201855541164"></a>
@@ -6167,7 +6033,6 @@ AscendIndexMixSearchParams.h文件，提供AscendIndexGreat和AscendIndexVStar�
 </tr>
 </tbody>
 </table>
-
 
 #### AscendIndexHyperParams接口<a name="ZH-CN_TOPIC_0000002049325253"></a>
 
@@ -6261,7 +6126,6 @@ AscendIndexMixSearchParams.h文件，提供AscendIndexGreat和AscendIndexVStar�
 </tbody>
 </table>
 
-
 #### AscendIndexSearchParams接口<a name="ZH-CN_TOPIC_0000002044950949"></a>
 
 <a name="table414612258177"></a>
@@ -6302,14 +6166,11 @@ AscendIndexMixSearchParams.h文件，提供AscendIndexGreat和AscendIndexVStar�
 </tbody>
 </table>
 
-
-
 ### AscendIndexIVFFlat<a name="ZH-CN_TOPIC_0000002478095516"></a>
 
 #### 功能介绍<a name="ZH-CN_TOPIC_0000002510095475"></a>
 
 AscendIndexIVFFlat利用IVF进行加速，是二级近似检索算法。当前仅支持IP距离。
-
 
 #### AscendIndexIVFFlat接口<a name="ZH-CN_TOPIC_0000002509975505"></a>
 
@@ -6384,7 +6245,6 @@ AscendIndexIVFFlat利用IVF进行加速，是二级近似检索算法。当前�
 </tbody>
 </table>
 
-
 #### \~AscendIndexIVFFlat接口<a name="ZH-CN_TOPIC_0000002477935546"></a>
 
 <a name="table7235918388"></a>
@@ -6420,7 +6280,6 @@ AscendIndexIVFFlat利用IVF进行加速，是二级近似检索算法。当前�
 </tr>
 </tbody>
 </table>
-
 
 #### operate = 接口<a name="ZH-CN_TOPIC_0000002484264062"></a>
 
@@ -6458,7 +6317,6 @@ AscendIndexIVFFlat利用IVF进行加速，是二级近似检索算法。当前�
 </tbody>
 </table>
 
-
 #### train接口<a name="ZH-CN_TOPIC_0000002478095518"></a>
 
 <a name="table7235918388"></a>
@@ -6495,6 +6353,3 @@ AscendIndexIVFFlat利用IVF进行加速，是二级近似检索算法。当前�
 </tr>
 </tbody>
 </table>
-
-
-
