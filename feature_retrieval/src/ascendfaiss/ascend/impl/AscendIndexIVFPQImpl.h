@@ -67,6 +67,10 @@ public:
 
     std::vector<idx_t> update(idx_t n, const float* x, const idx_t* ids);
 
+    void addPaged(int n, const float* x, const idx_t* ids);
+    
+    size_t getAddPagedSize(int n) const;
+
 protected:
     void copyFromCentroids(const faiss::IndexIVFPQ* index);
 
@@ -91,9 +95,13 @@ protected:
     void indexTrainImpl(int n, const float* x, int dim, int nlist);
 
     // Called from AscendIndex for add/add_with_ids
-    void addL1(int n, const float* x, std::unique_ptr<idx_t[]>& assign);
+    void addL1(int n, const float* x, std::vector<int64_t>& assign);
+
+    void addL2(int n, const float* x, std::vector<uint8_t>& pqCodes);
 
     void addImpl(int n, const float* x, const idx_t* ids) override;
+
+    void copyVectorToDevice(int n);
 
     void indexIVFPQAdd(IndexParam<uint8_t, float, ascend_idx_t>& param);
 
@@ -128,6 +136,8 @@ protected:
 
     std::vector<float> centroidsData;
 
+    std::vector<float> centroidsOnHost;
+
     struct PQCodebook {
         size_t nlist;
         size_t dim;
@@ -154,6 +164,8 @@ private:
         std::unordered_set<idx_t> idSet;
     };
     std::vector<ListInfo> listInfos;
+
+    std::unordered_map<int, AscendIVFAddInfo> assignCounts;
 };
 }  // namespace ascend
 }  // namespace faiss

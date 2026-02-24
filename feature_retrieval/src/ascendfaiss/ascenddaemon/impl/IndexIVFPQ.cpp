@@ -520,23 +520,12 @@ void IndexIVFPQ::normL2(int dim, int nlist, float* data)
 }
 
 APP_ERROR IndexIVFPQ::initTraining(int totalSize, int dim, int nlist, const float* x,
-                                   std::unique_ptr<float[], aclFloatDeleter>& data_dev,
                                    std::vector<float>& trainData, std::vector<float>& centroids)
 {
     trainData.resize(totalSize * dim);
     auto ret = memcpy_s(trainData.data(), totalSize * dim * sizeof(float), x, totalSize * dim * sizeof(float));
     ASCEND_THROW_IF_NOT_FMT(ret == EOK, "trainData memcpy_s failed %d", ret);
 
-    size_t data_bytes = totalSize * dim * sizeof(float);
-    float* tmp_ptr = nullptr;
-    ret = aclrtMalloc((void**)&tmp_ptr, data_bytes, ACL_MEM_MALLOC_HUGE_FIRST);
-    APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR,
-                             "allocate data mem failed %d", ret);
-    data_dev.reset(tmp_ptr);
-    ret = aclrtMemcpy(data_dev.get(), data_bytes, trainData.data(),
-                      data_bytes, ACL_MEMCPY_HOST_TO_DEVICE);
-    APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR,
-                             "update data failed %d", ret);
     std::vector<int> perm(totalSize, 0);
     const uint64_t actSeed = getActualRngSeed(1234);
     faiss::rand_perm(perm.data(), totalSize, actSeed + 1);
@@ -566,17 +555,17 @@ APP_ERROR IndexIVFPQ::resetTrainOp(int nlist, int dim)
 }
 
 APP_ERROR IndexIVFPQ::runKMeans(int nlist, int dim, int totalSize, int iter,
-                                std::vector<float>& centroids, std::unique_ptr<float[], aclFloatDeleter>& data_dev,
+                                std::vector<float>& centroidsHost, AscendTensor<float, DIMS_2> &dataVector,
                                 std::vector<int64_t>& totalAssigns)
 {
-    std::vector<float> centroid_double(nlist);
+    std::vector<float> centroidsDoubleHost(nlist);
     for (int i = 0; i < nlist; i++) {
         float normSQ = 0.0f;
         for (int j = 0; j < dim; j++) {
-            float val = centroids[i * dim + j];
+            float val = centroidsHost[i * dim + j];
             normSQ += val * val;
         }
-        centroid_double[i] = normSQ;
+        centroidsDoubleHost[i] = normSQ;
     }
 
     std::vector<int64_t> batchAssigns;
@@ -593,8 +582,8 @@ APP_ERROR IndexIVFPQ::runKMeans(int nlist, int dim, int totalSize, int iter,
         }
         batchAssigns.resize(batchSize);
 
-        auto ret = trainBatchImpl(batchSize, nlist, dim, processed, data_dev, centroids, centroid_double,
-                                  batchAssigns);
+        auto ret = trainBatchImpl(batchSize, nlist, dim, processed, dataVector, centroidsHost,
+                                  centroidsDoubleHost, batchAssigns);
         APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, ret,
                                  "Failed to initialize and execute train batch in %d %d %d", processed, iter, ret);
 
@@ -608,46 +597,46 @@ APP_ERROR IndexIVFPQ::runKMeans(int nlist, int dim, int totalSize, int iter,
 }
 
 APP_ERROR IndexIVFPQ::trainBatchImpl(int batchSize, int nlist, int dim, int processed,
-                                     std::unique_ptr<float[], aclFloatDeleter>& data_dev,
-                                     std::vector<float>& centroids, std::vector<float>& centroid_double,
+                                     AscendTensor<float, DIMS_2> &dataVector,
+                                     std::vector<float>& centroidsHost, std::vector<float>& centroidsDoubleHost,
                                      std::vector<int64_t>& batchAssigns)
 {
     auto &mem = resources.getMemoryManager();
     auto streamPtr = resources.getDefaultStream();
     auto stream = streamPtr->GetStream();
-    AscendTensor<float, DIMS_2> queries_tensor(data_dev.get() + processed * dim, {batchSize, dim});
-    AscendTensor<float, DIMS_2> centroids_tensor(mem, {nlist, dim}, stream);
-    AscendTensor<float, DIMS_1> codes_double_tensor(mem, {nlist}, stream);
-    AscendTensor<uint32_t, DIMS_2> sizes_tensor(mem, {CORE_NUM, SIZE_ALIGN}, stream);
-    AscendTensor<uint16_t, DIMS_2> flags_tensor(mem, {CORE_NUM, FLAG_SIZE}, stream);
-    AscendTensor<int64_t, DIMS_1> attrs_tensor(mem, { aicpu::TOPK_FLAT_ATTR_IDX_COUNT }, stream);
+    AscendTensor<float, DIMS_2> queries(dataVector.data() + processed * dim, {batchSize, dim});
+    AscendTensor<float, DIMS_2> centroids(mem, {nlist, dim}, stream);
+    AscendTensor<float, DIMS_1> centroidsDouble(mem, {nlist}, stream);
+    AscendTensor<uint32_t, DIMS_2> sizes(mem, {CORE_NUM, SIZE_ALIGN}, stream);
+    AscendTensor<uint16_t, DIMS_2> flags(mem, {CORE_NUM, FLAG_SIZE}, stream);
+    AscendTensor<int64_t, DIMS_1> attrs(mem, { aicpu::TOPK_FLAT_ATTR_IDX_COUNT }, stream);
 
-    auto ret = aclrtMemcpy(centroids_tensor.data(), centroids_tensor.getSizeInBytes(),
-                           centroids.data(), centroids_tensor.getSizeInBytes(), ACL_MEMCPY_HOST_TO_DEVICE);
+    auto ret = aclrtMemcpy(centroids.data(), centroids.getSizeInBytes(),
+                           centroidsHost.data(), centroids.getSizeInBytes(), ACL_MEMCPY_HOST_TO_DEVICE);
     APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR,
                              "update centroids failed in %d : %d", processed, ret);
-    ret = aclrtMemcpy(codes_double_tensor.data(), codes_double_tensor.getSizeInBytes(),
-                      centroid_double.data(), codes_double_tensor.getSizeInBytes(), ACL_MEMCPY_HOST_TO_DEVICE);
+    ret = aclrtMemcpy(centroidsDouble.data(), centroidsDouble.getSizeInBytes(),
+                      centroidsDoubleHost.data(), centroidsDouble.getSizeInBytes(), ACL_MEMCPY_HOST_TO_DEVICE);
     APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR,
                              "update centroids L2 failed in %d : %d", processed, ret);
-    sizes_tensor[0][0] = nlist;
-    flags_tensor.zero();
-    std::vector<int64_t> attrs_host(aicpu::TOPK_FLAT_ATTR_IDX_COUNT);
-    attrs_host[aicpu::TOPK_FLAT_ATTR_ASC_IDX] = 1;
-    attrs_host[aicpu::TOPK_FLAT_ATTR_K_IDX] = nprobe;
-    attrs_host[aicpu::TOPK_FLAT_ATTR_BURST_LEN_IDX] = IVF_PQ_BURST_LEN;
-    attrs_host[aicpu::TOPK_FLAT_ATTR_BLOCK_NUM_IDX] = 1;
-    attrs_host[aicpu::TOPK_FLAT_ATTR_PAGE_IDX] = 0;
-    attrs_host[aicpu::TOPK_FLAT_ATTR_PAGE_NUM_IDX] = 1;
-    attrs_host[aicpu::TOPK_FLAT_ATTR_PAGE_SIZE_IDX] = 0;
-    attrs_host[aicpu::TOPK_FLAT_ATTR_QUICK_HEAP] = 1;
-    attrs_host[aicpu::TOPK_FLAT_ATTR_BLOCK_SIZE] = nlist;
-    ret = aclrtMemcpy(attrs_tensor.data(), attrs_tensor.getSizeInBytes(),
-                      attrs_host.data(), attrs_tensor.getSizeInBytes(), ACL_MEMCPY_HOST_TO_DEVICE);
+    sizes[0][0] = nlist;
+    flags.zero();
+    std::vector<int64_t> attrsHost(aicpu::TOPK_FLAT_ATTR_IDX_COUNT);
+    attrsHost[aicpu::TOPK_FLAT_ATTR_ASC_IDX] = 1;
+    attrsHost[aicpu::TOPK_FLAT_ATTR_K_IDX] = 1;
+    attrsHost[aicpu::TOPK_FLAT_ATTR_BURST_LEN_IDX] = IVF_PQ_BURST_LEN;
+    attrsHost[aicpu::TOPK_FLAT_ATTR_BLOCK_NUM_IDX] = 1;
+    attrsHost[aicpu::TOPK_FLAT_ATTR_PAGE_IDX] = 0;
+    attrsHost[aicpu::TOPK_FLAT_ATTR_PAGE_NUM_IDX] = 1;
+    attrsHost[aicpu::TOPK_FLAT_ATTR_PAGE_SIZE_IDX] = 0;
+    attrsHost[aicpu::TOPK_FLAT_ATTR_QUICK_HEAP] = 1;
+    attrsHost[aicpu::TOPK_FLAT_ATTR_BLOCK_SIZE] = nlist;
+    ret = aclrtMemcpy(attrs.data(), attrs.getSizeInBytes(),
+                      attrsHost.data(), attrs.getSizeInBytes(), ACL_MEMCPY_HOST_TO_DEVICE);
     APPERR_RETURN_IF_NOT_LOG(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "Failed to copy attr to device");
 
-    ret = execTrainBatch(queries_tensor, centroids_tensor, codes_double_tensor,
-                         sizes_tensor, flags_tensor, attrs_tensor, batchAssigns);
+    ret = execTrainBatch(queries, centroids, centroidsDouble,
+                         sizes, flags, attrs, batchAssigns);
     APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, ret,
                              "Failed to execute train batch, batchSize=%d, nlist=%d, dim=%d, ret=%d",
                              batchSize, nlist, dim, ret);
@@ -656,12 +645,12 @@ APP_ERROR IndexIVFPQ::trainBatchImpl(int batchSize, int nlist, int dim, int proc
     return APP_ERR_OK;
 }
 
-APP_ERROR IndexIVFPQ::execTrainBatch(AscendTensor<float, DIMS_2> &queries_tensor,
-                                     AscendTensor<float, DIMS_2> &centroids_tensor,
-                                     AscendTensor<float, DIMS_1> &codes_double_tensor,
-                                     AscendTensor<uint32_t, DIMS_2> &sizes_tensor,
-                                     AscendTensor<uint16_t, DIMS_2> &flags_tensor,
-                                     AscendTensor<int64_t, DIMS_1> &attrs_tensor,
+APP_ERROR IndexIVFPQ::execTrainBatch(AscendTensor<float, DIMS_2> &queries,
+                                     AscendTensor<float, DIMS_2> &centroids,
+                                     AscendTensor<float, DIMS_1> &centroidsDouble,
+                                     AscendTensor<uint32_t, DIMS_2> &sizes,
+                                     AscendTensor<uint16_t, DIMS_2> &flags,
+                                     AscendTensor<int64_t, DIMS_1> &attrs,
                                      std::vector<int64_t>& batchAssigns)
 {
     auto &mem = resources.getMemoryManager();
@@ -669,32 +658,30 @@ APP_ERROR IndexIVFPQ::execTrainBatch(AscendTensor<float, DIMS_2> &queries_tensor
     auto stream = streamPtr->GetStream();
     auto streamAicpuPtr = resources.getAlternateStreams()[0];
     auto streamAicpu = streamAicpuPtr->GetStream();
-    int batchSize = queries_tensor.getSize(0);
-    int nlist = centroids_tensor.getSize(0);
-    AscendTensor<float, DIMS_2> dists_tensor(mem, {batchSize, nlist}, stream);
-    AscendTensor<float, DIMS_2> vmdists_tensor(mem, {batchSize, std::min(nlist / IVF_PQ_BURST_LEN * 2,
-                                                                         MIN_EXTREME_SIZE)}, stream);
-    AscendTensor<float, DIMS_2> outdists_tensor(mem, {batchSize, nprobe}, stream);
-    AscendTensor<int64_t, DIMS_2> outlabel_tensor(mem, {batchSize, nprobe}, stream);
+    int batchSize = queries.getSize(0);
+    int nlist = centroids.getSize(0);
+    AscendTensor<float, DIMS_2> dists(mem, {batchSize, nlist}, stream);
+    AscendTensor<float, DIMS_2> vmdists(mem, {batchSize, std::min(nlist / IVF_PQ_BURST_LEN * 2,
+                                                                  MIN_EXTREME_SIZE)}, stream);
+    AscendTensor<float, DIMS_2> outdists(mem, {batchSize, 1}, stream);
+    AscendTensor<int64_t, DIMS_2> outlabel(mem, {batchSize, 1}, stream);
 
-    runTrainDistOp(batchSize, queries_tensor, centroids_tensor, codes_double_tensor,
-                   dists_tensor, vmdists_tensor, flags_tensor, stream);
+    runTrainDistOp(batchSize, queries, centroids, centroidsDouble,
+                   dists, vmdists, flags, stream);
     auto ret = synchronizeStream(stream);
     APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR,
                              "synchronizeStream default stream: %i\n", ret);
-    runTrainTopkOp(dists_tensor, vmdists_tensor, sizes_tensor, flags_tensor,
-                   attrs_tensor, outdists_tensor, outlabel_tensor, streamAicpu);
+    runTrainTopkOp(dists, vmdists, sizes, flags,
+                   attrs, outdists, outlabel, streamAicpu);
     ret = synchronizeStream(streamAicpu);
     APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR,
                              "synchronizeStream aicpu stream failed: %i\n", ret);
 
-    for (int i = 0; i < batchSize; ++i) {
-        ret = aclrtMemcpy(batchAssigns.data() + i, sizeof(int64_t),
-                          outlabel_tensor.data() + i * nprobe, sizeof(int64_t),
-                          ACL_MEMCPY_DEVICE_TO_HOST);
-        APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR,
-                                 "copy topk result to host failed: %d", ret);
-    }
+    ret = aclrtMemcpy(batchAssigns.data(), batchSize * sizeof(int64_t),
+                      outlabel.data(), batchSize * sizeof(int64_t),
+                      ACL_MEMCPY_DEVICE_TO_HOST);
+    APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR,
+                             "copy topk result to host failed: %d", ret);
     return APP_ERR_OK;
 }
 
@@ -749,24 +736,49 @@ APP_ERROR IndexIVFPQ::updateCentroidsToDevice(int nlist, int dim, const std::vec
         clusteringOnDevice->resize(nlist * dim);
     }
 
-    size_t centroids_bytes = nlist * dim * sizeof(float);
-    auto ret = aclrtMemcpy(clusteringOnDevice->data(), centroids_bytes, centroids.data(),
-                           centroids_bytes, ACL_MEMCPY_HOST_TO_DEVICE);
+    size_t centroidsBytes = nlist * dim * sizeof(float);
+    auto ret = aclrtMemcpy(clusteringOnDevice->data(), centroidsBytes, centroids.data(),
+                           centroidsBytes, ACL_MEMCPY_HOST_TO_DEVICE);
     APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR,
                              "update centroids result to Device failed, size=%zu, ret=%d",
-                             centroids_bytes, ret);
+                             centroidsBytes, ret);
+
+    return APP_ERR_OK;
+}
+
+APP_ERROR IndexIVFPQ::assignCentroid(int nlist, int dim, int totalSize,
+                                     std::vector<float>& centroids, float* trainDataHost,
+                                     std::vector<int64_t>& totalAssigns)
+{
+    auto &mem = resources.getMemoryManager();
+    auto streamPtr = resources.getDefaultStream();
+    auto stream = streamPtr->GetStream();
+    auto ret = resetTrainOp(nlist, dim);
+    APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, ret,
+                             "Failed to reset assignCentroid operations, nlist=%d, dim=%d, ret=%d",
+                             nlist, dim, ret);
+
+    AscendTensor<float, DIMS_2> dataTensor(mem, {totalSize, dim}, stream);
+    ret = aclrtMemcpy(dataTensor.data(), totalSize * dim * sizeof(float),
+                      trainDataHost, totalSize * dim * sizeof(float), ACL_MEMCPY_HOST_TO_DEVICE);
+    APPERR_RETURN_IF_NOT_LOG(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "Failed to copy data to device");
+    ret = runKMeans(nlist, dim, totalSize, 0, centroids, dataTensor, totalAssigns);
+    APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, ret,
+                             "Failed to run KMeans, nlist=%d, dim=%d, totalSize=%d, ret=%d",
+                             nlist, dim, totalSize, ret);
 
     return APP_ERR_OK;
 }
 
 APP_ERROR IndexIVFPQ::trainImpl(int n, const float* x, int dim, int nlist)
 {
+    auto &mem = resources.getMemoryManager();
+    auto streamPtr = resources.getDefaultStream();
+    auto stream = streamPtr->GetStream();
     int totalSize = std::min(nlist * 256, n);
-
     std::vector<float> trainData(totalSize * dim);
-    std::unique_ptr<float[], aclFloatDeleter> data_dev = nullptr;
     std::vector<float> centroids(nlist * dim);
-    auto ret = initTraining(totalSize, dim, nlist, x, data_dev, trainData, centroids);
+    auto ret = initTraining(totalSize, dim, nlist, x, trainData, centroids);
     APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, ret,
                              "Failed to initialize training, n=%d, dim=%d, nlist=%d, ret=%d",
                              n, dim, nlist, ret);
@@ -775,10 +787,15 @@ APP_ERROR IndexIVFPQ::trainImpl(int n, const float* x, int dim, int nlist)
     APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, ret,
                              "Failed to reset training operations, nlist=%d, dim=%d, ret=%d",
                              nlist, dim, ret);
+    size_t dataBytes = totalSize * dim * sizeof(float);
+    AscendTensor<float, DIMS_2> dataVector(mem, {totalSize, dim}, stream);
+    ret = aclrtMemcpy(dataVector.data(), dataBytes,
+                      trainData.data(), dataBytes, ACL_MEMCPY_HOST_TO_DEVICE);
+    APPERR_RETURN_IF_NOT_LOG(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "Failed to upload data to device");
 
     std::vector<int64_t> totalAssigns(totalSize);
     for (int iter = 0; iter < MAX_ITER_NUM; iter++) {
-        ret = runKMeans(nlist, dim, totalSize, iter, centroids, data_dev, totalAssigns);
+        ret = runKMeans(nlist, dim, totalSize, iter, centroids, dataVector, totalAssigns);
         APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, ret,
                                  "Failed to run KMeans, nlist=%d, dim=%d, totalSize=%d, iter=%d, ret=%d",
                                  nlist, dim, totalSize, iter, ret);
@@ -789,11 +806,9 @@ APP_ERROR IndexIVFPQ::trainImpl(int n, const float* x, int dim, int nlist)
                                  nlist, dim, totalSize, ret);
         normL2(dim, nlist, centroids.data());
     }
-
     ret = updateCentroidsToDevice(nlist, dim, centroids);
     APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR,
                              "update centroids result to Device failed, ret=%d", ret);
-
     return APP_ERR_OK;
 }
 
