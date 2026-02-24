@@ -79,14 +79,10 @@ namespace ascend {
         }
         APP_ERROR searchImpl(int n, const float* x, int k, float* distances, idx_t* labels);
 
-        struct aclFloatDeleter {
-            void operator()(float* ptr) const
-            {
-                if (ptr != nullptr) {
-                    aclrtFree(ptr);
-                }
-            }
-        };
+        APP_ERROR assignCentroid(int nlist, int dim, int totalSize,
+                                 std::vector<float>& centroids, float* trainDataHost,
+                                 std::vector<int64_t>& totalAssigns);
+
     protected:
         void normL2(int dim, int nlist, float* data);
         APP_ERROR copyPQBlocks(int listId, size_t totalVecsInList, size_t codeSizePerVector,
@@ -106,27 +102,27 @@ namespace ascend {
         APP_ERROR updateDeviceData(int listId, size_t newVecNum, std::vector<uint8_t>& newCodes,
                                    const std::vector<idx_t>& newIds);
         APP_ERROR initTraining(int totalSize, int dim, int nlist,
-                               const float* x, std::unique_ptr<float[], aclFloatDeleter>& data_dev,
-                               std::vector<float>& processed_data, std::vector<float>& centroids);
+                               const float* x,
+                               std::vector<float>& trainData, std::vector<float>& centroids);
         void initKmeans(std::vector<float>& trainData, std::vector<float>& centroids,
                         int totalSize, int dim, int nlist);
         APP_ERROR resetTrainOp(int nlist, int dim);
         APP_ERROR runKMeans(int nlist, int dim, int totalSize, int iter,
-                            std::vector<float>& centroids, std::unique_ptr<float[], aclFloatDeleter>& data_dev,
+                            std::vector<float>& centroidsHost, AscendTensor<float, DIMS_2> &dataVector,
                             std::vector<int64_t>& totalAssigns);
         APP_ERROR trainBatchImpl(int batchSize, int nlist, int dim, int processed,
-                                 std::unique_ptr<float[], aclFloatDeleter>& data_dev,
-                                 std::vector<float>& centroids, std::vector<float>& centroid_double,
+                                 AscendTensor<float, DIMS_2> &dataVector,
+                                 std::vector<float>& centroidsHost, std::vector<float>& centroidDoubleHost,
                                  std::vector<int64_t>& batchAssigns);
-        APP_ERROR execTrainBatch(AscendTensor<float, DIMS_2> &queries_tensor,
-                                 AscendTensor<float, DIMS_2> &centroids_tensor,
-                                 AscendTensor<float, DIMS_1> &codes_double_tensor,
-                                 AscendTensor<uint32_t, DIMS_2> &sizes_tensor,
-                                 AscendTensor<uint16_t, DIMS_2> &flags_tensor,
-                                 AscendTensor<int64_t, DIMS_1> &attrs_tensor,
+        APP_ERROR execTrainBatch(AscendTensor<float, DIMS_2> &queries,
+                                 AscendTensor<float, DIMS_2> &centroids,
+                                 AscendTensor<float, DIMS_1> &centroidsDouble,
+                                 AscendTensor<uint32_t, DIMS_2> &sizes,
+                                 AscendTensor<uint16_t, DIMS_2> &flags,
+                                 AscendTensor<int64_t, DIMS_1> &attrs,
                                  std::vector<int64_t>& batchAssigns);
         APP_ERROR updateCentroids(int nlist, int dim, int totalSize, const std::vector<int64_t>& totalAssigns,
-                                  const std::vector<float>& processed_data, std::vector<float>& centroids);
+                                  const std::vector<float>& trainData, std::vector<float>& centroids);
         APP_ERROR updateCentroidsToDevice(int nlist, int dim, const std::vector<float>& centroids);
         APP_ERROR addCodes(int listId, AscendTensor<uint8_t, DIMS_2> &codesData);
         APP_ERROR resetTrainDistOp(int nlist, int dim);
