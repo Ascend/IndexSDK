@@ -24,7 +24,7 @@ namespace {
 constexpr uint32_t IVFPQ_ONE = 1;
 constexpr uint32_t IVFPQ_CODE_BLOCK_SIZE = 16384 * 16;
 constexpr uint32_t IVFPQ_NUM_32 = 32;
-}  // namespace
+} // namespace
 
 namespace optiling {
 
@@ -44,29 +44,37 @@ static ge::graphStatus TilingFunc(gert::TilingContext *context)
     }
     return ivfpqTiling.ProcessTiling(context, tilingData, reduceMode);
 }
-}  // namespace optiling
+} // namespace optiling
 
 namespace ge {
 static ge::graphStatus InferShape(gert::InferShapeContext *context)
 {
+    const gert::Shape *queryPQShape = context->GetInputShape(0);
+    int64_t batch = queryPQShape->GetDim(0);
+
     const gert::Shape *codeOffsetShape = context->GetInputShape(2);
-    int64_t codeBlockNum = codeOffsetShape->GetDim(0);
+    int64_t codeBlockNum = codeOffsetShape->GetDim(1);
 
     const gert::Shape *topkShape = context->GetInputShape(4);
     int64_t topk = topkShape->GetDim(0);
 
     gert::Shape *distShape = context->GetOutputShape(0);
-    *distShape = gert::Shape({codeBlockNum, IVFPQ_CODE_BLOCK_SIZE});
+    *distShape = gert::Shape({batch, codeBlockNum, IVFPQ_CODE_BLOCK_SIZE});
 
     gert::Shape *topkIndexShape = context->GetOutputShape(1);
-    *topkIndexShape = gert::Shape({codeBlockNum, topk});
+    *topkIndexShape = gert::Shape({batch, codeBlockNum, topk});
 
     gert::Shape *topkValueShape = context->GetOutputShape(2);
-    *topkValueShape = gert::Shape({codeBlockNum, topk});
+    *topkValueShape = gert::Shape({batch, codeBlockNum, topk});
 
-    gert::Shape *flagShape = context->GetOutputShape(3);
-    *flagShape = gert::Shape({codeBlockNum, 16});
+    gert::Shape *topkLabelFinalShape = context->GetOutputShape(3);
+    *topkLabelFinalShape = gert::Shape({batch, topk});
 
+    gert::Shape *topkValueFinalShape = context->GetOutputShape(4);
+    *topkValueFinalShape = gert::Shape({batch, topk});
+
+    gert::Shape *flagShape = context->GetOutputShape(5);
+    *flagShape = gert::Shape({16});
     return GRAPH_SUCCESS;
 }
 
@@ -76,7 +84,7 @@ static ge::graphStatus InferDataType(gert::InferDataTypeContext *context)
     context->SetOutputDataType(0, inputDataType);
     return ge::GRAPH_SUCCESS;
 }
-}  // namespace ge
+} // namespace ge
 
 namespace ops {
 class AscendcIvfpqSearchDistance : public OpDef {
@@ -100,13 +108,22 @@ public:
             .UnknownShapeFormat({ge::FORMAT_ND});
         this->Input("codeSize")
             .ParamType(REQUIRED)
-            .ValueDepend(REQUIRED)
             .DataType({ge::DT_INT64})
             .Format({ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND});
-        this->Input("topkAndMaxActualSize")
+        this->Input("topk")
             .ParamType(REQUIRED)
             .DataType({ge::DT_INT32})
+            .Format({ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND});
+        this->Input("labelBase")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_UINT64})
+            .Format({ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND});
+        this->Input("labelOffset")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_INT64})
             .Format({ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND});
         this->Output("distResult")
@@ -120,6 +137,16 @@ public:
             .Format({ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND});
         this->Output("topkValue")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_FLOAT})
+            .Format({ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND});
+        this->Output("topkLabelFinal")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_UINT64})
+            .Format({ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND});
+        this->Output("topkValueFinal")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT})
             .Format({ge::FORMAT_ND})
@@ -139,4 +166,4 @@ public:
 };
 
 OP_ADD(AscendcIvfpqSearchDistance);
-}  // namespace ops
+} // namespace ops

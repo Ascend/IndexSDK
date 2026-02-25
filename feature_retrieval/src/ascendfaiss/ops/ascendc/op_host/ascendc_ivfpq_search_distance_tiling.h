@@ -19,10 +19,10 @@
 #ifndef ASCENDC_OP_HOST_ASCENDC_IVFPQ_SEARCH_DISTANCE_TILING_H
 #define ASCENDC_OP_HOST_ASCENDC_IVFPQ_SEARCH_DISTANCE_TILING_H
 
-#include "register/tilingdata_base.h"
 #include "register/op_def_registry.h"
-#include "tiling/tiling_api.h"
+#include "register/tilingdata_base.h"
 #include "tiling/platform/platform_ascendc.h"
+#include "tiling/tiling_api.h"
 
 namespace optiling {
 BEGIN_TILING_DATA_DEF(AscendcIvfpqSearchDistanceTopKTilingData)
@@ -51,6 +51,21 @@ TILING_DATA_FIELD_DEF_STRUCT(TopkTiling, topkTilingData);
 TILING_DATA_FIELD_DEF_STRUCT(TopkTiling, topkTilingDataWhole);
 TILING_DATA_FIELD_DEF_STRUCT(TopkTiling, topkTilingDataSingle);
 
+TILING_DATA_FIELD_DEF(uint32_t, mergeBeginTopNumInLoop);
+TILING_DATA_FIELD_DEF(uint32_t, mergeBeginTailTopNumInLoop);
+TILING_DATA_FIELD_DEF(uint32_t, mergeBeginBlockLoopTime);
+TILING_DATA_FIELD_DEF(uint32_t, mergeBeginTailBlockLoopTime);
+
+TILING_DATA_FIELD_DEF(uint32_t, minSizeMergeBegin);
+TILING_DATA_FIELD_DEF(uint32_t, minSizeMergeBeginTail);
+TILING_DATA_FIELD_DEF(uint32_t, minSizeMergeEnd);
+
+TILING_DATA_FIELD_DEF_STRUCT(TopkTiling, topkTilingDataMergeBegin);
+TILING_DATA_FIELD_DEF_STRUCT(TopkTiling, topkTilingDataMergeBeginTail);
+TILING_DATA_FIELD_DEF_STRUCT(TopkTiling, topkTilingDataMergeEnd);
+
+TILING_DATA_FIELD_DEF(uint32_t, batch);
+
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(AscendcIvfpqSearchDistance, AscendcIvfpqSearchDistanceTopKTilingData)
@@ -68,8 +83,8 @@ constexpr uint32_t IVFPQ_MAX_SHARE_MEM = 1024 * 216;
 
 class IvfpqTiling {
 public:
-    ge::graphStatus ProcessTiling(
-        gert::TilingContext *context, AscendcIvfpqSearchDistanceTopKTilingData &tilingData, ReduceMode reduceMode)
+    ge::graphStatus ProcessTiling(gert::TilingContext *context, AscendcIvfpqSearchDistanceTopKTilingData &tilingData,
+                                  ReduceMode reduceMode)
     {
         if (context == nullptr) {
             return ge::GRAPH_FAILED;
@@ -119,89 +134,95 @@ private:
         bool isLargest = (reduceMode_ == 1);
 
         AscendC::TopKTilingFunc(platformInfo,
-            blockSize,  // inner
-            1,          // outter
-            topk_,
-            dtypeSize,
-            false,
-            AscendC::TopKMode::TOPK_NORMAL,
-            isLargest,
-            tilingData_->topkTilingData);
+                                blockSize, // inner
+                                1,         // outter
+                                topk_, dtypeSize, false, AscendC::TopKMode::TOPK_NORMAL, isLargest,
+                                tilingData_->topkTilingData);
 
         AscendC::TopKConfig config;
         config.algo = AscendC::TopKAlgo::RADIX_SELECT;
         config.order = AscendC::TopKOrder::UNSET;
         config.sorted = false;
 
-        AscendC::GetTopKMaxMinTmpSize(blockSize,
-            1,
-            topk_,
-            false,
-            false,
-            AscendC::TopKMode::TOPK_NORMAL,
-            isLargest,
-            ge::DataType::DT_FLOAT,
-            config,
-            maxSize,
-            minSize_);
+        AscendC::GetTopKMaxMinTmpSize(blockSize, 1, topk_, false, false, AscendC::TopKMode::TOPK_NORMAL, isLargest,
+                                      ge::DataType::DT_FLOAT, config, maxSize, minSize_);
 
         AscendC::TopKTilingFunc(platformInfo,
-            topk_ * (singleCoretotalBlock_ + 1),  // inner
-            1,                                    // outter
-            topk_,
-            dtypeSize,
-            true,
-            AscendC::TopKMode::TOPK_NORMAL,
-            isLargest,
-            tilingData_->topkTilingDataWhole);
+                                topk_ * (singleCoretotalBlock_ + 1), // inner
+                                1,                                   // outter
+                                topk_, dtypeSize, true, AscendC::TopKMode::TOPK_NORMAL, isLargest,
+                                tilingData_->topkTilingDataWhole);
+
+        AscendC::GetTopKMaxMinTmpSize(topk_ * (singleCoretotalBlock_ + 1), 1, topk_, false, true,
+                                      AscendC::TopKMode::TOPK_NORMAL, isLargest, ge::DataType::DT_FLOAT, config,
+                                      maxSize, minSizeWhole_);
+
+        AscendC::TopKTilingFunc(platformInfo,
+                                topk_ * (singleCoretotalBlock_), // inner
+                                1,                               // outter
+                                topk_, dtypeSize, true, AscendC::TopKMode::TOPK_NORMAL, isLargest,
+                                tilingData_->topkTilingDataSingle);
+
+        AscendC::GetTopKMaxMinTmpSize(topk_ * (singleCoretotalBlock_), 1, topk_, false, true,
+                                      AscendC::TopKMode::TOPK_NORMAL, isLargest, ge::DataType::DT_FLOAT, config,
+                                      maxSize, minSizeSingle_);
+
+        mergeBeginTopNumInLoop_ = IVFPQ_TOPK_OUTTER_NUM / topk_;
+        uint32_t mergeBeginBlockSize = mergeBeginTopNumInLoop_ * topk_;
+        mergeBeginBlockLoopTime_ = (codeBlockNum_ * topk_) / mergeBeginBlockSize;
+
+        AscendC::TopKTilingFunc(platformInfo,
+                                mergeBeginBlockSize, // inner
+                                1,                   // outter
+                                topk_, dtypeSize, true, AscendC::TopKMode::TOPK_NORMAL, isLargest,
+                                tilingData_->topkTilingDataMergeBegin);
+
+        AscendC::GetTopKMaxMinTmpSize(mergeBeginBlockSize, 1, topk_, false, true, AscendC::TopKMode::TOPK_NORMAL,
+                                      isLargest, ge::DataType::DT_FLOAT, config, maxSize, minSizeMergeBegin_);
+
+        uint32_t mergeBeginTailBlockSize = codeBlockNum_ * topk_ - mergeBeginBlockSize * mergeBeginBlockLoopTime_;
+        if (mergeBeginTailBlockSize == 0) {
+            mergeBeginTailBlockLoopTime_ = 0;
+            mergeBeginTailTopNumInLoop_ = 0;
+        } else {
+            mergeBeginTailBlockLoopTime_ = 1;
+            mergeBeginTailTopNumInLoop_ = mergeBeginTailBlockSize / topk_;
+        }
+
+        AscendC::TopKTilingFunc(platformInfo,
+                                mergeBeginTailBlockSize, // inner
+                                1,                       // outter
+                                topk_, dtypeSize, true, AscendC::TopKMode::TOPK_NORMAL, isLargest,
+                                tilingData_->topkTilingDataMergeBeginTail);
+
+        AscendC::GetTopKMaxMinTmpSize(mergeBeginTailBlockSize, 1, topk_, false, true, AscendC::TopKMode::TOPK_NORMAL,
+                                      isLargest, ge::DataType::DT_FLOAT, config, maxSize, minSizeMergeBeginTail_);
 
         config.sorted = true;
-        AscendC::GetTopKMaxMinTmpSize(topk_ * (singleCoretotalBlock_ + 1),
-            1,
-            topk_,
-            false,
-            true,
-            AscendC::TopKMode::TOPK_NORMAL,
-            isLargest,
-            ge::DataType::DT_FLOAT,
-            config,
-            maxSize,
-            minSizeWhole_);
 
         AscendC::TopKTilingFunc(platformInfo,
-            topk_ * (singleCoretotalBlock_),  // inner
-            1,                                // outter
-            topk_,
-            dtypeSize,
-            true,
-            AscendC::TopKMode::TOPK_NORMAL,
-            isLargest,
-            tilingData_->topkTilingDataSingle);
+                                topk_ * (mergeBeginBlockLoopTime_ + mergeBeginTailBlockLoopTime_), // inner
+                                1,                                                                 // outter
+                                topk_, dtypeSize, true, AscendC::TopKMode::TOPK_NORMAL, isLargest,
+                                tilingData_->topkTilingDataMergeEnd);
 
-        AscendC::GetTopKMaxMinTmpSize(topk_ * (singleCoretotalBlock_),
-            1,
-            topk_,
-            false,
-            true,
-            AscendC::TopKMode::TOPK_NORMAL,
-            isLargest,
-            ge::DataType::DT_FLOAT,
-            config,
-            maxSize,
-            minSizeSingle_);
+        AscendC::GetTopKMaxMinTmpSize(topk_ * (mergeBeginBlockLoopTime_ + mergeBeginTailBlockLoopTime_), 1, topk_,
+                                      false, true, AscendC::TopKMode::TOPK_NORMAL, isLargest, ge::DataType::DT_FLOAT,
+                                      config, maxSize, minSizeMergeEnd_);
 
         return ge::GRAPH_SUCCESS;
     }
 
     ge::graphStatus ParamDimCheck(const gert::Shape queryPQShape, const gert::Shape codeBaseShape,
-        const gert::Shape codeOffsetShape, const gert::Shape codeSizeShape, const gert::Shape topkShape)
+                                  const gert::Shape codeOffsetShape, const gert::Shape codeSizeShape,
+                                  const gert::Shape topkShape)
     {
         auto queryPQDimNum = queryPQShape.GetDimNum();
         auto codeBaseDimNum = codeBaseShape.GetDimNum();
         auto codeOffsetDimNum = codeOffsetShape.GetDimNum();
         auto codeSizeDimNum = codeSizeShape.GetDimNum();
         auto topkDimNum = topkShape.GetDimNum();
-        if (queryPQDimNum != 2U) {
+        if (queryPQDimNum != 3U) {
             return ge::GRAPH_FAILED;
         }
 
@@ -209,15 +230,15 @@ private:
             return ge::GRAPH_FAILED;
         }
 
-        if (codeOffsetDimNum != 1U) {
+        if (codeOffsetDimNum != 2U) {
             return ge::GRAPH_FAILED;
         }
 
-        if (codeSizeDimNum != 1U) {
+        if (codeSizeDimNum != 2U) {
             return ge::GRAPH_FAILED;
         }
 
-        if (topkDimNum != 2U) {
+        if (topkDimNum != 1U) {
             return ge::GRAPH_FAILED;
         }
 
@@ -226,7 +247,7 @@ private:
 
     ge::graphStatus ParamValueCheck()
     {
-        if (subSpaceNum_ != 4) {
+        if (subSpaceNum_ != 2 && subSpaceNum_ != 4 && subSpaceNum_ != 8 && subSpaceNum_ != 16) {
             return ge::GRAPH_FAILED;
         }
 
@@ -238,7 +259,7 @@ private:
             return ge::GRAPH_FAILED;
         }
 
-        if (codeBlockNum_ > 128) {
+        if (codeBlockNum_ > 256) {
             return ge::GRAPH_FAILED;
         }
 
@@ -248,26 +269,29 @@ private:
     virtual ge::graphStatus ProcessInput()
     {
         // InTensor
-        auto queryPQShape = context_->GetInputShape(0)->GetStorageShape();     // 第0个输入 queryPQ
-        auto codeBaseShape = context_->GetInputShape(1)->GetStorageShape();    // 第1个输入 codeBase
-        auto codeOffsetShape = context_->GetInputShape(2)->GetStorageShape();  // 第2个输入 codeOffset
-        auto codeSizeShape = context_->GetInputShape(3)->GetStorageShape();    // 第3个输入 codeSize
-        auto topkShape = context_->GetInputShape(4)->GetStorageShape();        // 第3个输入 codeSize
+        auto queryPQShape = context_->GetInputShape(0)->GetStorageShape();    // 第0个输入 queryPQ
+        auto codeBaseShape = context_->GetInputShape(1)->GetStorageShape();   // 第1个输入 codeBase
+        auto codeOffsetShape = context_->GetInputShape(2)->GetStorageShape(); // 第2个输入 codeOffset
+        auto codeSizeShape = context_->GetInputShape(3)->GetStorageShape();   // 第3个输入 codeSize
+        auto topkShape = context_->GetInputShape(4)->GetStorageShape();       // 第4个输入 topk
 
         auto ret = ParamDimCheck(queryPQShape, codeBaseShape, codeOffsetShape, codeSizeShape, topkShape);
 
-        subSpaceNum_ = static_cast<uint32_t>(queryPQShape.GetDim(0));
-        ksub_ = static_cast<uint32_t>(queryPQShape.GetDim(1));
-        codeBlockNum_ = static_cast<uint32_t>(codeOffsetShape.GetDim(0));
-        codeSizeNum_ = static_cast<uint32_t>(codeSizeShape.GetDim(0));
+        batch_ = static_cast<uint32_t>(queryPQShape.GetDim(0));
+        subSpaceNum_ = static_cast<uint32_t>(queryPQShape.GetDim(1));
+        ksub_ = static_cast<uint32_t>(queryPQShape.GetDim(2));
+        codeBlockNum_ = static_cast<uint32_t>(codeOffsetShape.GetDim(1));
+        codeSizeNum_ = static_cast<uint32_t>(codeSizeShape.GetDim(1));
 
         topk_ = static_cast<uint32_t>(topkShape.GetDim(0));
-        codeBlockSize_ = IVFPQ_BLOCK_MAX_SIZE;
 
-        if (codeBlockNum_ <= aivNum_) {
-            aivNum_ = codeBlockNum_;
-        } else {
+        codeBlockSize_ = IVFPQ_CODE_BLOCK_SIZE;
+
+        if (batch_ <= 16) {
             aivNum_ = IVFPQ_NUM_32;
+            tilingKey_ = 1;
+        } else {
+            aivNum_ = batch_;
         }
         ret = ParamValueCheck();
         return ret;
@@ -293,6 +317,16 @@ private:
         tilingData_->set_topk(topk_);
         tilingData_->set_perCoreInnerBlockDealSize(perCoreInnerBlockDealSize_);
         tilingData_->set_topkOutterNum(IVFPQ_TOPK_OUTTER_NUM);
+
+        tilingData_->set_mergeBeginTopNumInLoop(mergeBeginTopNumInLoop_);
+        tilingData_->set_mergeBeginTailTopNumInLoop(mergeBeginTailTopNumInLoop_);
+        tilingData_->set_mergeBeginBlockLoopTime(mergeBeginBlockLoopTime_);
+        tilingData_->set_mergeBeginTailBlockLoopTime(mergeBeginTailBlockLoopTime_);
+        tilingData_->set_minSizeMergeBegin(minSizeMergeBegin_);
+        tilingData_->set_minSizeMergeBeginTail(minSizeMergeBeginTail_);
+        tilingData_->set_minSizeMergeEnd(minSizeMergeEnd_);
+
+        tilingData_->set_batch(batch_);
 
         return ge::GRAPH_SUCCESS;
     }
@@ -345,7 +379,16 @@ private:
     uint32_t perCoreInnerBlockDealSize_ = 0;
 
     uint32_t topk_ = 0;
+
+    uint32_t mergeBeginTopNumInLoop_ = 0;
+    uint32_t mergeBeginTailTopNumInLoop_ = 0;
+    uint32_t mergeBeginBlockLoopTime_ = 0;
+    uint32_t mergeBeginTailBlockLoopTime_ = 0;
+    uint32_t minSizeMergeBegin_ = 0;
+    uint32_t minSizeMergeBeginTail_ = 0;
+    uint32_t minSizeMergeEnd_ = 0;
+    uint32_t batch_ = 0;
 };
 
-}  // namespace optiling
+} // namespace optiling
 #endif
