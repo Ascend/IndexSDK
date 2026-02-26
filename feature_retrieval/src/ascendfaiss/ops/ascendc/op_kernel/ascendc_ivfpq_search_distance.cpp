@@ -24,6 +24,19 @@
 
 using namespace AscendC;
 
+template <typename OpType>
+__aicore__ inline void RunDistOperator(GM_ADDR queryPQ, GM_ADDR codeBase, GM_ADDR codeOffset, GM_ADDR codeSize,
+                GM_ADDR topk, GM_ADDR labelBase, GM_ADDR labelOffset, GM_ADDR distResult, GM_ADDR topkIndex,
+                GM_ADDR topkValue, GM_ADDR topkLabelFinal, GM_ADDR topkValueFinal, GM_ADDR flag, GM_ADDR workspace,
+                const AscendcIvfpqSearchDistanceTopKTilingData *__restrict tilingData, TPipe *tPipe)
+{
+    OpType op;
+    op.Init(queryPQ, codeBase, codeOffset, codeSize, topk, labelBase, labelOffset, distResult, topkIndex, topkValue,
+            topkLabelFinal, topkValueFinal, flag, workspace, tilingData, tPipe);
+    op.Process();
+    op.ProcessMerge();
+}
+
 extern "C" __global__ __aicore__ void
 ascendc_ivfpq_search_distance(GM_ADDR queryPQ, GM_ADDR codeBase, GM_ADDR codeOffset, GM_ADDR codeSize, GM_ADDR topk,
                               GM_ADDR labelBase, GM_ADDR labelOffset, GM_ADDR distResult, GM_ADDR topkIndex,
@@ -33,16 +46,12 @@ ascendc_ivfpq_search_distance(GM_ADDR queryPQ, GM_ADDR codeBase, GM_ADDR codeOff
     TPipe tPipe;
     GET_TILING_DATA(tiling_data, tiling);
     if (TILING_KEY_IS(0)) {
-        IndexOps::AscendcIvfpqSearchDistanceTopK op;
-        op.Init(queryPQ, codeBase, codeOffset, codeSize, topk, labelBase, labelOffset, distResult, topkIndex, topkValue,
-                topkLabelFinal, topkValueFinal, flag, workspace, &tiling_data, &tPipe);
-        op.Process();
-        op.ProcessMerge();
-    } else if (TILING_KEY_IS(1)) {
-        IndexOps::AscendcIvfpqSearchDistanceTopKSmall op;
-        op.Init(queryPQ, codeBase, codeOffset, codeSize, topk, labelBase, labelOffset, distResult, topkIndex, topkValue,
-                topkLabelFinal, topkValueFinal, flag, workspace, &tiling_data, &tPipe);
-        op.Process();
-        op.ProcessMerge();
+        RunDistOperator<IndexOps::AscendcIvfpqSearchDistanceTopK>(
+            queryPQ, codeBase, codeOffset, codeSize, topk, labelBase, labelOffset, distResult, topkIndex, topkValue,
+            topkLabelFinal, topkValueFinal, flag, workspace, &tiling_data, &tPipe);
+    } else {
+        RunDistOperator<IndexOps::AscendcIvfpqSearchDistanceTopKSmall>(
+            queryPQ, codeBase, codeOffset, codeSize, topk, labelBase, labelOffset, distResult, topkIndex, topkValue,
+            topkLabelFinal, topkValueFinal, flag, workspace, &tiling_data, &tPipe);
     }
 }

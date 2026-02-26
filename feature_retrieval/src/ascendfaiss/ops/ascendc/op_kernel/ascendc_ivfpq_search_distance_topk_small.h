@@ -293,18 +293,18 @@ __aicore__ inline void AscendcIvfpqSearchDistanceTopKSmall::ParseTilingData(
     this->min_size_single = tilingData->minSizeSingle;
     this->single_core_total_block = tilingData->singleCoretotalBlock;
 
-    this->topkTilingData = tilingData->topkTilingData;             // TopK操作的第一组tiling数据
-    this->topkTilingDataWhole = tilingData->topkTilingDataWhole;   // TopK操作的第一组tiling数据
-    this->topkTilingDataSingle = tilingData->topkTilingDataSingle; // TopK操作的第一组tiling数据
+    this->topkTilingData = tilingData->topkTilingData;
+    this->topkTilingDataWhole = tilingData->topkTilingDataWhole;
+    this->topkTilingDataSingle = tilingData->topkTilingDataSingle;
 
     this->topk = tilingData->topk;
     this->topk_outter_num = tilingData->topkOutterNum;
     this->top_k_result_value_buf_num = topk * (single_core_total_block + 1);
     this->top_k_result_value_single_num = topk * single_core_total_block;
 
-    this->topkTilingDataMergeBegin = tilingData->topkTilingDataMergeBegin;         // TopK操作的第一组tiling数据
-    this->topkTilingDataMergeBeginTail = tilingData->topkTilingDataMergeBeginTail; // TopK操作的第一组tiling数据
-    this->topkTilingDataMergeEnd = tilingData->topkTilingDataMergeEnd;             // TopK操作的第一组tiling数据
+    this->topkTilingDataMergeBegin = tilingData->topkTilingDataMergeBegin;
+    this->topkTilingDataMergeBeginTail = tilingData->topkTilingDataMergeBeginTail;
+    this->topkTilingDataMergeEnd = tilingData->topkTilingDataMergeEnd;
 
     this->mergeBeginTopNumInLoop = tilingData->mergeBeginTopNumInLoop;
     this->mergeBeginTailTopNumInLoop = tilingData->mergeBeginTailTopNumInLoop;
@@ -318,20 +318,20 @@ __aicore__ inline void AscendcIvfpqSearchDistanceTopKSmall::ParseTilingData(
 
 __aicore__ inline void AscendcIvfpqSearchDistanceTopKSmall::InitReduceUbTensor()
 {
-    pipe.InitBuffer(top_k_result_value_buf, top_k_result_value_buf_num * sizeof(float));   // 4.5k
-    pipe.InitBuffer(top_k_result_index_buf, top_k_result_value_buf_num * sizeof(int32_t)); // 4.5k
+    pipe.InitBuffer(top_k_result_value_buf, top_k_result_value_buf_num * sizeof(float));
+    pipe.InitBuffer(top_k_result_index_buf, top_k_result_value_buf_num * sizeof(int32_t));
 
-    pipe.InitBuffer(top_k_result_value_buf_whole, topk * sizeof(float));   // 1.125k
-    pipe.InitBuffer(top_k_result_index_buf_whole, topk * sizeof(int32_t)); // 1.125k
+    pipe.InitBuffer(top_k_result_value_buf_whole, topk * sizeof(float));
+    pipe.InitBuffer(top_k_result_index_buf_whole, topk * sizeof(int32_t));
 
-    pipe.InitBuffer(queryPQUbQueue, 1, this->ksub * this->subSpaceNum * sizeof(float));   // 4k
-    pipe.InitBuffer(distResultQueue, 1, this->perCoreInnerBlockDealSize * sizeof(float)); // 64k
+    pipe.InitBuffer(queryPQUbQueue, 1, this->ksub * this->subSpaceNum * sizeof(float));
+    pipe.InitBuffer(distResultQueue, 1, this->perCoreInnerBlockDealSize * sizeof(float));
 
-    pipe.InitBuffer(flag_buf, IVFPQ_FLAG_ALIGN * sizeof(uint16_t)); // TopK临时缓冲区
+    pipe.InitBuffer(flag_buf, IVFPQ_FLAG_ALIGN * sizeof(uint16_t));
 
-    pipe.InitBuffer(top_k_tmp_buf, this->min_size * sizeof(uint8_t));               // TopK临时缓冲区
-    pipe.InitBuffer(top_k_tmp_whole_buf, this->min_size_whole * sizeof(uint8_t));   // TopK临时缓冲区
-    pipe.InitBuffer(top_k_tmp_single_buf, this->min_size_single * sizeof(uint8_t)); // TopK临时缓冲区
+    pipe.InitBuffer(top_k_tmp_buf, this->min_size * sizeof(uint8_t));
+    pipe.InitBuffer(top_k_tmp_whole_buf, this->min_size_whole * sizeof(uint8_t));
+    pipe.InitBuffer(top_k_tmp_single_buf, this->min_size_single * sizeof(uint8_t));
 }
 
 __aicore__ inline void AscendcIvfpqSearchDistanceTopKSmall::SingleBlockTopKAndIndexAlign(
@@ -347,9 +347,7 @@ __aicore__ inline void AscendcIvfpqSearchDistanceTopKSmall::SingleBlockTopKAndIn
         topKInfo.outter = 1;                    // 外层循环次数
         topKInfo.inner = this->topk_outter_num; // 内层块大小
         topKInfo.n = this->topk_outter_num;     // 数据总数
-        // TopK临时缓冲区
 
-        // log_probs_gm(行339-349): 执行第一次TopK操作，从当前ub中选出top_k候选
         AscendC::TopK<float, false, false, false, AscendC::TopKMode::TOPK_NORMAL, topkConfig>(
             dst_local_value[index * topk], dst_local_index[index * topk], distResultUb[index * this->topk_outter_num],
             src_local_index, src_local_finish, tmp_local, this->topk, this->topkTilingData, topKInfo, this->isLargest);
@@ -386,7 +384,6 @@ __aicore__ inline void AscendcIvfpqSearchDistanceTopKSmall::WholeBlockTopK(
         topKInfoWhole.outter = 1;                            // 外层循环次数
         topKInfoWhole.inner = top_k_result_value_single_num; // 内层块大小
         topKInfoWhole.n = top_k_result_value_single_num;     // 数据总数
-        // TopK临时缓冲区
         LocalTensor<bool> src_local_finish_whole;
 
         AscendC::TopK<float, true, false, false, AscendC::TopKMode::TOPK_NORMAL, topkConfigSort>(
@@ -468,9 +465,9 @@ __aicore__ inline void AscendcIvfpqSearchDistanceTopKSmall::Process()
                                    tmp_local_whole, tmp_local_single, innerBlockindex);
 
                     AscendC::DataCopy(dst_local_value[top_k_result_value_single_num], dst_local_value_whole,
-                                      topk); // 从GM->VECIN搬运40字节
+                                      topk);
                     AscendC::DataCopy(dst_local_index[top_k_result_value_single_num], dst_local_index_whole,
-                                      topk); // 从GM->VECIN搬运40字节
+                                      topk);
                     distResultQueue.FreeTensor(distResultUb);
                 }
                 AscendC::DataCopy(topkValueGm[batchIndex * topk * codeBlockNum + (blockOffsetNum)*topk],
