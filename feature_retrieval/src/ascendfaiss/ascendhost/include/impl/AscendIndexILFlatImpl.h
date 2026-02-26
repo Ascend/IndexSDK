@@ -164,7 +164,8 @@ public:
 
         APP_ERROR ret = this->Search(n, queries, topk, indice, distances, tableLen, table);
 
-        APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, APP_ERR_INNER_ERROR, "AscendIndexILFlatImpl Search faild(%d)", ret);
+        APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, APP_ERR_INNER_ERROR,
+            "AscendIndexILFlatImpl Search failed(%d)", ret);
         int validNum = std::min(topk, this->ntotal);
         for (int i = 0; i < n; i++) {
             int qnum = 0;
@@ -189,12 +190,12 @@ public:
             (isInitialized), APP_ERR_INVALID_PARAM, "Illegal operation, please initialize the index first. ");
         auto ret = CheckComputeParams(n, queries, distances, tableLen, table);
         APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, APP_ERR_INNER_ERROR,
-            "AscendIndexILFlatImpl CheckComputeParams faild(%d)", ret);
+            "AscendIndexILFlatImpl CheckComputeParams failed(%d)", ret);
 
         if (n == 1) {
             ret = ComputeDistImplBatched(n, queries, distances, tableLen, table);
             APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, APP_ERR_INNER_ERROR,
-                "AscendIndexILFlatImpl ComputeDistImplBatched faild(%d)", ret);
+                "AscendIndexILFlatImpl ComputeDistImplBatched failed(%d)", ret);
             return APP_ERR_OK;
         }
 
@@ -209,7 +210,7 @@ public:
                     ret = ComputeDistImplBatched(batchSize, queries + searched * this->dim,
                         distances + searched * padNtotal, tableLen, table);
                     APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, APP_ERR_INNER_ERROR,
-                        "AscendIndexILFlatImpl ComputeDistImplBatched faild(%d)", ret);
+                        "AscendIndexILFlatImpl ComputeDistImplBatched failed(%d)", ret);
                     searched += batchSize;
                 }
             }
@@ -225,14 +226,9 @@ public:
             (isInitialized), APP_ERR_INVALID_PARAM, "Illegal operation, please initialize the index first. ");
         auto res = CheckComputeParams(n, queries, distances, tableLen, table);
         APPERR_RETURN_IF_NOT_FMT(res == APP_ERR_OK, APP_ERR_INNER_ERROR,
-            "AscendIndexILFlatImpl CheckComputeParams faild(%d)", res);
+            "AscendIndexILFlatImpl CheckComputeParams failed(%d)", res);
         APPERR_RETURN_IF_NOT_LOG(num, APP_ERR_INVALID_PARAM, "num can not be nullptr.");
         APPERR_RETURN_IF_NOT_LOG(indices, APP_ERR_INVALID_PARAM, "indices can not be nullptr.");
-
-        int maxNum = 0;
-        res = CheckComputeMaxNum(n, num, indices, maxNum);
-        APPERR_RETURN_IF_NOT_FMT(res == APP_ERR_OK, APP_ERR_INNER_ERROR,
-            "AscendIndexILFlatImpl CheckComputeMaxNum faild(%d)", res);
 
         if (memoryType == MEMORY_TYPE::INPUT_DEVICE_OUTPUT_DEVICE ||
             memoryType == MEMORY_TYPE::INPUT_DEVICE_OUTPUT_HOST) {
@@ -243,13 +239,18 @@ public:
             isOutputDevice = true;
         }
 
+        int maxNum = 0;
+        res = CheckComputeMaxNum(n, num, indices, maxNum);
+        APPERR_RETURN_IF_NOT_FMT(res == APP_ERR_OK, APP_ERR_INNER_ERROR,
+            "AscendIndexILFlatImpl CheckComputeMaxNum failed(%d)", res);
+
         std::tuple<unsigned int, const float *> tableInfo(tableLen, table);
         std::tuple<int, const int *, const idx_t *> idxInfo;
         if (n == 1) {
             idxInfo = std::make_tuple(maxNum, num, indices);
             auto ret = ComputeDistByIdxImpl(n, queries, distances, idxInfo, tableInfo);
             APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, APP_ERR_INNER_ERROR,
-                "AscendIndexILFlatImpl ComputeDistByIdxImpl faild(%d)", ret);
+                "AscendIndexILFlatImpl ComputeDistByIdxImpl failed(%d)", ret);
             return APP_ERR_OK;
         }
         int size = static_cast<int>(computeByIdxBatchSizes.size());
@@ -263,7 +264,7 @@ public:
                     auto ret = ComputeDistByIdxImpl(batchSize, queries + searched * this->dim,
                         distances + searched * maxNum, idxInfo, tableInfo);
                     APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, APP_ERR_INNER_ERROR,
-                        "AscendIndexILFlatImpl ComputeDistByIdxImpl faild(%d)", ret);
+                        "AscendIndexILFlatImpl ComputeDistByIdxImpl failed(%d)", ret);
                     searched += batchSize;
                 }
             }
@@ -281,12 +282,12 @@ public:
 
         auto res = CheckSearchParams(n, queries, topk, indice, distances, tableLen, table);
         APPERR_RETURN_IF_NOT_FMT(res == APP_ERR_OK, APP_ERR_INVALID_PARAM,
-            "AscendIndexILFlatImpl CheckSearchParams faild(%d)", res);
+            "AscendIndexILFlatImpl CheckSearchParams failed(%d)", res);
 
         if (n == 1) {
             auto ret = SearchImpl(n, queries, topk, indice, distances);
             APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, APP_ERR_INNER_ERROR,
-                "AscendIndexILFlatImpl SearchImpl faild(%d)", ret);
+                "AscendIndexILFlatImpl SearchImpl failed(%d)", ret);
             return this->TableMapping(n, distances, tableLen, table, topk);
         }
 
@@ -300,7 +301,7 @@ public:
                     auto ret = SearchImpl(batchSize, queries + searched * this->dim, topk, indice +
                         searched * topk, distances + searched * topk);
                     APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, APP_ERR_INNER_ERROR,
-                        "AscendIndexILFlatImpl SearchImpl faild(%d)", ret);
+                        "AscendIndexILFlatImpl SearchImpl failed(%d)", ret);
                     searched += batchSize;
                 }
             }
