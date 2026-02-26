@@ -92,6 +92,7 @@ public:
 
         context_ = context;
         tilingData_ = &tilingData;
+
         if (reduceMode == ReduceMode::L2) {
             reduceMode_ = 0;
         } else {
@@ -128,25 +129,29 @@ private:
         minSizeSingle_ = 0;
         uint32_t blockSize = IVFPQ_TOPK_OUTTER_NUM;
         uint32_t dtypeSize = sizeof(float);
-
-        perCoreInnerBlockDealSize_ = IVFPQ_BLOCK_MAX_SIZE;
-        singleCoretotalBlock_ = perCoreInnerBlockDealSize_ / IVFPQ_TOPK_OUTTER_NUM;
         bool isLargest = (reduceMode_ == 1);
-
+        // 块内数据循环topk，单轮topk内轴设置为4096，外轴设置为1
         AscendC::TopKTilingFunc(platformInfo,
                                 blockSize, // inner
                                 1,         // outter
                                 topk_, dtypeSize, false, AscendC::TopKMode::TOPK_NORMAL, isLargest,
                                 tilingData_->topkTilingData);
-
+        // 设置topk算法信息
         AscendC::TopKConfig config;
         config.algo = AscendC::TopKAlgo::RADIX_SELECT;
         config.order = AscendC::TopKOrder::UNSET;
         config.sorted = false;
 
+        // 块内数据循环topk，单轮topk内轴设置为4096，外轴设置为1
         AscendC::GetTopKMaxMinTmpSize(blockSize, 1, topk_, false, false, AscendC::TopKMode::TOPK_NORMAL, isLargest,
                                       ge::DataType::DT_FLOAT, config, maxSize, minSize_);
 
+        // block内按照16384进行分块，
+        perCoreInnerBlockDealSize_ = IVFPQ_BLOCK_MAX_SIZE;
+        // 单核处理16384大小数据需要循环的次数，按照内轴长度4096进行循环topk
+        singleCoretotalBlock_ = perCoreInnerBlockDealSize_ / IVFPQ_TOPK_OUTTER_NUM;
+
+        // 非首轮topk，包含累计topk结果，此时内轴长度就是 (topk * singleCoretotalBlock_+1)
         AscendC::TopKTilingFunc(platformInfo,
                                 topk_ * (singleCoretotalBlock_ + 1), // inner
                                 1,                                   // outter
@@ -157,6 +162,7 @@ private:
                                       AscendC::TopKMode::TOPK_NORMAL, isLargest, ge::DataType::DT_FLOAT, config,
                                       maxSize, minSizeWhole_);
 
+        // 首轮topk，不包含累计topk结果，此时内轴长度就是 topk * singleCoretotalBlock_
         AscendC::TopKTilingFunc(platformInfo,
                                 topk_ * (singleCoretotalBlock_), // inner
                                 1,                               // outter
@@ -167,10 +173,12 @@ private:
                                       AscendC::TopKMode::TOPK_NORMAL, isLargest, ge::DataType::DT_FLOAT, config,
                                       maxSize, minSizeSingle_);
 
+        // 单轮最多可以处理多少个block topk的结果
         mergeBeginTopNumInLoop_ = IVFPQ_TOPK_OUTTER_NUM / topk_;
+        // 单轮最多可以处理的实际长度
         uint32_t mergeBeginBlockSize = mergeBeginTopNumInLoop_ * topk_;
+        // 多少轮可以处理完全部block的topk结果
         mergeBeginBlockLoopTime_ = (codeBlockNum_ * topk_) / mergeBeginBlockSize;
-
         AscendC::TopKTilingFunc(platformInfo,
                                 mergeBeginBlockSize, // inner
                                 1,                   // outter
@@ -179,7 +187,7 @@ private:
 
         AscendC::GetTopKMaxMinTmpSize(mergeBeginBlockSize, 1, topk_, false, true, AscendC::TopKMode::TOPK_NORMAL,
                                       isLargest, ge::DataType::DT_FLOAT, config, maxSize, minSizeMergeBegin_);
-
+        // 尾块处理
         uint32_t mergeBeginTailBlockSize = codeBlockNum_ * topk_ - mergeBeginBlockSize * mergeBeginBlockLoopTime_;
         if (mergeBeginTailBlockSize == 0) {
             mergeBeginTailBlockLoopTime_ = 0;
@@ -188,28 +196,25 @@ private:
             mergeBeginTailBlockLoopTime_ = 1;
             mergeBeginTailTopNumInLoop_ = mergeBeginTailBlockSize / topk_;
         }
-
+        // 尾块topk的tiling方法
         AscendC::TopKTilingFunc(platformInfo,
                                 mergeBeginTailBlockSize, // inner
                                 1,                       // outter
                                 topk_, dtypeSize, true, AscendC::TopKMode::TOPK_NORMAL, isLargest,
                                 tilingData_->topkTilingDataMergeBeginTail);
-
         AscendC::GetTopKMaxMinTmpSize(mergeBeginTailBlockSize, 1, topk_, false, true, AscendC::TopKMode::TOPK_NORMAL,
                                       isLargest, ge::DataType::DT_FLOAT, config, maxSize, minSizeMergeBeginTail_);
-
         config.sorted = true;
-
+        // 最终归并topk
+        // 内轴长度为 topk_ * (mergeBeginBlockLoopTime_ + mergeBeginTailBlockLoopTime_)
         AscendC::TopKTilingFunc(platformInfo,
                                 topk_ * (mergeBeginBlockLoopTime_ + mergeBeginTailBlockLoopTime_), // inner
                                 1,                                                                 // outter
                                 topk_, dtypeSize, true, AscendC::TopKMode::TOPK_NORMAL, isLargest,
                                 tilingData_->topkTilingDataMergeEnd);
-
         AscendC::GetTopKMaxMinTmpSize(topk_ * (mergeBeginBlockLoopTime_ + mergeBeginTailBlockLoopTime_), 1, topk_,
                                       false, true, AscendC::TopKMode::TOPK_NORMAL, isLargest, ge::DataType::DT_FLOAT,
                                       config, maxSize, minSizeMergeEnd_);
-
         return ge::GRAPH_SUCCESS;
     }
 
@@ -333,6 +338,7 @@ private:
 
     ge::graphStatus SetExtraConfig()
     {
+        // 共享内存设置
         context_->SetLocalMemorySize(IVFPQ_MAX_SHARE_MEM);
         context_->SetBlockDim(tilingData_->get_usedAivNum());
         context_->SetTilingKey(tilingData_->get_tilingKey());
