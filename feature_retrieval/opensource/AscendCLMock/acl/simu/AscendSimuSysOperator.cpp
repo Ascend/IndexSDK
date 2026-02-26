@@ -413,6 +413,21 @@ void simuOpTransdataShaped(aclopHandle &opHandle)
     ACL_APP_LOG(ACL_INFO, "TransdataShaped simu exec");
 }
 
+void simuOpTransdataGet(aclopHandle &opHandle)
+{
+    ACL_APP_LOG(ACL_INFO, "TransdataGet simu exec");
+}
+
+void simuOpTransdataDist(aclopHandle &opHandle)
+{
+    ACL_APP_LOG(ACL_INFO, "TransdataDist simu exec");
+}
+
+void simuOpTransdataIdx(aclopHandle &opHandle)
+{
+    ACL_APP_LOG(ACL_INFO, "TransdataIdx simu exec");
+}
+
 void simuOpVecL2Sqr(aclopHandle &opHandle)
 {
     ACL_APP_LOG(ACL_INFO, "VecL2Sqr simu exec");
@@ -908,6 +923,9 @@ void simuOpInstall()
     REG_OP("TransdataShaped", simuOpTransdataShaped);
     REG_OP("VecL2Sqr", simuOpVecL2Sqr);
     REG_OP("TransdataRaw", simuOpTransdataRaw);
+    REG_OP("TransdataGet", simuOpTransdataGet);
+    REG_OP("TransdataDist", simuOpTransdataDist);
+    REG_OP("TransdataIdx", simuOpTransdataIdx);
     REG_OP("TopkFlat", simuTopkFlat);
     REG_OP("TopkIvf", simuTopkIvf);
     REG_OP("DistanceComputeFlatMin64", simuDistanceComputeFlatMin64);
