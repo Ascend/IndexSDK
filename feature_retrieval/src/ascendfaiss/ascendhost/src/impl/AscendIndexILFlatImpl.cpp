@@ -140,13 +140,17 @@ APP_ERROR AscendIndexILFlatImpl::CheckComputeMaxNum(int n, const int *num, const
     if (maxNum == 0) {
         return APP_ERR_OK;
     }
-    for (int i = 0; i < n; i++) {
-        int tmpNum = *(num + i);
-        for (int j = 0; j < tmpNum; j++) {
-            APPERR_RETURN_IF_NOT_LOG(*(indices + i * maxNum + j) < static_cast<size_t>(this->ntotal),
-                APP_ERR_INVALID_PARAM, "The given indice to compare with should be smaller than ntotal");
+
+    if (!isInputDevice) {
+        for (int i = 0; i < n; i++) {
+            int tmpNum = *(num + i);
+            for (int j = 0; j < tmpNum; j++) {
+                APPERR_RETURN_IF_NOT_LOG(*(indices + i * maxNum + j) < static_cast<size_t>(this->ntotal),
+                    APP_ERR_INVALID_PARAM, "The given indice to compare with should be smaller than ntotal");
+            }
         }
     }
+
     return APP_ERR_OK;
 }
 
@@ -328,7 +332,6 @@ APP_ERROR AscendIndexILFlatImpl::searchImplFp16(int n, const float16_t *query, i
     idx_t *indices, float *distances)
 {
     APP_LOG_INFO("AscendIndexILFlatImpl searchImplFp16 operation start.\n");
- 
     auto streamPtr = this->pResources->getDefaultStream();
     auto stream = streamPtr->GetStream();
     auto &mem = this->pResources->getMemoryManager();
@@ -342,13 +345,12 @@ APP_ERROR AscendIndexILFlatImpl::searchImplFp16(int n, const float16_t *query, i
     AscendTensor<float16_t, DIMS_2> outDistances(mem, { n, topk }, stream);
  
     int pageNum = utils::divUp(this->ntotal, this->pageSize);
- 
     for (int pageId = 0; pageId < pageNum; ++pageId) {
         APP_ERROR ret = SearchPaged(pageId, queries, pageNum, outIndices, outDistances);
         APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, APP_ERR_INNER_ERROR,
             "AscendIndexILFlatImpl SearchPaged failed(%d)", ret);
     }
- 
+
     std::vector<float16_t> tmpDistances(n * topk);
     ret = aclrtMemcpy(tmpDistances.data(), tmpDistances.size() * sizeof(float16_t), outDistances.data(),
         outDistances.getSizeInBytes(), ACL_MEMCPY_DEVICE_TO_HOST);
@@ -419,6 +421,7 @@ APP_ERROR AscendIndexILFlatImpl::SearchPaged(int pageId, AscendTensor<float16_t,
  
     const int dim1 = utils::divUp(this->blockSize, ZREGION_HEIGHT);
     const int dim2 = utils::divUp(this->dim, CUBE_ALIGN);
+
     for (int i = 0; i < blockNum; i++) {
         auto baseOffset = static_cast<int64_t>(blockOffset + i) * this->blockSize * dim2 * CUBE_ALIGN;
         AscendTensor<float16_t, DIMS_4> shaped(this->baseSpace->data() + baseOffset,
@@ -435,10 +438,10 @@ APP_ERROR AscendIndexILFlatImpl::SearchPaged(int pageId, AscendTensor<float16_t,
  
         ComputeBlockDist(queries, mask, shaped, actualSize, dist, maxDist, flag, stream);
     }
- 
+
     ret = synchronizeStream(stream);
     APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "synchronizeStream failed: %i\n", ret);
- 
+
     ret = synchronizeStream(streamAicpu);
     APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "synchronizeStream aicpu failed: %i\n", ret);
     APP_LOG_INFO("AscendIndexILFlatImpl SearchPaged operation end.\n");
@@ -510,16 +513,12 @@ APP_ERROR AscendIndexILFlatImpl::MoveData(int& idxCopyNum, int maxNum, int n, co
 APP_ERROR AscendIndexILFlatImpl::CopyDistData(int maxNum, int idxCopyNum, float *distances, int n,
     AscendTensor<float, DIMS_3>& distResult)
 {
-    aclrtMemcpyKind kind = ACL_MEMCPY_DEVICE_TO_HOST;
-    if (isOutputDevice) {
-        kind = ACL_MEMCPY_DEVICE_TO_DEVICE;
-    }
     int idxSliceNum = utils::divUp(maxNum, IDX_BURST_LEN);
     for (int i = 0; i < idxSliceNum; i++) {
         for (int j = 0; j < n; j++) {
             idxCopyNum = (i == idxSliceNum - 1) ? (maxNum - i * IDX_BURST_LEN) : IDX_BURST_LEN;
             auto err = aclrtMemcpy(distances + i * IDX_BURST_LEN + j * maxNum, idxCopyNum * sizeof(float),
-                distResult[i][j].data(), idxCopyNum * sizeof(float), kind);
+                distResult[i][j].data(), idxCopyNum * sizeof(float), ACL_MEMCPY_DEVICE_TO_HOST);
             APPERR_RETURN_IF_NOT_FMT(err == ACL_SUCCESS, APP_ERR_INNER_ERROR,
                 "memcpy error, i = %d, j = %d. err = %d\n", i, j, err);
         }
@@ -532,6 +531,9 @@ APP_ERROR AscendIndexILFlatImpl::ComputeDistByIdxImplFp16(int n, const float16_t
 {
     auto streamPtr = this->pResources->getDefaultStream();
     auto stream = streamPtr->GetStream();
+    auto streamAicpuPtr = this->pResources->getAlternateStreams()[0];
+    auto streamAicpu = streamAicpuPtr->GetStream();
+
     auto &mem = this->pResources->getMemoryManager();
     int maxNum = std::get<0>(idxInfo);
     const idx_t *indice = std::get<2>(idxInfo);
@@ -541,12 +543,23 @@ APP_ERROR AscendIndexILFlatImpl::ComputeDistByIdxImplFp16(int n, const float16_t
 
     AscendTensor<float16_t, DIMS_2> queryTensor(const_cast<float16_t *>(queries), {n, this->dim});
 
+    AscendTensor<idx_t, DIMS_2> indiceTensor(const_cast<idx_t *>(indice), { n, maxNum });
     AscendTensor<float, DIMS_3> distResult(mem, { idxSliceNum, n, IDX_BURST_LEN }, stream);
     AscendTensor<idx_t, DIMS_3> idxTensor(mem, { idxSliceNum, n, IDX_BURST_LEN }, stream);
-    // 将索引搬运成大z小z，maxNum按64补齐
+
     int idxCopyNum = 0;
-    auto ret = MoveData(idxCopyNum, maxNum, n, indice, idxTensor);
-    APPERR_RETURN_IF_NOT_FMT((ret == ACL_SUCCESS), APP_ERR_INNER_ERROR, "MoveData failed(%d)", ret);
+    if (isInputDevice) {
+        std::string opName = "TransdataIdx";
+        LaunchOpOneInOneOut<idx_t, DIMS_2, ACL_UINT32,
+                            idx_t, DIMS_3, ACL_UINT32>(opName, streamAicpu, indiceTensor, idxTensor);
+        auto ret = synchronizeStream(streamAicpu);
+        APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR,
+            "synchronizeStream LaunchOpOneInOneOut streamAicpu failed: %i\n", ret);
+    } else {
+        auto ret = MoveData(idxCopyNum, maxNum, n, indice, idxTensor);
+        APPERR_RETURN_IF_NOT_FMT((ret == ACL_SUCCESS), APP_ERR_INNER_ERROR, "MoveData failed(%d)", ret);
+    }
+
     int blockNum = utils::divUp(this->capacity, this->blockSize);
     const int dim1 = utils::divUp(this->blockSize, ZREGION_HEIGHT);
     const int dim2 = utils::divUp(this->dim, CUBE_ALIGN);
@@ -563,7 +576,7 @@ APP_ERROR AscendIndexILFlatImpl::ComputeDistByIdxImplFp16(int n, const float16_t
         sizeTensor[0] = (i == idxSliceNum - 1) ? (maxNum - i * IDX_BURST_LEN) : IDX_BURST_LEN;
         if (tableLen > 0) {
             AscendTensor<float, DIMS_1> tableTensor(mem, {TABLE_LEN}, stream);
-            ret = aclrtMemcpy(tableTensor.data(), tableTensor.getSizeInBytes(), table, TABLE_LEN * sizeof(float),
+            auto ret = aclrtMemcpy(tableTensor.data(), tableTensor.getSizeInBytes(), table, TABLE_LEN * sizeof(float),
                 ACL_MEMCPY_HOST_TO_DEVICE);
             APPERR_RETURN_IF_NOT_FMT(
                 (ret == ACL_SUCCESS), APP_ERR_INNER_ERROR, "copy tableTensor to device fail(%d) !!!", ret);
@@ -572,14 +585,24 @@ APP_ERROR AscendIndexILFlatImpl::ComputeDistByIdxImplFp16(int n, const float16_t
             ComputeDistWholeBase(queryTensor, sizeTensor, shaped, index, dist, stream);
         }
     }
-    ret = synchronizeStream(stream);
+    auto ret = synchronizeStream(stream);
 
     APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR,
         "synchronizeStream default stream failed, error code: %i\n", ret);
 
-    // 拷贝结果到输出空间
-    ret = CopyDistData(maxNum, idxCopyNum, distances, n, distResult);
-    APPERR_RETURN_IF_NOT_FMT((ret == ACL_SUCCESS), APP_ERR_INNER_ERROR, "CopyDistData failed(%d)", ret);
+    if (isOutputDevice) {
+        AscendTensor<float, DIMS_2> distanceTensor(distances, { n, maxNum });
+        std::string opName = "TransdataDist";
+        LaunchOpOneInOneOut<float, DIMS_3, ACL_FLOAT,
+                            float, DIMS_2, ACL_FLOAT>(opName, streamAicpu, distResult, distanceTensor);
+        ret = synchronizeStream(streamAicpu);
+        APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR,
+            "synchronizeStream LaunchOpOneInOneOut streamAicpu failed: %i\n", ret);
+    } else {
+        ret = CopyDistData(maxNum, idxCopyNum, distances, n, distResult);
+        APPERR_RETURN_IF_NOT_FMT((ret == ACL_SUCCESS), APP_ERR_INNER_ERROR, "CopyDistData failed(%d)", ret);
+    }
+
     return ret;
 }
 
@@ -838,60 +861,19 @@ APP_ERROR AscendIndexILFlatImpl::Remove(int n, const idx_t *indices)
 
 APP_ERROR AscendIndexILFlatImpl::Get(int n, float16_t *features, const idx_t *indices) const
 {
-    APPERR_RETURN_IF_NOT_LOG(
-        (isInitialized), APP_ERR_INVALID_PARAM, "Illegal operation, please initialize the index first. ");
-    APPERR_RETURN_IF_NOT_FMT(n >= 0 && n <= this->capacity, APP_ERR_INVALID_PARAM,
-        "The number n should be in range [0, %d]", this->capacity);
-    APPERR_RETURN_IF_NOT_LOG(features, APP_ERR_INVALID_PARAM, "Features can not be nullptr.");
-    APPERR_RETURN_IF_NOT_LOG(indices, APP_ERR_INVALID_PARAM, "Indices can not be nullptr.");
-    auto ret = aclrtSetDevice(deviceId);
-    APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_ACL_SET_DEVICE_FAILED, "failed to set device(%d)", ret);
-    std::vector<std::future<void>> functorRet;
-    AscendThreadPool pool(MAX_THREAD_NUM);
-    auto transformData = [this](const idx_t *indices, float16_t *features, size_t i, size_t dimAlign) {
-        auto ret = aclrtSetDevice(deviceId);
-        ASCEND_THROW_IF_NOT_FMT(ret == ACL_SUCCESS, "failed to set device(%d)", ret);
-        auto seq = *(indices + i);
-        ASCEND_THROW_IF_NOT_FMT(seq < static_cast<size_t>(this->ntotal),
-            "Invalid feature to get, the indice %u should be smaller than ntotal\n", seq);
-        float16_t *dataPtr = this->baseSpace->data() + seq / ZREGION_HEIGHT * dimAlign * (ZREGION_HEIGHT * CUBE_ALIGN) +
-            seq % ZREGION_HEIGHT * CUBE_ALIGN;
+    AscendTensor<float16_t, DIMS_2> queries(features, {n, this->dim});
+    auto ret = GetDevice(n, queries.data(), indices);
+    APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "GetDevice failed: %i\n", ret);
 
-        for (size_t j = 0; j < dimAlign; j++) {
-            size_t getOffset = i * static_cast<size_t>(this->dim) + j * CUBE_ALIGN;
-            size_t cpyNum = (j == dimAlign - 1) ? (this->dim - j * CUBE_ALIGN) : CUBE_ALIGN;
-            ret = aclrtMemcpy(features + getOffset, cpyNum * sizeof(float16_t),
-                dataPtr + j * ZREGION_HEIGHT * CUBE_ALIGN, cpyNum * sizeof(float16_t),
-                ACL_MEMCPY_DEVICE_TO_HOST);
-            ASCEND_THROW_IF_NOT_FMT(ret == EOK, "aclrtMemcpy error, err=%d\n", ret);
-        }
-    };
-    size_t dimAlign = static_cast<size_t>(utils::divUp(this->dim, CUBE_ALIGN));
-    for (size_t i = 0; i < static_cast<size_t>(n); i++) {
-        functorRet.emplace_back(pool.Enqueue(transformData, indices, features, i, dimAlign));
-    }
-
-    uint32_t seartchWait = 0;
-    try {
-        for (std::future<void> &ret : functorRet) {
-            seartchWait++;
-            ret.get();
-        }
-    } catch (std::exception &e) {
-        for_each(functorRet.begin() + seartchWait, functorRet.end(), [](std::future<void> &ret) { ret.wait(); });
-        APPERR_RETURN_IF_NOT_FMT(
-            false, APP_ERR_INNER_ERROR, "for_each fail, error msg[%s]", e.what());
-    }
+    ret = aclrtMemcpy(features, n * this->dim * sizeof(float16_t), queries.data(),
+        n * this->dim * sizeof(float16_t), ACL_MEMCPY_DEVICE_TO_HOST);
+    APPERR_RETURN_IF_NOT_FMT((ret == ACL_SUCCESS), APP_ERR_INNER_ERROR, "copy features back to host(%d)", ret);
 
     return APP_ERR_OK;
 }
 
 APP_ERROR AscendIndexILFlatImpl::Get(int n, float *features, const idx_t *indices) const
 {
-    APPERR_RETURN_IF_NOT_FMT(n >= 0 && n <= this->capacity, APP_ERR_INVALID_PARAM,
-        "The number n should be in range [0, %d]", this->capacity);
-    APPERR_RETURN_IF_NOT_LOG(features, APP_ERR_INVALID_PARAM, "Features can not be nullptr.");
-    APPERR_RETURN_IF_NOT_LOG(indices, APP_ERR_INVALID_PARAM, "Indices can not be nullptr.");
     size_t total = static_cast<size_t>(n) * static_cast<size_t>(this->dim);
     std::vector<float16_t> featuresData(total);
     auto ret = Get(n, featuresData.data(), indices);
@@ -907,29 +889,26 @@ APP_ERROR AscendIndexILFlatImpl::GetDevice(int n, float16_t *features, const idx
         "The number n should be in range [0, %d]", this->capacity);
     APPERR_RETURN_IF_NOT_LOG(features, APP_ERR_INVALID_PARAM, "Features can not be nullptr.");
     APPERR_RETURN_IF_NOT_LOG(indices, APP_ERR_INVALID_PARAM, "Indices can not be nullptr.");
-    auto streamPtr = pResources->getDefaultStream();
+    auto streamPtr = this->pResources->getDefaultStream();
     auto stream = streamPtr->GetStream();
-    size_t dimAlign = static_cast<size_t>(utils::divUp(this->dim, CUBE_ALIGN));
-    for (size_t i = 0; i < static_cast<size_t>(n); ++i) {
-        streamPtr = pResources->getDefaultStream();
-        stream = streamPtr->GetStream();
-        auto seq = *(indices + i);
-        APPERR_RETURN_IF_NOT_LOG(seq < static_cast<size_t>(this->ntotal), APP_ERR_INVALID_PARAM,
-            "Invalid feature to get, the indice should be smaller than ntotal\n");
-        float16_t *dataPtr = this->baseSpace->data() + seq / ZREGION_HEIGHT * dimAlign * (ZREGION_HEIGHT * CUBE_ALIGN) +
-            seq % ZREGION_HEIGHT * CUBE_ALIGN;
+    auto &mem = this->pResources->getMemoryManager();
 
-        for (size_t j = 0; j < dimAlign; j++) {
-            size_t getOffset = i * static_cast<size_t>(this->dim) + j * CUBE_ALIGN;
-            size_t cpyNum = (j == dimAlign - 1) ? (this->dim - j * CUBE_ALIGN) : CUBE_ALIGN;
-            auto ret = aclrtMemcpyAsync(features + getOffset, cpyNum * sizeof(uint16_t),
-                dataPtr + j * ZREGION_HEIGHT * CUBE_ALIGN, cpyNum * sizeof(float16_t),
-                ACL_MEMCPY_DEVICE_TO_DEVICE, stream);
-            APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "aclrtMemcpyAsync failed: %i\n", ret);
-        }
-    }
-    auto ret = aclrtSynchronizeStream(stream);
-    APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "synchronize stream failed: %i\n", ret);
+    std::string opName = "TransdataGet";
+    AscendTensor<idx_t, DIMS_1> attr(mem, { n }, stream);
+    auto ret = aclrtMemcpy(attr.data(), attr.getSizeInBytes(), indices, n * sizeof(idx_t),
+        ACL_MEMCPY_HOST_TO_DEVICE);
+    APPERR_RETURN_IF_NOT_FMT((ret == ACL_SUCCESS), APP_ERR_INNER_ERROR, "copy attr to device fail(%d) !!!", ret);
+
+    AscendTensor<float16_t, DIMS_2> dst(features, {n, this->dim});
+    AscendTensor<float16_t, DIMS_4> src(this->baseSpace->data(),
+        {utils::divUp(this->capacity, ZREGION_HEIGHT), utils::divUp(this->dim, CUBE_ALIGN),
+        ZREGION_HEIGHT, CUBE_ALIGN});
+    LaunchOpTwoInOneOut<float16_t, DIMS_4, ACL_FLOAT16,
+                        idx_t, DIMS_1, ACL_UINT32,
+                        float16_t, DIMS_2, ACL_FLOAT16>(opName, stream, src, attr, dst);
+    ret = synchronizeStream(stream);
+    APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR,
+        "synchronizeStream LaunchOpTwoInOneOut stream failed: %i\n", ret);
     return APP_ERR_OK;
 }
 

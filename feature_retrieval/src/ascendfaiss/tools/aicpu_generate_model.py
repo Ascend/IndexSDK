@@ -210,6 +210,28 @@ def generate_transdata_raw_obj():
     return generator.generate_obj()
 
 
+def generate_transdata_get_obj():
+    generator = OpJsonGenerator("TransdataGet")
+    generator.add_dynamic_input("ND", [-1, -1, -1, -1], [[1, -1], [1, -1], [1, -1], [1, -1]], "float16")
+    generator.add_dynamic_input("ND", [-1], [[1, -1]], "uint32")
+    generator.add_dynamic_output("ND", [-1, -1], [[1, -1], [1, -1]], "float16")
+    return generator.generate_obj()
+
+
+def generate_transdata_idx_obj():
+    generator = OpJsonGenerator("TransdataIdx")
+    generator.add_dynamic_input("ND", [-1, -1], [[1, -1], [1, -1]], "uint32")
+    generator.add_dynamic_output("ND", [-1, -1, -1], [[1, -1], [1, -1], [1, -1]], "uint32")
+    return generator.generate_obj()
+
+
+def generate_transdata_dist_obj():
+    generator = OpJsonGenerator("TransdataDist")
+    generator.add_dynamic_input("ND", [-1, -1, -1], [[1, -1], [1, -1], [1, -1]], "float32")
+    generator.add_dynamic_output("ND", [-1, -1], [[1, -1], [1, -1]], "float32")
+    return generator.generate_obj()
+
+
 def generate_transdata_raw_int8_obj():
     generator = OpJsonGenerator("TransdataRaw")
     generator.add_dynamic_input("ND", [-1, -1, -1, -1], [[1, -1], [1, -1], [1, -1], [1, -1]], "int8")
@@ -327,6 +349,9 @@ def generate_aicpu_offline_model():
     ops_list.append(generate_transdata_shaped_int8_obj())
     ops_list.append(generate_transdata_shaped_uint8_obj())
     ops_list.append(generate_transdata_raw_obj())
+    ops_list.append(generate_transdata_get_obj())
+    ops_list.append(generate_transdata_idx_obj())
+    ops_list.append(generate_transdata_dist_obj())
     ops_list.append(generate_transdata_raw_int8_obj())
     ops_list.append(generate_transdata_raw_uint8_obj())
     ops_list.append(generate_km_update_centroids_obj())
