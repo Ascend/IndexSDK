@@ -69,7 +69,7 @@ def generate_subspace_distance_offline_model():
     dim = args.dim
     ksub = args.ksub
 
-    utils.check_param_range(m, [4], "m")
+    utils.check_param_range(m, [2, 4, 8, 16], "m")
     utils.check_param_range(ksub, [256], "ksub")
     soc_version = utils.get_soc_version_from_npu_type(args.npu_type)
 

@@ -57,7 +57,6 @@ private:
     ge::graphStatus Split();
     ge::graphStatus FillTilingData();
     ge::graphStatus SetExtraConfig();
-    ge::graphStatus ReduceSumTiling();
     ge::graphStatus CubeTiling();
 
 

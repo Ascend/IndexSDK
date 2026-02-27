@@ -58,7 +58,7 @@ IndexIVFPQ::IndexIVFPQ(int numList, int dim, int M, int nbits, int nprobes, int6
     pBasePQCoder = reinterpret_cast<uint8_t*>(0xffffffffffffffff);
     pBaseIndices = reinterpret_cast<idx_t*>(0xffffffffffffffff);
     pMaxBaseIndices = reinterpret_cast<idx_t*>(0x0);
-    blockNum = 32;
+    blockNum = 128;
     this->nbits = nbits;
     ksub = (1 << nbits);
     dsub = utils::divUp(dim, M);
@@ -1083,28 +1083,37 @@ APP_ERROR IndexIVFPQ::resetL2DistOp()
 
 APP_ERROR IndexIVFPQ::resetL3DistOp()
 {
-    auto l3DistOpReset = [&](std::unique_ptr<AscendOperator> &op) {
+    auto l3DistOpReset = [&](std::unique_ptr<AscendOperator> &op, int batch) {
         AscendOpDesc desc("AscendcIvfpqSearchDistanceL2");
 
-        std::vector<int64_t> queryPQShape({ M, ksub });
+        std::vector<int64_t> queryPQShape({ batch, M, ksub });
         std::vector<int64_t> codeBaseShape({ M });
-        std::vector<int64_t> codeOffsetShape({ blockNum });
-        std::vector<int64_t> codeSizeShape({ blockNum });
-        std::vector<int64_t> topk({ MAX_TOPK, IVF_PQ_BLOCK_SIZE });
-        std::vector<int64_t> distResultShape({ blockNum, blockSize });
-        std::vector<int64_t> topkIndex({ blockNum, MAX_TOPK });
-        std::vector<int64_t> topkValue({ blockNum, MAX_TOPK });
-        std::vector<int64_t> flagShape({ blockNum, 16 });
+        std::vector<int64_t> codeOffsetShape({ batch, blockNum });
+        std::vector<int64_t> codeSizeShape({ batch, blockNum });
+        std::vector<int64_t> topk({ MAX_TOPK });
+        std::vector<int64_t> labelBaseShape({ M });
+        std::vector<int64_t> labelOffsetShape({ batch, blockNum });
+
+        std::vector<int64_t> distResultShape({ batch, blockNum, blockSize });
+        std::vector<int64_t> topkIndex({ batch, blockNum, MAX_TOPK });
+        std::vector<int64_t> topkValue({ batch, blockNum, MAX_TOPK });
+        std::vector<int64_t> topkIndexFinalShape({ batch, MAX_TOPK });
+        std::vector<int64_t> topkValueFinalShape({ batch, MAX_TOPK });
+        std::vector<int64_t> flagShape({ 16 });
 
         desc.addInputTensorDesc(ACL_FLOAT, queryPQShape.size(), queryPQShape.data(), ACL_FORMAT_ND);
         desc.addInputTensorDesc(ACL_UINT8, codeBaseShape.size(), codeBaseShape.data(), ACL_FORMAT_ND);
         desc.addInputTensorDesc(ACL_INT64, codeOffsetShape.size(), codeOffsetShape.data(), ACL_FORMAT_ND);
         desc.addInputTensorDesc(ACL_INT64, codeSizeShape.size(), codeSizeShape.data(), ACL_FORMAT_ND);
         desc.addInputTensorDesc(ACL_INT32, topk.size(), topk.data(), ACL_FORMAT_ND);
+        desc.addInputTensorDesc(ACL_UINT64, labelBaseShape.size(), labelBaseShape.data(), ACL_FORMAT_ND);
+        desc.addInputTensorDesc(ACL_INT64, labelOffsetShape.size(), labelOffsetShape.data(), ACL_FORMAT_ND);
 
         desc.addOutputTensorDesc(ACL_FLOAT, distResultShape.size(), distResultShape.data(), ACL_FORMAT_ND);
         desc.addOutputTensorDesc(ACL_INT32, topkIndex.size(), topkIndex.data(), ACL_FORMAT_ND);
         desc.addOutputTensorDesc(ACL_FLOAT, topkValue.size(), topkValue.data(), ACL_FORMAT_ND);
+        desc.addOutputTensorDesc(ACL_UINT64, topkIndexFinalShape.size(), topkIndexFinalShape.data(), ACL_FORMAT_ND);
+        desc.addOutputTensorDesc(ACL_FLOAT, topkValueFinalShape.size(), topkValueFinalShape.data(), ACL_FORMAT_ND);
         desc.addOutputTensorDesc(ACL_UINT16, flagShape.size(), flagShape.data(), ACL_FORMAT_ND);
 
         op.reset();
@@ -1112,10 +1121,11 @@ APP_ERROR IndexIVFPQ::resetL3DistOp()
         return op->init();
     };
 
-    APPERR_RETURN_IF_NOT_LOG(l3DistOpReset(ivfpqSearchDistOp),
-                             APP_ERR_ACL_OP_LOAD_MODEL_FAILED,
-                             "AscendcIvfpqSearchDistanceL2 op init failed");
-
+    for (auto batch: searchBatchSizes) {
+        l3DistFp32Ops[batch] = std::unique_ptr<AscendOperator>(nullptr);
+        APPERR_RETURN_IF_NOT_LOG(l3DistOpReset(l3DistFp32Ops[batch], batch),
+                                 APP_ERR_ACL_OP_LOAD_MODEL_FAILED, "L3 distance op init failed");
+    }
     return APP_ERR_OK;
 }
 
@@ -1172,18 +1182,26 @@ void IndexIVFPQ::runL2DistOp(int batch, AscendTensor<float, DIMS_2> &queries,
 }
 
 void IndexIVFPQ::runL3DistOp(
-    AscendTensor<float, DIMS_2, size_t> &queryPQ,
+    int batch,
+    AscendTensor<float, DIMS_3, size_t> &queryPQ,
     AscendTensor<uint8_t, DIMS_1, size_t> &codeBase,
-    AscendTensor<int64_t, DIMS_1, size_t> &offset,
-    AscendTensor<int64_t, DIMS_1, size_t> &baseSize,
-    AscendTensor<int32_t, DIMS_2, size_t> &topk,
-    AscendTensor<float, DIMS_2, size_t> &dists,
-    AscendTensor<int32_t, DIMS_2, size_t> &topkIndex,
-    AscendTensor<float, DIMS_2, size_t> &topkValue,
-    AscendTensor<uint16_t, DIMS_2, size_t> &opFlag,
+    AscendTensor<int64_t, DIMS_2, size_t> &offset,
+    AscendTensor<int64_t, DIMS_2, size_t> &baseSize,
+    AscendTensor<int32_t, DIMS_1, size_t> &topk,
+    AscendTensor<uint64_t, DIMS_1, size_t> &labelBase,
+    AscendTensor<int64_t, DIMS_2, size_t> &labelOffset,
+    AscendTensor<float, DIMS_3, size_t> &dists,
+    AscendTensor<int32_t, DIMS_3, size_t> &topkIndex,
+    AscendTensor<float, DIMS_3, size_t> &topkValue,
+    AscendTensor<uint64_t, DIMS_2, size_t> &topkIndexFinal,
+    AscendTensor<float, DIMS_2, size_t> &topkValueFinal,
+    AscendTensor<uint16_t, DIMS_1, size_t> &opFlag,
     aclrtStream stream)
 {
-    AscendOperator *op = ivfpqSearchDistOp.get();
+    AscendOperator *op = nullptr;
+    if (l3DistFp32Ops.find(batch) != l3DistFp32Ops.end()) {
+        op = l3DistFp32Ops[batch].get();
+    }
     ASCEND_THROW_IF_NOT(op);
 
     std::shared_ptr<std::vector<const aclDataBuffer *>> distOpInput(
@@ -1193,12 +1211,16 @@ void IndexIVFPQ::runL3DistOp(
     distOpInput->emplace_back(aclCreateDataBuffer(offset.data(), offset.getSizeInBytes()));
     distOpInput->emplace_back(aclCreateDataBuffer(baseSize.data(), baseSize.getSizeInBytes()));
     distOpInput->emplace_back(aclCreateDataBuffer(topk.data(), topk.getSizeInBytes()));
+    distOpInput->emplace_back(aclCreateDataBuffer(labelBase.data(), labelBase.getSizeInBytes()));
+    distOpInput->emplace_back(aclCreateDataBuffer(labelOffset.data(), labelOffset.getSizeInBytes()));
 
     std::shared_ptr<std::vector<aclDataBuffer *>> distOpOutput(
             new std::vector<aclDataBuffer *>(), CommonUtils::AclOutputBufferDelete);
     distOpOutput->emplace_back(aclCreateDataBuffer(dists.data(), dists.getSizeInBytes()));
     distOpOutput->emplace_back(aclCreateDataBuffer(topkIndex.data(), topkIndex.getSizeInBytes()));
     distOpOutput->emplace_back(aclCreateDataBuffer(topkValue.data(), topkValue.getSizeInBytes()));
+    distOpOutput->emplace_back(aclCreateDataBuffer(topkIndexFinal.data(), topkIndexFinal.getSizeInBytes()));
+    distOpOutput->emplace_back(aclCreateDataBuffer(topkValueFinal.data(), topkValueFinal.getSizeInBytes()));
     distOpOutput->emplace_back(aclCreateDataBuffer(opFlag.data(), opFlag.getSizeInBytes()));
     op->exec(*distOpInput, *distOpOutput, stream);
     return;
@@ -1208,24 +1230,20 @@ APP_ERROR IndexIVFPQ::resetL3TopkOp()
 {
     auto topkCompOpReset = [&](std::unique_ptr<AscendOperator> &op, int64_t batch) {
         AscendOpDesc desc("TopkIvfpqL3");
-        std::vector<int64_t> shape0 { batch, 0, blockNum, MAX_TOPK };
-        std::vector<int64_t> shape1 { batch, 0, blockNum, MAX_TOPK};
-        std::vector<int64_t> shape2 { batch, 0, blockNum };
-        std::vector<int64_t> shape3 { batch, 0, blockNum };
-        std::vector<int64_t> shape4 { batch, 0, blockNum * 16 };
-        std::vector<int64_t> shape5 { aicpu::TOPK_IVFPQ_L3_ATTR_IDX_COUNT };
+        std::vector<int64_t> shape0 { 0, batch, MAX_TOPK };
+        std::vector<int64_t> shape1 { 0, batch, MAX_TOPK};
+        std::vector<int64_t> shape2 { 0, 16 };
+        std::vector<int64_t> shape3 { aicpu::TOPK_IVFPQ_L3_ATTR_IDX_COUNT };
 
-        std::vector<int64_t> shape6 { batch, 0 };
+        std::vector<int64_t> shape4 { batch, 0 };
 
-        desc.addInputTensorDesc(ACL_INT32, shape0.size(), shape0.data(), ACL_FORMAT_ND);
+        desc.addInputTensorDesc(ACL_UINT64, shape0.size(), shape0.data(), ACL_FORMAT_ND);
         desc.addInputTensorDesc(ACL_FLOAT, shape1.size(), shape1.data(), ACL_FORMAT_ND);
-        desc.addInputTensorDesc(ACL_INT64, shape2.size(), shape2.data(), ACL_FORMAT_ND);
+        desc.addInputTensorDesc(ACL_UINT16, shape2.size(), shape2.data(), ACL_FORMAT_ND);
         desc.addInputTensorDesc(ACL_INT64, shape3.size(), shape3.data(), ACL_FORMAT_ND);
-        desc.addInputTensorDesc(ACL_UINT16, shape4.size(), shape4.data(), ACL_FORMAT_ND);
-        desc.addInputTensorDesc(ACL_INT64, shape5.size(), shape5.data(), ACL_FORMAT_ND);
 
-        desc.addOutputTensorDesc(ACL_FLOAT, shape6.size(), shape6.data(), ACL_FORMAT_ND);
-        desc.addOutputTensorDesc(ACL_UINT64, shape6.size(), shape6.data(), ACL_FORMAT_ND);
+        desc.addOutputTensorDesc(ACL_FLOAT, shape4.size(), shape4.data(), ACL_FORMAT_ND);
+        desc.addOutputTensorDesc(ACL_UINT64, shape4.size(), shape4.data(), ACL_FORMAT_ND);
 
         op.reset();
         op = CREATE_UNIQUE_PTR(AscendOperator, desc);
@@ -1241,18 +1259,16 @@ APP_ERROR IndexIVFPQ::resetL3TopkOp()
     return APP_ERR_OK;
 }
 
-void IndexIVFPQ::runL3TopkOp(AscendTensor<int32_t, DIMS_3, size_t> &topkIndex,
+void IndexIVFPQ::runL3TopkOp(AscendTensor<uint64_t, DIMS_3, size_t> &topkIndex,
                              AscendTensor<float, DIMS_3, size_t> &topkValue,
-                             AscendTensor<int64_t, DIMS_3, size_t> &ids,
-                             AscendTensor<int64_t, DIMS_3, size_t> &sizes,
-                             AscendTensor<uint16_t, DIMS_3, size_t> &flags,
+                             AscendTensor<uint16_t, DIMS_2, size_t> &flags,
                              AscendTensor<int64_t, DIMS_1> &attrs,
                              AscendTensor<float, DIMS_2, size_t> &outdists,
                              AscendTensor<uint64_t, DIMS_2, size_t> &outlabel,
                              aclrtStream stream)
 {
-    int batch = static_cast<int>(topkIndex.getSize(0));
-    std::vector<const AscendTensorBase *> input{&topkIndex, &topkValue, &ids, &sizes, &flags, &attrs};
+    int batch = static_cast<int>(topkIndex.getSize(2) / MAX_TOPK);
+    std::vector<const AscendTensorBase *> input{&topkIndex, &topkValue, &flags, &attrs};
     std::vector<const AscendTensorBase *> output{&outdists, &outlabel};
     AscendOperator *op = nullptr;
     if (topkL3Fp32.find(batch) != topkL3Fp32.end()) {
@@ -1277,39 +1293,49 @@ void IndexIVFPQ::callL3DistanceOp(size_t batch, size_t tileNum, size_t segNum, s
                                   AscendTensor<float, DIMS_3, size_t> &l2SubspaceDists,
                                   AscendTensor<int64_t, DIMS_3, size_t> &codeOffset,
                                   AscendTensor<int64_t, DIMS_3, size_t> &codeSize,
-                                  AscendTensor<int32_t, DIMS_2, size_t> &topk,
-                                  AscendTensor<uint16_t, DIMS_3, size_t> &opFlag,
+                                  AscendTensor<int32_t, DIMS_1, size_t> &topk,
+                                  AscendTensor<int64_t, DIMS_3, size_t> &labelOffset,
+                                  AscendTensor<uint16_t, DIMS_2, size_t> &opFlag,
                                   AscendTensor<float, DIMS_3, size_t> &distResult,
                                   AscendTensor<int32_t, DIMS_3, size_t> &topkIndex,
                                   AscendTensor<float, DIMS_3, size_t> &topkValue,
+                                  AscendTensor<uint64_t, DIMS_3, size_t> &topkIndexFinal,
+                                  AscendTensor<float, DIMS_3, size_t> &topkValueFinal,
                                   AscendTensor<uint8_t, DIMS_1, size_t> &codeBase,
+                                  AscendTensor<uint64_t, DIMS_1, size_t> &labelBase,
                                   aclrtStream &stream)
 {
     size_t ivfpqBlockSize = static_cast<size_t>(IVF_PQ_BLOCK_SIZE);
-    for (size_t qIdx = 0; qIdx < batch; qIdx++) {
-        AscendTensor<float, DIMS_2, size_t> queryPQ(l2SubspaceDists[qIdx][0].data(),
-                                                    {static_cast<size_t>(M), static_cast<size_t>(ksub)});
-        for (size_t tIdx = 0; tIdx < tileNum; tIdx++) {
-            for (size_t segIdx = 0; segIdx < segNum; segIdx++) {
-                AscendTensor <int64_t, DIMS_1, size_t> subcodeOffset(codeOffset[qIdx][tIdx][segIdx * coreNum].data(),
-                                                                     {coreNum});
-                AscendTensor <int64_t, DIMS_1, size_t> subcodeSize(codeSize[qIdx][tIdx][segIdx * coreNum].data(),
-                                                                   {coreNum});
-                AscendTensor <uint16_t, DIMS_2, size_t> subOpFlag(opFlag[qIdx][tIdx][segIdx * coreNum * 16].data(),
-                                                                  {coreNum, 16});
-                AscendTensor<float, DIMS_2, size_t> subDist(distResult[qIdx][tIdx]
-                                                                      [segIdx * coreNum * ivfpqBlockSize].data(),
-                                                            {coreNum, ivfpqBlockSize});
-                AscendTensor <int32_t, DIMS_2, size_t> subTopkIndex(topkIndex[qIdx][tIdx]
-                                                                            [segIdx * coreNum * kAligned].data(),
-                                                                    {coreNum, kAligned});
-                AscendTensor<float, DIMS_2, size_t> subTopkValue(topkValue[qIdx][tIdx]
-                                                                          [segIdx * coreNum * kAligned].data(),
-                                                                 {coreNum, kAligned});
+    for (size_t tIdx = 0; tIdx < tileNum; tIdx++) {
+        for (size_t segIdx = 0; segIdx < segNum; segIdx++) {
+            AscendTensor <int64_t, DIMS_2, size_t> subcodeOffset(codeOffset[tIdx][segIdx * batch * coreNum].data(),
+                                                                 {batch, coreNum});
+            AscendTensor <int64_t, DIMS_2, size_t> subcodeSize(codeSize[tIdx][segIdx * batch * coreNum].data(),
+                                                               {batch, coreNum});
+            AscendTensor <uint16_t, DIMS_1, size_t> subOpFlag(opFlag[tIdx][segIdx * 16].data(),
+                                                              { 16 });
+            AscendTensor<float, DIMS_3, size_t> subDist(
+                    distResult[tIdx][segIdx * batch * coreNum * ivfpqBlockSize].data(),
+                    {batch, coreNum, ivfpqBlockSize});
 
-                runL3DistOp(queryPQ, codeBase, subcodeOffset, subcodeSize, topk,
-                            subDist, subTopkIndex, subTopkValue, subOpFlag, stream);
-            }
+            AscendTensor <int64_t, DIMS_2, size_t> sublabelOffset(labelOffset[tIdx][segIdx * batch * coreNum].data(),
+                                                                  {batch, coreNum});
+            AscendTensor<int32_t, DIMS_3, size_t> subTopkIndex(
+                topkIndex[tIdx][segIdx * batch * coreNum * kAligned].data(),
+                {batch, coreNum, kAligned});
+            AscendTensor<float, DIMS_3, size_t> subTopkValue(
+                    topkValue[tIdx][segIdx * batch * coreNum * kAligned].data(),
+                    {batch, coreNum, kAligned});
+
+            AscendTensor<uint64_t, DIMS_2, size_t> subTopkIndexFinal(
+                topkIndexFinal[tIdx][segIdx * batch * coreNum * kAligned].data(),
+                {batch, kAligned});
+            AscendTensor<float, DIMS_2, size_t> subTopkValueFinal(
+                    topkValueFinal[tIdx][segIdx * batch * coreNum * kAligned].data(),
+                    {batch, kAligned});
+
+            runL3DistOp(batch, l2SubspaceDists, codeBase, subcodeOffset, subcodeSize, topk, labelBase, sublabelOffset,
+                        subDist, subTopkIndex, subTopkValue, subTopkIndexFinal, subTopkValueFinal, subOpFlag, stream);
         }
     }
 }
@@ -1317,22 +1343,25 @@ void IndexIVFPQ::callL3DistanceOp(size_t batch, size_t tileNum, size_t segNum, s
 APP_ERROR IndexIVFPQ::fillDisOpInputDataPQ(int k, size_t batch, size_t tileNum, size_t segNum, size_t coreNum,
                                            AscendTensor<int64_t, DIMS_3, size_t> &offset,
                                            AscendTensor<int64_t, DIMS_3, size_t> &baseSize,
-                                           AscendTensor<int64_t, DIMS_3, size_t> &ids,
                                            AscendTensor<int64_t, DIMS_1> &attrs,
+                                           AscendTensor<int64_t, DIMS_3, size_t> &labelOffset,
                                            AscendTensor<int64_t, DIMS_2> &l1TopNprobeIndicesHost)
 {
     size_t ivfpqBlockSize = static_cast<size_t>(IVF_PQ_BLOCK_SIZE);
-    std::vector<int64_t> offsetHost(batch * tileNum * segNum * coreNum, 0);
-    AscendTensor<int64_t, DIMS_3, size_t> offsetHostVec(offsetHost.data(), {batch, tileNum, segNum * coreNum});
-    std::vector<int64_t> baseSizeHost(batch * tileNum * segNum * coreNum, 0);
-    AscendTensor<int64_t, DIMS_3, size_t> baseSizeHostVec(baseSizeHost.data(), {batch, tileNum, segNum * coreNum});
-    std::vector<int64_t> idsHost(batch * tileNum * segNum * coreNum);
-    AscendTensor<int64_t, DIMS_3, size_t> idsHostVec(idsHost.data(), {batch, tileNum, segNum * coreNum});
-    for (size_t qIdx = 0; qIdx < batch; qIdx++) {
-        for (size_t tIdx = 0; tIdx < tileNum; tIdx++) {
-            for (size_t segIdx = 0; segIdx < segNum; segIdx++) {
+    std::vector<int64_t> offsetHost(tileNum * segNum * batch * coreNum, 0);
+    AscendTensor<int64_t, DIMS_3, size_t> offsetHostVec(offsetHost.data(), {tileNum, segNum, batch * coreNum});
+    std::vector<int64_t> baseSizeHost(tileNum * segNum * batch * coreNum, 0);
+    AscendTensor<int64_t, DIMS_3, size_t> baseSizeHostVec(baseSizeHost.data(), {tileNum, segNum, batch * coreNum});
+    std::vector<int64_t> labeloffsetHost(tileNum * segNum * batch * coreNum, 0);
+    AscendTensor<int64_t, DIMS_3, size_t> labeloffsetHostVec(labeloffsetHost.data(),
+                                                             {tileNum, segNum, batch * coreNum});
+
+    for (size_t tIdx = 0; tIdx < tileNum; tIdx++) {
+        for (size_t segIdx = 0; segIdx < segNum; segIdx++) {
+            for (size_t qIdx = 0; qIdx < batch; qIdx++) {
                 fillDisOpInputDataByBlockPQ(qIdx, tIdx, segIdx, segNum, coreNum, ivfpqBlockSize,
-                                            baseSizeHostVec, offsetHostVec, idsHostVec, l1TopNprobeIndicesHost);
+                                            baseSizeHostVec, offsetHostVec, labeloffsetHostVec,
+                                            l1TopNprobeIndicesHost);
             }
         }
     }
@@ -1340,18 +1369,20 @@ APP_ERROR IndexIVFPQ::fillDisOpInputDataPQ(int k, size_t batch, size_t tileNum, 
     auto ret = aclrtMemcpy(offset.data(), offset.getSizeInBytes(), offsetHostVec.data(),
                            offsetHostVec.getSizeInBytes(), ACL_MEMCPY_HOST_TO_DEVICE);
     APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, APP_ERR_INNER_ERROR, "copy offset to device failed %d", ret);
+
     ret = aclrtMemcpy(baseSize.data(), baseSize.getSizeInBytes(), baseSizeHostVec.data(),
                       baseSizeHostVec.getSizeInBytes(), ACL_MEMCPY_HOST_TO_DEVICE);
     APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, APP_ERR_INNER_ERROR, "copy basesize to device failed %d", ret);
-    ret = aclrtMemcpy(ids.data(), ids.getSizeInBytes(), idsHostVec.data(),
-                      idsHostVec.getSizeInBytes(), ACL_MEMCPY_HOST_TO_DEVICE);
-    APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, APP_ERR_INNER_ERROR, "copy ids to device failed %d", ret);
+
+    ret = aclrtMemcpy(labelOffset.data(), labelOffset.getSizeInBytes(), labeloffsetHostVec.data(),
+                      labeloffsetHostVec.getSizeInBytes(), ACL_MEMCPY_HOST_TO_DEVICE);
+    APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, APP_ERR_INNER_ERROR, "copy label offset to device failed %d", ret);
 
     std::vector<int64_t> attrsVec(aicpu::TOPK_IVFPQ_L3_ATTR_IDX_COUNT);
     attrsVec[aicpu::TOPK_IVFPQ_L3_ATTR_ASC_IDX] = 1;
     attrsVec[aicpu::TOPK_IVFPQ_L3_ATTR_K_IDX] = k;
     attrsVec[aicpu::TOPK_IVFPQ_L3_ATTR_BLOCK_NUM_IDX] = static_cast<int64_t>(tileNum * segNum);
-    attrsVec[aicpu::TOPK_IVFPQ_L3_ATTR_FLAG_NUM_IDX] = static_cast<int64_t>(coreNum);
+    attrsVec[aicpu::TOPK_IVFPQ_L3_ATTR_BATCH_NUM_IDX] = static_cast<int64_t>(batch);
     ret = aclrtMemcpy(attrs.data(), attrs.getSizeInBytes(),
                       attrsVec.data(), attrsVec.size() * sizeof(int64_t), ACL_MEMCPY_HOST_TO_DEVICE);
     APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, APP_ERR_INNER_ERROR, "copy attrs to device failed %d", ret);
@@ -1362,24 +1393,26 @@ void IndexIVFPQ::fillDisOpInputDataByBlockPQ(size_t qIdx, size_t tIdx, size_t se
                                              size_t segNum, size_t coreNum, size_t ivfpqBlockSize,
                                              AscendTensor<int64_t, DIMS_3, size_t> &baseSizeHostVec,
                                              AscendTensor<int64_t, DIMS_3, size_t> &offsetHostVec,
-                                             AscendTensor<int64_t, DIMS_3, size_t> &idsHostVec,
+                                             AscendTensor<int64_t, DIMS_3, size_t> &labeloffsetHostVec,
                                              AscendTensor<int64_t, DIMS_2> &l1TopNprobeIndicesHost)
 {
     for (size_t cIdx = 0; cIdx < coreNum; cIdx++) {
         if (cIdx + tIdx * coreNum < static_cast<size_t>(nprobe)) {
             int64_t listId = l1TopNprobeIndicesHost[qIdx][tIdx * coreNum + (segIdx * coreNum + cIdx) / segNum].value();
             size_t listNum = deviceListIndices[listId]->size();
+
             size_t proccessLen = std::min(listNum - segIdx * ivfpqBlockSize, ivfpqBlockSize);
-            baseSizeHostVec[qIdx][tIdx][segIdx * coreNum + cIdx].value(proccessLen);
-            int64_t idAddr = reinterpret_cast<int64_t>(listIndices[listId].data() +
-                                                      ((segIdx * coreNum + cIdx) % segNum) * ivfpqBlockSize);
-            idsHostVec[qIdx][tIdx][cIdx + segIdx * coreNum].value(idAddr);
-            size_t lastBlock = (segIdx * coreNum + cIdx) % segNum;
-            if (lastBlock * ivfpqBlockSize < basePQCoder[listId].size()) {
-                uint64_t offsetSeg = reinterpret_cast<uint64_t>(basePQCoder[listId].at(segIdx)->data()) -
-                                     reinterpret_cast<uint64_t>(pBasePQCoder);
-                offsetHostVec[qIdx][tIdx][segIdx * coreNum + cIdx].value(offsetSeg);
-            }
+            baseSizeHostVec[tIdx][segIdx][qIdx * coreNum + cIdx].value(proccessLen);
+
+            int64_t idAddrDevice = reinterpret_cast<int64_t>(deviceListIndices[listId]->data() +
+                                                       ((segIdx * coreNum + cIdx) % segNum) * ivfpqBlockSize);
+            // deviceListIndices[0]->data()为label基地址
+            labeloffsetHostVec[tIdx][segIdx][qIdx * coreNum + cIdx].value(
+                (idAddrDevice - reinterpret_cast<int64_t>(deviceListIndices[0]->data())) / sizeof(idx_t));
+
+            uint64_t offsetSeg = reinterpret_cast<uint64_t>(basePQCoder[listId].at(segIdx)->data()) -
+                                 reinterpret_cast<uint64_t>(pBasePQCoder);
+            offsetHostVec[tIdx][segIdx][qIdx * coreNum + cIdx].value(offsetSeg);
         }
     }
 }
@@ -1478,49 +1511,70 @@ APP_ERROR IndexIVFPQ::searchImplL3(AscendTensor<int64_t, DIMS_2> &l1TopNprobeInd
     size_t segNum = utils::divUp(maxLen, ivfpqBlockSize);
     size_t kAligned = static_cast<size_t>(MAX_TOPK);
 
-    AscendTensor<uint16_t, DIMS_3, size_t> opFlag(mem, {batch, tileNum, segNum * coreNum * 16}, stream);
+    AscendTensor<uint16_t, DIMS_2, size_t> opFlag(mem, {tileNum, segNum * 16}, stream);
     (void)opFlag.zero();
-    AscendTensor<int64_t, DIMS_3, size_t> offset(mem, {batch, tileNum, segNum * coreNum}, stream);
-    AscendTensor<int64_t, DIMS_3, size_t> baseSize(mem, {batch, tileNum, segNum * coreNum}, stream);
+    AscendTensor<int64_t, DIMS_3, size_t> offset(mem, {tileNum, segNum, batch * coreNum}, stream);
+    AscendTensor<int64_t, DIMS_3, size_t> baseSize(mem, {tileNum, segNum, batch * coreNum}, stream);
     AscendTensor<uint8_t, DIMS_1, size_t> codeBase(pBasePQCoder, {static_cast<size_t>(M)});
+    AscendTensor<uint64_t, DIMS_1, size_t> labelBase(deviceListIndices[0]->data(), {static_cast<size_t>(M)});
+    AscendTensor<int64_t, DIMS_3, size_t> labelOffset(mem, {tileNum, segNum, batch * coreNum}, stream);
 
-    AscendTensor<int32_t, DIMS_3, size_t> topkIndex(mem, {batch, tileNum, coreNum * segNum * kAligned}, stream);
-    AscendTensor<float, DIMS_3, size_t> topkValue(mem, {batch, tileNum, coreNum * segNum * kAligned}, stream);
-    AscendTensor<float, DIMS_3, size_t> distResult(mem, {batch, tileNum, coreNum * segNum * ivfpqBlockSize}, stream);
-    AscendTensor<int64_t, DIMS_3, size_t> ids(mem, {batch, tileNum, segNum * coreNum}, stream);
+    AscendTensor<int32_t, DIMS_3, size_t> topkIndex(mem, {tileNum, segNum, batch * coreNum * kAligned}, stream);
+    AscendTensor<float, DIMS_3, size_t> topkValue(mem, {tileNum, segNum, batch * coreNum * kAligned}, stream);
+    AscendTensor<uint64_t, DIMS_3, size_t> topkIndexFinal(mem, {tileNum, segNum, batch * kAligned}, stream);
+    AscendTensor<float, DIMS_3, size_t> topkValueFinal(mem, {tileNum, segNum, batch * kAligned}, stream);
+    AscendTensor<float, DIMS_3, size_t> distResult(mem, {tileNum, segNum, batch * coreNum * ivfpqBlockSize}, stream);
 
     AscendTensor<int64_t, DIMS_1> attrs(mem, {aicpu::TOPK_IVFPQ_L3_ATTR_IDX_COUNT}, stream);
-    AscendTensor<int32_t, DIMS_2, size_t> topk(mem, {kAligned, IVF_PQ_BLOCK_SIZE}, stream);
+    AscendTensor<int32_t, DIMS_1, size_t> topk(mem, {kAligned}, stream);
 
-    fillDisOpInputDataPQ(k, batch, tileNum, segNum, coreNum, offset, baseSize, ids, attrs, l1TopNprobeIndicesHost);
+    fillDisOpInputDataPQ(k, batch, tileNum, segNum, coreNum,
+                         offset, baseSize, attrs, labelOffset, l1TopNprobeIndicesHost);
 
     AscendTensor<float, DIMS_2, size_t> outDist(mem, {batch, static_cast<size_t>(k)}, stream);
-    AscendTensor<idx_t, DIMS_2, size_t> outLabelAddr(mem, {batch, static_cast<size_t>(k)}, stream);
-    std::vector<idx_t> outLabelAddrVec(batch * k, 0);
+    AscendTensor<idx_t, DIMS_2, size_t> outLabel(mem, {batch, static_cast<size_t>(k)}, stream);
 
-    runL3TopkOp(topkIndex, topkValue, ids, baseSize, opFlag, attrs, outDist, outLabelAddr, streamAicpu);
-    callL3DistanceOp(batch, tileNum, segNum, coreNum, kAligned, l2SubspaceDistsDev, offset, baseSize, topk,
-                     opFlag, distResult, topkIndex, topkValue, codeBase, stream);
+    // no need aicpu merge
+    if (tileNum == 1 && segNum == 1) {
+        callL3DistanceOp(batch, tileNum, segNum, coreNum, kAligned, l2SubspaceDistsDev, offset,
+                         baseSize, topk, labelOffset, opFlag, distResult, topkIndex, topkValue,
+                         topkIndexFinal, topkValueFinal, codeBase, labelBase, stream);
+        auto ret = synchronizeStream(stream);
+        APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, APP_ERR_INNER_ERROR, "sync aicore stream failed %d", ret);
+
+        std::vector<idx_t> topkIndexFinalHost(batch * kAligned, 0);
+        std::vector<float> topkValueFinalHost(batch * kAligned, 0);
+        ret = aclrtMemcpy(topkValueFinalHost.data(), batch * kAligned * sizeof(float), topkValueFinal.data(),
+                          batch * kAligned * sizeof(float), ACL_MEMCPY_DEVICE_TO_HOST);
+        APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, APP_ERR_INNER_ERROR, "copy topkValueFinal to host failed %d", ret);
+        ret = aclrtMemcpy(topkIndexFinalHost.data(), batch * kAligned * sizeof(idx_t), topkIndexFinal.data(),
+                          batch * kAligned * sizeof(idx_t), ACL_MEMCPY_DEVICE_TO_HOST);
+        APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, APP_ERR_INNER_ERROR, "copy topkIndexFinal to host failed %d", ret);
+
+        for (int i = 0; i < batch; i++) {
+            for (int j = 0; j < k; j++) {
+                labels[i * k + j] = topkIndexFinalHost[i * kAligned + j];
+                distances[i * k + j] = topkValueFinalHost[i * kAligned + j];
+            }
+        }
+        return APP_ERR_OK;
+    }
+
+    callL3DistanceOp(batch, tileNum, segNum, coreNum, kAligned, l2SubspaceDistsDev, offset,
+                     baseSize, topk, labelOffset, opFlag, distResult, topkIndex, topkValue,
+                     topkIndexFinal, topkValueFinal, codeBase, labelBase, stream);
     auto ret = synchronizeStream(stream);
     APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, APP_ERR_INNER_ERROR, "sync aicore stream failed %d", ret);
-
+    runL3TopkOp(topkIndexFinal, topkValueFinal, opFlag, attrs, outDist, outLabel, streamAicpu);
     ret = synchronizeStream(streamAicpu);
     APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, APP_ERR_INNER_ERROR, "sync aicpu stream failed %d", ret);
 
     ret = aclrtMemcpy(distances, batch * k * sizeof(float), outDist.data(),
                       outDist.getSizeInBytes(), ACL_MEMCPY_DEVICE_TO_HOST);
     APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, APP_ERR_INNER_ERROR, "copy distances to host failed %d", ret);
-    ret = aclrtMemcpy(outLabelAddrVec.data(), batch * k * sizeof(idx_t), outLabelAddr.data(),
-                      outLabelAddr.getSizeInBytes(), ACL_MEMCPY_DEVICE_TO_HOST);
-    APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, APP_ERR_INNER_ERROR, "copy outLabel addr to host failed %d", ret);
-    for (size_t i = 0; i < batch; i++) {
-        for (size_t j = 0; j < k; j++) {
-            idx_t* labelHostAddr = reinterpret_cast<idx_t *>(outLabelAddrVec[i * k + j]);
-            if (labelHostAddr >= pBaseIndices && labelHostAddr <= pMaxBaseIndices) {
-                labels[i * k + j] = reinterpret_cast<idx_t>(*labelHostAddr);
-            }
-        }
-    }
+    ret = aclrtMemcpy(labels, batch * k * sizeof(idx_t), outLabel.data(),
+                      outLabel.getSizeInBytes(), ACL_MEMCPY_DEVICE_TO_HOST);
+    APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, APP_ERR_INNER_ERROR, "copy outLabel to host failed %d", ret);
     return APP_ERR_OK;
 }
 

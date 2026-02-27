@@ -77,14 +77,6 @@ ge::graphStatus IvfpqSubspaceTiling::Split()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus IvfpqSubspaceTiling::ReduceSumTiling()
-{
-    auto shape = ge::Shape({ batch_, dSub_ });
-    auto codeBookshape = ge::Shape({ nBlockTile_ / 2, dSub_ });
-
-    return ge::GRAPH_SUCCESS;
-}
-
 ge::graphStatus IvfpqSubspaceTiling::CubeTiling()
 {
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->GetPlatformInfo());
@@ -151,7 +143,6 @@ ge::graphStatus IvfpqSubspaceTiling::ProcessTiling(gert::TilingContext* context,
     if (GetNpuInfo() != ge::GRAPH_SUCCESS ||
         ProcessInput() != ge::GRAPH_SUCCESS ||
         Split() != ge::GRAPH_SUCCESS ||
-        ReduceSumTiling() != ge::GRAPH_SUCCESS ||
         CubeTiling() != ge::GRAPH_SUCCESS ||
         FillTilingData() != ge::GRAPH_SUCCESS ||
         SetExtraConfig() != ge::GRAPH_SUCCESS) {
