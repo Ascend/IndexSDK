@@ -80,11 +80,9 @@ private:
     TQue<AscendC::TPosition::VECOUT, CONST_ONE> distResultQueue;
     TQue<AscendC::TPosition::VECOUT, CONST_ONE> minDistResultQueue;
 
-    TBuf<AscendC::TPosition::VECCALC> queryNormTmpBuf;
     TBuf<AscendC::TPosition::VECCALC> queryNormBuf;
     TBuf<AscendC::TPosition::VECCALC> queryNormBrcbBuf;
 
-    TBuf<AscendC::TPosition::VECCALC> codeBookNormTmpBuf;
     TBuf<AscendC::TPosition::VECCALC> codeBookNormBuf;
     TBuf<AscendC::TPosition::VECCALC> codeBookNormBrcbBuf;
 
@@ -127,11 +125,10 @@ __aicore__ inline void AscendcIvfpqSubspaceDistance::Init(GM_ADDR query, GM_ADDR
     pipe.InitBuffer(minDistResultQueue, CONST_ONE,
                     this->batch * this->nBlockTilePerVec /
                         (REDUCE_BASE_SIZE / FLOAT_DATA_BLOCK_SIZE) * sizeof(float));
-    pipe.InitBuffer(queryNormTmpBuf, this->minValue);
+
     pipe.InitBuffer(queryNormBuf, this->batch * sizeof(float));
     pipe.InitBuffer(queryNormBrcbBuf, this->batch * this->nBlockTilePerVec * sizeof(float));
 
-    pipe.InitBuffer(codeBookNormTmpBuf, this->codeBookMinValue);
     pipe.InitBuffer(codeBookNormBuf, this->nBlockTilePerVec * sizeof(float));
 
     queryNormBrcbUb = queryNormBrcbBuf.Get<float>();
@@ -228,12 +225,14 @@ __aicore__ inline void AscendcIvfpqSubspaceDistance::ComputeQueryL2Norm(uint32_t
     AscendC::PipeBarrier<PIPE_V>();
 
     // ReduceSum
-    AscendC::LocalTensor<uint8_t> reduceSumTmp = queryNormTmpBuf.Get<uint8_t>();
     AscendC::LocalTensor<float> reduceSumResult = queryNormBuf.Get<float>();
-    uint32_t shape[] = {this->batch, this->dSub};
-    constexpr bool isReuse = true;
-    AscendC::ReduceSum<float, AscendC::Pattern::Reduce::AR,
-                       isReuse>(reduceSumResult, queryDequeUb, reduceSumTmp, shape, true);
+    AscendC::WholeReduceSum<float>(reduceSumResult,                            // dst
+                                   queryDequeUb,                               // src
+                                   this->dSub,                                 // mask
+                                   this->batch,                                // repeatTime
+                                   1,                                          // dstRepStride
+                                   1,                                          // srcBlkStride
+                                   this->dSub / FLOAT_DATA_BLOCK_SIZE);        // srcRepStride
     AscendC::PipeBarrier<PIPE_V>();
 
     // Broadcast
@@ -258,14 +257,16 @@ __aicore__ inline void AscendcIvfpqSubspaceDistance::ComputeCodeBookL2Norm(uint3
     AscendC::PipeBarrier<PIPE_V>();
 
     // ReduceSum
-    AscendC::LocalTensor<uint8_t> codeBookNormTmp = codeBookNormTmpBuf.Get<uint8_t>();
     AscendC::LocalTensor<float> codeBookNormResult = codeBookNormBuf.Get<float>();
-    uint32_t shape[] = {nBlockTilePerVec, dSub};
-    constexpr bool isReuse = true;
-    AscendC::ReduceSum<float, AscendC::Pattern::Reduce::AR, isReuse>(
-        codeBookNormResult, codeBookDequeUb, codeBookNormTmp, shape, true);
+    AscendC::WholeReduceSum<float>(codeBookNormResult,                            // dst
+                                   codeBookDequeUb,                               // src
+                                   this->dSub,                                    // mask
+                                   this->nBlockTilePerVec,                        // repeatTime
+                                   1,                                             // dstRepStride
+                                   1,                                             // srcBlkStride
+                                   this->dSub / FLOAT_DATA_BLOCK_SIZE);           // srcRepStride
     AscendC::PipeBarrier<PIPE_V>();
-
+    
     // Broadcast
     const uint32_t dstShape_[] = {this->batch, nBlockTilePerVec};
     const uint32_t srcShape_[] = {CONST_ONE, nBlockTilePerVec};

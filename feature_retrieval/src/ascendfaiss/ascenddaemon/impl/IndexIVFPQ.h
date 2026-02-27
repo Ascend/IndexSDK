@@ -175,48 +175,56 @@ namespace ascend {
                          AscendTensor<float, DIMS_3> &codeBook, AscendTensor<float, DIMS_3, size_t> &dists,
                          AscendTensor<float, DIMS_3> &vmdists, AscendTensor<uint16_t, DIMS_3> &opFlag,
                          aclrtStream stream);
-        void runL3TopkOp(AscendTensor<int32_t, DIMS_3, size_t> &topkIndex,
+        void runL3TopkOp(AscendTensor<uint64_t, DIMS_3, size_t> &topkIndex,
                          AscendTensor<float, DIMS_3, size_t> &topkValue,
-                         AscendTensor<int64_t, DIMS_3, size_t> &ids,
-                         AscendTensor<int64_t, DIMS_3, size_t> &sizes,
-                         AscendTensor<uint16_t, DIMS_3, size_t> &flags,
+                         AscendTensor<uint16_t, DIMS_2, size_t> &flags,
                          AscendTensor<int64_t, DIMS_1> &attrs,
                          AscendTensor<float, DIMS_2, size_t> &outdists,
                          AscendTensor<uint64_t, DIMS_2, size_t> &outlabel,
                          aclrtStream stream);
-        void runL3DistOp(AscendTensor<float, DIMS_2, size_t> &queryPQ,
-                         AscendTensor<uint8_t, DIMS_1, size_t> &codeBase,
-                         AscendTensor<int64_t, DIMS_1, size_t> &offset,
-                         AscendTensor<int64_t, DIMS_1, size_t> &baseSize,
-                         AscendTensor<int32_t, DIMS_2, size_t> &topk,
-                         AscendTensor<float, DIMS_2, size_t> &dists,
-                         AscendTensor<int32_t, DIMS_2, size_t> &topkIndex,
-                         AscendTensor<float, DIMS_2, size_t> &topkValue,
-                         AscendTensor<uint16_t, DIMS_2, size_t> &opFlag,
-                         aclrtStream stream);
+        void runL3DistOp(
+                int batch,
+                AscendTensor<float, DIMS_3, size_t> &queryPQ,
+                AscendTensor<uint8_t, DIMS_1, size_t> &codeBase,
+                AscendTensor<int64_t, DIMS_2, size_t> &offset,
+                AscendTensor<int64_t, DIMS_2, size_t> &baseSize,
+                AscendTensor<int32_t, DIMS_1, size_t> &topk,
+                AscendTensor<uint64_t, DIMS_1, size_t> &labelBase,
+                AscendTensor<int64_t, DIMS_2, size_t> &labelOffset,
+                AscendTensor<float, DIMS_3, size_t> &dists,
+                AscendTensor<int32_t, DIMS_3, size_t> &topkIndex,
+                AscendTensor<float, DIMS_3, size_t> &topkValue,
+                AscendTensor<uint64_t, DIMS_2, size_t> &topkIndexFinal,
+                AscendTensor<float, DIMS_2, size_t> &topkValueFinal,
+                AscendTensor<uint16_t, DIMS_1, size_t> &opFlag,
+                aclrtStream stream);
 
         void callL3DistanceOp(size_t batch, size_t tileNum, size_t segNum, size_t coreNum, size_t kAligned,
-                              AscendTensor<float, DIMS_3, size_t> &l2SubspaceDists,
-                              AscendTensor<int64_t, DIMS_3, size_t> &codeOffset,
-                              AscendTensor<int64_t, DIMS_3, size_t> &codeSize,
-                              AscendTensor<int32_t, DIMS_2, size_t> &topk,
-                              AscendTensor<uint16_t, DIMS_3, size_t> &opFlag,
-                              AscendTensor<float, DIMS_3, size_t> &distResult,
-                              AscendTensor<int32_t, DIMS_3, size_t> &topkIndex,
-                              AscendTensor<float, DIMS_3, size_t> &topkValue,
-                              AscendTensor<uint8_t, DIMS_1, size_t> &codeBase,
-                              aclrtStream &stream);
+                                          AscendTensor<float, DIMS_3, size_t> &l2SubspaceDists,
+                                          AscendTensor<int64_t, DIMS_3, size_t> &codeOffset,
+                                          AscendTensor<int64_t, DIMS_3, size_t> &codeSize,
+                                          AscendTensor<int32_t, DIMS_1, size_t> &topk,
+                                          AscendTensor<int64_t, DIMS_3, size_t> &labelOffset,
+                                          AscendTensor<uint16_t, DIMS_2, size_t> &opFlag,
+                                          AscendTensor<float, DIMS_3, size_t> &distResult,
+                                          AscendTensor<int32_t, DIMS_3, size_t> &topkIndex,
+                                          AscendTensor<float, DIMS_3, size_t> &topkValue,
+                                          AscendTensor<uint64_t, DIMS_3, size_t> &topkIndexFinal,
+                                          AscendTensor<float, DIMS_3, size_t> &topkValueFinal,
+                                          AscendTensor<uint8_t, DIMS_1, size_t> &codeBase,
+                                          AscendTensor<uint64_t, DIMS_1, size_t> &labelBase,
+                                          aclrtStream &stream);
         void fillDisOpInputDataByBlockPQ(size_t qIdx, size_t tIdx, size_t segIdx,
                                          size_t segNum, size_t coreNum, size_t ivfpqBlockSize,
                                          AscendTensor<int64_t, DIMS_3, size_t> &baseSizeHostVec,
                                          AscendTensor<int64_t, DIMS_3, size_t> &offsetHostVec,
-                                         AscendTensor<int64_t, DIMS_3, size_t> &idsHostVec,
+                                         AscendTensor<int64_t, DIMS_3, size_t> &labeloffsetHostVec,
                                          AscendTensor<int64_t, DIMS_2> &l1TopNprobeIndicesHost);
         APP_ERROR fillDisOpInputDataPQ(int k, size_t batch, size_t tileNum, size_t segNum, size_t coreNum,
                                        AscendTensor<int64_t, DIMS_3, size_t> &offset,
                                        AscendTensor<int64_t, DIMS_3, size_t> &baseSize,
-                                       AscendTensor<int64_t, DIMS_3, size_t> &ids,
                                        AscendTensor<int64_t, DIMS_1> &attrs,
+                                       AscendTensor<int64_t, DIMS_3, size_t> &labelOffset,
                                        AscendTensor<int64_t, DIMS_2> &l1TopNprobeIndicesHost);
 
         size_t getMaxListNum(size_t batch, AscendTensor<int64_t, DIMS_2> &l1TopNprobeIndicesHost) const;
@@ -225,7 +233,7 @@ namespace ascend {
         uint64_t getActualRngSeed(const int seed);
 
     protected:
-        std::unique_ptr<AscendOperator> ivfpqSearchDistOp;
+        std::map<int, std::unique_ptr<AscendOperator>> l3DistFp32Ops;
         std::vector<std::vector<std::unique_ptr<DeviceVector<uint8_t>>>> basePQCoder;
         std::vector<size_t> listVecNum;
         std::map<int, std::unique_ptr<::ascend::AscendOperator>> topkFp32;

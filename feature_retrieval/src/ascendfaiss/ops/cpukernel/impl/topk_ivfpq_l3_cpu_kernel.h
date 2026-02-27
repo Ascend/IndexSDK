@@ -27,10 +27,8 @@
 namespace aicpu {
 class TopkIvfpqL3CpuKernel : public CpuKernel {
 struct Inputs {
-    Tensor *topkOffsets = nullptr;
+    Tensor *topkLabels = nullptr;
     Tensor *topkDists = nullptr;
-    Tensor *ids = nullptr;
-    Tensor *size = nullptr;
     Tensor *opflag = nullptr;
     Tensor *attr = nullptr;
 };
@@ -61,14 +59,12 @@ private:
 
     template <typename C>
     void ComputeBlock(int64_t qidx,
-                      int64_t bidx,
-                      int64_t hidx,
-                      KernelTensor<int32_t> &topkOffsetsTensor,
+                      int64_t tidx,
+                      KernelTensor<int64_t> &topkLabelsTensor,
                       KernelTensor<float> &topkDistsTensor,
-                      KernelTensor<int64_t> &idsTensor,
                       KernelTensor<float> &outdistsTensor,
                       KernelTensor<int64_t> &outlabelsTensor,
-                      bool isLastBlock,
+                      bool isLastTile,
                       C &&cmp);
 
     template <typename T, typename C>
@@ -78,13 +74,12 @@ private:
 
 private:
     int64_t nq_ = 0;
-    int64_t handleBatch_ = 32;
     int64_t flagSize_ = 16;
 
     int64_t asc_ = 1;
     int64_t k_ = 0;
-    int64_t blockNum_ = 0;
-    int64_t flagNum_ = 32;
+    int64_t tileNum_ = 0;
+    int64_t flagNum_ = 1;
 };
 } // namespace aicpu
 #endif

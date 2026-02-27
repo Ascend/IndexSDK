@@ -84,35 +84,27 @@ uint32_t TopkIvfpqL3CpuKernel::GetInOutAndCheck(const CpuKernelContext &ctx, Inp
 {
     KERNEL_LOG_INFO("TopkIvfpqL3CpuKernel GetInOutAndCheck begin");
 
-    inputs.topkOffsets = ctx.Input(INPUT_NUM0);
+    inputs.topkLabels = ctx.Input(INPUT_NUM0);
     inputs.topkDists = ctx.Input(INPUT_NUM1);
-    inputs.ids = ctx.Input(INPUT_NUM2);
-    inputs.size = ctx.Input(INPUT_NUM3);
-    inputs.opflag = ctx.Input(INPUT_NUM4);
-    inputs.attr = ctx.Input(INPUT_NUM5);
+    inputs.opflag = ctx.Input(INPUT_NUM2);
+    inputs.attr = ctx.Input(INPUT_NUM3);
     outputs.outdists = ctx.Output(INPUT_NUM0);
     outputs.outlabels = ctx.Output(INPUT_NUM1);
 
-    KERNEL_CHECK_NULLPTR(inputs.topkOffsets, KERNEL_STATUS_PARAM_INVALID, "Get input[0], name[topkOffsets] failed");
+    KERNEL_CHECK_NULLPTR(inputs.topkLabels, KERNEL_STATUS_PARAM_INVALID, "Get input[0], name[topkLabels] failed");
     KERNEL_CHECK_NULLPTR(inputs.topkDists, KERNEL_STATUS_PARAM_INVALID, "Get input[1], name[topkDists] failed");
-    KERNEL_CHECK_NULLPTR(inputs.ids, KERNEL_STATUS_PARAM_INVALID, "Get input[2], name[ids] failed");
-    KERNEL_CHECK_NULLPTR(inputs.size, KERNEL_STATUS_PARAM_INVALID, "Get input[3], name[size] failed");
-    KERNEL_CHECK_NULLPTR(inputs.opflag, KERNEL_STATUS_PARAM_INVALID, "Get input[4], name[opflag] failed");
-    KERNEL_CHECK_NULLPTR(inputs.attr, KERNEL_STATUS_PARAM_INVALID, "Get input[5], name[attr] failed");
+    KERNEL_CHECK_NULLPTR(inputs.opflag, KERNEL_STATUS_PARAM_INVALID, "Get input[2], name[opflag] failed");
+    KERNEL_CHECK_NULLPTR(inputs.attr, KERNEL_STATUS_PARAM_INVALID, "Get input[3], name[attr] failed");
     KERNEL_CHECK_NULLPTR(outputs.outdists, KERNEL_STATUS_PARAM_INVALID, "Get output[0], name[outdists] failed");
     KERNEL_CHECK_NULLPTR(outputs.outlabels, KERNEL_STATUS_PARAM_INVALID, "Get output[1], name[outlabels] failed");
 
-    KERNEL_LOG_INFO("Shape of input[0][topkOffsets] is %s",
-        ShapeToString(inputs.topkOffsets->GetTensorShape()->GetDimSizes()).c_str());
+    KERNEL_LOG_INFO("Shape of input[0][topkLabels] is %s",
+        ShapeToString(inputs.topkLabels->GetTensorShape()->GetDimSizes()).c_str());
     KERNEL_LOG_INFO("Shape of input[1][topkDists] is %s",
         ShapeToString(inputs.topkDists->GetTensorShape()->GetDimSizes()).c_str());
-    KERNEL_LOG_INFO("Shape of input[2][ids] is %s",
-        ShapeToString(inputs.ids->GetTensorShape()->GetDimSizes()).c_str());
-    KERNEL_LOG_INFO("Shape of input[3][size] is %s",
-        ShapeToString(inputs.size->GetTensorShape()->GetDimSizes()).c_str());
-    KERNEL_LOG_INFO("Shape of input[4][opflag] is %s",
+    KERNEL_LOG_INFO("Shape of input[2][opflag] is %s",
         ShapeToString(inputs.opflag->GetTensorShape()->GetDimSizes()).c_str());
-    KERNEL_LOG_INFO("Shape of input[5][attr] is %s",
+    KERNEL_LOG_INFO("Shape of input[3][attr] is %s",
         ShapeToString(inputs.attr->GetTensorShape()->GetDimSizes()).c_str());
 
     return KERNEL_STATUS_OK;
@@ -122,45 +114,29 @@ uint32_t TopkIvfpqL3CpuKernel::CheckInputShapes(const Inputs &inputs)
 {
     KERNEL_LOG_INFO("TopkIvfpqL3CpuKernel CheckInputShapes begin");
 
-    auto shapeTopkOffsets = inputs.topkOffsets->GetTensorShape();
+    auto shapeTopkLabels = inputs.topkLabels->GetTensorShape();
     auto shapeTopkDists = inputs.topkDists->GetTensorShape();
-    auto shapeIds = inputs.ids->GetTensorShape();
-    auto shapeSize = inputs.size->GetTensorShape();
     auto shapeOpflag = inputs.opflag->GetTensorShape();
     auto shapeAttr = inputs.attr->GetTensorShape();
 
-    KERNEL_CHECK_TRUE(shapeTopkOffsets->GetDims() == INPUT_NUM4,
-        KERNEL_STATUS_PARAM_INVALID, "Dims of input[0][topkOffsets] must be 4");
-    KERNEL_CHECK_TRUE(shapeTopkDists->GetDims() == INPUT_NUM4,
-        KERNEL_STATUS_PARAM_INVALID, "Dims of input[0][topkDists] must be 4");
-    KERNEL_CHECK_TRUE(shapeIds->GetDims() == INPUT_NUM3,
-        KERNEL_STATUS_PARAM_INVALID, "Dims of input[0][ids] must be 3");
-    KERNEL_CHECK_TRUE(shapeSize->GetDims() == INPUT_NUM3,
-        KERNEL_STATUS_PARAM_INVALID, "Dims of input[0][size] must be 3");
+    KERNEL_CHECK_TRUE(shapeTopkLabels->GetDims() == INPUT_NUM3,
+        KERNEL_STATUS_PARAM_INVALID, "Dims of input[0][topkLabels] must be 3");
+    KERNEL_CHECK_TRUE(shapeTopkDists->GetDims() == INPUT_NUM3,
+        KERNEL_STATUS_PARAM_INVALID, "Dims of input[0][topkDists] must be 3");
     KERNEL_CHECK_TRUE(shapeAttr->GetDims() == INPUT_NUM1,
         KERNEL_STATUS_PARAM_INVALID, "Dims of input[0][attr] must be 1");
 
-    auto nq0 = shapeTopkOffsets->GetDimSize(INPUT_NUM0);
-    auto nq1 = shapeTopkDists->GetDimSize(INPUT_NUM0);
-    KERNEL_CHECK_TRUE(nq0 == nq1, KERNEL_STATUS_PARAM_INVALID, "Nq of inputs must be same");
-    nq_ = nq0;
-
-    auto handleBatch0 = shapeTopkOffsets->GetDimSize(INPUT_NUM2);
-    auto handleBatch1 = shapeTopkDists->GetDimSize(INPUT_NUM2);
-    KERNEL_CHECK_TRUE(handleBatch0 == handleBatch1, KERNEL_STATUS_PARAM_INVALID, "Handle batch of inputs must be same");
-    handleBatch_ = handleBatch0;
-
     auto attrCount = shapeAttr->GetDimSize(INPUT_NUM0);
     KERNEL_CHECK_TRUE(attrCount == TOPK_IVFPQ_L3_ATTR_IDX_COUNT,
-        KERNEL_STATUS_PARAM_INVALID, "Num of attrs must be %d", TOPK_IVFPQ_L3_ATTR_IDX_COUNT);
+                      KERNEL_STATUS_PARAM_INVALID, "Num of attrs must be %d", TOPK_IVFPQ_L3_ATTR_IDX_COUNT);
 
     auto attr = static_cast<int64_t *>(inputs.attr->GetData());
     asc_ = *(attr + TOPK_IVFPQ_L3_ATTR_ASC_IDX);
     k_ = *(attr + TOPK_IVFPQ_L3_ATTR_K_IDX);
-    blockNum_ = *(attr + TOPK_IVFPQ_L3_ATTR_BLOCK_NUM_IDX);
-    flagNum_ = *(attr + TOPK_IVFPQ_L3_ATTR_FLAG_NUM_IDX);
-    KERNEL_CHECK_TRUE(k_ > 0 && asc_ >= 0 && blockNum_ > 0 && flagNum_ > 0,
-        KERNEL_STATUS_PARAM_INVALID, "Value of asc, k, blockNum, flagNum must ge 0");
+    tileNum_ = *(attr + TOPK_IVFPQ_L3_ATTR_BLOCK_NUM_IDX); // tileNum is tileNum * segNum
+    nq_ = *(attr + TOPK_IVFPQ_L3_ATTR_BATCH_NUM_IDX);
+    KERNEL_CHECK_TRUE(k_ > 0 && asc_ >= 0 && tileNum_ > 0 && nq_ > 0,
+                      KERNEL_STATUS_PARAM_INVALID, "Value of asc, k, tileNum, nq must ge 0");
 
     return KERNEL_STATUS_OK;
 }
@@ -169,29 +145,19 @@ void TopkIvfpqL3CpuKernel::UpdateInOutShape(Inputs &inputs, Outputs &outputs) co
 {
     KERNEL_LOG_INFO("TopkIvfpqL3CpuKernel UpdateInOutShape begin");
 
-    auto shapeTopkOffsets = inputs.topkOffsets->GetTensorShape();
-    std::vector<int64_t> dimTopkOffsets = shapeTopkOffsets->GetDimSizes();
-    dimTopkOffsets[INPUT_NUM1] = blockNum_;
-    shapeTopkOffsets->SetDimSizes(dimTopkOffsets);
+    auto shapeTopkLabels = inputs.topkLabels->GetTensorShape();
+    std::vector<int64_t> dimTopkLabels = shapeTopkLabels->GetDimSizes();
+    dimTopkLabels[INPUT_NUM0] = tileNum_;
+    shapeTopkLabels->SetDimSizes(dimTopkLabels);
 
     auto shapeTopkDists = inputs.topkDists->GetTensorShape();
     std::vector<int64_t> dimTopkDists = shapeTopkDists->GetDimSizes();
-    dimTopkDists[INPUT_NUM1] = blockNum_;
+    dimTopkDists[INPUT_NUM0] = tileNum_;
     shapeTopkDists->SetDimSizes(dimTopkDists);
-
-    auto shapeIds = inputs.ids->GetTensorShape();
-    std::vector<int64_t> dimIds = shapeIds->GetDimSizes();
-    dimIds[INPUT_NUM1] = blockNum_;
-    shapeIds->SetDimSizes(dimIds);
-
-    auto shapeSize = inputs.size->GetTensorShape();
-    std::vector<int64_t> dimSize = shapeSize->GetDimSizes();
-    dimSize[INPUT_NUM1] = blockNum_;
-    shapeSize->SetDimSizes(dimSize);
 
     auto shapeOpFlag = inputs.opflag->GetTensorShape();
     std::vector<int64_t> dimOpFlag = shapeOpFlag->GetDimSizes();
-    dimOpFlag[INPUT_NUM1] = blockNum_;
+    dimOpFlag[INPUT_NUM1] = tileNum_;
     shapeOpFlag->SetDimSizes(dimOpFlag);
 
     auto shapeOutdists = outputs.outdists->GetTensorShape();
@@ -223,24 +189,21 @@ template <typename C>
 void TopkIvfpqL3CpuKernel::DoCompute(size_t startQidx, size_t queryCount,
                                      const Inputs &inputs, Outputs &outputs, C &&cmp)
 {
-    KernelTensor<int32_t> topkOffsets(inputs.topkOffsets);
+    KernelTensor<int64_t> topkLabels(inputs.topkLabels);
     KernelTensor<float> topkDists(inputs.topkDists);
-    KernelTensor <int64_t> ids(inputs.ids);
     KernelTensor <uint16_t> opflag(inputs.opflag);
 
     KernelTensor<float> outdists(outputs.outdists);
     KernelTensor <int64_t> outlabels(outputs.outlabels);
 
-    for (int64_t qidx = startQidx; qidx < nq_; qidx += queryCount) {
-        for (int64_t bidx = 0; bidx < blockNum_; ++bidx) {
-            auto flagPtr = opflag.GetSubTensorDim1(qidx, bidx);
-            for (int64_t i = 0; i < flagNum_; ++i) {
-                WAITING_FLAG_READY(*(flagPtr + i * flagSize_), TIMEOUT_CHECK_TICK, TIMEOUT_MS);
-            }
-            for (int64_t i = 0; i < handleBatch_; ++i) {
-                bool isLastBlock = (bidx + 1 == blockNum_ && i + 1 == handleBatch_);
-                ComputeBlock(qidx, bidx, i, topkOffsets, topkDists, ids, outdists, outlabels, isLastBlock, cmp);
-            }
+    for (int64_t tidx = 0; tidx < tileNum_; ++tidx) {
+        auto flagPtr = opflag.GetSubTensorDim0(tidx);
+        for (int64_t i = 0; i < flagNum_; ++i) {
+            WAITING_FLAG_READY(*(flagPtr + i * flagSize_), TIMEOUT_CHECK_TICK, TIMEOUT_MS);
+        }
+        bool isLastTile = (tidx + 1 == tileNum_);
+        for (int64_t qidx = startQidx; qidx < nq_; qidx += queryCount) {
+            ComputeBlock(qidx, tidx, topkLabels, topkDists, outdists, outlabels, isLastTile, cmp);
         }
     }
 }
@@ -257,20 +220,16 @@ void TopkIvfpqL3CpuKernel::UpdateHeapByPos(int64_t outdisPos, float *outdists, i
 
 template <typename C>
 void TopkIvfpqL3CpuKernel::ComputeBlock(int64_t qidx,
-                                        int64_t bidx,
-                                        int64_t hidx,
-                                        KernelTensor<int32_t> &topkOffsetsTensor,
+                                        int64_t tidx,
+                                        KernelTensor<int64_t> &topkLabelsTensor,
                                         KernelTensor<float> &topkDistsTensor,
-                                        KernelTensor<int64_t> &idsTensor,
                                         KernelTensor<float> &outdistsTensor,
                                         KernelTensor<int64_t> &outlabelsTensor,
-                                        bool isLastBlock,
+                                        bool isLastTile,
                                         C &&cmp)
 {
-    int32_t *topkOffsets = topkOffsetsTensor.GetSubTensorDim2(qidx, bidx, hidx);
-    float *topkDists = topkDistsTensor.GetSubTensorDim2(qidx, bidx, hidx);
-    int64_t *ids = idsTensor.GetSubTensorDim2(qidx, bidx, hidx);
-    int64_t *id = reinterpret_cast<int64_t *>(*ids);
+    int64_t *topkLabels = topkLabelsTensor.GetSubTensorDim1(tidx, qidx);
+    float *topkDists = topkDistsTensor.GetSubTensorDim1(tidx, qidx);
 
     float *outdists = outdistsTensor.GetSubTensorDim0(qidx);
     int64_t *outlabel = outlabelsTensor.GetSubTensorDim0(qidx);
@@ -279,12 +238,11 @@ void TopkIvfpqL3CpuKernel::ComputeBlock(int64_t qidx,
         if (!cmp(outdists[0], topkDists[i])) {
             break;
         }
-        int32_t offset = topkOffsets[i];
         UpdateHeapByPos(0, outdists, i, topkDists, 0,
-                        reinterpret_cast<int64_t>(id + offset), outlabel, 0, cmp);
+                        topkLabels[i], outlabel, 0, cmp);
     }
 
-    if (isLastBlock) {
+    if (isLastTile) {
         for (int64_t i = k_ - 1; i >= 1; --i) {
             std::swap(outdists[0], outdists[i]);
             std::swap(outlabel[0], outlabel[i]);
