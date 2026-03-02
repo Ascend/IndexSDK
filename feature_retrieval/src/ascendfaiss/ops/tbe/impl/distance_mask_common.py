@@ -271,6 +271,7 @@ class DistanceMaskGenerator:
                                              self.db_remainder_gm[db_vector_offset_sc * 2 :],
                                              extra_mask_gm,
                                              self.distance_mask_gm[db_vector_offset_sc // 8 :],
+                                             self.extra_val_attr_gm[db_vector_offset_sc:],
                                              db_vector_cnt_sc)
     
     def compute_distance_mask_each_task(self,
@@ -283,6 +284,7 @@ class DistanceMaskGenerator:
                                          db_remainder_gm,
                                          extra_mask_gm,
                                          distance_mask_gm,
+                                         extra_val_attr_gm,
                                          db_vector_cnt):
         """
         根据时间戳以及token id集计算距离值mask
@@ -379,7 +381,7 @@ class DistanceMaskGenerator:
             # 与用户的extra_val进行与操作，可选。
             if self.use_extra_val is True:
                 self.process_with_extra_val(extra_val_filter_ub,
-                                            self.extra_val_attr_gm[lid * self.db_stride_each_call:],
+                                            extra_val_attr_gm[lid * self.db_stride_each_call:],
                                             self.db_stride_each_call,
                                             val_cmp_res_ub,
                                             dst_res_ub_int16)
