@@ -861,7 +861,10 @@ APP_ERROR AscendIndexILFlatImpl::Remove(int n, const idx_t *indices)
 
 APP_ERROR AscendIndexILFlatImpl::Get(int n, float16_t *features, const idx_t *indices) const
 {
-    AscendTensor<float16_t, DIMS_2> queries(features, {n, this->dim});
+    auto streamPtr = this->pResources->getDefaultStream();
+    auto stream = streamPtr->GetStream();
+    auto &mem = this->pResources->getMemoryManager();
+    AscendTensor<float16_t, DIMS_2> queries(mem, {n, this->dim}, stream);
     auto ret = GetDevice(n, queries.data(), indices);
     APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "GetDevice failed: %i\n", ret);
 
