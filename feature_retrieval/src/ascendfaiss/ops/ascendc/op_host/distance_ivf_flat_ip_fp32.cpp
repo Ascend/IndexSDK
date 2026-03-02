@@ -103,6 +103,7 @@ namespace optiling {
         ASCENDC_RETURN_IF_NOT(ge::GRAPH_SUCCESS == SetTilingInfo(context, tiling, ub_size), ge::GRAPH_FAILED);
         ASCENDC_RETURN_IF_NOT(ge::GRAPH_SUCCESS == DoLibApiTiling(tiling, l1_size, l0c_size), ge::GRAPH_FAILED);
         context->SetBlockDim(block_dim);
+        tiling.set_aiv_num(use_aiv_num);
         uint32_t sysWorkspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
         size_t *currentWorkspace = context->GetWorkspaceSizes(1);
         ASCENDC_RETURN_IF_NOT(currentWorkspace != nullptr, ge::GRAPH_FAILED);

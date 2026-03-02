@@ -38,8 +38,9 @@ BEGIN_TILING_DATA_DEF(DistanceIVFFlatIpFP32TilingData)
     TILING_DATA_FIELD_DEF(int32_t, code_list_num); // 待处理分桶数
     TILING_DATA_FIELD_DEF(int32_t, code_num); // 底库长度
     TILING_DATA_FIELD_DEF(int32_t, buffer_size); // 核内buffer大小
-    TILING_DATA_FIELD_DEF(int32_t, max_res_stride); // adcendc指令单次循环步长
-    TILING_DATA_FIELD_DEF(int32_t, max_res_inner_stride); // adcendc指令tiling函数参数
+    TILING_DATA_FIELD_DEF(int32_t, max_res_stride); // ascendc指令单次循环步长
+    TILING_DATA_FIELD_DEF(int32_t, max_res_inner_stride); // ascendc指令tiling函数参数
+    TILING_DATA_FIELD_DEF(int32_t, aiv_num); // 核数
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(DistanceIVFFlatIpFP32, DistanceIVFFlatIpFP32TilingData)

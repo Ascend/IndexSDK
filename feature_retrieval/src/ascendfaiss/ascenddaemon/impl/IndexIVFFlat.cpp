@@ -596,10 +596,11 @@ APP_ERROR IndexIVFFlat::searchImplL2(AscendTensor<float, DIMS_2> &queries,
     fillDisOpInputData(k, batch, tileNum, segNum, coreNum, offset, baseSize, ids, attrs, l1TopNprobeIndicesHost);
     AscendTensor<float, DIMS_2, size_t> outDist(mem, {batch, static_cast<size_t>(k)}, stream);
     AscendTensor<idx_t, DIMS_2, size_t> outLabel(mem, {batch, static_cast<size_t>(k)}, stream);
-    runL2TopkOp(disVec, vcMaxDisVec, ids, baseSize, opFlag, attrs, outDist, outLabel, streamAicpu);
     callL2DistanceOp(batch, tileNum, segNum, coreNum, vcMaxLen, queryVec, offset, baseSize,
                      opFlag, disVec, vcMaxDisVec, codeVec, stream);
     ret = synchronizeStream(stream);
+    APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, APP_ERR_INNER_ERROR, "sync stream failed %d", ret);
+    runL2TopkOp(disVec, vcMaxDisVec, ids, baseSize, opFlag, attrs, outDist, outLabel, streamAicpu);
     ret = synchronizeStream(streamAicpu);
     APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, APP_ERR_INNER_ERROR, "sync aicpu stream failed %d", ret);
     ret = aclrtMemcpy(distances, batch * k * sizeof(float), outDist.data(),
