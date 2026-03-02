@@ -261,6 +261,9 @@ class DistanceMaskGenerator:
 
             # 一次计算8192条 extra_val_filter_ub大小为8192
             self.tik_instance.vec_dup(128, extra_val_filter_ub, self.val_filter_sc, 8192 // 128, 8)
+            extra_val_attr_gm = self.extra_val_attr_gm[db_vector_offset_sc:]
+        else:
+            extra_val_attr_gm = None
 
         self.compute_distance_mask_each_task(start_time_stamp_sc,
                                              end_time_stamp_sc,
@@ -271,7 +274,7 @@ class DistanceMaskGenerator:
                                              self.db_remainder_gm[db_vector_offset_sc * 2 :],
                                              extra_mask_gm,
                                              self.distance_mask_gm[db_vector_offset_sc // 8 :],
-                                             self.extra_val_attr_gm[db_vector_offset_sc:],
+                                             extra_val_attr_gm,
                                              db_vector_cnt_sc)
     
     def compute_distance_mask_each_task(self,
