@@ -20,6 +20,7 @@
 #define ASCEND_INDEX_IVFRABITQ_INCLUDED
 
 #include <faiss/Clustering.h>
+#include <faiss/IndexIVFRaBitQ.h>
 #include "ascend/AscendIndexIVF.h"
 
 namespace faiss {
@@ -62,6 +63,14 @@ public:
     AscendIndexIVFRabitQ& operator=(const AscendIndexIVFRabitQ&) = delete;
 
     void train(idx_t n, const float *x) override;
+    
+    // Copy what we need from a CPU IndexIVFRaBitQ
+    // This copies all IVFRaBitQ-specific data for complete state transfer
+    void copyFrom(const faiss::IndexIVFRaBitQ *index);
+
+    // Copy what we have to a CPU IndexIVFRaBitQ
+    // This copies all IVFRaBitQ-specific data for complete state transfer
+    void copyTo(faiss::IndexIVFRaBitQ *index) const;
 
 protected:
     std::shared_ptr<AscendIndexIVFRabitQImpl> impl_;

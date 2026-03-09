@@ -509,5 +509,203 @@ size_t AscendIndexIVFRabitQImpl::getAddElementSize() const
 {
     return static_cast<size_t>(intf_->d) * sizeof(float);
 }
+
+// copy from cpu index
+void AscendIndexIVFRabitQImpl::copyFrom(const faiss::IndexIVFRaBitQ *index)
+{
+    APP_LOG_INFO("AscendIndexIVFRabitQImpl copyFrom operation started.");
+
+    FAISS_THROW_IF_NOT_MSG(index != nullptr, "Input index is nullptr");
+    FAISS_THROW_IF_NOT_MSG(this->intf_ != nullptr, "Internal interface is nullptr");
+    FAISS_THROW_IF_NOT_MSG(index->d == this->intf_->d, "Dimension mismatch");
+    FAISS_THROW_IF_NOT_MSG(index->nlist == nlist, "nlist mismatch");
+    FAISS_THROW_IF_NOT_MSG(indexConfig.deviceList.size() > 0, "Device list is empty");
+
+    AscendIndexIVFImpl::copyFrom(index);
+
+    // 正交矩阵，FAISS 侧无对应存储接口，采用相同种子配置重新生成
+    orthogonalMatrix.resize(intf_->d * intf_->d);
+    if (ivfrabitqConfig.useRandomOrthogonalMatrix) {
+        try {
+            randomOrthogonalGivens(intf_->d, orthogonalMatrix);
+        } catch (const std::exception& e) {
+            FAISS_THROW_IF_NOT_FMT(false, "Failed to generate random orthogonal matrix: %s", e.what());
+        }
+    } else {
+        std::fill(orthogonalMatrix.begin(), orthogonalMatrix.end(), 0.0f);
+        for (int i = 0; i < intf_->d; ++i) {
+            orthogonalMatrix[i * intf_->d + i] = 1.0f;
+        }
+    }
+    uploadorthogonalMatrix(orthogonalMatrix);
+
+    // copy centroids
+    FAISS_THROW_IF_NOT_MSG(index->quantizer != nullptr && index->is_trained,
+                           "Index must be trained and have quantizer");
+    auto flat = dynamic_cast<faiss::IndexFlat*>(index->quantizer);
+    FAISS_THROW_IF_NOT_MSG(flat != nullptr, "Quantizer must be IndexFlat");
+    const float* centroids = flat->get_xb();
+    std::vector<float> hostCentroids(centroids, centroids + nlist * intf_->d);
+    
+    updateCoarseCenter(hostCentroids);
+    size_t dim = intf_->d;
+    ::ascend::AscendTensor<float, ::ascend::DIMS_2> centroidsTrained(hostCentroids.data(), {nlist, dim});
+    assignIndex->addVectorsAsCentroid(centroidsTrained);
+
+    // copy inverted lists
+    FAISS_THROW_IF_NOT_MSG(index->invlists != nullptr, "Input index has no inverted lists");
+    size_t deviceCnt = indexConfig.deviceList.size();
+    int totalAdded = 0;
+    size_t codeSize = index->code_size;
+
+    for (int listId = 0; listId < nlist; ++listId) {
+        size_t listLen = index->invlists->list_size(listId);
+        if (listLen == 0) continue;
+
+        const faiss::idx_t* ids = index->invlists->get_ids(listId);
+        const uint8_t* codes = index->invlists->get_codes(listId);
+
+        // 为每个设备创建临时缓冲区，存储该列表分配给该设备的编码数据和ID
+        std::vector<std::vector<uint8_t>> perDeviceCodes(deviceCnt);
+        std::vector<std::vector<faiss::idx_t>> perDeviceIds(deviceCnt);
+
+        for (size_t j = 0; j < listLen; ++j) {
+            // 按负载均衡选择设备
+            size_t devIdx = 0;
+            for (size_t d = 1; d < deviceCnt; ++d) {
+                if (deviceAddNumMap[listId][d] < deviceAddNumMap[listId][devIdx]) {
+                    devIdx = d;
+                }
+            }
+            deviceAddNumMap[listId][devIdx]++;
+
+            const uint8_t* codePtr = codes + j * codeSize;
+            perDeviceCodes[devIdx].insert(perDeviceCodes[devIdx].end(), codePtr, codePtr + codeSize);
+            perDeviceIds[devIdx].push_back(ids[j]);
+        }
+
+        for (size_t devIdx = 0; devIdx < deviceCnt; ++devIdx) {
+            if (perDeviceCodes[devIdx].empty()) continue;
+
+            int deviceId = indexConfig.deviceList[devIdx];
+            auto pIndex = getActualIndex(deviceId);
+            size_t numVecs = perDeviceIds[devIdx].size();
+
+            auto ret = pIndex->addEncodedVectors(listId,
+                                                 numVecs,
+                                                 perDeviceCodes[devIdx].data(),
+                                                 reinterpret_cast<const uint64_t*>(perDeviceIds[devIdx].data()));
+
+            FAISS_THROW_IF_NOT_FMT(ret == ::ascend::APP_ERR_OK,
+                                   "Failed to add encoded vectors to device %d, list %d, ret=%d",
+                                   deviceId, listId, ret);
+        }
+
+        totalAdded += listLen;
+    }
+
+    this->intf_->ntotal = index->ntotal;
+    this->intf_->is_trained = index->is_trained;
+    APP_LOG_INFO("AscendIndexIVFRabitQImpl copyFrom operation finished.");
+}
+
+// copy to cpu index
+void AscendIndexIVFRabitQImpl::copyTo(faiss::IndexIVFRaBitQ *index) const
+{
+    APP_LOG_INFO("AscendIndexIVFRabitQImpl copyTo operation started.");
+
+    FAISS_THROW_IF_NOT_MSG(index != nullptr, "Output index is nullptr");
+    FAISS_THROW_IF_NOT_MSG(indexConfig.deviceList.size() > 0, "Device list is empty");
+
+    index->d = intf_->d;
+    index->metric_type = intf_->metric_type;
+    index->nlist = nlist;
+    index->nprobe = nprobe;
+    index->is_trained = intf_->is_trained;
+    index->ntotal = intf_->ntotal;
+
+    auto firstDevIdx = getActualIndex(indexConfig.deviceList[0]);
+    size_t devCodeSize = firstDevIdx->getCodeSize();
+    index->code_size = devCodeSize;
+    
+    index->rabitq.d = intf_->d;
+
+    // copy centroids
+    std::vector<float> hostCentroids;
+    auto ret = firstDevIdx->getCentroids(hostCentroids);
+    FAISS_THROW_IF_NOT_MSG(ret == ::ascend::APP_ERR_OK,
+                           "Failed to get centroids from device");
+    FAISS_THROW_IF_NOT_MSG(hostCentroids.size() == nlist * intf_->d,
+                           "Centroid size mismatch");
+
+    faiss::IndexFlat* quantizer = nullptr;
+    if (index->metric_type == faiss::METRIC_INNER_PRODUCT) {
+        quantizer = new faiss::IndexFlatIP(intf_->d);
+    } else {
+        quantizer = new faiss::IndexFlatL2(intf_->d);
+    }
+    quantizer->add(nlist, hostCentroids.data());
+    index->quantizer = quantizer;
+    index->quantizer_trains_alone = 0;
+
+    // copy inverted lists
+    auto* newInvlists = new faiss::ArrayInvertedLists(nlist, devCodeSize);
+    size_t deviceCnt = indexConfig.deviceList.size();
+    int totalCopied = 0;
+
+    for (int listId = 0; listId < nlist; ++listId) {
+        // 计算该列表在所有设备上的总长度
+        size_t totalLen = 0;
+        for (size_t devIdx = 0; devIdx < deviceCnt; ++devIdx) {
+            auto pIndex = getActualIndex(indexConfig.deviceList[devIdx]);
+            totalLen += pIndex->getListLength(listId);
+        }
+        if (totalLen == 0) continue;
+
+        std::vector<faiss::idx_t> allIds;
+        std::vector<uint8_t> allCodes;
+        allIds.reserve(totalLen);
+        allCodes.reserve(totalLen * devCodeSize);
+        
+        for (size_t devIdx = 0; devIdx < deviceCnt; ++devIdx) {
+            int deviceId = indexConfig.deviceList[devIdx];
+            auto pIndex = getActualIndex(deviceId);
+            size_t devLen = pIndex->getListLength(listId);
+            if (devLen == 0) continue;
+
+            // 获取 IDs
+            std::vector<faiss::idx_t> devIds;
+            ret = pIndex->getListIds(listId, devIds);
+            FAISS_THROW_IF_NOT_FMT(ret == ::ascend::APP_ERR_OK,
+                                   "Failed to get IDs from device %d", deviceId);
+            FAISS_THROW_IF_NOT_FMT(devIds.size() == devLen,
+                                   "Device %d list %d ID count mismatch", deviceId, listId);
+
+            // 获取压缩编码
+            std::vector<uint8_t> devCodes;
+            ret = pIndex->getListRawCodes(listId, devCodes);
+            FAISS_THROW_IF_NOT_FMT(ret == ::ascend::APP_ERR_OK,
+                                   "Failed to get raw codes from device %d", deviceId);
+            FAISS_THROW_IF_NOT_FMT(devCodes.size() == devLen * devCodeSize,
+                                   "Device %d list %d codes size mismatch", deviceId, listId);
+
+            allIds.insert(allIds.end(), devIds.begin(), devIds.end());
+            allCodes.insert(allCodes.end(), devCodes.begin(), devCodes.end());
+        }
+
+        // 添加到倒排列表
+        newInvlists->add_entries(listId, totalLen, allIds.data(), allCodes.data());
+        totalCopied += totalLen;
+    }
+
+    index->invlists = newInvlists;
+    index->own_fields = true;
+
+    FAISS_THROW_IF_NOT_FMT(totalCopied == intf_->ntotal,
+                           "Total vectors mismatch: expected %d, got %d",
+                           intf_->ntotal, totalCopied);
+
+    APP_LOG_INFO("AscendIndexIVFRabitQImpl copyTo operation finished.\n");
+}
 } // ascend
 } // faiss

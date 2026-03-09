@@ -66,6 +66,11 @@ public:
     void addPaged(int n, const float* x, const idx_t* ids);
     size_t getAddPagedSize(int n) const;
     void searchImpl(int n, const float *x, int k, float *distances, idx_t *labels) const override;
+    
+    // Copy data from a CPU IndexIVFRaBitQ
+    void copyFrom(const faiss::IndexIVFRaBitQ *index);
+    // Copy data to a CPU IndexIVFRaBitQ
+    void copyTo(faiss::IndexIVFRaBitQ *index) const;
 
 protected:
     void mergeSearchResultSingleQuery(idx_t qIdx, size_t devices,
@@ -101,6 +106,7 @@ protected:
     void initFlatAtFp32();
     void randomOrthogonalGivens(int n, std::vector<float> &orthogonalMatrix);
     void uploadorthogonalMatrix(std::vector<float> &orthogonalMatrix);
+    
     AscendIndexIVFRabitQ *intf_;
     std::vector<float> srcIndexes;
     std::vector<float> centroidsData;

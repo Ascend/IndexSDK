@@ -38,5 +38,29 @@ void AscendIndexIVFRabitQ::train(idx_t n, const float *x)
     FAISS_THROW_IF_NOT_MSG(impl_ != nullptr, "impl_ is nullptr!");
     impl_->train(n, x);
 }
+
+// Copy what we need from a CPU IndexIVFRaBitQ
+void AscendIndexIVFRabitQ::copyFrom(const faiss::IndexIVFRaBitQ *index)
+{
+    APP_LOG_INFO("AscendIndexIVFRabitQ copyFrom (IndexIVFRaBitQ) operation started.\n");
+    FAISS_THROW_IF_NOT_MSG(impl_ != nullptr, "impl_ is nullptr!");
+    
+    // Call implementation class copyFrom to handle IVFRaBitQ data
+    impl_->copyFrom(index);
+    
+    APP_LOG_INFO("AscendIndexIVFRabitQ copyFrom (IndexIVFRaBitQ) operation finished.\n");
+}
+
+// Copy what we have to a CPU IndexIVFRaBitQ
+void AscendIndexIVFRabitQ::copyTo(faiss::IndexIVFRaBitQ *index) const
+{
+    APP_LOG_INFO("AscendIndexIVFRabitQ copyTo (IndexIVFRaBitQ) operation started.\n");
+    FAISS_THROW_IF_NOT_MSG(impl_ != nullptr, "impl_ is nullptr!");
+    
+    // Call implementation class copyTo to handle IVFRaBitQ data
+    impl_->copyTo(index);
+    
+    APP_LOG_INFO("AscendIndexIVFRabitQ copyTo (IndexIVFRaBitQ) operation finished.\n");
+}
 } // namespace ascend
 } // namespace faiss
