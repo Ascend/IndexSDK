@@ -66,6 +66,18 @@ public:
         return utils::divUp(blockSize, burstLen) * IVF_RABITQ_BURST_BLOCK_RATIO;
     }
     APP_ERROR searchImpl(int n, const float* x, int k, float* distances, idx_t* labels, const float* srcIndexes);
+
+    size_t getCodeSize() const;
+
+    APP_ERROR getListIds(int listId, std::vector<int64_t>& ids) const;
+
+    APP_ERROR getListRawCodes(int listId, std::vector<uint8_t>& rawCodes) const;
+
+    APP_ERROR getCentroids(std::vector<float>& centroids) const;
+
+    APP_ERROR addEncodedVectors(int listId, size_t numVecs,
+                                const uint8_t* encodedCodes,
+                                const idx_t* indices);
 protected:
     void uploadLUTMatrix();
     size_t addTiling(int listId, size_t numVecs,
@@ -223,6 +235,7 @@ protected:
     size_t removeIds(const ascend::IDSelector& sel);
 
 protected:
+    std::unique_ptr<DeviceVector<float>> originCentroidsOnDevice;        // 原始聚类中心
     std::unique_ptr<DeviceVector<float>> LUTMatrixOnDevice;        // LUT 计算常值矩阵
     std::unique_ptr<DeviceVector<float>> CentroidLUTOnDevice;      // 聚类中心 LUT
     std::unique_ptr<DeviceVector<float>> CentroidL2OnDevice;       // 聚类中心 L2

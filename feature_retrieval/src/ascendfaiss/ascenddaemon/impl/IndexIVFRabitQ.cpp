@@ -49,6 +49,8 @@ IndexIVFRabitQ::IndexIVFRabitQ(int numList, int dim, int nprobes, int64_t resour
     pBaseFp32 = reinterpret_cast<uint8_t*>(0xffffffffffffffff);  // 基地址初始化为最大的无效值 0xffffffffffffffff
     pIndexL2 = reinterpret_cast<float*>(0xffffffffffffffff);  // 基地址初始化为最大的无效值 0xffffffffffffffff
     pIndexL1 = reinterpret_cast<float*>(0xffffffffffffffff);  // 基地址初始化为最大的无效值 0xffffffffffffffff
+    originCentroidsOnDevice = CREATE_UNIQUE_PTR(DeviceVector<float>, MemorySpace::DEVICE_HUGEPAGE);
+    originCentroidsOnDevice->resize(numList * dims);
     centroidsOnDevice = CREATE_UNIQUE_PTR(DeviceVector<float>, MemorySpace::DEVICE_HUGEPAGE);
     centroidsOnDevice->resize(numList * dims);
     OrthogonalMatrixOnDevice = CREATE_UNIQUE_PTR(DeviceVector<float>, MemorySpace::DEVICE_HUGEPAGE);
@@ -190,6 +192,9 @@ APP_ERROR IndexIVFRabitQ::updateCoarseCenterImpl(std::vector<float> &centerData)
     // 聚类中心传到npu
     auto ret = aclrtMemcpy(originCentroids.data(), originCentroids.getSizeInBytes(),
                            centerData.data(), dims * numLists * sizeof(float), ACL_MEMCPY_HOST_TO_DEVICE);
+    ASCEND_THROW_IF_NOT_FMT(ret == ACL_SUCCESS, "Failed to aclrtMemcpy CoarseCenter, result is: %d\n", ret);
+    ret = aclrtMemcpy(originCentroidsOnDevice->data(), originCentroidsOnDevice->size() * sizeof(float),
+                      centerData.data(), dims * numLists * sizeof(float), ACL_MEMCPY_HOST_TO_DEVICE);
     ASCEND_THROW_IF_NOT_FMT(ret == ACL_SUCCESS, "Failed to aclrtMemcpy CoarseCenter, result is: %d\n", ret);
 
     // c = Pcr, ||cr||^2 预计算
@@ -1289,6 +1294,192 @@ APP_ERROR IndexIVFRabitQ::searchWithBatch(int n, const float * x, int k,
                        l1TopNprobeDistsHost, k, topkdist.data(), topklabel.data());
     APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, ret, "ivfflat L2 search failed! %d", ret);
     refine(n, x, k, distances, labels, topkdist.data(), topklabel.data(), srcIndexes);
+    return APP_ERR_OK;
+}
+
+size_t IndexIVFRabitQ::getCodeSize() const
+{
+    size_t codePartBytes = utils::divUp(dim + 7, 8);          // 压缩码部分
+    size_t factorBytes = 2 * sizeof(float);         // L2因子 + L1因子，各4字节
+    return codePartBytes + factorBytes;
+}
+
+APP_ERROR IndexIVFRabitQ::getListIds(int listId, std::vector<int64_t>& ids) const
+{
+    APPERR_RETURN_IF_NOT_FMT(listId >= 0 && listId < numLists, APP_ERR_INVALID_PARAM,
+                             "listId %d out of range [0, %d)", listId, numLists);
+    size_t len = listVecNum[listId];
+    ids.resize(len);
+    if (len == 0) {
+        return APP_ERR_OK;
+    }
+
+    // deviceListIndices[listId] 是 DeviceVector<ascend_idx_t>*
+    auto& idVec = deviceListIndices[listId];
+    APPERR_RETURN_IF_NOT(idVec != nullptr, APP_ERR_INNER_ERROR);
+
+    std::vector<uint64_t> tmp(len);
+    auto ret = aclrtMemcpy(tmp.data(), len * sizeof(uint64_t),
+                           idVec->data(), len * sizeof(uint64_t),
+                           ACL_MEMCPY_DEVICE_TO_HOST);
+    APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR,
+                             "aclrtMemcpy failed for list %d IDs, ret=%d", listId, ret);
+
+    // 转换为 faiss::idx_t
+    for (size_t i = 0; i < len; ++i) {
+        ids[i] = static_cast<int64_t>(tmp[i]);
+    }
+    return APP_ERR_OK;
+}
+
+APP_ERROR IndexIVFRabitQ::getListRawCodes(int listId, std::vector<uint8_t>& rawCodes) const
+{
+    APPERR_RETURN_IF_NOT_FMT(listId >= 0 && listId < numLists, APP_ERR_INVALID_PARAM,
+                             "listId %d out of range [0, %d)", listId, numLists);
+
+    size_t numVecs = listVecNum[listId];
+    size_t codeSizePerVec = getCodeSize();
+    size_t totalBytes = numVecs * codeSizePerVec;
+    rawCodes.resize(totalBytes);
+
+    if (numVecs == 0) {
+        return APP_ERR_OK;
+    }
+
+    // 同步默认流，确保之前的所有设备操作已完成
+    auto streamPtr = resources.getDefaultStream();
+    auto stream = streamPtr->GetStream();
+    auto retSync = synchronizeStream(stream);
+    APPERR_RETURN_IF_NOT_LOG(retSync == ACL_SUCCESS, APP_ERR_INNER_ERROR,
+                             "synchronizeStream failed before getListRawCodes");
+
+    // 拷贝压缩码部分（baseFp32）
+    const auto& blocks = baseFp32[listId];
+    size_t codePartBytesPerVec = utils::divUp(dim + 7, 8);
+    size_t codePartTotal = numVecs * codePartBytesPerVec;
+    size_t copied = 0;
+
+    for (const auto& block : blocks) {
+        size_t blockBytes = block->size();
+        if (copied + blockBytes > codePartTotal) {
+            blockBytes = codePartTotal - copied;  // 安全保护
+        }
+        auto ret = aclrtMemcpy(rawCodes.data() + copied, blockBytes,
+                               block->data(), blockBytes,
+                               ACL_MEMCPY_DEVICE_TO_HOST);
+        APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR,
+                                 "aclrtMemcpy failed for list %d block, ret=%d", listId, ret);
+        copied += blockBytes;
+        if (copied >= codePartTotal) break;
+    }
+    APPERR_RETURN_IF_NOT_FMT(copied == codePartTotal, APP_ERR_INNER_ERROR,
+                             "Copied %zu bytes, expected %zu for code part", copied, codePartTotal);
+
+    // 拷贝 L2 因子（IndexL2OnDevice）
+    size_t l2Offset = codePartTotal;
+    size_t l2Bytes = numVecs * sizeof(float);
+    auto ret = aclrtMemcpy(rawCodes.data() + l2Offset, l2Bytes,
+                           IndexL2OnDevice[listId]->data(), l2Bytes,
+                           ACL_MEMCPY_DEVICE_TO_HOST);
+    APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR,
+                             "aclrtMemcpy failed for L2 factors of list %d, ret=%d", listId, ret);
+
+    // 拷贝 L1 因子（IndexL1OnDevice）
+    size_t l1Offset = l2Offset + l2Bytes;
+    size_t l1Bytes = numVecs * sizeof(float);
+    ret = aclrtMemcpy(rawCodes.data() + l1Offset, l1Bytes,
+                      IndexL1OnDevice[listId]->data(), l1Bytes,
+                      ACL_MEMCPY_DEVICE_TO_HOST);
+    APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR,
+                             "aclrtMemcpy failed for L1 factors of list %d, ret=%d", listId, ret);
+
+    return APP_ERR_OK;
+}
+
+APP_ERROR IndexIVFRabitQ::getCentroids(std::vector<float>& centroids) const
+{
+    size_t sz = numLists * dims;
+    centroids.resize(sz);
+    
+    if (!originCentroidsOnDevice || originCentroidsOnDevice->size() < sz) {
+        return APP_ERR_INNER_ERROR;
+    }
+    
+    auto ret = aclrtMemcpy(centroids.data(), sz * sizeof(float),
+                           originCentroidsOnDevice->data(), sz * sizeof(float),
+                           ACL_MEMCPY_DEVICE_TO_HOST);
+    APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR,
+                             "aclrtMemcpy failed for centroids, ret=%d", ret);
+    return APP_ERR_OK;
+}
+
+APP_ERROR IndexIVFRabitQ::addEncodedVectors(int listId, size_t numVecs,
+                                            const uint8_t* encodedCodes,
+                                            const idx_t* indices)
+{
+    APPERR_RETURN_IF_NOT_FMT(listId >= 0 && listId < numLists, APP_ERR_INVALID_PARAM,
+        "the listId is %d, out of numLists(%d)", listId, numLists);
+    APPERR_RETURN_IF(numVecs == 0, APP_ERR_OK);
+    APPERR_RETURN_IF_NOT_LOG(APP_ERR_OK == resize(listId, numVecs), APP_ERR_INNER_ERROR, "resize base failed!");
+
+    std::vector<uint64_t> offsetHost;
+    std::vector<uint64_t> indexl2offsetHost;
+    std::vector<uint32_t> baseSizeHost;
+    size_t tileNum = addTiling(listId, numVecs, offsetHost, indexl2offsetHost, baseSizeHost);
+
+    auto &mem = resources.getMemoryManager();
+    auto streamPtr = resources.getDefaultStream();
+    auto stream = streamPtr->GetStream();
+
+    size_t codePartBytes = utils::divUp(dim + 7, 8);          // 压缩码部分字节数
+    size_t factorBytes = sizeof(float);              // 每个因子字节数
+    size_t totalEncodedPerVec = codePartBytes + 2 * factorBytes;
+    uint64_t encodedOffset = 0;  // 编码偏移量
+
+    for (size_t i = 0; i < tileNum; i++) {
+        size_t tileVecs = baseSizeHost[i];
+        size_t tileCodeBytes = tileVecs * codePartBytes;
+        size_t tileFactorBytes = tileVecs * factorBytes;
+
+        // 拷贝压缩码到 baseFp32 对应块
+        uint8_t* codeBlockPtr = reinterpret_cast<uint8_t*>(reinterpret_cast<uint64_t>(pBaseFp32) + offsetHost[i]);
+        auto ret = aclrtMemcpy(codeBlockPtr, tileCodeBytes,
+                               encodedCodes + encodedOffset, tileCodeBytes,
+                               ACL_MEMCPY_HOST_TO_DEVICE);
+        APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR,
+                                 "copy codes failed for list %d tile %zu, ret=%d", listId, i, ret);
+        encodedOffset += tileCodeBytes;
+
+        // 拷贝 L2 因子到 IndexL2OnDevice
+        float* l2Ptr = IndexL2OnDevice[listId]->data() + indexl2offsetHost[i];
+        ret = aclrtMemcpy(l2Ptr, tileFactorBytes,
+                          encodedCodes + encodedOffset, tileFactorBytes,
+                          ACL_MEMCPY_HOST_TO_DEVICE);
+        APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR,
+                                 "copy L2 factors failed for list %d tile %zu, ret=%d", listId, i, ret);
+        encodedOffset += tileFactorBytes;
+
+        // 拷贝 L1 因子到 IndexL1OnDevice
+        float* l1Ptr = IndexL1OnDevice[listId]->data() + indexl2offsetHost[i];
+        ret = aclrtMemcpy(l1Ptr, tileFactorBytes,
+                          encodedCodes + encodedOffset, tileFactorBytes,
+                          ACL_MEMCPY_HOST_TO_DEVICE);
+        APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR,
+                                 "copy L1 factors failed for list %d tile %zu, ret=%d", listId, i, ret);
+        encodedOffset += tileFactorBytes;
+    }
+
+    auto ret = synchronizeStream(stream);
+    APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR,
+                             "synchronizeStream failed after addEncodedVectors, ret=%d", ret);
+
+    maxListLength = std::max(maxListLength, static_cast<int>(getListLength(listId) + numVecs));
+    maxListLength = utils::roundUp(maxListLength, CUBE_ALIGN);
+    listVecNum[listId] += numVecs;
+    IndexIVF::ntotal += numVecs;
+
+    deviceListIndices[listId]->append(indices, numVecs, true);
+
     return APP_ERR_OK;
 }
 
