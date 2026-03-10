@@ -1299,7 +1299,7 @@ APP_ERROR IndexIVFRabitQ::searchWithBatch(int n, const float * x, int k,
 
 size_t IndexIVFRabitQ::getCodeSize() const
 {
-    size_t codePartBytes = utils::divUp(dim + 7, 8);          // 压缩码部分
+    size_t codePartBytes = utils::divUp(dim, 8);          // 压缩码部分
     size_t factorBytes = 2 * sizeof(float);         // L2因子 + L1因子，各4字节
     return codePartBytes + factorBytes;
 }
@@ -1355,7 +1355,7 @@ APP_ERROR IndexIVFRabitQ::getListRawCodes(int listId, std::vector<uint8_t>& rawC
 
     // 拷贝压缩码部分（baseFp32）
     const auto& blocks = baseFp32[listId];
-    size_t codePartBytesPerVec = utils::divUp(dim + 7, 8);
+    size_t codePartBytesPerVec = utils::divUp(dim, 8);
     size_t codePartTotal = numVecs * codePartBytesPerVec;
     size_t copied = 0;
 
@@ -1431,7 +1431,7 @@ APP_ERROR IndexIVFRabitQ::addEncodedVectors(int listId, size_t numVecs,
     auto streamPtr = resources.getDefaultStream();
     auto stream = streamPtr->GetStream();
 
-    size_t codePartBytes = utils::divUp(dim + 7, 8);          // 压缩码部分字节数
+    size_t codePartBytes = utils::divUp(dim, 8);          // 压缩码部分字节数
     size_t factorBytes = sizeof(float);              // 每个因子字节数
     size_t totalEncodedPerVec = codePartBytes + 2 * factorBytes;
     uint64_t encodedOffset = 0;  // 编码偏移量
