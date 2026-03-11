@@ -16,8 +16,8 @@
  * -------------------------------------------------------------------------
  */
 
-#ifndef DISTANCE_IVF_Rabitq_L2_FP32_SIMT_TILING_H
-#define DISTANCE_IVF_Rabitq_L2_FP32_SIMT_TILING_H
+#ifndef DISTANCE_IVF_RABITQ_L2_FP32_SIMT_TILING_H
+#define DISTANCE_IVF_RABITQ_L2_FP32_SIMT_TILING_H
 #include "register/tilingdata_base.h"
 
 #define ASCENDC_RETURN_IF_NOT(X, ERRCODE)                                                                   \

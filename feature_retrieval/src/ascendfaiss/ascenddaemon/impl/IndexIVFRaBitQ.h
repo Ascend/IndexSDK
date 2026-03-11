@@ -31,17 +31,19 @@ constexpr uint8_t IVF_RABITQ_BURST_BLOCK_RATIO = 2;
 constexpr uint8_t IVF_RABITQ_OPTIMIZE_BATCH_THRES = 48;
 }
 
-class IndexIVFRabitQ : public IndexIVF {
+class IndexIVFRaBitQ : public IndexIVF {
 public:
-    IndexIVFRabitQ(int numList, int dim, int nprobes, int64_t resourceSize = -1);
+    IndexIVFRaBitQ(int numList, int dim, int nprobes, int64_t resourceSize = -1);
 
-    ~IndexIVFRabitQ();
+    ~IndexIVFRaBitQ();
 
     APP_ERROR reset() override;
 
     APP_ERROR updateCoarseCenterImpl(std::vector<float> &centerData);
 
     APP_ERROR addVectors(int listId, size_t numVecs, const float *codes, const idx_t *indices);
+
+    APP_ERROR removeIds(size_t numVecs, const idx_t *indices);
 
     APP_ERROR searchImpl(int n, const float16_t* x, int k, float16_t* distances, idx_t* labels);
 
@@ -241,11 +243,11 @@ protected:
     std::unique_ptr<DeviceVector<float>> CentroidL2OnDevice;       // 聚类中心 L2
     std::vector<std::unique_ptr<DeviceVector<float>>> IndexL2OnDevice;          // 索引 L2
     std::vector<std::unique_ptr<DeviceVector<float>>> IndexL1OnDevice;          // 索引 L1
-    std::unique_ptr<AscendOperator> ivfRabitQRotateL2Ops;
+    std::unique_ptr<AscendOperator> ivfRaBitQRotateL2Ops;
     std::unique_ptr<AscendOperator> ivfCenterLUTOps;
-    std::unique_ptr<AscendOperator> ivfRabitQIndexRotateL2Ops;
-    std::unique_ptr<AscendOperator> ivfRabitQIndexCodeAndPreComputeOps;
-    std::map<int, std::unique_ptr<AscendOperator>> ivfRabitqL2DistOps;
+    std::unique_ptr<AscendOperator> ivfRaBitQIndexRotateL2Ops;
+    std::unique_ptr<AscendOperator> ivfRaBitQIndexCodeAndPreComputeOps;
+    std::map<int, std::unique_ptr<AscendOperator>> ivfRaBitQL2DistOps;
     std::vector<std::vector<std::unique_ptr<DeviceVector<uint8_t>>>> baseFp32;
     std::vector<size_t> listVecNum;
     std::map<int, std::unique_ptr<::ascend::AscendOperator>> queryRotateOps;
