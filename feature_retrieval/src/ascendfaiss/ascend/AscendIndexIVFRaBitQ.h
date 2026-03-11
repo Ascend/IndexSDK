@@ -26,20 +26,20 @@
 namespace faiss {
 namespace ascend {
 
-struct AscendIndexIVFRabitQConfig : public AscendIndexIVFConfig {
-    inline AscendIndexIVFRabitQConfig() : AscendIndexIVFConfig({ 0 }, IVF_DEFAULT_MEM), useRandomOrthogonalMatrix(true),
+struct AscendIndexIVFRaBitQConfig : public AscendIndexIVFConfig {
+    inline AscendIndexIVFRaBitQConfig() : AscendIndexIVFConfig({ 0 }, IVF_DEFAULT_MEM), useRandomOrthogonalMatrix(true),
                                           needRefine(false), matrixSeed(12345), refineAlpha(2) {}
     
-    explicit inline AscendIndexIVFRabitQConfig(std::initializer_list<int> devices,
+    explicit inline AscendIndexIVFRaBitQConfig(std::initializer_list<int> devices,
                                                int64_t resourceSize = IVF_DEFAULT_MEM)
         : AscendIndexIVFConfig(devices, resourceSize), useRandomOrthogonalMatrix(true),
           needRefine(false), matrixSeed(12345), refineAlpha(2) {}
     
-    explicit inline AscendIndexIVFRabitQConfig(std::vector<int> devices, int64_t resourceSize = IVF_DEFAULT_MEM)
+    explicit inline AscendIndexIVFRaBitQConfig(std::vector<int> devices, int64_t resourceSize = IVF_DEFAULT_MEM)
         : AscendIndexIVFConfig(devices, resourceSize), useRandomOrthogonalMatrix(true),
           needRefine(false), matrixSeed(12345), refineAlpha(2) {}
 
-    explicit inline AscendIndexIVFRabitQConfig(std::vector<int> devices, bool useRandomOrthogonalMatrix_,
+    explicit inline AscendIndexIVFRaBitQConfig(std::vector<int> devices, bool useRandomOrthogonalMatrix_,
                                                bool needRefine_, int matrixSeed_, float alpha_,
                                                int64_t resourceSize = IVF_DEFAULT_MEM)
         : AscendIndexIVFConfig(devices, resourceSize), useRandomOrthogonalMatrix(useRandomOrthogonalMatrix_),
@@ -50,17 +50,17 @@ struct AscendIndexIVFRabitQConfig : public AscendIndexIVFConfig {
     float refineAlpha;
 };
 
-class AscendIndexIVFRabitQImpl;
-class AscendIndexIVFRabitQ : public AscendIndexIVF {
+class AscendIndexIVFRaBitQImpl;
+class AscendIndexIVFRaBitQ : public AscendIndexIVF {
 public:
 
-    AscendIndexIVFRabitQ(int dims, faiss::MetricType metric, int nlist,
-                       AscendIndexIVFRabitQConfig config = AscendIndexIVFRabitQConfig());
+    AscendIndexIVFRaBitQ(int dims, faiss::MetricType metric, int nlist,
+                       AscendIndexIVFRaBitQConfig config = AscendIndexIVFRaBitQConfig());
 
-    virtual ~AscendIndexIVFRabitQ();
+    virtual ~AscendIndexIVFRaBitQ();
 
-    AscendIndexIVFRabitQ(const AscendIndexIVFRabitQ&) = delete;
-    AscendIndexIVFRabitQ& operator=(const AscendIndexIVFRabitQ&) = delete;
+    AscendIndexIVFRaBitQ(const AscendIndexIVFRaBitQ&) = delete;
+    AscendIndexIVFRaBitQ& operator=(const AscendIndexIVFRaBitQ&) = delete;
 
     void train(idx_t n, const float *x) override;
     
@@ -72,8 +72,12 @@ public:
     // This copies all IVFRaBitQ-specific data for complete state transfer
     void copyTo(faiss::IndexIVFRaBitQ *index) const;
 
+    void remove_ids(size_t n, const idx_t* ids);
+
+    std::vector<idx_t> update(idx_t n, const float* x, const idx_t* ids);
+
 protected:
-    std::shared_ptr<AscendIndexIVFRabitQImpl> impl_;
+    std::shared_ptr<AscendIndexIVFRaBitQImpl> impl_;
 };
 }  // namespace ascend
 }  // namespace faiss

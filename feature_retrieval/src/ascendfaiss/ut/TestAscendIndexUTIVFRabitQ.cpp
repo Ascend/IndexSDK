@@ -26,7 +26,7 @@
 #include "Common.h"
 #include "common/utils/SocUtils.h"
 #include "mockcpp/mockcpp.hpp"
-#include "faiss/ascend/AscendIndexIVFRabitQ.h"
+#include "faiss/ascend/AscendIndexIVFRaBitQ.h"
 
 namespace ascend {
 
@@ -63,16 +63,16 @@ void generateData(float* data, int ntotal, int dim)
     Norm(data, ntotal, dim);
 }
 
-TEST(TestAscendIndexIVFRabitQ, ConstructValidDim)
+TEST(TestAscendIndexIVFRaBitQ, ConstructValidDim)
 {
     int dim = 128;  // 128为合法维度
     int nlist = 1024;
 
     std::string msg = "";
     faiss::MetricType type = faiss::METRIC_L2;
-    faiss::ascend::AscendIndexIVFRabitQConfig conf({ 0 });
+    faiss::ascend::AscendIndexIVFRaBitQConfig conf({ 0 });
     try {
-        faiss::ascend::AscendIndexIVFRabitQ index(dim, type, nlist, conf);
+        faiss::ascend::AscendIndexIVFRaBitQ index(dim, type, nlist, conf);
         msg = "";
     } catch(std::exception &e) {
         msg = e.what();
@@ -81,16 +81,16 @@ TEST(TestAscendIndexIVFRabitQ, ConstructValidDim)
     EXPECT_EQ(msg, "");
 }
 
-TEST(TestAscendIndexIVFRabitQ, ConstructInvalidDim)
+TEST(TestAscendIndexIVFRaBitQ, ConstructInvalidDim)
 {
     int dim = 130;  // 130不为合法维度
     int nlist = 1024;
 
     std::string msg = "";
     faiss::MetricType type = faiss::METRIC_L2;
-    faiss::ascend::AscendIndexIVFRabitQConfig conf({ 0 });
+    faiss::ascend::AscendIndexIVFRaBitQConfig conf({ 0 });
     try {
-        faiss::ascend::AscendIndexIVFRabitQ index(dim, type, nlist, conf);
+        faiss::ascend::AscendIndexIVFRaBitQ index(dim, type, nlist, conf);
         msg = "";
     } catch(std::exception &e) {
         msg = e.what();
@@ -99,7 +99,7 @@ TEST(TestAscendIndexIVFRabitQ, ConstructInvalidDim)
     EXPECT_TRUE(msg.length() > 0);
 }
 
-TEST(TestAscendIndexIVFRabitQ, ALL)
+TEST(TestAscendIndexIVFRaBitQ, ALL)
 {
     int dim = 128;
     int nlist = 1024;
@@ -110,8 +110,8 @@ TEST(TestAscendIndexIVFRabitQ, ALL)
 
     std::string msg = "";
     faiss::MetricType type = faiss::METRIC_L2;
-    faiss::ascend::AscendIndexIVFRabitQ* index = nullptr;
-    faiss::ascend::AscendIndexIVFRabitQConfig conf({ 0 });
+    faiss::ascend::AscendIndexIVFRaBitQ* index = nullptr;
+    faiss::ascend::AscendIndexIVFRaBitQConfig conf({ 0 });
     std::vector<float> data(ntotal * dim);
     std::vector<int> ids(ntotal);
     std::vector<float> dist(nq * k, 0.0);
@@ -123,7 +123,7 @@ TEST(TestAscendIndexIVFRabitQ, ALL)
     conf.useKmeansPP = false;
     int trainNum = ntotal > nlist * 40 ? nlist * 40 : ntotal;
     try {
-        index = new faiss::ascend::AscendIndexIVFRabitQ(dim, type, nlist, conf);
+        index = new faiss::ascend::AscendIndexIVFRaBitQ(dim, type, nlist, conf);
         index->verbose = true;
         index->setNumProbes(nprobe);
         index->train(trainNum, data.data());
@@ -147,7 +147,7 @@ TEST(TestAscendIndexIVFRabitQ, ALL)
     EXPECT_EQ(msg, "");
 }
 
-TEST(TestAscendIndexIVFRabitQ, copyTo)
+TEST(TestAscendIndexIVFRaBitQ, copyTo)
 {
     int dim = 128;
     int nlist = 1024;
@@ -158,8 +158,8 @@ TEST(TestAscendIndexIVFRabitQ, copyTo)
 
     std::string msg = "";
     faiss::MetricType type = faiss::METRIC_L2;
-    faiss::ascend::AscendIndexIVFRabitQ* index = nullptr;
-    faiss::ascend::AscendIndexIVFRabitQConfig conf({ 0 });
+    faiss::ascend::AscendIndexIVFRaBitQ* index = nullptr;
+    faiss::ascend::AscendIndexIVFRaBitQConfig conf({ 0 });
     std::vector<float> data(ntotal * dim);
     std::vector<int> ids(ntotal);
     std::vector<float> dist(nq * k, 0.0);
@@ -171,7 +171,7 @@ TEST(TestAscendIndexIVFRabitQ, copyTo)
     conf.useKmeansPP = false;
     int trainNum = ntotal > nlist * 40 ? nlist * 40 : ntotal;
     try {
-        index = new faiss::ascend::AscendIndexIVFRabitQ(dim, type, nlist, conf);
+        index = new faiss::ascend::AscendIndexIVFRaBitQ(dim, type, nlist, conf);
         index->verbose = true;
         index->setNumProbes(nprobe);
         index->train(trainNum, data.data());
@@ -197,7 +197,7 @@ TEST(TestAscendIndexIVFRabitQ, copyTo)
     EXPECT_EQ(msg, "");
 }
 
-TEST(TestAscendIndexIVFRabitQ, copyFrom)
+TEST(TestAscendIndexIVFRaBitQ, copyFrom)
 {
     int dim = 128;
     int nlist = 1024;
@@ -208,8 +208,8 @@ TEST(TestAscendIndexIVFRabitQ, copyFrom)
 
     std::string msg = "";
     faiss::MetricType type = faiss::METRIC_L2;
-    faiss::ascend::AscendIndexIVFRabitQ* index = nullptr;
-    faiss::ascend::AscendIndexIVFRabitQConfig conf({ 0 });
+    faiss::ascend::AscendIndexIVFRaBitQ* index = nullptr;
+    faiss::ascend::AscendIndexIVFRaBitQConfig conf({ 0 });
     std::vector<float> data(ntotal * dim);
     std::vector<int> ids(ntotal);
     std::vector<float> dist(nq * k, 0.0);
@@ -221,7 +221,7 @@ TEST(TestAscendIndexIVFRabitQ, copyFrom)
     conf.useKmeansPP = false;
     int trainNum = ntotal > nlist * 40 ? nlist * 40 : ntotal;
     try {
-        index = new faiss::ascend::AscendIndexIVFRabitQ(dim, type, nlist, conf);
+        index = new faiss::ascend::AscendIndexIVFRaBitQ(dim, type, nlist, conf);
         
         faiss::IndexFlatL2 quantizer(dim);
         faiss::IndexIVFRaBitQ* index_cpu = new faiss::IndexIVFRaBitQ(&quantizer, dim, nlist);

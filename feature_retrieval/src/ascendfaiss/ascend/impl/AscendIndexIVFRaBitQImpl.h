@@ -21,9 +21,12 @@
 #define ASCEND_INDEX_IVFRABITQ_IMPL_INCLUDED
 
 #include <random>
-#include "ascend/AscendIndexIVFRabitQ.h"
+#include <unordered_map>
+#include <unordered_set>
+#include <mutex>
+#include "ascend/AscendIndexIVFRaBitQ.h"
 #include "ascend/impl/AscendIndexIVFImpl.h"
-#include "ascenddaemon/impl/IndexIVFRabitQ.h"
+#include "ascenddaemon/impl/IndexIVFRaBitQ.h"
 #include "ascenddaemon/impl/IndexIVFFlat.h"
 #include "ascend/utils/AscendIVFAddInfo.h"
 
@@ -49,20 +52,26 @@ struct RandomGenerator {
     explicit RandomGenerator(int64_t seed = 1234);
 };
 
-class AscendIndexIVFRabitQImpl : public AscendIndexIVFImpl {
+class AscendIndexIVFRaBitQImpl : public AscendIndexIVFImpl {
 public:
     // Construct an empty index
-    AscendIndexIVFRabitQImpl(AscendIndexIVFRabitQ *intf, int dims, int nlist,
+    AscendIndexIVFRaBitQImpl(AscendIndexIVFRaBitQ *intf, int dims, int nlist,
         faiss::MetricType metric = MetricType::METRIC_INNER_PRODUCT,
-        AscendIndexIVFRabitQConfig config = AscendIndexIVFRabitQConfig());
+        AscendIndexIVFRaBitQConfig config = AscendIndexIVFRaBitQConfig());
 
-    virtual ~AscendIndexIVFRabitQImpl();
+    virtual ~AscendIndexIVFRaBitQImpl();
 
     void train(idx_t n, const float *x, bool clearNpuData = true);
     size_t getAddElementSize() const override;
 
-    AscendIndexIVFRabitQImpl(const AscendIndexIVFRabitQImpl&) = delete;
-    AscendIndexIVFRabitQImpl& operator=(const AscendIndexIVFRabitQImpl&) = delete;
+    AscendIndexIVFRaBitQImpl(const AscendIndexIVFRaBitQImpl&) = delete;
+    AscendIndexIVFRaBitQImpl& operator=(const AscendIndexIVFRaBitQImpl&) = delete;
+    void deleteImpl(int n, const idx_t* ids);
+    void deleteFromIVFRaBitQ(IndexParam<void, void, ascend_idx_t>& param);
+    idx_t findDeviceId(idx_t id);
+    void updateIdMapping(const ascend_idx_t* ids, int deviceId, int num);
+    void removeIdMapping(const std::vector<idx_t>& ids);
+    std::vector<idx_t> update(idx_t n, const float* x, const idx_t* ids);
     void addPaged(int n, const float* x, const idx_t* ids);
     size_t getAddPagedSize(int n) const;
     void searchImpl(int n, const float *x, int k, float *distances, idx_t *labels) const override;
@@ -90,14 +99,14 @@ protected:
     // Called from AscendIndex for add/add_with_ids
     void addL1(int n, const float *x, std::unique_ptr<idx_t[]> &assign);
     void addImpl(int n, const float *x, const idx_t *ids) override;
-    void indexIVFRabitQAdd(IndexParam<float, float, ascend_idx_t> &param);
-    inline ::ascend::IndexIVFRabitQ* getActualIndex(int deviceId) const
+    void indexIVFRaBitQAdd(IndexParam<float, float, ascend_idx_t> &param);
+    inline ::ascend::IndexIVFRaBitQ* getActualIndex(int deviceId) const
     {
         FAISS_THROW_IF_NOT_FMT(indexes.find(deviceId) != indexes.end(),
                                "deviceId is out of range, deviceId=%d.", deviceId);
         FAISS_THROW_IF_NOT(aclrtSetDevice(deviceId) == ACL_ERROR_NONE);
         std::shared_ptr<::ascend::Index> index = indexes.at(deviceId);
-        auto *pIndex = dynamic_cast<::ascend::IndexIVFRabitQ *>(index.get());
+        auto *pIndex = dynamic_cast<::ascend::IndexIVFRaBitQ *>(index.get());
         FAISS_THROW_IF_NOT_FMT(pIndex != nullptr, "Invalid index device id: %d\n", deviceId);
         return pIndex;
     }
@@ -107,14 +116,24 @@ protected:
     void randomOrthogonalGivens(int n, std::vector<float> &orthogonalMatrix);
     void uploadorthogonalMatrix(std::vector<float> &orthogonalMatrix);
     
-    AscendIndexIVFRabitQ *intf_;
+    AscendIndexIVFRaBitQ *intf_;
     std::vector<float> srcIndexes;
     std::vector<float> centroidsData;
     std::vector<float> orthogonalMatrix;
     std::unique_ptr<::ascend::IndexIVFFlat> assignIndex; // 复用ivfflat一阶段检索能力加速add过程和npu聚类
 
 private:
-    AscendIndexIVFRabitQConfig ivfrabitqConfig;
+    AscendIndexIVFRaBitQConfig ivfrabitqConfig;
+
+    std::unordered_map<idx_t, idx_t> idToDeviceMap;
+
+    std::mutex mapMutex;
+
+    struct DeviceInfo {
+        std::unordered_set<idx_t> idSet;
+    };
+    std::vector<DeviceInfo> deviceInfos;
+    
     std::unordered_map<int, AscendIVFAddInfo> assignCounts;
 };
 } // ascend

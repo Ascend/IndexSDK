@@ -16,7 +16,7 @@
  * -------------------------------------------------------------------------
  */
 
-#include "AscendIndexIVFRabitQImpl.h"
+#include "AscendIndexIVFRaBitQImpl.h"
 
 #include <algorithm>
 #include <random>
@@ -162,8 +162,8 @@ void orthonormalinit(std::vector<float>& A, int seed, int d_in, int d_out)
     }
 }
 
-AscendIndexIVFRabitQImpl::AscendIndexIVFRabitQImpl(AscendIndexIVFRabitQ *intf, int dims, int nlist,
-    faiss::MetricType metric, AscendIndexIVFRabitQConfig config)
+AscendIndexIVFRaBitQImpl::AscendIndexIVFRaBitQImpl(AscendIndexIVFRaBitQ *intf, int dims, int nlist,
+    faiss::MetricType metric, AscendIndexIVFRaBitQConfig config)
     : AscendIndexIVFImpl(intf, dims, metric, nlist, config), intf_(intf), ivfrabitqConfig(config)
 {
     checkParams();
@@ -176,11 +176,11 @@ AscendIndexIVFRabitQImpl::AscendIndexIVFRabitQImpl(AscendIndexIVFRabitQ *intf, i
     orthogonalMatrix.resize(dims * dims, 0);
 }
 
-AscendIndexIVFRabitQImpl::~AscendIndexIVFRabitQImpl() {}
+AscendIndexIVFRaBitQImpl::~AscendIndexIVFRaBitQImpl() {}
 
-void AscendIndexIVFRabitQImpl::initFlatAtFp32()
+void AscendIndexIVFRaBitQImpl::initFlatAtFp32()
 {
-    APP_LOG_INFO("AscendIndexIVFRabitQImpl initFlatAtFp32 started.\n");
+    APP_LOG_INFO("AscendIndexIVFRaBitQImpl initFlatAtFp32 started.\n");
     FAISS_THROW_IF_NOT(aclrtSetDevice(ivfConfig.deviceList[0]) == ACL_ERROR_NONE);
     assignIndex = CREATE_UNIQUE_PTR(::ascend::IndexIVFFlat, nlist, intf_->d, 1, -1);
     assignIndex->init();
@@ -189,10 +189,10 @@ void AscendIndexIVFRabitQImpl::initFlatAtFp32()
         pQuantizerImpl->npuClus =
             std::make_shared<AscendClustering>(this->intf_->d, this->nlist, this->intf_->metric_type, npuClusConf);
     }
-    APP_LOG_INFO("AscendIndexIVFRabitQImpl initFlatAtFp32 finished.\n");
+    APP_LOG_INFO("AscendIndexIVFRaBitQImpl initFlatAtFp32 finished.\n");
 }
  
-void AscendIndexIVFRabitQImpl::checkParams() const
+void AscendIndexIVFRaBitQImpl::checkParams() const
 {
     FAISS_THROW_IF_NOT_MSG(this->intf_->metric_type == MetricType::METRIC_L2, "Unsupported metric type");
     FAISS_THROW_IF_NOT_FMT(std::find(NLISTS.begin(), NLISTS.end(), this->nlist) != NLISTS.end(),
@@ -201,7 +201,63 @@ void AscendIndexIVFRabitQImpl::checkParams() const
     FAISS_THROW_IF_NOT_MSG(ivfConfig.deviceList.size() != 0, "deviceList is empty");
 }
 
-void AscendIndexIVFRabitQImpl::addL1(int n, const float *x, std::unique_ptr<idx_t[]> &assign)
+std::vector<idx_t> AscendIndexIVFRaBitQImpl::update(idx_t n, const float* x, const idx_t* ids)
+{
+    FAISS_THROW_IF_NOT_MSG(x != nullptr, "vector list is nullptr!");
+    FAISS_THROW_IF_NOT_MSG(ids != nullptr, "vector ID list is nullptr!");
+    FAISS_THROW_IF_NOT_MSG(n > 0, "vector number must be greater than 0!");
+    FAISS_THROW_IF_NOT_MSG(static_cast<size_t>(n) * this->intf_->d == std::distance(x, x + n * this->intf_->d),
+                           "vector list size is not match!");
+    FAISS_THROW_IF_NOT_MSG(static_cast<size_t>(n) == std::distance(ids, ids + n),
+                           "vector ID list size is not match!");
+    FAISS_THROW_IF_NOT_MSG(this->intf_->is_trained, "AscendIndexIVFRaBitQ is not trained!");
+    APP_LOG_INFO("AscendIndexIVFRaBitQImpl update operation started: n=%ld.\n", n);
+
+    std::vector<idx_t> noExistIds;
+    std::vector<idx_t> existIds;
+    std::vector<float> existVectors;
+    idx_t noExistNum = 0;
+    idx_t existNum = 0;
+
+    {
+        std::lock_guard<std::mutex> lock(mapMutex);
+        for (idx_t i = 0; i < n; ++i) {
+            idx_t id = ids[i];
+            if (idToDeviceMap.find(id) == idToDeviceMap.end()) {
+                noExistIds.push_back(id);
+                noExistNum++;
+                continue;
+            }
+            idx_t devId = idToDeviceMap[id];
+            if (deviceInfos[devId].idSet.find(id) == deviceInfos[devId].idSet.end()) {
+                noExistIds.push_back(id);
+                noExistNum++;
+                continue;
+            }
+            existIds.push_back(id);
+            const float* vector = x + i * this->intf_->d;
+            existVectors.insert(existVectors.end(), vector, vector + this->intf_->d);
+            existNum++;
+        }
+    }
+
+    if (!noExistIds.empty()) {
+        APP_LOG_WARNING("The following %ld IDs do not exist: \n", noExistNum);
+        for (idx_t i = 0; i < noExistNum; i++) {
+            APP_LOG_WARNING("ID: %ld\n", noExistIds[i]);
+        }
+        APP_LOG_WARNING("Updating other vectors with ids\n");
+    }
+    if (existNum > 0) {
+        deleteImpl(existNum, existIds.data());
+        addPaged(existNum, existVectors.data(), existIds.data());
+    }
+    APP_LOG_INFO("AscendIndexIVFRaBitQ update operation finished.\n");
+    
+    return noExistIds;
+}
+
+void AscendIndexIVFRaBitQImpl::addL1(int n, const float *x, std::unique_ptr<idx_t[]> &assign)
 {
     // 使用npu能力加速add过程
     FAISS_THROW_IF_NOT_MSG(assignIndex != nullptr, "assignIndex is not init");
@@ -212,9 +268,9 @@ void AscendIndexIVFRabitQImpl::addL1(int n, const float *x, std::unique_ptr<idx_
     FAISS_THROW_IF_NOT_FMT(ret == ::ascend::APP_ERR_OK, "assign failed %d", ret);
 }
 
-void AscendIndexIVFRabitQImpl::addImpl(int n, const float *x, const idx_t *ids)
+void AscendIndexIVFRaBitQImpl::addImpl(int n, const float *x, const idx_t *ids)
 {
-    APP_LOG_INFO("AscendIndexIVFRabitQImpl addImpl operation started: n=%d.\n", n);
+    APP_LOG_INFO("AscendIndexIVFRaBitQImpl addImpl operation started: n=%d.\n", n);
     size_t deviceCnt = indexConfig.deviceList.size();
     std::unique_ptr<idx_t[]> assign = std::make_unique<idx_t[]>(n);
     addL1(n, x, assign);
@@ -241,7 +297,7 @@ void AscendIndexIVFRabitQImpl::addImpl(int n, const float *x, const idx_t *ids)
     }
 }
 
-void AscendIndexIVFRabitQImpl::copyVectorToDevice(int n)
+void AscendIndexIVFRaBitQImpl::copyVectorToDevice(int n)
 {
     size_t deviceCnt = indexConfig.deviceList.size();
     auto addFunctor = [&](int idx) {
@@ -259,7 +315,8 @@ void AscendIndexIVFRabitQImpl::copyVectorToDevice(int n)
             param.listId = listId;
             param.query = codePtr;
             param.label = idPtr;
-            indexIVFRabitQAdd(param);
+            updateIdMapping(idPtr, idx, num);
+            indexIVFRaBitQAdd(param);
         }
     };
     CALL_PARALLEL_FUNCTOR(deviceCnt, pool, addFunctor);
@@ -267,7 +324,7 @@ void AscendIndexIVFRabitQImpl::copyVectorToDevice(int n)
     APP_LOG_INFO("AscendIndexIVFSQ addImpl operation finished.\n");
 }
 
-size_t AscendIndexIVFRabitQImpl::getAddPagedSize(int n) const
+size_t AscendIndexIVFRaBitQImpl::getAddPagedSize(int n) const
 {
     APP_LOG_INFO("AscendIndex getAddPagedSize operation started.\n");
     size_t maxNumVecsForPageSize = ADD_PAGE_SIZE / getAddElementSize();
@@ -278,9 +335,9 @@ size_t AscendIndexIVFRabitQImpl::getAddPagedSize(int n) const
     return std::min(static_cast<size_t>(n), maxNumVecsForPageSize);
 }
 
-void AscendIndexIVFRabitQImpl::addPaged(int n, const float* x, const idx_t* ids)
+void AscendIndexIVFRaBitQImpl::addPaged(int n, const float* x, const idx_t* ids)
 {
-    APP_LOG_INFO("AscendIndexIVFRabitQImpl addPaged operation started.\n");
+    APP_LOG_INFO("AscendIndexIVFRaBitQImpl addPaged operation started.\n");
     FAISS_THROW_IF_NOT_MSG(x != nullptr, "x cannot be nullptr");
     size_t totalSize = static_cast<size_t>(n) * getAddElementSize();
     size_t addPageSize = ADD_PAGE_SIZE;
@@ -289,23 +346,23 @@ void AscendIndexIVFRabitQImpl::addPaged(int n, const float* x, const idx_t* ids)
         for (size_t i = 0; i < static_cast<size_t>(n); i += tileSize) {
             size_t curNum = std::min(tileSize, n - i);
             if (this->intf_->verbose) {
-                printf("AscendIndexIVFRabitQImpl::add: adding %zu:%zu / %d\n", i, i + curNum, n);
+                printf("AscendIndexIVFRaBitQImpl::add: adding %zu:%zu / %d\n", i, i + curNum, n);
             }
             addImpl(curNum, x + i * static_cast<size_t>(this->intf_->d), ids ? (ids + i) : nullptr);
         }
     } else {
         if (this->intf_->verbose) {
-            printf("AscendIndexIVFRabitQImpl::add: adding 0:%d / %d\n", n, n);
+            printf("AscendIndexIVFRaBitQImpl::add: adding 0:%d / %d\n", n, n);
         }
         addImpl(n, x, ids);
     }
     copyVectorToDevice(n);
     this->srcIndexes.insert(this->srcIndexes.end(), x, x + n * this->intf_->d);
     std::unordered_map<int, AscendIVFAddInfo>().swap(assignCounts); // 释放host侧占用的内存
-    APP_LOG_INFO("AscendIndexIVFRabitQImpl addPaged operation finished.\n");
+    APP_LOG_INFO("AscendIndexIVFRaBitQImpl addPaged operation finished.\n");
 }
 
-void AscendIndexIVFRabitQImpl::indexIVFRabitQAdd(IndexParam<float, float, ascend_idx_t> &param)
+void AscendIndexIVFRaBitQImpl::indexIVFRaBitQAdd(IndexParam<float, float, ascend_idx_t> &param)
 {
     auto pIndex = getActualIndex(param.deviceId);
     using namespace ::ascend;
@@ -316,21 +373,21 @@ void AscendIndexIVFRabitQImpl::indexIVFRabitQAdd(IndexParam<float, float, ascend
     FAISS_THROW_IF_NOT_FMT(ret == APP_ERR_OK, "failed to add to ivf rabitq, ret: %d", ret);
 }
 
-std::shared_ptr<::ascend::Index> AscendIndexIVFRabitQImpl::createIndex(int deviceId)
+std::shared_ptr<::ascend::Index> AscendIndexIVFRaBitQImpl::createIndex(int deviceId)
 {
-    APP_LOG_INFO("AscendIndexIVFRabitQ  createIndex operation started, device id: %d\n", deviceId);
+    APP_LOG_INFO("AscendIndexIVFRaBitQ  createIndex operation started, device id: %d\n", deviceId);
     auto res = aclrtSetDevice(deviceId);
     FAISS_THROW_IF_NOT_FMT(res == 0, "acl set device failed %d, deviceId: %d", res, deviceId);
     std::shared_ptr<::ascend::IndexIVF> index =
-        std::make_shared<::ascend::IndexIVFRabitQ>(nlist, this->intf_->d, nprobe, indexConfig.resourceSize);
+        std::make_shared<::ascend::IndexIVFRaBitQ>(nlist, this->intf_->d, nprobe, indexConfig.resourceSize);
     auto ret = index->init();
     FAISS_THROW_IF_NOT_FMT(ret == ::ascend::APP_ERR_OK, "Failed to create index ivf rabitq, result is %d", ret);
 
-    APP_LOG_INFO("AscendIndexIVFRabitQ createIndex operation finished.\n");
+    APP_LOG_INFO("AscendIndexIVFRaBitQ createIndex operation finished.\n");
     return index;
 }
 
-void AscendIndexIVFRabitQImpl::updateCoarseCenter(std::vector<float> &centerData)
+void AscendIndexIVFRaBitQImpl::updateCoarseCenter(std::vector<float> &centerData)
 {
     size_t deviceCnt = indexConfig.deviceList.size();
     auto updateCoarseCenterFunctor = [&](int idx) {
@@ -343,9 +400,9 @@ void AscendIndexIVFRabitQImpl::updateCoarseCenter(std::vector<float> &centerData
     CALL_PARALLEL_FUNCTOR(deviceCnt, pool, updateCoarseCenterFunctor);
 }
 
-void AscendIndexIVFRabitQImpl::randomOrthogonalGivens(int n, std::vector<float> &orthogonalMatrix)
+void AscendIndexIVFRaBitQImpl::randomOrthogonalGivens(int n, std::vector<float> &orthogonalMatrix)
 {
-    APP_LOG_INFO("AscendIndexIVFRabitQ  create randomOrthogonalMatrix started\n");
+    APP_LOG_INFO("AscendIndexIVFRaBitQ  create randomOrthogonalMatrix started\n");
     if (ivfrabitqConfig.useRandomOrthogonalMatrix) {
         orthonormalinit(orthogonalMatrix, ivfrabitqConfig.matrixSeed, n, n);
     } else {
@@ -356,7 +413,7 @@ void AscendIndexIVFRabitQImpl::randomOrthogonalGivens(int n, std::vector<float> 
     }
 }
 
-void AscendIndexIVFRabitQImpl::uploadorthogonalMatrix(std::vector<float> &orthogonalMatrix)
+void AscendIndexIVFRaBitQImpl::uploadorthogonalMatrix(std::vector<float> &orthogonalMatrix)
 {
     int deviceCnt = static_cast<int>(indexConfig.deviceList.size());
     for (int i = 0; i < deviceCnt; i++) {
@@ -372,9 +429,9 @@ void AscendIndexIVFRabitQImpl::uploadorthogonalMatrix(std::vector<float> &orthog
     }
 }
 
-void AscendIndexIVFRabitQImpl::train(idx_t n, const float *x, bool clearNpuData)
+void AscendIndexIVFRaBitQImpl::train(idx_t n, const float *x, bool clearNpuData)
 {
-    APP_LOG_INFO("AscendIndexIVFRabitQ start to train with %ld vector(s).\n", n);
+    APP_LOG_INFO("AscendIndexIVFRaBitQ start to train with %ld vector(s).\n", n);
     FAISS_THROW_IF_NOT_MSG(x, "x can not be nullptr.");
     FAISS_THROW_IF_NOT_FMT((n > 0) && (n < MAX_N), "n must be > 0 and < %ld", MAX_N);
     
@@ -415,10 +472,10 @@ void AscendIndexIVFRabitQImpl::train(idx_t n, const float *x, bool clearNpuData)
         assignIndex->addVectorsAsCentroid(centroidsTrained);
     }
     this->intf_->is_trained = true;
-    APP_LOG_INFO("AscendIndexIVFRabitQ train operation finished.\n");
+    APP_LOG_INFO("AscendIndexIVFRaBitQ train operation finished.\n");
 }
 
-void AscendIndexIVFRabitQImpl::mergeSearchResultSingleQuery(idx_t qIdx, size_t devices,
+void AscendIndexIVFRaBitQImpl::mergeSearchResultSingleQuery(idx_t qIdx, size_t devices,
                                                             std::vector<std::vector<float>>& dist,
                                                             std::vector<std::vector<ascend_idx_t>>& label,
                                                             idx_t n, idx_t k, size_t eachdeviceK,
@@ -452,7 +509,7 @@ void AscendIndexIVFRabitQImpl::mergeSearchResultSingleQuery(idx_t qIdx, size_t d
     }
 }
 
-void AscendIndexIVFRabitQImpl::mergeSearchResult(size_t devices, std::vector<std::vector<float>>& dist,
+void AscendIndexIVFRaBitQImpl::mergeSearchResult(size_t devices, std::vector<std::vector<float>>& dist,
                                                  std::vector<std::vector<ascend_idx_t>>& label, idx_t n, idx_t k,
                                                  float* distances, idx_t* labels) const
 {
@@ -470,7 +527,7 @@ void AscendIndexIVFRabitQImpl::mergeSearchResult(size_t devices, std::vector<std
     APP_LOG_INFO("AscendIndex mergeSearchResult operation finished.\n");
 }
 
-void AscendIndexIVFRabitQImpl::indexSearch(IndexParam<float, float, ascend_idx_t> &param) const
+void AscendIndexIVFRaBitQImpl::indexSearch(IndexParam<float, float, ascend_idx_t> &param) const
 {
     auto pIndex = getActualIndex(param.deviceId);
     const float* indexPtr = nullptr;
@@ -482,7 +539,7 @@ void AscendIndexIVFRabitQImpl::indexSearch(IndexParam<float, float, ascend_idx_t
                            "Failed to search index,deviceId is %d, result is: %d\n", param.deviceId, ret);
 }
 
-void AscendIndexIVFRabitQImpl::searchImpl(int n, const float* x, int k, float* distances, idx_t* labels) const
+void AscendIndexIVFRaBitQImpl::searchImpl(int n, const float* x, int k, float* distances, idx_t* labels) const
 {
     APP_LOG_INFO("AscendIndex searchImpl operation started: n=%d, k=%d.\n", n, k);
     size_t deviceCnt = indexConfig.deviceList.size();
@@ -505,15 +562,114 @@ void AscendIndexIVFRabitQImpl::searchImpl(int n, const float* x, int k, float* d
     searchPostProcess(deviceCnt, dist, label, n, finalk, distances, labels);
 }
 
-size_t AscendIndexIVFRabitQImpl::getAddElementSize() const
+void AscendIndexIVFRaBitQImpl::deleteImpl(int n, const idx_t* ids)
+{
+    APP_LOG_INFO("AscendIndexIVFRaBitQImpl deleteImpl operation started: n=%d.\n", n);
+    size_t deviceCnt = indexConfig.deviceList.size();
+    std::unordered_map<int, std::vector<idx_t>> idMap;
+
+    int deleteNum = 0;
+    for (int i = 0; i < n; i++) {
+        idx_t id = ids[i];
+        idx_t devId = findDeviceId(id);
+        if (devId >= 0 && devId < deviceCnt) {
+            idMap[devId].push_back(id);
+            deleteNum++;
+        } else {
+            APP_LOG_WARNING("Could not find valid deviceId for ID %ld, skipping\n", id);
+        }
+    }
+
+    for (auto& centroid : idMap) {
+        int devId = centroid.first;
+        auto& deleteIds = centroid.second;
+        if (deleteIds.empty()) {
+            continue;
+        }
+        std::vector<ascend_idx_t> ascendIds(deleteIds.begin(), deleteIds.end());
+        IndexParam<void, void, ascend_idx_t> param(indexConfig.deviceList[devId], deleteIds.size(), 0, 0);
+        param.label = ascendIds.data();
+        deleteFromIVFRaBitQ(param);
+
+        removeIdMapping(deleteIds);
+    }
+
+    this->intf_->ntotal -= deleteNum;
+    APP_LOG_INFO("AscendIndexIVFRaBitQImpl deleteImpl operation finished.\n");
+}
+
+void AscendIndexIVFRaBitQImpl::deleteFromIVFRaBitQ(IndexParam<void, void, ascend_idx_t>& param)
+{
+    auto pIndex = getActualIndex(param.deviceId);
+    using namespace ::ascend;
+
+    const ascend_idx_t* ids = param.label;
+
+    auto ret = pIndex->removeIds(param.n, static_cast<const ::ascend::Index::idx_t*>(ids));
+
+    FAISS_THROW_IF_NOT_FMT(ret == APP_ERR_OK, "failed to delete from ivf RaBitQ, ret: %d", ret);
+}
+
+idx_t AscendIndexIVFRaBitQImpl::findDeviceId(idx_t id)
+{
+    std::lock_guard<std::mutex> lock(mapMutex);
+
+    auto it = idToDeviceMap.find(id);
+    if (it != idToDeviceMap.end()) {
+        return it->second;
+    }
+
+    APP_LOG_WARNING("ID %ld not found in device mapping, attempting to find in device data\n", id);
+
+    size_t deviceCnt = indexConfig.deviceList.size();
+    idx_t fallbackDeviceId = id % deviceCnt;
+    APP_LOG_WARNING("ID %ld not found, using fallback deviceId: %ld\n", id, fallbackDeviceId);
+    return fallbackDeviceId;
+}
+
+void AscendIndexIVFRaBitQImpl::updateIdMapping(const ascend_idx_t* ids, int deviceId, int num)
+{
+    std::lock_guard<std::mutex> lock(mapMutex);
+    for (size_t i = 0; i < num; i++) {
+        idx_t id = ids[i];
+
+        idToDeviceMap[id] = deviceId;
+
+        if (static_cast<idx_t>(deviceInfos.size()) <= deviceId) {
+            deviceInfos.resize(deviceId + 1);
+        }
+        deviceInfos[deviceId].idSet.insert(id);
+    }
+    APP_LOG_DEBUG("Updated batch mapping for %zu IDs\n", num);
+}
+
+void AscendIndexIVFRaBitQImpl::removeIdMapping(const std::vector<idx_t>& ids)
+{
+    std::lock_guard<std::mutex> lock(mapMutex);
+
+    for (idx_t id : ids) {
+        auto it = idToDeviceMap.find(id);
+        if (it != idToDeviceMap.end()) {
+            idx_t devId = it->second;
+
+            if (devId < static_cast<idx_t>(deviceInfos.size())) {
+                deviceInfos[devId].idSet.erase(id);
+            }
+            idToDeviceMap.erase(it);
+        }
+    }
+    APP_LOG_DEBUG("Removed batch mapping for %zu IDs\n", ids.size());
+}
+
+size_t AscendIndexIVFRaBitQImpl::getAddElementSize() const
 {
     return static_cast<size_t>(intf_->d) * sizeof(float);
 }
 
 // copy from cpu index
-void AscendIndexIVFRabitQImpl::copyFrom(const faiss::IndexIVFRaBitQ *index)
+void AscendIndexIVFRaBitQImpl::copyFrom(const faiss::IndexIVFRaBitQ *index)
 {
-    APP_LOG_INFO("AscendIndexIVFRabitQImpl copyFrom operation started.");
+    APP_LOG_INFO("AscendIndexIVFRaBitQImpl copyFrom operation started.");
 
     FAISS_THROW_IF_NOT_MSG(index != nullptr, "Input index is nullptr");
     FAISS_THROW_IF_NOT_MSG(this->intf_ != nullptr, "Internal interface is nullptr");
@@ -606,13 +762,13 @@ void AscendIndexIVFRabitQImpl::copyFrom(const faiss::IndexIVFRaBitQ *index)
 
     this->intf_->ntotal = index->ntotal;
     this->intf_->is_trained = index->is_trained;
-    APP_LOG_INFO("AscendIndexIVFRabitQImpl copyFrom operation finished.");
+    APP_LOG_INFO("AscendIndexIVFRaBitQImpl copyFrom operation finished.");
 }
 
 // copy to cpu index
-void AscendIndexIVFRabitQImpl::copyTo(faiss::IndexIVFRaBitQ *index) const
+void AscendIndexIVFRaBitQImpl::copyTo(faiss::IndexIVFRaBitQ *index) const
 {
-    APP_LOG_INFO("AscendIndexIVFRabitQImpl copyTo operation started.");
+    APP_LOG_INFO("AscendIndexIVFRaBitQImpl copyTo operation started.");
 
     FAISS_THROW_IF_NOT_MSG(index != nullptr, "Output index is nullptr");
     FAISS_THROW_IF_NOT_MSG(indexConfig.deviceList.size() > 0, "Device list is empty");
@@ -705,7 +861,7 @@ void AscendIndexIVFRabitQImpl::copyTo(faiss::IndexIVFRaBitQ *index) const
                            "Total vectors mismatch: expected %d, got %d",
                            intf_->ntotal, totalCopied);
 
-    APP_LOG_INFO("AscendIndexIVFRabitQImpl copyTo operation finished.\n");
+    APP_LOG_INFO("AscendIndexIVFRaBitQImpl copyTo operation finished.\n");
 }
 } // ascend
 } // faiss

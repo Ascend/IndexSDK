@@ -222,8 +222,7 @@ public:
         this->SetInferDataType(ge::InferDataType);
 
         this->AICore().SetTiling(optiling::TilingFunc);
-        this->AICore().AddConfig("ascend910b");
-        this->AICore().AddConfig("ascend950");
+        this->AICore().AddConfig("ascend910b").AddConfig("ascend910_93").AddConfig("ascend950");
     }
 };
 
