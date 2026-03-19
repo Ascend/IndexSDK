@@ -10,23 +10,22 @@
 |未使用接口|[unused_apis](./unused_apis.md)|
 |接口调用返回值参考|[return_code_reference](./return_code_reference.md)|
 
-
 ## 接口变更说明<a name="ZH-CN_TOPIC_0000001691057326"></a>
 
 本章节的接口变更说明包括新增、修改、删除和退出声明。接口变更只体现代码层面的修改，不包含文档本身在语言、格式、链接等方面的优化改进。
 
--   新增：表示此次版本新增的接口。
--   修改：表示本接口相比于上个版本有修改。
--   删除：表示该接口在此次版本已经删除。
--   退出声明：表示该接口自作出退出声明的版本起停止演进，且在声明一年后退出并删除。
+- 新增：表示此次版本新增的接口。
+- 修改：表示本接口相比于上个版本有修改。
+- 删除：表示该接口在此次版本已经删除。
+- 退出声明：表示该接口自作出退出声明的版本起停止演进，且在声明一年后退出并删除。
 
 |类名/API原型|变更类别|变更说明|变更版本|
 |--|--|--|--|
 |AscendIndexCluster的[Init](./full_retrieval.md#init接口)|修改|AscendIndexCluster算法Init接口resourceSize变量使用默认值128M。|6.0.RC2|
 |AscendIndexBinaryFlat的AscendIndexBinaryFlat构造函数|修改|AscendIndexBinaryFlat构造函数新增参数usedFloat，用于设置入库为二进制、检索特征为float类型的检索方式（search接口）的性能提升。|6.0.RC2|
 |AscendIndexBinaryFlat的[search接口](./approximate_retrieval.md#search接口)|新增|AscendIndexBinaryFlat新增入库特征为二进制特征，检索特征为float类型的检索方式。|6.0.RC2|
-|AscendIndexInt8Flat的[AscendIndexInt8FlatConfig](./full_retrieval.md#ascendindexint8flatconfig)（表2）|修改|“resourceSize”配置的值不超过16 * 1024MB（16 * 1024 * 1024 * 1024字节）。|6.0.RC3|
-|AscendIndexInt8Flat的[AscendIndexInt8FlatConfig](./full_retrieval.md#ascendindexint8flatconfig)（表3）|修改|“resourceSize”配置的值不超过16 * 1024MB（16 * 1024 * 1024 * 1024字节）|6.0.RC3|
+|AscendIndexInt8Flat的[AscendIndexInt8FlatConfig](./full_retrieval.md#ascendindexint8flatconfig)（表2）|修改|“resourceSize”配置的值不超过16 \* 1024MB（16 \* 1024 \* 1024 \* 1024字节）。|6.0.RC3|
+|AscendIndexInt8Flat的[AscendIndexInt8FlatConfig](./full_retrieval.md#ascendindexint8flatconfig)（表3）|修改|“resourceSize”配置的值不超过16 \* 1024MB（16 \* 1024 \* 1024 \* 1024字节）。|6.0.RC3|
 |AscendIndexTS的[Init](./attribute_filtering-based_retrieva.md#init接口)|修改|修改“maxFeatureRowCount”参数约束。|6.0.RC3|
 |AscendIndexInt8Flat的[setPageSize](./full_retrieval.md#setpagesize接口)|新增|设置该AscendIndexInt8Flat在search时一次性连续计算底库的block数量。|6.0.RC3|
 |AscendIndexTS的[InitWithExtraVal](./attribute_filtering-based_retrieva.md#initwithextraval接口)|新增|实例带附加属性的初始化函数。|6.0.RC3|
@@ -50,8 +49,6 @@
 |AscendIndexIVFSP的[saveAllData](./approximate_retrieval.md#savealldata接口)|新增|存储IVFSP数据至内存中|6.0.0|
 |AscendIndexIVFSP的[loadAllData](./approximate_retrieval.md#loadalldata接口)|新增|从内存中恢复IVFSP|6.0.0|
 
-
-
 ## 调用流程与继承关系<a name="ZH-CN_TOPIC_0000001506615153"></a>
 
 > [!NOTE] 说明 
@@ -72,13 +69,13 @@
 ![](../figures/部分AscendIndex间继承关系.png "部分AscendIndex间继承关系")
 
 > [!NOTE] 说明
->-   由于部分特征检索的输入为指针类型的输入，请用户确保此类指针为合法值，以防止特征检索的运行过程中可能产生的越界读写等潜在风险和问题。此外，特征检索是助力昇腾AI处理器完成向量检索计算，因此输入的Device ID需要用户确保为合法值，否则可能因为连接设备侧失败导致功能失效。
->-   [Faiss](https://github.com/facebookresearch/faiss)是在业界使用非常广泛的向量检索加速库，为了便于生态用户将向量检索聚类业务快速从CPU/GPU平台迁移到昇腾平台，昇腾平台众多算法的基类AscendIndex继承自faiss::Index类，faiss::Index类中d、ntotal等成员变量为public，在使用AscendIndex和AscendIndexInt8各子类过程中，请勿直接修改此类public成员变量。
->-   本文档不再描述基类faiss::Index的成员函数和变量。
->-   关于Config类中的resourceSize变量，其作用是预留特征检索过程存储中间结果的内存大小，单位为Byte，当底库特征较大（如超过300万）且查询请求数较大时需要调大，避免检索过程中因申请临时内存导致性能抖动（衰退），建议设置为1024 \* 1024 \* 1024 Byte。
->    创建新的Index时，将会与已申请的resources进行对比，如存在差异则会释放原有内存资源并参照最新Index的resources重新申请，建议保持Index整体的resources值一致。
->-   用户可以通过设置“MX\_INDEX\_SYNCHRONIZE\_STREAM\_TIME”环境变量设置算子执行的超时时间，单位为“ms”，取值范围\[60000, 1800000\]，默认为“300000”。
-
+>
+>- 由于部分特征检索的输入为指针类型的输入，请用户确保此类指针为合法值，以防止特征检索的运行过程中可能产生的越界读写等潜在风险和问题。此外，特征检索是助力昇腾AI处理器完成向量检索计算，因此输入的Device ID需要用户确保为合法值，否则可能因为连接设备侧失败导致功能失效。
+>- [Faiss](https://github.com/facebookresearch/faiss)是在业界使用非常广泛的向量检索加速库，为了便于生态用户将向量检索聚类业务快速从CPU/GPU平台迁移到昇腾平台，昇腾平台众多算法的基类AscendIndex继承自faiss::Index类，faiss::Index类中d、ntotal等成员变量为public，在使用AscendIndex和AscendIndexInt8各子类过程中，请勿直接修改此类public成员变量。
+>- 本文档不再描述基类faiss::Index的成员函数和变量。
+>- 关于Config类中的resourceSize变量，其作用是预留特征检索过程存储中间结果的内存大小，单位为Byte，当底库特征较大（如超过300万）且查询请求数较大时需要调大，避免检索过程中因申请临时内存导致性能抖动（衰退），建议设置为1024 \* 1024 \* 1024 Byte。
+> 创建新的Index时，将会与已申请的resources进行对比，如存在差异则会释放原有内存资源并参照最新Index的resources重新申请，建议保持Index整体的resources值一致。
+>- 用户可以通过设置“MX\_INDEX\_SYNCHRONIZE\_STREAM\_TIME”环境变量设置算子执行的超时时间，单位为“ms”，取值范围\[60000, 1800000\]，默认为“300000”。
 
 ## 头文件列表说明<a name="ZH-CN_TOPIC_0000001698168801"></a>
 
@@ -111,7 +108,5 @@
 |AscendIndexVStar.h|${mxIndex_install_path}/mxIndex/include/faiss/ascend/|VStar检索的对外接口定义。|
 |AscendIndexMixSearchParams.h|${mxIndex_install_path}/mxIndex/include/faiss/ascend/|Vstar和Great检索所需的参数结构体对外头文件。|
 
-
 > [!NOTE] 说明 
 >$\{mxIndex\_install\_path\}表示Index SDK的安装路径。
-

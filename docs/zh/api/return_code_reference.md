@@ -44,6 +44,3 @@
 |APP_ERR_INVALID_TABLE_INDEX = 2015|Idx exceeds tableLen, table mapping failed|
 |APP_ERR_INDEX_NOT_INIT = 2016|index not initialize|
 |APP_ERR_END = 2017|end of APP ERR|
-
-
-

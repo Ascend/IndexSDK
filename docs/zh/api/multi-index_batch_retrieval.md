@@ -48,7 +48,6 @@
 </tbody>
 </table>
 
-
 ### Search（AscendIndexInt8）接口<a name="ZH-CN_TOPIC_0000001533044201"></a>
 
 <a name="table7235918388"></a>
@@ -92,7 +91,6 @@
 </tr>
 </tbody>
 </table>
-
 
 ### Search（FaissIndex）接口<a name="ZH-CN_TOPIC_0000001506334841"></a>
 
@@ -139,7 +137,6 @@
 </tbody>
 </table>
 
-
 ### SearchWithFilter（FaissIndex单filter）接口<a name="ZH-CN_TOPIC_0000001521615937"></a>
 
 <a name="table7235918388"></a>
@@ -185,7 +182,6 @@
 </tbody>
 </table>
 
-
 ### SearchWithFilter（AscendIndex单filter）接口<a name="ZH-CN_TOPIC_0000001521894949"></a>
 
 <a name="table7235918388"></a>
@@ -230,7 +226,6 @@
 </tr>
 </tbody>
 </table>
-
 
 ### SearchWithFilter（FaissIndex多filter）接口<a name="ZH-CN_TOPIC_0000001635576093"></a>
 
@@ -279,7 +274,6 @@
 </tbody>
 </table>
 
-
 ### SearchWithFilter（AscendIndex多filter）接口<a name="ZH-CN_TOPIC_0000001635815493"></a>
 
 <a name="table20177631161415"></a>
@@ -326,6 +320,3 @@
 </tr>
 </tbody>
 </table>
-
-
-

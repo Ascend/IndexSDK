@@ -6,5 +6,3 @@
 |--|--|--|
 |AscendIndexInt8.h|public|GetIndexImplBase()|
 |AscendIndex.h|public|GetIndexImplBase()|
-
-
