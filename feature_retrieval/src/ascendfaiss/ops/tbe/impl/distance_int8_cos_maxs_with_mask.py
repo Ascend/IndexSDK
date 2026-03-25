@@ -60,11 +60,14 @@ class DistanceInt8CosMaxsWithMask:
         # check parameter
         self.check_parameter()
 
-        self.block_mask_len  = self.centroids_num // 8
+        self.centroids_num_each_core = None
+        self.centroids_num_last_core = None
+
+        self.block_mask_len = self.centroids_num // 8
         if self.shape_mask[0] == 1 and self.shape_mask[0] != self.shape_queries[0]:
-            self.share_distance_mask    = True
+            self.share_distance_mask = True
         else:
-            self.share_distance_mask    = False
+            self.share_distance_mask = False
 
         # set vector fp32 mask and fp16 mask
         self.int32_mask = 64
@@ -176,12 +179,12 @@ class DistanceInt8CosMaxsWithMask:
 
 
         if self.aicore_use == 2:
-            self.centroids_num_each_core = (actual_num  // self.aicore_use + self.max_mask * 8) \
+            self.centroids_num_each_core = (actual_num // self.aicore_use + self.max_mask * 8) \
                     // self.max_mask // 16 * self.max_mask * 16
         else:
-            self.centroids_num_each_core = actual_num  // self.aicore_use // self.max_mask // 16 * self.max_mask * 16
+            self.centroids_num_each_core = actual_num // self.aicore_use // self.max_mask // 16 * self.max_mask * 16
 
-        self.centroids_num_last_core = actual_num  - (self.aicore_use - 1) * self.centroids_num_each_core
+        self.centroids_num_last_core = actual_num - (self.aicore_use - 1) * self.centroids_num_each_core
 
 
     def distance_compute_each_loop(self, aicore_move_offset, aicore_centroids_num, move_num):

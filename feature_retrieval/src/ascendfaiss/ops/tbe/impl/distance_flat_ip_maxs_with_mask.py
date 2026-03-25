@@ -20,9 +20,9 @@ See the Mulan PSL v2 for more details.
 from te import tik
 from mxIndex_impl.common import set_soc_info
 
-MIN_FP16        = -65500.0
- 
- 
+MIN_FP16 = -65500.0
+
+
 def div_up(dividend_val, divisor_val):
     return ((dividend_val + divisor_val - 1) // divisor_val)
  
@@ -39,11 +39,11 @@ def filter_distance_using_mask_in_ub(tik_instance, input_ub, input_cnt, output_u
     约束：
         元素类型须为float16，input_cnt必须小于等于input_ub Tensor的长度。
     """
-    max_repeat_each_call    = 128
-    total_repeat            = input_cnt // 128
+    max_repeat_each_call = 128
+    total_repeat = input_cnt // 128
     
-    tmp_repeat_sc           = tik_instance.Scalar(dtype="uint32")
-    call_cnt                = div_up(total_repeat, max_repeat_each_call)
+    tmp_repeat_sc = tik_instance.Scalar(dtype="uint32")
+    call_cnt = div_up(total_repeat, max_repeat_each_call)
     with tik_instance.for_range(0, call_cnt) as cid:
         with tik_instance.if_scope(cid != (call_cnt - 1)):
             tmp_repeat_sc.set_as(max_repeat_each_call)
@@ -51,9 +51,9 @@ def filter_distance_using_mask_in_ub(tik_instance, input_ub, input_cnt, output_u
             tmp_repeat_sc.set_as(total_repeat - (call_cnt - 1) * max_repeat_each_call)
         tik_instance.vsel(128,
                           1,
-                          output_ub[cid * max_repeat_each_call * 128 :],
-                          mask[cid * max_repeat_each_call * 128 // 8 :],
-                          input_ub[cid * max_repeat_each_call * 128 :],
+                          output_ub[cid * max_repeat_each_call * 128:],
+                          mask[cid * max_repeat_each_call * 128 // 8:],
+                          input_ub[cid * max_repeat_each_call * 128:],
                           value,
                           tmp_repeat_sc, 
                           1, 1, 1, 8, 8, 8)
@@ -62,9 +62,9 @@ def filter_distance_using_mask_in_ub(tik_instance, input_ub, input_cnt, output_u
     with tik_instance.if_scope(last_remain > 0):
         tik_instance.vsel(last_remain,
                           1,
-                          output_ub[total_repeat * 128 :],
-                          mask[total_repeat * 128 // 8 :],
-                          input_ub[total_repeat * 128 :],
+                          output_ub[total_repeat * 128:],
+                          mask[total_repeat * 128 // 8:],
+                          input_ub[total_repeat * 128:],
                           value,
                           1,
                           1, 1, 1, 8, 8, 8)
@@ -105,6 +105,7 @@ class DistanceFlatIPMaxs:
         self.shape_flag = output_flag.get("shape")
         self.dtype_flag = output_flag.get("dtype")
         self.kernel_name = kernel_name
+        self.distance_mask_gm = None
         self.input_extra_score_gm = None
         self.input_scale_gm = None
         self.block_offset = None
@@ -782,10 +783,10 @@ class DistanceFlatIPMaxs:
                    self.output_flag_gm]
 
         if self.use_distance_mask is True:
-            self.distance_mask_gm   = self.tik_instance.Tensor(self.dtype_input_mask,
-                                                               self.shape_input_mask,
-                                                               name="distance_mask_gm",
-                                                               scope=tik.scope_gm)
+            self.distance_mask_gm = self.tik_instance.Tensor(self.dtype_input_mask,
+                                                             self.shape_input_mask,
+                                                             name="distance_mask_gm",
+                                                             scope=tik.scope_gm)
             inputs.append(self.distance_mask_gm)
 
         if self.use_extra_score is True:

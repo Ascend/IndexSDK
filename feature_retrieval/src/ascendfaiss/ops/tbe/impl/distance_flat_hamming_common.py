@@ -20,9 +20,9 @@ See the Mulan PSL v2 for more details.
 from te import tik
 from mxIndex_impl.common import set_soc_info
 
-AI_CORE_NUM     = 8
-MAX_FP16        = 65500.0
-MIN_FP16        = -65500.0
+AI_CORE_NUM = 8
+MAX_FP16 = 65500.0
+MIN_FP16 = -65500.0
 
 
 def div_up(dividend_val, divisor_val):
@@ -44,11 +44,11 @@ def scan_block_topk_in_ub(tik_instance, input_ub, input_cnt, output_ub, block_si
     if block_size % 16 != 0 or block_size > 128:
         raise RuntimeError("scan_block_topk_in_ub: invalid block size!")
 
-    max_repeat_each_call    = 128                               # 一次vcmax执行最大的repeat数
-    total_repeat            = input_cnt // block_size           # 总的repeat数
+    max_repeat_each_call = 128                       # 一次vcmax执行最大的repeat数
+    total_repeat = input_cnt // block_size           # 总的repeat数
     
-    tmp_repeat_sc           = tik_instance.Scalar(dtype="uint32")
-    call_cnt                = div_up(total_repeat, max_repeat_each_call)
+    tmp_repeat_sc = tik_instance.Scalar(dtype="uint32")
+    call_cnt = div_up(total_repeat, max_repeat_each_call)
     with tik_instance.for_range(0, call_cnt) as cid: 
         with tik_instance.if_scope(cid != (call_cnt - 1)):
             tmp_repeat_sc.set_as(max_repeat_each_call)
@@ -56,8 +56,8 @@ def scan_block_topk_in_ub(tik_instance, input_ub, input_cnt, output_ub, block_si
             tmp_repeat_sc.set_as(total_repeat - (call_cnt - 1) * max_repeat_each_call)
         
         tik_instance.vcmax(block_size,
-                           output_ub[cid * max_repeat_each_call * 2 :],
-                           input_ub[cid * max_repeat_each_call * block_size :],
+                           output_ub[cid * max_repeat_each_call * 2:],
+                           input_ub[cid * max_repeat_each_call * block_size:],
                            tmp_repeat_sc,
                            1, 1, 
                            block_size * 2 // 32)
@@ -65,8 +65,8 @@ def scan_block_topk_in_ub(tik_instance, input_ub, input_cnt, output_ub, block_si
     last_remain = input_cnt % block_size
     with tik_instance.if_scope(last_remain > 0):
         tik_instance.vcmax(last_remain,
-                           output_ub[total_repeat * 2 :],
-                           input_ub[total_repeat * block_size :],
+                           output_ub[total_repeat * 2:],
+                           input_ub[total_repeat * block_size:],
                            1,
                            1, 1,
                            8)
@@ -84,11 +84,11 @@ def filter_distance_using_mask_in_ub(tik_instance, input_ub, input_cnt, output_u
     约束：
         元素类型须为float16，input_cnt必须小于等于input_ub Tensor的长度。
     """
-    max_repeat_each_call    = 128
-    total_repeat            = input_cnt // 128
+    max_repeat_each_call = 128
+    total_repeat = input_cnt // 128
     
-    tmp_repeat_sc           = tik_instance.Scalar(dtype="uint32")
-    call_cnt                = div_up(total_repeat, max_repeat_each_call)
+    tmp_repeat_sc = tik_instance.Scalar(dtype="uint32")
+    call_cnt = div_up(total_repeat, max_repeat_each_call)
     with tik_instance.for_range(0, call_cnt) as cid:
         with tik_instance.if_scope(cid != (call_cnt - 1)):
             tmp_repeat_sc.set_as(max_repeat_each_call)
@@ -96,9 +96,9 @@ def filter_distance_using_mask_in_ub(tik_instance, input_ub, input_cnt, output_u
             tmp_repeat_sc.set_as(total_repeat - (call_cnt - 1) * max_repeat_each_call)
         tik_instance.vsel(128,
                           1,
-                          output_ub[cid * max_repeat_each_call * 128 :],
-                          mask[cid * max_repeat_each_call * 128 // 8 :],
-                          input_ub[cid * max_repeat_each_call * 128 :],
+                          output_ub[cid * max_repeat_each_call * 128:],
+                          mask[cid * max_repeat_each_call * 128 // 8:],
+                          input_ub[cid * max_repeat_each_call * 128:],
                           value,
                           tmp_repeat_sc, 
                           1, 1, 1, 8, 8, 8)
@@ -107,9 +107,9 @@ def filter_distance_using_mask_in_ub(tik_instance, input_ub, input_cnt, output_u
     with tik_instance.if_scope(last_remain > 0):
         tik_instance.vsel(last_remain,
                           1,
-                          output_ub[total_repeat * 128 :],
-                          mask[total_repeat * 128 // 8 :],
-                          input_ub[total_repeat * 128 :],
+                          output_ub[total_repeat * 128:],
+                          mask[total_repeat * 128 // 8:],
+                          input_ub[total_repeat * 128:],
                           value,
                           1,
                           1, 1, 1, 8, 8, 8)
@@ -118,89 +118,89 @@ def filter_distance_using_mask_in_ub(tik_instance, input_ub, input_cnt, output_u
 class DistanceFlatHamming:
     def __init__(self, input_queries, input_db, db_num, distance_mask,
                  output_distance, output_block_topk, output_flag, kernel_name):
-        self.shape_queries                  = input_queries.get("shape")
-        self.dtype_queries                  = input_queries.get("dtype")
+        self.shape_queries = input_queries.get("shape")
+        self.dtype_queries = input_queries.get("dtype")
 
-        self.shape_db                       = input_db.get("shape")
-        self.dtype_db                       = input_db.get("dtype")
+        self.shape_db = input_db.get("shape")
+        self.dtype_db = input_db.get("dtype")
         
-        self.shape_db_num                   = db_num.get("shape")
-        self.dtype_db_num                   = db_num.get("dtype")
+        self.shape_db_num = db_num.get("shape")
+        self.dtype_db_num = db_num.get("dtype")
         # 距离值掩码，可选参数。
-        self.use_distance_mask              = False
+        self.use_distance_mask = False
         if distance_mask is not None:
-            self.shape_distance_mask        = distance_mask.get("shape")
-            self.dtype_distance_mask        = distance_mask.get("dtype")
-            self.use_distance_mask          = True
+            self.shape_distance_mask = distance_mask.get("shape")
+            self.dtype_distance_mask = distance_mask.get("dtype")
+            self.use_distance_mask = True
             if self.shape_distance_mask[0] == 1 and self.shape_distance_mask[0] != self.shape_queries[0]:
-                self.share_distance_mask    = True
+                self.share_distance_mask = True
             else:
-                self.share_distance_mask    = False
+                self.share_distance_mask = False
         # Z区域高度，即Z区域包含的向量个数。
-        self.db_zregion_h                   = self.shape_db[2]
+        self.db_zregion_h = self.shape_db[2]
         
-        self.shape_distance                 = output_distance.get("shape")
-        self.dtype_distance                 = output_distance.get("dtype")
+        self.shape_distance = output_distance.get("shape")
+        self.dtype_distance = output_distance.get("dtype")
 
-        self.shape_block_topk               = output_block_topk.get("shape")
-        self.dtype_block_topk               = output_block_topk.get("dtype")
+        self.shape_block_topk = output_block_topk.get("shape")
+        self.dtype_block_topk = output_block_topk.get("dtype")
 
-        self.shape_output_flag              = output_flag.get("shape")
-        self.dtype_output_flag              = output_flag.get("dtype")
+        self.shape_output_flag = output_flag.get("shape")
+        self.dtype_output_flag = output_flag.get("dtype")
        
-        self.kernel_name                    = kernel_name
+        self.kernel_name = kernel_name
 
-        self.total_queries                  = self.shape_queries[0]
-        self.dim                            = self.shape_queries[1] * 8
+        self.total_queries = self.shape_queries[0]
+        self.dim = self.shape_queries[1] * 8
 
-        self.total_db_num                   = self.shape_db[0] * self.shape_db[2] 
+        self.total_db_num = self.shape_db[0] * self.shape_db[2] 
         # 每次执行matmul指令时右矩阵的跨度，即一次做多少个底库向量的距离计算，16的倍数。
-        self.db_slice_stride                = 1024 
+        self.db_slice_stride = 1024 
         # 每次从GM种加载的二值化短特征个数，受限于UB大小。
         # 为了加快从GM中加载底库向量，mini_batch设置为Z区域高度，即Z区域包含的向量个数。
         # 为了统一起见，加载查询向量时也采用这个设置。
-        self.mini_batch                     = self.db_zregion_h
+        self.mini_batch = self.db_zregion_h
         # 每次计算距离对应的查询条数
-        self.query_num_each_compute         = self.total_queries
+        self.query_num_each_compute = self.total_queries
         # 保存距离结果时按照一次多少条查询对应的距离值进行保存。
-        self.query_num_each_save            = self.query_num_each_compute
+        self.query_num_each_save = self.query_num_each_compute
     
-        self.core_num                       = AI_CORE_NUM
+        self.core_num = AI_CORE_NUM
 
-        self.block_size                     = 128
-        self.block_topk                     = 1
+        self.block_size = 128
+        self.block_topk = 1
 
-        self.blocks_each_db_slice           = self.db_slice_stride // self.block_size
+        self.blocks_each_db_slice = self.db_slice_stride // self.block_size
 
         set_soc_info()
-        self.tik_instance       = tik.Tik(disable_debug=False)
-        self.queries_gm         = self.tik_instance.Tensor(self.dtype_queries, self.shape_queries, 
-                                                           name="queries_gm", scope=tik.scope_gm)
-        self.db_gm              = self.tik_instance.Tensor(self.dtype_db, self.shape_db, 
-                                                           name="db_gm", scope=tik.scope_gm)
-        self.db_num_gm          = self.tik_instance.Tensor(self.dtype_db_num, self.shape_db_num, 
-                                                           name="db_num_gm", scope=tik.scope_gm)
+        self.tik_instance = tik.Tik(disable_debug=False)
+        self.queries_gm = self.tik_instance.Tensor(self.dtype_queries, self.shape_queries, 
+                                                   name="queries_gm", scope=tik.scope_gm)
+        self.db_gm = self.tik_instance.Tensor(self.dtype_db, self.shape_db, 
+                                              name="db_gm", scope=tik.scope_gm)
+        self.db_num_gm = self.tik_instance.Tensor(self.dtype_db_num, self.shape_db_num, 
+                                                  name="db_num_gm", scope=tik.scope_gm)
         if self.use_distance_mask is True:
-            self.distance_mask_gm   = self.tik_instance.Tensor(self.dtype_distance_mask,
-                                                               self.shape_distance_mask,
-                                                               name="distance_mask_gm",
-                                                               scope=tik.scope_gm)
+            self.distance_mask_gm = self.tik_instance.Tensor(self.dtype_distance_mask,
+                                                             self.shape_distance_mask,
+                                                             name="distance_mask_gm",
+                                                             scope=tik.scope_gm)
 
-        self.distance_gm        = self.tik_instance.Tensor(self.dtype_distance, self.shape_distance, 
-                                                           name="distance_gm", scope=tik.scope_gm)
-        self.block_topk_gm      = self.tik_instance.Tensor(self.dtype_block_topk, self.shape_block_topk, 
-                                                           name="block_topk_gm", scope=tik.scope_gm)
-        self.output_flag_gm     = self.tik_instance.Tensor(self.dtype_output_flag, self.shape_output_flag,
-                                                           name="output_flag_gm", scope=tik.scope_gm)
+        self.distance_gm = self.tik_instance.Tensor(self.dtype_distance, self.shape_distance, 
+                                                    name="distance_gm", scope=tik.scope_gm)
+        self.block_topk_gm = self.tik_instance.Tensor(self.dtype_block_topk, self.shape_block_topk, 
+                                                      name="block_topk_gm", scope=tik.scope_gm)
+        self.output_flag_gm = self.tik_instance.Tensor(self.dtype_output_flag, self.shape_output_flag,
+                                                       name="output_flag_gm", scope=tik.scope_gm)
     
     def set_optimize_policy(self):
         if self.total_queries >= 32: 
             self.query_num_each_compute = 32
-            self.query_num_each_save    = 32
-            self.core_num               = AI_CORE_NUM
+            self.query_num_each_save = 32
+            self.core_num = AI_CORE_NUM
         if self.dim == 1024:
-            self.db_slice_stride        = 512
-            self.block_size             = 64
+            self.db_slice_stride = 512
+            self.block_size = 64
 
     def check_settings(self):
         if self.dim % 32 != 0:
@@ -248,17 +248,17 @@ class DistanceFlatHamming:
                                             1, 1, 0, 0)
         
         if self.use_distance_mask is not True:
-            inputs  = [self.queries_gm, 
-                       self.db_gm, 
-                       self.db_num_gm]
+            inputs = [self.queries_gm, 
+                      self.db_gm, 
+                      self.db_num_gm]
             outputs = [self.distance_gm, 
                        self.block_topk_gm, 
                        self.output_flag_gm]
         else:
-            inputs  = [self.queries_gm, 
-                       self.db_gm, 
-                       self.db_num_gm,
-                       self.distance_mask_gm]
+            inputs = [self.queries_gm, 
+                      self.db_gm, 
+                      self.db_num_gm,
+                      self.distance_mask_gm]
             outputs = [self.distance_gm, 
                        self.block_topk_gm, 
                        self.output_flag_gm]
@@ -285,13 +285,13 @@ class DistanceFlatHamming:
             db_num_sc.set_as(db_num_ub[0])
 
         # 计算本任务对应的底库向量起始位置以及要处理的底库向量个数。
-        db_slice_num_total      = div_up(db_num_sc, self.db_slice_stride)
-        db_slice_num_each_task  = db_slice_num_total // self.core_num
+        db_slice_num_total = div_up(db_num_sc, self.db_slice_stride)
+        db_slice_num_each_task = db_slice_num_total // self.core_num
 
-        db_slice_num_this_task  = self.tik_instance.Scalar(dtype="uint32")
-        db_slice_off_this_task  = self.tik_instance.Scalar(dtype="uint32")
+        db_slice_num_this_task = self.tik_instance.Scalar(dtype="uint32")
+        db_slice_off_this_task = self.tik_instance.Scalar(dtype="uint32")
 
-        db_slice_last_remain    = db_slice_num_total % self.core_num
+        db_slice_last_remain = db_slice_num_total % self.core_num
         with self.tik_instance.if_scope(db_slice_last_remain == 0):
             db_slice_num_this_task.set_as(db_slice_num_each_task)
             db_slice_off_this_task.set_as(task_id * db_slice_num_each_task)
@@ -305,8 +305,8 @@ class DistanceFlatHamming:
                 tmp_slice_off = (task_id - db_slice_last_remain) * db_slice_num_each_task
                 db_slice_off_this_task.set_as(tmp_slice_num + tmp_slice_off)
 
-        db_vector_num       = db_slice_num_this_task * self.db_slice_stride 
-        db_vector_offset    = db_slice_off_this_task * self.db_slice_stride
+        db_vector_num = db_slice_num_this_task * self.db_slice_stride 
+        db_vector_offset = db_slice_off_this_task * self.db_slice_stride
 
         # 开始计算
         self.compute_distance_each_task(self.queries_gm, 
@@ -336,33 +336,33 @@ class DistanceFlatHamming:
             self.tik_instance.vector_dup(128, neg_one_ub[0], -1.0, (self.mini_batch * self.dim) // 128, 1, 8, 0)
 
             # 加载左矩阵数据：一次性将查询向量全部加载至L1中，形成matmul的左矩阵（四维），dtype采用int8!
-            query_batch_cnt             = div_up(self.total_queries, self.query_num_each_compute)
-            queries_align_each_compute  = div_up(self.query_num_each_compute, 16) * 16 
-            queries_matrix_l1           = self.tik_instance.Tensor("int8", 
-                                                                   (query_batch_cnt, 
-                                                                   self.dim // 32, 
-                                                                   queries_align_each_compute, 
-                                                                   32), 
-                                                                   name="queries_matrix_l1", 
-                                                                   scope=tik.scope_cbuf)
-            tmp_cnt_sc  = self.tik_instance.Scalar("uint32")
+            query_batch_cnt = div_up(self.total_queries, self.query_num_each_compute)
+            queries_align_each_compute = div_up(self.query_num_each_compute, 16) * 16 
+            queries_matrix_l1 = self.tik_instance.Tensor("int8", 
+                                                         (query_batch_cnt, 
+                                                         self.dim // 32, 
+                                                         queries_align_each_compute, 
+                                                         32), 
+                                                         name="queries_matrix_l1", 
+                                                         scope=tik.scope_cbuf)
+            tmp_cnt_sc = self.tik_instance.Scalar("uint32")
             with self.tik_instance.for_range(0, query_batch_cnt, thread_num=1) as bid:
-                tmp_index   = bid * self.query_num_each_compute
+                tmp_index = bid * self.query_num_each_compute
                 with self.tik_instance.if_scope(bid != (query_batch_cnt - 1)):
                     tmp_cnt_sc.set_as(self.query_num_each_compute)
                 with self.tik_instance.else_scope():
                     tmp_cnt_sc.set_as(self.total_queries - (query_batch_cnt - 1) * self.query_num_each_compute)
 
-                self.load_queries_from_gm_to_l1(queries_gm[tmp_index : (tmp_index + tmp_cnt_sc), :],
+                self.load_queries_from_gm_to_l1(queries_gm[tmp_index:(tmp_index + tmp_cnt_sc), :],
                                                 tmp_index,
                                                 tmp_cnt_sc, 
                                                 pos_one_ub,
                                                 neg_one_ub,
-                                                queries_matrix_l1[bid : bid + 1, :, :, :])
+                                                queries_matrix_l1[bid:bid + 1, :, :, :])
 
             # 每次处理一个db_slice，每次db_slice_stride个，最后一次可能不足db_slice_stride个。
-            slice_cnt               = div_up(db_vector_num, self.db_slice_stride)
-            slice_vector_cnt_sc     = self.tik_instance.Scalar(dtype='uint32')
+            slice_cnt = div_up(db_vector_num, self.db_slice_stride)
+            slice_vector_cnt_sc = self.tik_instance.Scalar(dtype='uint32')
             with self.tik_instance.for_range(0, slice_cnt, thread_num=1) as slice_index:
                 with self.tik_instance.if_scope(slice_index != slice_cnt - 1):
                     slice_vector_cnt_sc.set_as(self.db_slice_stride)
@@ -387,12 +387,12 @@ class DistanceFlatHamming:
         db_slice_vector_offset = db_vector_offset + slice_index * self.db_slice_stride
         
         # 定义Scalar变量用于存储每次计算对应的查询个数以及偏移位置        
-        queries_num_sc  = self.tik_instance.Scalar(dtype='uint32', name='queries_num_sc', init_value=0)
+        queries_num_sc = self.tik_instance.Scalar(dtype='uint32', name='queries_num_sc', init_value=0)
         # 加载右矩阵，即底库向量
-        db_slice_matrix_l1  = self.tik_instance.Tensor("int8",
-                                                       (self.dim // 32, self.db_slice_stride, 32),
-                                                       name="db_slice_matrix_l1",        
-                                                       scope=tik.scope_cbuf)
+        db_slice_matrix_l1 = self.tik_instance.Tensor("int8",
+                                                      (self.dim // 32, self.db_slice_stride, 32),
+                                                      name="db_slice_matrix_l1",        
+                                                      scope=tik.scope_cbuf)
         with self.tik_instance.for_range(0, 1):
             self.load_db_from_gm_to_l1(db_gm,
                                        db_slice_vector_offset, 
@@ -409,9 +409,9 @@ class DistanceFlatHamming:
                                                        scope=tik.scope_cbuf_out)
         
         # 对查询进行切分，每次计算query_num_each_compute个查询。 
-        query_batch_cnt     = div_up(self.total_queries, self.query_num_each_compute)
-        queries_num_sc      = self.tik_instance.Scalar(dtype='uint32', name='queries_num_sc', init_value=0)
-        queries_off_sc      = self.tik_instance.Scalar(dtype='uint32', name='queries_off_sc', init_value=0)
+        query_batch_cnt = div_up(self.total_queries, self.query_num_each_compute)
+        queries_num_sc = self.tik_instance.Scalar(dtype='uint32', name='queries_num_sc', init_value=0)
+        queries_off_sc = self.tik_instance.Scalar(dtype='uint32', name='queries_off_sc', init_value=0)
         with self.tik_instance.for_range(0, query_batch_cnt, thread_num=1) as bid:
             with self.tik_instance.if_scope(bid != (query_batch_cnt - 1)):
                 queries_num_sc.set_as(self.query_num_each_compute)
@@ -420,22 +420,22 @@ class DistanceFlatHamming:
             queries_off_sc.set_as(bid * self.query_num_each_compute)
             # 执行matmul
             self.tik_instance.matmul(distance_matrix_l0c, 
-                                     queries_matrix_l1[bid : bid + 1, :, :, :], 
+                                     queries_matrix_l1[bid:bid + 1, :, :, :], 
                                      db_slice_matrix_l1,
                                      queries_align_each_compute, 
                                      self.dim, 
                                      self.db_slice_stride)
             # 保存结果
             with self.tik_instance.for_range(0, 1):
-                tmp_dist_start              = bid * self.query_num_each_compute * self.total_db_num
-                tmp_dist_end                = tmp_dist_start + queries_num_sc * self.total_db_num
+                tmp_dist_start = bid * self.query_num_each_compute * self.total_db_num
+                tmp_dist_end = tmp_dist_start + queries_num_sc * self.total_db_num
                 
-                block_topk_size_each_query  = div_up(self.total_db_num, self.block_size) * self.block_topk * 2
-                tmp_block_topk_start        = bid * self.query_num_each_compute * block_topk_size_each_query
-                tmp_block_topk_end          = tmp_block_topk_start + queries_num_sc * block_topk_size_each_query
+                block_topk_size_each_query = div_up(self.total_db_num, self.block_size) * self.block_topk * 2
+                tmp_block_topk_start = bid * self.query_num_each_compute * block_topk_size_each_query
+                tmp_block_topk_end = tmp_block_topk_start + queries_num_sc * block_topk_size_each_query
 
-                self.save_distance_from_l0c_to_gm(distance_gm[tmp_dist_start : tmp_dist_end],
-                                                  block_topk_gm[tmp_block_topk_start : tmp_block_topk_end],
+                self.save_distance_from_l0c_to_gm(distance_gm[tmp_dist_start:tmp_dist_end],
+                                                  block_topk_gm[tmp_block_topk_start:tmp_block_topk_end],
                                                   distance_matrix_l0c, 
                                                   db_slice_vector_offset, 
                                                   db_slice_vector_cnt,
@@ -454,23 +454,23 @@ class DistanceFlatHamming:
             neg_one_ub:     全-1.0 UB Tensor，外部初始化
             matrix_l1:      l1矩阵，这里是左矩阵。
         """
-        mini_batch_uint8_bit_ub     = self.tik_instance.Tensor("uint8",
-                                                               (self.mini_batch, self.dim // 8),
-                                                               name="mini_batch_uint8_bit_ub",
-                                                               scope=tik.scope_ubuf)
-        mini_batch_fp16_ub          = self.tik_instance.Tensor("float16",
-                                                               (self.mini_batch, self.dim),
-                                                               name="mini_batch_fp16_ub",
-                                                               scope=tik.scope_ubuf)
-        mini_batch_int8_ub          = self.tik_instance.Tensor("int8",
-                                                               (self.mini_batch, self.dim),
-                                                               name="mini_batch_int8_ub",
-                                                               scope=tik.scope_ubuf)
+        mini_batch_uint8_bit_ub = self.tik_instance.Tensor("uint8",
+                                                           (self.mini_batch, self.dim // 8),
+                                                           name="mini_batch_uint8_bit_ub",
+                                                           scope=tik.scope_ubuf)
+        mini_batch_fp16_ub = self.tik_instance.Tensor("float16",
+                                                      (self.mini_batch, self.dim),
+                                                      name="mini_batch_fp16_ub",
+                                                      scope=tik.scope_ubuf)
+        mini_batch_int8_ub = self.tik_instance.Tensor("int8",
+                                                      (self.mini_batch, self.dim),
+                                                      name="mini_batch_int8_ub",
+                                                      scope=tik.scope_ubuf)
 
         # 按照一次mini_batch个向量进行分批加载
-        tmp_offset_sc   = self.tik_instance.Scalar(dtype="uint32", name="tmp_offset_sc", init_value=0)
-        tmp_cnt_sc      = self.tik_instance.Scalar(dtype="uint32", name="tmp_cnt_sc", init_value=0)
-        repeat          = div_up(query_cnt, self.mini_batch)
+        tmp_offset_sc = self.tik_instance.Scalar(dtype="uint32", name="tmp_offset_sc", init_value=0)
+        tmp_cnt_sc = self.tik_instance.Scalar(dtype="uint32", name="tmp_cnt_sc", init_value=0)
+        repeat = div_up(query_cnt, self.mini_batch)
         with self.tik_instance.for_range(0, repeat) as rid:
             tmp_offset_sc.set_as(rid * self.mini_batch + query_off)
             with self.tik_instance.if_scope(rid != (repeat - 1)):
@@ -517,25 +517,25 @@ class DistanceFlatHamming:
             neg_one_ub:         全-1.0 UB Tensor，外部初始化
             matrix_l1:          l1矩阵，这里是右矩阵。
         """
-        tmp_uint8_bit_l1            = self.tik_instance.Tensor("uint8",
-                                                               (self.db_slice_stride // self.db_zregion_h, 
-                                                                self.dim // 32, 
-                                                                self.db_zregion_h, 
-                                                                4),
-                                                               name="tmp_uint8_bit_l1",
-                                                               scope=tik.scope_cbuf)
-        mini_batch_uint8_bit_ub     = self.tik_instance.Tensor("uint8",
-                                                               (self.dim // 32, self.mini_batch, 4),
-                                                               name="mini_batch_uint8_bit_ub",
-                                                               scope=tik.scope_ubuf)
-        mini_batch_fp16_ub          = self.tik_instance.Tensor("float16",
-                                                               (self.dim // 32, self.mini_batch, 32),
-                                                               name="mini_batch_fp16_ub",
-                                                               scope=tik.scope_ubuf)
-        mini_batch_int8_ub          = self.tik_instance.Tensor("int8",
-                                                               (self.dim // 32, self.mini_batch, 32),
-                                                               name="mini_batch_int8_ub",
-                                                               scope=tik.scope_ubuf)
+        tmp_uint8_bit_l1 = self.tik_instance.Tensor("uint8",
+                                                    (self.db_slice_stride // self.db_zregion_h, 
+                                                     self.dim // 32, 
+                                                     self.db_zregion_h, 
+                                                     4),
+                                                    name="tmp_uint8_bit_l1",
+                                                    scope=tik.scope_cbuf)
+        mini_batch_uint8_bit_ub = self.tik_instance.Tensor("uint8",
+                                                           (self.dim // 32, self.mini_batch, 4),
+                                                           name="mini_batch_uint8_bit_ub",
+                                                           scope=tik.scope_ubuf)
+        mini_batch_fp16_ub = self.tik_instance.Tensor("float16",
+                                                      (self.dim // 32, self.mini_batch, 32),
+                                                      name="mini_batch_fp16_ub",
+                                                      scope=tik.scope_ubuf)
+        mini_batch_int8_ub = self.tik_instance.Tensor("int8",
+                                                      (self.dim // 32, self.mini_batch, 32),
+                                                      name="mini_batch_int8_ub",
+                                                      scope=tik.scope_ubuf)
         
         # 先将GM中的二值化底库特征向量加载至临时的L1变量中
         with self.tik_instance.if_scope(db_vector_cnt == self.db_slice_stride):
@@ -621,9 +621,9 @@ class DistanceFlatHamming:
                                      deqscale=1.0)
 
         # Step2: 将distance_result_3d_ub中的结果分批完成三维到二维的转换，并写入GM中。
-        tmp_off_sc      = self.tik_instance.Scalar(dtype='uint32', name='tmp_off_sc', init_value=0)
-        tmp_cnt_sc      = self.tik_instance.Scalar(dtype='uint32', name='tmp_cnt_sc', init_value=0)
-        repeat          = div_up(queries_num, self.query_num_each_save)
+        tmp_off_sc = self.tik_instance.Scalar(dtype='uint32', name='tmp_off_sc', init_value=0)
+        tmp_cnt_sc = self.tik_instance.Scalar(dtype='uint32', name='tmp_cnt_sc', init_value=0)
+        repeat = div_up(queries_num, self.query_num_each_save)
         with self.tik_instance.for_range(0, repeat, thread_num=1) as rid:
             tmp_off_sc.set_as(rid * self.query_num_each_save)
             with self.tik_instance.if_scope(rid != repeat - 1):
@@ -702,8 +702,8 @@ class DistanceFlatHamming:
                                               block_topk_ub[qid * self.blocks_each_db_slice * 2:],
                                               self.block_size)
                         
-            tmp_dist_gm_offset          = tmp_off_sc * self.total_db_num + db_vector_offset
-            tmp_block_topk_gm_offset    = div_up(tmp_dist_gm_offset, self.block_size) * self.block_topk * 2
+            tmp_dist_gm_offset = tmp_off_sc * self.total_db_num + db_vector_offset
+            tmp_block_topk_gm_offset = div_up(tmp_dist_gm_offset, self.block_size) * self.block_topk * 2
             # 距离结果写入GM
             self.tik_instance.data_move(distance_gm[tmp_dist_gm_offset], 
                                         distance_result_2d_ub[0, 0], 
