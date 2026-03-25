@@ -123,7 +123,35 @@ TEST(TestAscendIndexUTILFlat, add_invalid_input)
  
     index.Finalize();
 }
+
+TEST(TestAscendIndexUTILFlat, get_invalid_input)
+{
+    int addn = BASE_SIZE;
+    int dim = DIM;
+    int capacity = CAP;
  
+    std::vector<float> addVec(addn * dim, 0);
+ 
+    auto metricType = faiss::MetricType::METRIC_INNER_PRODUCT;
+    faiss::ascend::AscendIndexILFlat index;
+    auto ret = index.Init(dim, capacity, metricType, DEVICES);
+    EXPECT_EQ(ret, 0);
+ 
+    ret = index.AddFeatures(addn, addVec.data());
+    EXPECT_EQ(ret, 0);
+
+    std::vector<uint32_t> indexVec(addn);
+    std::vector<float> featVec(addn * dim, 0);
+    ret = index.GetFeatures(-1, featVec.data(), indexVec.data());
+    EXPECT_EQ(ret, APP_ERR_INVALID_PARAM);
+
+    float* featPtr = nullptr;
+    ret = index.GetFeatures(addn, featPtr, indexVec.data());
+    EXPECT_EQ(ret, APP_ERR_INVALID_PARAM);
+
+    index.Finalize();
+}
+
 TEST(TestAscendIndexUTILFlat, ComputeDistance)
 {
     int queryN = 2;

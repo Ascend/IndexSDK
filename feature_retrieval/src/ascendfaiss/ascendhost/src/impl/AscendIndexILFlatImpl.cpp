@@ -861,6 +861,9 @@ APP_ERROR AscendIndexILFlatImpl::Remove(int n, const idx_t *indices)
 
 APP_ERROR AscendIndexILFlatImpl::Get(int n, float16_t *features, const idx_t *indices) const
 {
+    APPERR_RETURN_IF_NOT_LOG(	 
+        (isInitialized), APP_ERR_INVALID_PARAM, "Illegal operation, please initialize the index first. ");	 
+
     auto streamPtr = this->pResources->getDefaultStream();
     auto stream = streamPtr->GetStream();
     auto &mem = this->pResources->getMemoryManager();

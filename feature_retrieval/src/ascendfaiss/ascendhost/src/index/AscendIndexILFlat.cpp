@@ -220,6 +220,10 @@ APP_ERROR AscendIndexILFlat::GetFeatures(int n, float16_t *features, const idx_t
 
     APPERR_RETURN_IF_NOT_LOG(
         this->pIndexILFlatImpl != nullptr, APP_ERR_INDEX_NOT_INIT, "index must be initialized first!!!\n");
+    APPERR_RETURN_IF_NOT_FMT(n >= 0 && n <= this->capacity, APP_ERR_INVALID_PARAM,	 
+        "The number n should be in range [0, %d]", this->capacity); 
+    APPERR_RETURN_IF_NOT_LOG(features, APP_ERR_INVALID_PARAM, "Features can not be nullptr."); 
+    APPERR_RETURN_IF_NOT_LOG(indices, APP_ERR_INVALID_PARAM, "Indices can not be nullptr.");
     return this->pIndexILFlatImpl->Get(n, features, indices);
 }
 
@@ -227,6 +231,10 @@ APP_ERROR AscendIndexILFlat::GetFeatures(int n, float *features, const idx_t *in
 {
     auto lock = ::ascend::AscendMultiThreadManager::GetWriteLock(mtx);
 
+    APPERR_RETURN_IF_NOT_FMT(n >= 0 && n <= this->capacity, APP_ERR_INVALID_PARAM,	 
+        "The number n should be in range [0, %d]", this->capacity); 
+    APPERR_RETURN_IF_NOT_LOG(features, APP_ERR_INVALID_PARAM, "Features can not be nullptr."); 
+    APPERR_RETURN_IF_NOT_LOG(indices, APP_ERR_INVALID_PARAM, "Indices can not be nullptr.");
     APPERR_RETURN_IF_NOT_LOG(
         this->pIndexILFlatImpl != nullptr, APP_ERR_INDEX_NOT_INIT, "index must be initialized first!!!\n");
     return this->pIndexILFlatImpl->Get(n, features, indices);
