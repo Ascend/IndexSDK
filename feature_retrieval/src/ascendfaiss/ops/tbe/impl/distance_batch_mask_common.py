@@ -32,28 +32,28 @@ class DistanceBatchMaskGenerator:
     def __init__(self, 
                  query_time_stamp, query_token_set, db_time_stamp, db_divisor, db_remainder, extra_mask,
                  extra_mask_attr, extra_val_filter, extra_val_attr, distance_mask, kernel_name):
-        self.shape_query_time_stamp         = query_time_stamp.get("shape")
-        self.dtype_query_time_stamp         = query_time_stamp.get("dtype")
+        self.shape_query_time_stamp = query_time_stamp.get("shape")
+        self.dtype_query_time_stamp = query_time_stamp.get("dtype")
 
-        self.shape_query_token_set          = query_token_set.get("shape")
-        self.dtype_query_token_set          = query_token_set.get("dtype")
+        self.shape_query_token_set = query_token_set.get("shape")
+        self.dtype_query_token_set = query_token_set.get("dtype")
         
-        self.shape_db_time_stamp            = db_time_stamp.get("shape")
-        self.dtype_db_time_stamp            = db_time_stamp.get("dtype")
+        self.shape_db_time_stamp = db_time_stamp.get("shape")
+        self.dtype_db_time_stamp = db_time_stamp.get("dtype")
        
-        self.shape_db_divisor               = db_divisor.get("shape")
-        self.dtype_db_divisor               = db_divisor.get("dtype")
+        self.shape_db_divisor = db_divisor.get("shape")
+        self.dtype_db_divisor = db_divisor.get("dtype")
         
-        self.shape_db_remainder             = db_remainder.get("shape")
-        self.dtype_db_remainder             = db_remainder.get("dtype")
+        self.shape_db_remainder = db_remainder.get("shape")
+        self.dtype_db_remainder = db_remainder.get("dtype")
 
-        self.use_extra_mask                 = False
+        self.use_extra_mask = False
         if extra_mask is not None:
-            self.shape_extra_mask           = extra_mask.get("shape")
-            self.dtype_extra_mask           = extra_mask.get("dtype")
-            self.shape_extra_mask_attr      = extra_mask_attr.get("shape")
-            self.dtype_extra_mask_attr      = extra_mask_attr.get("dtype")
-            self.use_extra_mask             = True
+            self.shape_extra_mask = extra_mask.get("shape")
+            self.dtype_extra_mask = extra_mask.get("dtype")
+            self.shape_extra_mask_attr = extra_mask_attr.get("shape")
+            self.dtype_extra_mask_attr = extra_mask_attr.get("dtype")
+            self.use_extra_mask = True
 
         self.use_extra_val = False
         if extra_val_filter is not None:
@@ -63,57 +63,57 @@ class DistanceBatchMaskGenerator:
             self.dtype_extra_val_attr = extra_val_attr.get("dtype")
             self.use_extra_val = True
 
-        self.shape_distance_mask            = distance_mask.get("shape")
-        self.dtype_distance_mask            = distance_mask.get("dtype")
+        self.shape_distance_mask = distance_mask.get("shape")
+        self.dtype_distance_mask = distance_mask.get("dtype")
      
-        self.kernel_name                    = kernel_name
+        self.kernel_name = kernel_name
 
-        self.total_db_num                   = self.shape_db_time_stamp[0] 
-        self.max_token_cnt                  = self.shape_query_token_set[1] * 8 // 2
-        self.db_stride_each_call            = 8192  # 每次处理的底库特征距离个数
-        self.batch_size                     = self.shape_query_time_stamp[0]
+        self.total_db_num = self.shape_db_time_stamp[0] 
+        self.max_token_cnt = self.shape_query_token_set[1] * 8 // 2
+        self.db_stride_each_call = 8192  # 每次处理的底库特征距离个数
+        self.batch_size = self.shape_query_time_stamp[0]
     
-        self.core_num                       = AI_CORE_NUM
+        self.core_num = AI_CORE_NUM
 
         set_soc_info()
-        self.tik_instance   = tik.Tik(disable_debug=False)
+        self.tik_instance = tik.Tik(disable_debug=False)
         # 输入1：查询起始时间戳+结束时间戳
-        self.query_time_stamp_gm    = self.tik_instance.Tensor(self.dtype_query_time_stamp, 
-                                                               self.shape_query_time_stamp, 
-                                                               name="query_time_stamp_gm", 
-                                                               scope=tik.scope_gm)
+        self.query_time_stamp_gm = self.tik_instance.Tensor(self.dtype_query_time_stamp, 
+                                                            self.shape_query_time_stamp, 
+                                                            name="query_time_stamp_gm", 
+                                                            scope=tik.scope_gm)
         # 输入2：查询token id集
-        self.query_token_set_gm     = self.tik_instance.Tensor(self.dtype_query_token_set, 
-                                                               self.shape_query_token_set, 
-                                                               name="query_token_set_gm", 
-                                                               scope=tik.scope_gm)
+        self.query_token_set_gm = self.tik_instance.Tensor(self.dtype_query_token_set, 
+                                                           self.shape_query_token_set, 
+                                                           name="query_token_set_gm", 
+                                                           scope=tik.scope_gm)
         # 输入3：底库特征向量对应的时间戳
-        self.db_time_stamp_gm       = self.tik_instance.Tensor(self.dtype_db_time_stamp,
-                                                               self.shape_db_time_stamp,
-                                                               name="db_time_stamp_gm",
-                                                               scope=tik.scope_gm)
+        self.db_time_stamp_gm = self.tik_instance.Tensor(self.dtype_db_time_stamp,
+                                                         self.shape_db_time_stamp,
+                                                         name="db_time_stamp_gm",
+                                                         scope=tik.scope_gm)
         # 输入4：底库特征向量对应的token id除以8后的除数
-        self.db_divisor_gm          = self.tik_instance.Tensor(self.dtype_db_divisor, 
-                                                               self.shape_db_divisor, 
-                                                               name="db_divisor_gm", 
-                                                               scope=tik.scope_gm)
+        self.db_divisor_gm = self.tik_instance.Tensor(self.dtype_db_divisor, 
+                                                      self.shape_db_divisor, 
+                                                      name="db_divisor_gm", 
+                                                      scope=tik.scope_gm)
         # 输入5：底库特征向量对应的token id除以8后的余数
-        self.db_remainder_gm        = self.tik_instance.Tensor(self.dtype_db_remainder, 
-                                                               self.shape_db_remainder, 
-                                                               name="db_remainder_gm", 
-                                                               scope=tik.scope_gm)
+        self.db_remainder_gm = self.tik_instance.Tensor(self.dtype_db_remainder, 
+                                                        self.shape_db_remainder, 
+                                                        name="db_remainder_gm", 
+                                                        scope=tik.scope_gm)
 
         # 输入6：用户自定义的Mask，可选。
         if self.use_extra_mask is True:
-            self.extra_mask_gm      = self.tik_instance.Tensor(self.dtype_extra_mask,
-                                                               self.shape_extra_mask,
-                                                               name="extra_mask_gm",
-                                                               scope=tik.scope_gm)
+            self.extra_mask_gm = self.tik_instance.Tensor(self.dtype_extra_mask,
+                                                          self.shape_extra_mask,
+                                                          name="extra_mask_gm",
+                                                          scope=tik.scope_gm)
             # 输入7：自定义mask的属性信息
             self.extra_mask_attr_gm = self.tik_instance.Tensor(self.dtype_extra_mask_attr, 
-                                                                self.shape_extra_mask_attr, 
-                                                                name="extra_mask_attr_gm", 
-                                                                scope=tik.scope_gm)
+                                                               self.shape_extra_mask_attr, 
+                                                               name="extra_mask_attr_gm", 
+                                                               scope=tik.scope_gm)
 
         # 输入8：用户自定义的附加属性filter，可选。
         if self.use_extra_val is True:
@@ -135,10 +135,10 @@ class DistanceBatchMaskGenerator:
                                                                 init_value=0)
                                              
         # 输出1：距离结果掩码
-        self.distance_mask_gm       = self.tik_instance.Tensor(self.dtype_distance_mask, 
-                                                               self.shape_distance_mask, 
-                                                               name="distance_mask_gm", 
-                                                               scope=tik.scope_gm)
+        self.distance_mask_gm = self.tik_instance.Tensor(self.dtype_distance_mask, 
+                                                         self.shape_distance_mask, 
+                                                         name="distance_mask_gm", 
+                                                         scope=tik.scope_gm)
         self.use_base_mask = False
 
     def set_basemask(self, base_mask):
@@ -149,8 +149,8 @@ class DistanceBatchMaskGenerator:
                                                      name="base_mask_gm", scope=tik.scope_gm)
     
     def set_optimize_policy(self):
-        self.db_stride_each_call    = 8192
-        self.core_num               = AI_CORE_NUM * 2
+        self.db_stride_each_call = 8192
+        self.core_num = AI_CORE_NUM * 2
 
     def check_settings(self):
         if (self.total_db_num % self.db_stride_each_call != 0):
@@ -255,19 +255,19 @@ class DistanceBatchMaskGenerator:
                       所以每个任务处理total_stride_cnt // self.core_num个stride。
                       简单起见，最后一个任务处理不整除部分的stride。
         """
-        total_stride_cnt        = self.total_db_num // self.db_stride_each_call
-        stride_cnt_each_core    = total_stride_cnt // self.core_num
-        stride_cnt_last_remain  = total_stride_cnt % self.core_num
+        total_stride_cnt = self.total_db_num // self.db_stride_each_call
+        stride_cnt_each_core = total_stride_cnt // self.core_num
+        stride_cnt_last_remain = total_stride_cnt % self.core_num
 
         start_time_stamp_sc = self.tik_instance.Scalar(dtype="int32", 
                                                        name="start_time_stamp_sc", 
                                                        init_value=0)
-        end_time_stamp_sc   = self.tik_instance.Scalar(dtype="int32", 
-                                                       name="end_time_stamp_sc", 
-                                                       init_value=0)
+        end_time_stamp_sc = self.tik_instance.Scalar(dtype="int32", 
+                                                     name="end_time_stamp_sc", 
+                                                     init_value=0)
 
-        db_vector_offset_sc     = self.tik_instance.Scalar(dtype="uint32")
-        db_vector_cnt_sc        = self.tik_instance.Scalar(dtype="uint32")
+        db_vector_offset_sc = self.tik_instance.Scalar(dtype="uint32")
+        db_vector_cnt_sc = self.tik_instance.Scalar(dtype="uint32")
         db_vector_offset_sc.set_as(task_id * stride_cnt_each_core * self.db_stride_each_call)
         with self.tik_instance.if_scope(task_id != (self.core_num - 1)):
             db_vector_cnt_sc.set_as(stride_cnt_each_core * self.db_stride_each_call)
@@ -276,14 +276,14 @@ class DistanceBatchMaskGenerator:
 
 
         with self.tik_instance.for_range(0, self.batch_size) as bid:
-            query_token_set_ub  = self.tik_instance.Tensor("uint8", 
-                                                            (div_up(self.shape_query_token_set[1], 32) * 32, ),
-                                                            name="query_token_set_ub",
-                                                            scope=tik.scope_ubuf)
+            query_token_set_ub = self.tik_instance.Tensor("uint8", 
+                                                          (div_up(self.shape_query_token_set[1], 32) * 32, ),
+                                                          name="query_token_set_ub",
+                                                          scope=tik.scope_ubuf)
             query_time_stamp_ub = self.tik_instance.Tensor("int32",
-                                                            (8, ),
-                                                            name="query_time_stamp_ub",
-                                                            scope=tik.scope_ubuf)
+                                                           (8, ),
+                                                           name="query_time_stamp_ub",
+                                                           scope=tik.scope_ubuf)
             extra_mask_attr_ub = self.tik_instance.Tensor("int32", 
                                                           (8, ),
                                                           name="extra_mask_attr_ub",
@@ -298,21 +298,21 @@ class DistanceBatchMaskGenerator:
                                                            name="extra_val_filter_ub",
                                                            scope=tik.scope_ubuf)
             # 读取查询开始时间戳和结束时间戳
-            self.tik_instance.data_move(query_time_stamp_ub[0 :],
-                                       self.query_time_stamp_gm[bid, 0],
-                                       0, 
-                                       1, 1, 0, 0)
+            self.tik_instance.data_move(query_time_stamp_ub[0:],
+                                        self.query_time_stamp_gm[bid, 0],
+                                        0, 
+                                        1, 1, 0, 0)
             start_time_stamp_sc.set_as(query_time_stamp_ub[0])
             end_time_stamp_sc.set_as(query_time_stamp_ub[1])
             # 读取查询token id集
-            self.tik_instance.data_move(query_token_set_ub[0 :],
+            self.tik_instance.data_move(query_token_set_ub[0:],
                                         self.query_token_set_gm[bid, 0],
                                         0, 
                                         1, query_token_set_ub.shape[0] // 32,
                                         0, 0)
             
             if self.use_extra_val is True:
-                self.tik_instance.data_move(extra_val_filter_ub_tmp[0 :],
+                self.tik_instance.data_move(extra_val_filter_ub_tmp[0:],
                                             self.extra_val_filter_gm[bid, 0],
                                             0, 1, 1, 0, 0)
 
@@ -327,16 +327,16 @@ class DistanceBatchMaskGenerator:
                     self.tik_instance.data_move(extra_mask_attr_ub, self.extra_mask_attr_gm, 0, 1, 1, 0, 0)
 
             self.compute_distance_mask_each_task(start_time_stamp_sc,
-                                                end_time_stamp_sc,
-                                                query_token_set_ub,
-                                                extra_val_filter_ub,
-                                                self.db_time_stamp_gm[db_vector_offset_sc :],
-                                                self.db_divisor_gm[db_vector_offset_sc :],
-                                                self.db_remainder_gm[db_vector_offset_sc * 2 :],
-                                                db_vector_cnt_sc,
-                                                db_vector_offset_sc,
-                                                bid,
-                                                extra_mask_attr_ub)
+                                                 end_time_stamp_sc,
+                                                 query_token_set_ub,
+                                                 extra_val_filter_ub,
+                                                 self.db_time_stamp_gm[db_vector_offset_sc:],
+                                                 self.db_divisor_gm[db_vector_offset_sc:],
+                                                 self.db_remainder_gm[db_vector_offset_sc * 2:],
+                                                 db_vector_cnt_sc,
+                                                 db_vector_offset_sc,
+                                                 bid,
+                                                 extra_mask_attr_ub)
     
     def compute_distance_mask_each_task(self,
                                         query_start_time, 
@@ -366,20 +366,20 @@ class DistanceBatchMaskGenerator:
             extra_mask_attr: 自定义mask的属性信息
         """
         # 时间戳比较的结果
-        time_stamp_cmp_res_ub   = self.tik_instance.Tensor("uint8",
-                                                           (self.db_stride_each_call // 8,),
-                                                           name="time_stamp_cmp_res_ub",
-                                                           scope=tik.scope_ubuf)
+        time_stamp_cmp_res_ub = self.tik_instance.Tensor("uint8",
+                                                         (self.db_stride_each_call // 8,),
+                                                         name="time_stamp_cmp_res_ub",
+                                                         scope=tik.scope_ubuf)
         # token id比较的结果
-        token_cmp_res_ub        = self.tik_instance.Tensor("uint8",
-                                                           (self.db_stride_each_call // 8,),
-                                                           name="token_cmp_res_ub",
-                                                           scope=tik.scope_ubuf)
+        token_cmp_res_ub = self.tik_instance.Tensor("uint8",
+                                                    (self.db_stride_each_call // 8,),
+                                                    name="token_cmp_res_ub",
+                                                    scope=tik.scope_ubuf)
         # 以上两个结果做与计算后的最终结果
-        dst_res_ub              = self.tik_instance.Tensor("uint8",
-                                                           (self.db_stride_each_call // 8,),
-                                                           name="dst_res_ub",
-                                                           scope=tik.scope_ubuf)
+        dst_res_ub = self.tik_instance.Tensor("uint8",
+                                              (self.db_stride_each_call // 8,),
+                                              name="dst_res_ub",
+                                              scope=tik.scope_ubuf)
         
         base_mask_uint8_ub = self.tik_instance.Tensor("uint8", (self.db_stride_each_call // 8,),
                                                       name="base_mask_uint8_ub", scope=tik.scope_ubuf)
@@ -391,29 +391,29 @@ class DistanceBatchMaskGenerator:
                                                   scope=tik.scope_ubuf)
 
         # 判断是否需要进行时间戳属性过滤
-        enable_time_filter_sc   = self.tik_instance.Scalar(dtype="int32",
-                                                           name="enable_time_filter_sc",
-                                                           init_value=1)
+        enable_time_filter_sc = self.tik_instance.Scalar(dtype="int32",
+                                                         name="enable_time_filter_sc",
+                                                         init_value=1)
         with self.tik_instance.if_scope(tik.all(query_start_time == 0, query_end_time == -INT_MAX)):
             enable_time_filter_sc.set_as(0)
 
         time_stamp_cmp_res_ub_int16 = time_stamp_cmp_res_ub.reinterpret_cast_to("int16")
-        token_cmp_res_ub_int16      = token_cmp_res_ub.reinterpret_cast_to("int16")
-        dst_res_ub_int16            = dst_res_ub.reinterpret_cast_to("int16")
-        dst_res_ub_uint8            = dst_res_ub.reinterpret_cast_to("uint8")
+        token_cmp_res_ub_int16 = token_cmp_res_ub.reinterpret_cast_to("int16")
+        dst_res_ub_int16 = dst_res_ub.reinterpret_cast_to("int16")
+        dst_res_ub_uint8 = dst_res_ub.reinterpret_cast_to("uint8")
        
-        loop_times  = db_vector_cnt // self.db_stride_each_call
+        loop_times = db_vector_cnt // self.db_stride_each_call
         with self.tik_instance.for_range(0, loop_times) as lid:
             with self.tik_instance.if_scope(enable_time_filter_sc == 1):
                 self.compare_time_stamp(query_start_time, query_end_time, 
-                                        db_time_stamp_gm[lid * self.db_stride_each_call :], 
+                                        db_time_stamp_gm[lid * self.db_stride_each_call:], 
                                         self.db_stride_each_call, 
                                         time_stamp_cmp_res_ub)
             
             with self.tik_instance.for_range(0, 1):
                 self.compare_token_id(query_token_set, 
-                                      db_divisor_gm[lid * self.db_stride_each_call :],
-                                      db_remainder_gm[lid * self.db_stride_each_call * 2 :],
+                                      db_divisor_gm[lid * self.db_stride_each_call:],
+                                      db_remainder_gm[lid * self.db_stride_each_call * 2:],
                                       self.db_stride_each_call,
                                       token_cmp_res_ub)
             
@@ -430,9 +430,9 @@ class DistanceBatchMaskGenerator:
                 last_remain = dst_res_ub_int16.shape[0] % 128
                 with self.tik_instance.if_scope(last_remain != 0):
                     self.tik_instance.vand(last_remain,
-                                           dst_res_ub_int16[repeat * 128 :],
-                                           time_stamp_cmp_res_ub_int16[repeat * 128 :],
-                                           token_cmp_res_ub_int16[repeat * 128 :],
+                                           dst_res_ub_int16[repeat * 128:],
+                                           time_stamp_cmp_res_ub_int16[repeat * 128:],
+                                           token_cmp_res_ub_int16[repeat * 128:],
                                            1,
                                            1, 1, 1, 8, 8, 8)
             with self.tik_instance.else_scope():
@@ -490,9 +490,9 @@ class DistanceBatchMaskGenerator:
                                    1, 1, 1, 8, 8, 8)
         with self.tik_instance.if_scope(last_remain != 0):
             self.tik_instance.vand(last_remain,
-                                   res_ub[repeat * 128 :],
-                                   extra_val_filter_ub[repeat * 128 :],
-                                   extra_val_attr_ub[repeat * 128 :],
+                                   res_ub[repeat * 128:],
+                                   extra_val_filter_ub[repeat * 128:],
+                                   extra_val_attr_ub[repeat * 128:],
                                    1, 1, 1, 1, 8, 8, 8)
         
         mask_val_ub = self.tik_instance.Tensor("uint8",
@@ -521,9 +521,9 @@ class DistanceBatchMaskGenerator:
         last_remain = dst_res_ub_int16.shape[0] % 128
         with self.tik_instance.if_scope(last_remain != 0):
             self.tik_instance.vand(last_remain,
-                                   dst_res_ub_int16[repeat * 128 :],
-                                   mask_val_ub_int16[repeat * 128 :],
-                                   dst_res_ub_int16[repeat * 128 :],
+                                   dst_res_ub_int16[repeat * 128:],
+                                   mask_val_ub_int16[repeat * 128:],
+                                   dst_res_ub_int16[repeat * 128:],
                                    1, 1, 1, 1, 8, 8, 8)
 
     def compute_model0(self, extra_val_filter_ub, res_ub, mask_val_ub):
@@ -606,7 +606,7 @@ class DistanceBatchMaskGenerator:
                                          self.extra_mask_gm[batch_id * extra_mask_len + current_offset:],
                                          valid_mask_len_sc)
         with self.tik_instance.else_scope():
-            self.tik_instance.vec_dup(128, dst_res_ub_int16, 0,  dst_res_ub_int16.shape[0] // 128, 8)
+            self.tik_instance.vec_dup(128, dst_res_ub_int16, 0, dst_res_ub_int16.shape[0] // 128, 8)
 
     def process_with_base_mask(self, base_mask_uint8_ub, dst_res_ub_int16):
         base_mask_int16_ub = base_mask_uint8_ub.reinterpret_cast_to("int16")
@@ -650,9 +650,9 @@ class DistanceBatchMaskGenerator:
         last_remain = (actual_mask_len + 1) // 2 % 128
         with self.tik_instance.if_scope(last_remain != 0):
             self.tik_instance.vand(last_remain,
-                                   dst_ub_int16[repeat * 128 :],
-                                   extra_mask_ub_int16[repeat * 128 :],
-                                   dst_ub_int16[repeat * 128 :],
+                                   dst_ub_int16[repeat * 128:],
+                                   extra_mask_ub_int16[repeat * 128:],
+                                   dst_ub_int16[repeat * 128:],
                                    1,
                                    1, 1, 1, 8, 8, 8)        
     
@@ -664,33 +664,33 @@ class DistanceBatchMaskGenerator:
                            res_ub):
         aligned_cnt = res_ub.shape[0]
 
-        res_ub1     = self.tik_instance.Tensor("uint8",
-                                               (aligned_cnt,),
-                                               name="res_ub1",
-                                               scope=tik.scope_ubuf)
-        res_ub2     = self.tik_instance.Tensor("uint8",
-                                               (aligned_cnt,),
-                                               name="res_ub2",
-                                               scope=tik.scope_ubuf)
+        res_ub1 = self.tik_instance.Tensor("uint8",
+                                           (aligned_cnt,),
+                                           name="res_ub1",
+                                           scope=tik.scope_ubuf)
+        res_ub2 = self.tik_instance.Tensor("uint8",
+                                           (aligned_cnt,),
+                                           name="res_ub2",
+                                           scope=tik.scope_ubuf)
         # 加载底库特征向量对应的时间戳信息
-        db_time_stamp_ub    = self.tik_instance.Tensor("int32",
-                                                       (aligned_cnt * 8, ),
-                                                       name="db_time_stamp_ub",
-                                                       scope=tik.scope_ubuf)
+        db_time_stamp_ub = self.tik_instance.Tensor("int32",
+                                                    (aligned_cnt * 8, ),
+                                                    name="db_time_stamp_ub",
+                                                    scope=tik.scope_ubuf)
         self.tik_instance.data_move(db_time_stamp_ub[0],
                                     db_time_stamp_gm[0],
                                     0,
                                     1, db_vector_cnt * 4 // 32,
                                     0, 0)
         # 分别减去起始时间戳和结束时间戳
-        db_time_stamp_ub1    = self.tik_instance.Tensor("int32",
-                                                        (aligned_cnt * 8, ),
-                                                        name="db_time_stamp_ub1",
-                                                        scope=tik.scope_ubuf)
-        db_time_stamp_ub2    = self.tik_instance.Tensor("int32",
-                                                        (aligned_cnt * 8, ),
-                                                        name="db_time_stamp_ub2",
-                                                        scope=tik.scope_ubuf)
+        db_time_stamp_ub1 = self.tik_instance.Tensor("int32",
+                                                     (aligned_cnt * 8, ),
+                                                     name="db_time_stamp_ub1",
+                                                     scope=tik.scope_ubuf)
+        db_time_stamp_ub2 = self.tik_instance.Tensor("int32",
+                                                     (aligned_cnt * 8, ),
+                                                     name="db_time_stamp_ub2",
+                                                     scope=tik.scope_ubuf)
         repeat = db_vector_cnt // 64
         self.tik_instance.vadds(64, 
                                 db_time_stamp_ub1, 
@@ -723,31 +723,31 @@ class DistanceBatchMaskGenerator:
                                 1, 1, 8, 8)
 
         # 比较操作
-        repeat         = db_vector_cnt // 64
+        repeat = db_vector_cnt // 64
         with self.tik_instance.if_scope(repeat != 0):
-            self.tik_instance.vcmpvs_ge(res_ub1[0 :],
-                                        db_time_stamp_ub1_fp32[0 :],
+            self.tik_instance.vcmpvs_ge(res_ub1[0:],
+                                        db_time_stamp_ub1_fp32[0:],
                                         0.0,
                                         repeat,
                                         1, 8)
-            self.tik_instance.vcmpvs_le(res_ub2[0 :],
-                                        db_time_stamp_ub2_fp32[0 :],
+            self.tik_instance.vcmpvs_le(res_ub2[0:],
+                                        db_time_stamp_ub2_fp32[0:],
                                         0.0,
                                         repeat,
                                         1, 8)
         # 与操作：由于vand指令只支持uint16/int16类型，所以这里先做个转换。
-        res_ub1_int16   = res_ub1.reinterpret_cast_to("int16")
-        res_ub2_int16   = res_ub2.reinterpret_cast_to("int16")
-        res_ub_int16    = res_ub.reinterpret_cast_to("int16")
+        res_ub1_int16 = res_ub1.reinterpret_cast_to("int16")
+        res_ub2_int16 = res_ub2.reinterpret_cast_to("int16")
+        res_ub_int16 = res_ub.reinterpret_cast_to("int16")
 
-        repeat      = (aligned_cnt // 2) // 128
+        repeat = (aligned_cnt // 2) // 128
         with self.tik_instance.if_scope(repeat != 0):
             self.tik_instance.vand(128, res_ub_int16, res_ub1_int16, res_ub2_int16, repeat,
                                    1, 1, 1, 8, 8, 8)
         last_remain = (aligned_cnt // 2) % 128
         with self.tik_instance.if_scope(last_remain != 0):
-            self.tik_instance.vand(last_remain, res_ub_int16[repeat * 128 :], res_ub1_int16[repeat * 128 :],
-                                   res_ub2_int16[repeat * 128 :],
+            self.tik_instance.vand(last_remain, res_ub_int16[repeat * 128:], res_ub1_int16[repeat * 128:],
+                                   res_ub2_int16[repeat * 128:],
                                    1, 1, 1, 1, 8, 8, 8)       
         
     def compare_token_id(self, 
@@ -771,16 +771,16 @@ class DistanceBatchMaskGenerator:
                                                           name="tmp_remainder_ub_int16",
                                                           scope=tik.scope_ubuf)
 
-        db_remainder_ub_uint8       = db_remainder_ub_int16.reinterpret_cast_to("uint8")
-        query_token_set_int16       = query_token_set.reinterpret_cast_to("int16")
+        db_remainder_ub_uint8 = db_remainder_ub_int16.reinterpret_cast_to("uint8")
+        query_token_set_int16 = query_token_set.reinterpret_cast_to("int16")
 
         self.tik_instance.data_move(db_remainder_ub_uint8[0:],
                                     db_remainder_gm[0:],
                                     0,
                                     1, db_vector_cnt * 2 // 32,
                                     0, 0)
-        self.tik_instance.data_move(db_divisor_ub_int32[0 :],
-                                    db_divisor_gm[0 :],
+        self.tik_instance.data_move(db_divisor_ub_int32[0:],
+                                    db_divisor_gm[0:],
                                     0,
                                     1, db_vector_cnt * 4 // 32,
                                     0, 0)

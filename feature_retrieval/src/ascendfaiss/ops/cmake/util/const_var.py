@@ -41,6 +41,6 @@ if ! test -f $2/{res_file} ; then
 fi
 '''
 ATTR_DEF_VAL = {
-    'str' : '', 'int': 0, 'float': 0.0, 'bool': False, 'list_bool': [], 'list_int': [],
+    'str': '', 'int': 0, 'float': 0.0, 'bool': False, 'list_bool': [], 'list_int': [],
     'list_float': [], 'list_list_int': [[]]
 }

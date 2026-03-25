@@ -63,6 +63,8 @@ class DistanceInt8CosMaxs:
         self.block_offset = None
         self.mask_len = None
         self.use_mask = None
+        self.centroids_num_last_core = None
+        self.centroids_num_each_core = None
 
         # set vector fp32 mask and fp16 mask
         self.int32_mask = 64
@@ -182,12 +184,12 @@ class DistanceInt8CosMaxs:
         code_size.set_as(actual_num_ub[4])
 
         if self.aicore_use == 2:
-            self.centroids_num_each_core = (actual_num  // self.aicore_use + self.max_mask * 8) \
+            self.centroids_num_each_core = (actual_num // self.aicore_use + self.max_mask * 8) \
                     // self.max_mask // 16 * self.max_mask * 16
         else:
-            self.centroids_num_each_core = actual_num  // self.aicore_use // self.max_mask // 16 * self.max_mask * 16
+            self.centroids_num_each_core = actual_num // self.aicore_use // self.max_mask // 16 * self.max_mask * 16
 
-        self.centroids_num_last_core = actual_num  - (self.aicore_use - 1) * self.centroids_num_each_core
+        self.centroids_num_last_core = actual_num - (self.aicore_use - 1) * self.centroids_num_each_core
 
 
     def distance_compute_each_loop(self, aicore_move_offset, aicore_centroids_num, queries_offset, move_num):
