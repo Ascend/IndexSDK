@@ -372,7 +372,7 @@ namespace aicpu  {
                     for (size_t j = 0; j < offset; j++) {
                         uint64_t realIdX = realIds[j] / 8;
                         uint64_t realIdY = realIds[j] % 8;
-                        if (inmaskBit[realIdX] & (1 << realIdY)) {
+                        if ((inmaskBit[realIdX] & (1 << realIdY)) != 0) {
                             outmaskByte[outNormL2OffsetMask[i * STORE_INTERVAL] + j] = 1;
                         } else {
                             outmaskByte[outNormL2OffsetMask[i * STORE_INTERVAL] + j] = 0;

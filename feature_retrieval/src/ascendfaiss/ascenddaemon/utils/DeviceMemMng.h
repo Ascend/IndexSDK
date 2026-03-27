@@ -46,7 +46,7 @@ public:
     std::unique_ptr<DeviceVector<T, P>> CreateDeviceVector(MemorySpace space = MemorySpace::DEVICE) const
     {
         if (strategy == DevMemStrategy::PURE_DEVICE_MEM) {
-            return std::unique_ptr<DeviceVector<T, P>>(new DeviceVector<T, P>(space));
+            return std::make_unique<DeviceVector<T, P>>(space);
         }
 
         if (hmm == nullptr) {
@@ -54,7 +54,7 @@ public:
             return nullptr;
         }
 
-        return std::unique_ptr<DeviceVector<T, P>>(new DeviceVector<T, P>(hmm));
+        return std::make_unique<DeviceVector<T, P>>(hmm);
     }
 
     // 异构内存策略下，需要将填充满的内存块由device侧推送至目标存储位置（device/host）

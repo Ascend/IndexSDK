@@ -205,7 +205,7 @@ bool StandardAscendResources::isInitialized() const
     return defaultStream != nullptr;
 }
 
-size_t StandardAscendResources::getDefaultTempMemSize(size_t requested)
+size_t StandardAscendResources::getDefaultTempMemSize(size_t requested) const
 {
     return (requested > MAX_TEMP_MEM) ? MAX_TEMP_MEM : requested;
 }

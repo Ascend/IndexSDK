@@ -134,7 +134,7 @@ public:
     virtual AscendMemory& getMemoryManager();
 
 protected:
-    size_t getDefaultTempMemSize(size_t requested);
+    size_t getDefaultTempMemSize(size_t requested) const;
 
 protected:
     /// Another option is to use a specified amount of memory

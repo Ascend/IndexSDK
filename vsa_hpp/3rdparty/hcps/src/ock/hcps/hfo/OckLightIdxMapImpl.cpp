@@ -333,7 +333,7 @@ public:
         }
     }
 
-    uint64_t InnerValidSize()
+    uint64_t InnerValidSize() const
     {
         return innerValidSize;
     }
