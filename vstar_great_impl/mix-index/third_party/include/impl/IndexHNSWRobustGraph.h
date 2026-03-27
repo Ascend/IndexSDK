@@ -24,6 +24,7 @@
 #include <map>
 
 #include <faiss/IndexFlat.h>
+#include <faiss/impl/VisitedTable.h>
 #include <faiss/VectorTransform.h>
 
 #include "impl/HNSWRobustGraph.h"
