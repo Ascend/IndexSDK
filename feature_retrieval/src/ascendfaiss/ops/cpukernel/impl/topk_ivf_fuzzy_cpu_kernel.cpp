@@ -275,7 +275,7 @@ void TopkIvfFuzzyCpuKernel::DoCompute(size_t tcnt, size_t tid, const Inputs &inp
 
 int64_t TopkIvfFuzzyCpuKernel::GetRealLabelByIndex(const int64_t *ids, int64_t index) const
 {
-    const uint32_t segIdx = index >> INDEX_OFFSET_BIT;
+    const uint32_t segIdx = static_cast<uint32_t>(index) >> INDEX_OFFSET_BIT;
     const uint32_t idx = static_cast<uint32_t>(index) % l3SegSize_;
     int64_t *id = reinterpret_cast<int64_t *>(*(ids + segIdx));
     return id[idx];

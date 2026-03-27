@@ -37,21 +37,16 @@ public:
 
     void InitSearchPipeline()
     {
-        searchPipelineQuery = std::unique_ptr<std::vector<int8_t>>(new std::vector<int8_t>());
-        searchPipelineQueryPrev = std::unique_ptr<std::vector<int8_t>>(new std::vector<int8_t>());
-        searchPipelineQueryNorm = std::unique_ptr<std::vector<float>>(new std::vector<float>());
-        searchPipelineQueryNormPrev = std::unique_ptr<std::vector<float>>(new std::vector<float>());
-        searchPipelineDist = std::unique_ptr<std::vector<std::vector<float>>>(new std::vector<std::vector<float>>());
-        searchPipelineDistPrev =
-            std::unique_ptr<std::vector<std::vector<float>>>(new std::vector<std::vector<float>>());
-        searchPipelineDistHalf =
-            std::unique_ptr<std::vector<std::vector<uint16_t>>>(new std::vector<std::vector<uint16_t>>());
-        searchPipelineDistHalfPrev =
-            std::unique_ptr<std::vector<std::vector<uint16_t>>>(new std::vector<std::vector<uint16_t>>());
-        searchPipelineLabel =
-            std::unique_ptr<std::vector<std::vector<ascend_idx_t>>>(new std::vector<std::vector<ascend_idx_t>>());
-        searchPipelineLabelPrev =
-            std::unique_ptr<std::vector<std::vector<ascend_idx_t>>>(new std::vector<std::vector<ascend_idx_t>>());
+        searchPipelineQuery = std::make_unique<std::vector<int8_t>>();
+        searchPipelineQueryPrev = std::make_unique<std::vector<int8_t>>();
+        searchPipelineQueryNorm = std::make_unique<std::vector<float>>();
+        searchPipelineQueryNormPrev = std::make_unique<std::vector<float>>();
+        searchPipelineDist = std::make_unique<std::vector<std::vector<float>>>();
+        searchPipelineDistPrev = std::make_unique<std::vector<std::vector<float>>>();
+        searchPipelineDistHalf = std::make_unique<std::vector<std::vector<uint16_t>>>();
+        searchPipelineDistHalfPrev = std::make_unique<std::vector<std::vector<uint16_t>>>();
+        searchPipelineLabel = std::make_unique<std::vector<std::vector<ascend_idx_t>>>();
+        searchPipelineLabelPrev = std::make_unique<std::vector<std::vector<ascend_idx_t>>>();
     }
 
     void SearchPipelinePrepare(int n, int k, const int8_t *x, size_t offset) const

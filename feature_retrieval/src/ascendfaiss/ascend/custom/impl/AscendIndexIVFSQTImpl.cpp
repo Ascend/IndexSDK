@@ -200,34 +200,23 @@ void AscendIndexIVFSQTImpl::trainQuantizer(faiss::idx_t n, const float *x, bool 
 
 void AscendIndexIVFSQTImpl::initSearchPipeline()
 {
-    searchPipelineQuery = std::unique_ptr<std::vector<uint16_t>>(new std::vector<uint16_t>());
-    searchPipelineQueryPrev = std::unique_ptr<std::vector<uint16_t>>(new std::vector<uint16_t>());
-    searchPipelineQueries =
-        std::unique_ptr<std::vector<std::vector<uint16_t>>>(new std::vector<std::vector<uint16_t>>());
-    searchPipelineQueriesPrev =
-        std::unique_ptr<std::vector<std::vector<uint16_t>>>(new std::vector<std::vector<uint16_t>>());
-    searchPipelineDist = std::unique_ptr<std::vector<std::vector<float>>>(new std::vector<std::vector<float>>());
-    searchPipelineDistPrev = std::unique_ptr<std::vector<std::vector<float>>>(new std::vector<std::vector<float>>());
-    searchPipelineDistHalf =
-        std::unique_ptr<std::vector<std::vector<uint16_t>>>(new std::vector<std::vector<uint16_t>>());
-    searchPipelineDistHalfPrev =
-        std::unique_ptr<std::vector<std::vector<uint16_t>>>(new std::vector<std::vector<uint16_t>>());
-    searchPipelineLabel =
-        std::unique_ptr<std::vector<std::vector<ascend_idx_t>>>(new std::vector<std::vector<ascend_idx_t>>());
-    searchPipelineLabelPrev =
-        std::unique_ptr<std::vector<std::vector<ascend_idx_t>>>(new std::vector<std::vector<ascend_idx_t>>());
+    searchPipelineQuery = std::make_unique<std::vector<uint16_t>>();
+    searchPipelineQueryPrev = std::make_unique<std::vector<uint16_t>>();
+    searchPipelineQueries = std::make_unique<std::vector<std::vector<uint16_t>>>();
+    searchPipelineQueriesPrev = std::make_unique<std::vector<std::vector<uint16_t>>>();
+    searchPipelineDist = std::make_unique<std::vector<std::vector<float>>>();
+    searchPipelineDistPrev = std::make_unique<std::vector<std::vector<float>>>();
+    searchPipelineDistHalf = std::make_unique<std::vector<std::vector<uint16_t>>>();
+    searchPipelineDistHalfPrev = std::make_unique<std::vector<std::vector<uint16_t>>>();
+    searchPipelineLabel = std::make_unique<std::vector<std::vector<ascend_idx_t>>>();
+    searchPipelineLabelPrev = std::make_unique<std::vector<std::vector<ascend_idx_t>>>();
     // Add DistancePopped and IndexPopped
-    searchPipelineDistPopped = std::unique_ptr<std::vector<std::vector<float>>>(new std::vector<std::vector<float>>());
-    searchPipelineDistPrevPopped =
-        std::unique_ptr<std::vector<std::vector<float>>>(new std::vector<std::vector<float>>());
-    searchPipelineDistHalfPopped =
-        std::unique_ptr<std::vector<std::vector<uint16_t>>>(new std::vector<std::vector<uint16_t>>());
-    searchPipelineDistHalfPrevPopped =
-        std::unique_ptr<std::vector<std::vector<uint16_t>>>(new std::vector<std::vector<uint16_t>>());
-    searchPipelineIndexPopped =
-        std::unique_ptr<std::vector<std::vector<ascend_idx_t>>>(new std::vector<std::vector<ascend_idx_t>>());
-    searchPipelineIndexPrevPopped =
-        std::unique_ptr<std::vector<std::vector<ascend_idx_t>>>(new std::vector<std::vector<ascend_idx_t>>());
+    searchPipelineDistPopped = std::make_unique<std::vector<std::vector<float>>>();
+    searchPipelineDistPrevPopped = std::make_unique<std::vector<std::vector<float>>>();
+    searchPipelineDistHalfPopped = std::make_unique<std::vector<std::vector<uint16_t>>>();
+    searchPipelineDistHalfPrevPopped = std::make_unique<std::vector<std::vector<uint16_t>>>();
+    searchPipelineIndexPopped = std::make_unique<std::vector<std::vector<ascend_idx_t>>>();
+    searchPipelineIndexPrevPopped = std::make_unique<std::vector<std::vector<ascend_idx_t>>>();
 }
 
 void AscendIndexIVFSQTImpl::searchPipelinePrepareSingleDevice(int idx, int n, int k, const float *x,
@@ -1293,7 +1282,7 @@ void AscendIndexIVFSQTImpl::trainHostBaseSubClusterFor310(int numThreads)
 
         std::vector<faiss::idx_t> label;
         label.reserve(listLen);
-        std::unique_ptr<faiss::IndexFlat> subCpuQuantizer(new faiss::IndexFlatL2(dimIn));
+        std::unique_ptr<faiss::IndexFlat> subCpuQuantizer(std::make_unique<faiss::IndexFlatL2>(dimIn));
         int subnlist = subcenterNum;
         AssignParam param { static_cast<size_t>(i), listLen, orilistLen, thisThread, upToNumThres, baseData.get(),
             oribaseIds, quantCodes, *subCpuQuantizer, label, values };
@@ -1998,7 +1987,7 @@ void AscendIndexIVFSQTImpl::trainHostBaseSubCluster(std::vector<int> &listsPerDe
                 adaptiveSubCenters.data() + listId * subcenterNum * dimIn);
             if (listLen > MAX_CLUS_POINTS) {
                 std::vector<faiss::idx_t> label;
-                std::unique_ptr<faiss::IndexFlat> subCpuQuantizer(new faiss::IndexFlatL2(dimIn));
+                std::unique_ptr<faiss::IndexFlat> subCpuQuantizer(std::make_unique<faiss::IndexFlatL2>(dimIn));
                 subCpuQuantizer->add(curCentNum, tmpStackCentroids.data() + curCentPos);
 
                 int segNums = (static_cast<int>(listLen) + MAX_CLUS_POINTS - 1) / MAX_CLUS_POINTS;
@@ -2114,7 +2103,7 @@ void AscendIndexIVFSQTImpl::deviceBaseAssignSub(int num)
                 sqIn.decode(globalInCodesDevice.data() + (ascend_idx_t(deviceBaseI[j]) - deviceDataNums) * dimIn,
                     baseData.get(), 1);
                 std::vector<faiss::idx_t> label(1, 0);
-                std::unique_ptr<faiss::IndexFlat> subCpuQuantizer(new faiss::IndexFlatL2(dimIn));
+                std::unique_ptr<faiss::IndexFlat> subCpuQuantizer(std::make_unique<faiss::IndexFlatL2>(dimIn));
                 subCpuQuantizer->add(subcenterNum, adaptiveSubCenters.data() + listId * subcenterNum * dimIn);
                 subCpuQuantizer->assign(1, baseData.get(), label.data());
                 allLabels[listId * subcenterNum + label[0]].push_back(deviceBaseIRemap);

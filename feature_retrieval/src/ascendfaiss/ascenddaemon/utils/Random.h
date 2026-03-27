@@ -21,7 +21,7 @@
 #define ASCEND_RANDOM_GEN_INCLUDED
 
 #include <random>
-#include <stdint.h>
+#include <cstdint>
 
 namespace ascend {
 struct RandomGenerator {

@@ -35,7 +35,7 @@
 #include "ErrorCode.h"
 
 #define CREATE_UNIQUE_PTR(type, args...) \
-    std::unique_ptr<type>(new type(args))
+    std::make_unique<type>(args)
 
 namespace {
 constexpr int32_t MAX_THREAD_NUM = 256;

@@ -45,7 +45,7 @@ public:
     // BatchDelete和Delete的区别是增加了尾部拷贝动作和批处理
     virtual void BatchDeleteByInnerId(const std::vector<uint64_t> &innerIds, const std::vector<uint64_t> &copyIds,
         uint32_t count) = 0;
-    virtual uint64_t InnerValidSize() = 0;
+    virtual uint64_t InnerValidSize() const = 0;
     virtual bool InOutterMap(uint64_t outterIdx) = 0;
     /*
     @brief 按照内部idx，删除前count条数据。

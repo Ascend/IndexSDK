@@ -329,7 +329,7 @@ namespace aicpu {
         int64_t idxMulti = 0;
         int64_t burstIdx = 0;
         int64_t burstSize = ntotal / burstLen_;
-        if (!quickTopk_) {
+        if (quickTopk_ == 0) {
             for (int64_t i = burstIdx; i < burstSize; ++i) {
                 if (!cmp(outdists[0], vmdists[i * 2])) { // vmdists[i*2] is dists, vmdists[i*2+1] is label
                     // skip one burst

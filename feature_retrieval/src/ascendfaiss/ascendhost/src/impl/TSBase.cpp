@@ -37,7 +37,7 @@ APP_ERROR TSBase::initialize(int deviceId)
     auto aclErrorCode = aclrtSetDevice(deviceId);
     APPERR_RETURN_IF_NOT(aclErrorCode == ACL_SUCCESS, APP_ERR_INNER_ERROR);
     try {
-        pResources = std::unique_ptr<AscendResourcesProxy>(new AscendResourcesProxy());
+        pResources = std::make_unique<AscendResourcesProxy>();
     } catch (AscendException &e) {
         return APP_ERR_INNER_ERROR;
     }

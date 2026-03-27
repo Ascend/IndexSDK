@@ -259,7 +259,7 @@ private:
 std::unique_ptr<HeteroBlockGroupMgr> HeteroBlockGroupMgr::Create(int64_t ntotal, int pageSize, int blockSize,
     DeviceStorgeInfo *deviceStorgeInfo, const std::vector<std::unique_ptr<DeviceVector<int8_t>>> &baseShaped)
 {
-    return std::unique_ptr<HeteroBlockGroupMgr>(new HeteroBlockGroupMgrImpl(ntotal, pageSize, blockSize,
-        deviceStorgeInfo, baseShaped));
+    return std::make_unique<HeteroBlockGroupMgrImpl>(ntotal, pageSize, blockSize,
+        deviceStorgeInfo, baseShaped);
 }
 }

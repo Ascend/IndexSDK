@@ -452,7 +452,7 @@ void AscendIndexIVFSQCImpl::split(int n, const float *x)
             partX.insert(partX.end(), x + assignResult[largeList[i]][j] * dimIn,
                 x + assignResult[largeList[i]][j] * dimIn + dimIn);
         }
-        std::unique_ptr<IndexFlat> partQuantizer(new IndexFlatL2(dimIn));
+        std::unique_ptr<IndexFlat> partQuantizer(std::make_unique<IndexFlatL2>(dimIn));
         Clustering clus(this->intf_->d, splitTime[i], this->finetuneConfig.cp);
         clus.train(elemCount[largeList[i]], partX.data(), *partQuantizer);
         for (auto j = 0; j < splitTime[i]; j++) {

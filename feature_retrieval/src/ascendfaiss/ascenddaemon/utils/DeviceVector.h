@@ -34,12 +34,12 @@ class DeviceVector {
 public:
     explicit DeviceVector(MemorySpace space = MemorySpace::DEVICE)
     {
-        memStrategy = std::unique_ptr<PureDevMemStrategy<T, P>>(new PureDevMemStrategy<T, P>(space));
+        memStrategy = std::make_unique<PureDevMemStrategy<T, P>>(space);
     }
 
     explicit DeviceVector(std::shared_ptr<HmmIntf> hmm)
     {
-        memStrategy = std::unique_ptr<HeteroMemStrategy<T, P>>(new HeteroMemStrategy<T, P>(hmm));
+        memStrategy = std::make_unique<HeteroMemStrategy<T, P>>(hmm);
     }
 
     ~DeviceVector() {}

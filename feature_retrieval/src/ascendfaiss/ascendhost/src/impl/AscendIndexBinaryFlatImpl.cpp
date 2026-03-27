@@ -92,7 +92,7 @@ void AscendIndexBinaryFlatImpl::Initialize()
 {
     APP_LOG_INFO("AscendIndexBinaryFlat Initialize operation started.\n");
     FAISS_THROW_IF_NOT(aclrtSetDevice(deviceId) == ACL_ERROR_NONE);
-    pResources = std::unique_ptr<AscendResourcesProxy>(new AscendResourcesProxy());
+    pResources = std::make_unique<AscendResourcesProxy>();
     pResources->setTempMemory(resourceSize);
     pResources->initialize();
     resetTopkCompOp();

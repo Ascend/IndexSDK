@@ -128,7 +128,7 @@ namespace optiling {
             HALF_SIZE;  // 64 * 64 * 16 * 2 / 1024 = 128K
 
         uint32_t moveTimesL1PerProbe = DIV_UP(codeBookUsefulByteSizePerProbe, CODEBOOKL1BSIZE);
-        uint32_t tailSizeL1PerProbe = (codeBookUsefulByteSizePerProbe % CODEBOOKL1BSIZE) ?
+        uint32_t tailSizeL1PerProbe = ((codeBookUsefulByteSizePerProbe % CODEBOOKL1BSIZE) != 0) ?
             (codeBookUsefulByteSizePerProbe % CODEBOOKL1BSIZE) : CODEBOOKL1BSIZE;
 
         tiling.set_moveTimesL1PerProbe(moveTimesL1PerProbe);
@@ -144,7 +144,7 @@ namespace optiling {
             static_cast<uint32_t>(subDim2) *
             HALF_SIZE; // 64 * 64 * 16 * 2 = 128K
         uint32_t moveTimesL0BPerBlockTail = DIV_UP(codeBookSizeL0BPerBlock, CODEBOOKL0BSIZE);
-        uint32_t remainSizeL0BPerBlock = (codeBookSizeL0BPerBlock % CODEBOOKL0BSIZE) ?
+        uint32_t remainSizeL0BPerBlock = ((codeBookSizeL0BPerBlock % CODEBOOKL0BSIZE) != 0) ?
             (codeBookSizeL0BPerBlock % CODEBOOKL0BSIZE) : CODEBOOKL0BSIZE;
         tiling.set_moveTimesL0BPerBlockTail(moveTimesL0BPerBlockTail);
         tiling.set_remainSizeL0BPerBlock(remainSizeL0BPerBlock);
