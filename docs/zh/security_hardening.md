@@ -24,14 +24,14 @@
 
 1. 以root用户登录服务器，编辑“/etc/profile”文件。
 
-    ```
+    ```bash
     vim /etc/profile
     ```
 
 2. 在“/etc/profile”文件末尾加上**umask 027**，保存并退出。
 3. 执行如下命令使配置生效。
 
-    ```
+    ```bash
     source /etc/profile
     ```
 

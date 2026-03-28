@@ -89,43 +89,43 @@ Index SDK软件架构如[图 软件架构](#fig883164172512)所示，架构图�
 <tr>
 <td rowspan="5">Atlas 推理系列产品</td>
 <td>Atlas 300I Pro 推理卡</td>
-<td><li>CentOS 7.6<li>openEuler 20.03<li>
-openEuler 22.03<li>openEuler 24.03<li>Ubuntu 18.04<li>Ubuntu 20.04<li>EulerOS 2.12<li>EulerOS 2.15<li>KylinOS V10 SP3 2403<li>KylinOS V11<li>CTyunOS 23.01<li>UOS V20</td>
+<td><li>CentOS 7.6</li><li>openEuler 20.03</li><li>
+openEuler 22.03</li><li>openEuler 24.03</li><li>Ubuntu 18.04</li><li>Ubuntu 20.04</li><li>EulerOS 2.12</li><li>EulerOS 2.15</li><li>KylinOS V10 SP3 2403</li><li>KylinOS V11</li><li>CTyunOS 23.01</li><li>UOS V20</li></td>
 </tr>
 <tr>
 <td>Atlas 300V 视频解析卡</td>
-<td><li>CentOS 7.6<li>openEuler 20.03<li>openEuler 22.03<li>Ubuntu 18.04<li>Ubuntu 20.04<li>EulerOS 2.12<li>UOS V20</td>
+<td><li>CentOS 7.6</li><li>openEuler 20.03</li><li>openEuler 22.03</li><li>Ubuntu 18.04</li><li>Ubuntu 20.04</li><li>EulerOS 2.12</li><li>UOS V20</li></td>
 </tr>
 <tr>
 <td>Atlas 300V Pro 视频解析卡</td>
-<td><li>CentOS 7.6<li>openEuler 20.03<li>openEuler 22.03<li>openEuler 24.03<li>Ubuntu 18.04<li>Ubuntu 20.04<li>EulerOS 2.12<li>CTyunOS 23.01<li>UOS V20</td>
+<td><li>CentOS 7.6</li><li>openEuler 20.03</li><li>openEuler 22.03</li><li>openEuler 24.03</li><li>Ubuntu 18.04</li><li>Ubuntu 20.04</li><li>EulerOS 2.12</li><li>CTyunOS 23.01</li><li>UOS V20</li></td>
 </tr>
 <tr>
 <td>Atlas 300I Duo 推理卡</td>
-<td><li>CentOS 7.6<li>Ubuntu 18.04<li>Ubuntu 20.04<li>EulerOS 2.12<li>EulerOS 2.15<li>KylinOS V10 SP3 2403<li>KylinOS V11<li>openEuler 24.03<li>CTyunOS 23.01<li>UOS V20</td>
+<td><li>CentOS 7.6</li><li>Ubuntu 18.04</li><li>Ubuntu 20.04</li><li>EulerOS 2.12</li><li>EulerOS 2.15</li><li>KylinOS V10 SP3 2403</li><li>KylinOS V11</li><li>openEuler 24.03</li><li>CTyunOS 23.01</li><li>UOS V20</li><li>UOS V25</li></td>
 </tr>
 <tr>
 <td>Atlas 200I SoC A1 核心板</td>
-<td><li>CentOS 7.6<li>openEuler 20.03<li>EulerOS 2.12</td>
+<td><li>CentOS 7.6</li><li>openEuler 20.03</li><li>EulerOS 2.12</li></td>
 </tr>
 <tr>
 <td rowspan="2">Atlas 200/300/500 推理产品</td>
 <td>Atlas 300I 推理卡（型号 3000）</td>
-<td><li>CentOS 7.6<li>openEuler 20.03<li>openEuler 22.03<li>Ubuntu 18.04<li>Ubuntu 20.04<li>EulerOS 2.12<li>UOS V20</td>
+<td><li>CentOS 7.6</li><li>openEuler 20.03</li><li>openEuler 22.03</li><li>Ubuntu 18.04</li><li>Ubuntu 20.04</li><li>EulerOS 2.12</li><li>UOS V20</li></td>
 </tr>
 <tr>
 <td>Atlas 300I 推理卡（型号 3010）</td>
-<td><li>CentOS 7.6<li>openEuler 20.03<li>openEuler 22.03<li>Ubuntu 18.04<li>Ubuntu 20.04<li>EulerOS 2.12<li>UOS V20</td>
+<td><li>CentOS 7.6</li><li>openEuler 20.03</li><li>openEuler 22.03</li><li>Ubuntu 18.04</li><li>Ubuntu 20.04</li><li>EulerOS 2.12</li><li>UOS V20</li></td>
 </tr>
 <tr>
 <td >Atlas A2 推理系列产品
 <br>说明：vAtlas A2 推理系列产品支持AscendIndexFlat及AscendIndexInt8Flat算法。</td>
 <td>Atlas 800I A2 推理服务器</td>
-<td><li>CentOS 7.6<li>openEuler 20.03<li>openEuler 22.03<li>openEuler 24.03<li>Ubuntu 18.04<li>Ubuntu 20.04<li>Ubuntu 24.04<li>EulerOS 2.12<li>UOS V20<li>KylinOS V10 SP3<li>KylinOS V11<li>BC-Linux_21.10 U4</td>
+<td><li>CentOS 7.6</li><li>openEuler 20.03</li><li>openEuler 22.03</li><li>openEuler 24.03</li><li>Ubuntu 18.04</li><li>Ubuntu 20.04</li><li>Ubuntu 24.04</li><li>EulerOS 2.12</li><li>EulerOS 2.15</li><li>UOS V20</li><li>UOS V25</li><li>KylinOS V10 SP3</li><li>KylinOS V11</li><li>BC-Linux_21.10 U4</li></td>
 </tr>
 <tr>
-<td >Atlas A3 推理系列产品<br>说明：当前仅支持AscendIndexFlat算法。</td>
+<td><term>Atlas A3 推理系列产品</term><br>说明：当前仅支持AscendIndexFlat算法。</td>
 <td>Atlas 800I A3 超节点服务器</td>
-<td><li>CUbuntu 18.04<li>CUlinux 3.0<li>KylinOS V10 SP3 2403<li>KylinOS V11</td>
+<td><li>CUbuntu 18.04</li><li>CUlinux 3.0</li><li>KylinOS V10 SP3 2403</li><li>KylinOS V11</li><li>CTyunOS 4</li><li>UOS V25</li></td>
 </tr>
 </table>
