@@ -35,7 +35,7 @@
 
 小库算法AscendIndexSQ可以根据一组数据进行训练并生成合适的量化函数，对于输入的float32的特征向量，AscendIndexSQ对其量化为Int8类型的特征向量并存储在Device侧以进一步压缩存储空间，在执行向量比对时，将Int8类型的向量反量化为原始的特征向量执行后续的计算，典型AscendIndexSQ的样例参考如下。
 
-```
+```cpp
 #include <faiss/ascend/AscendIndexSQ.h>
 #include <iostream>
 
@@ -81,7 +81,7 @@ IndexILFlat为纯Device侧检索方案，利用昇腾AI处理器和AI Core等资
 
 **参考用例代码<a id="section15454820982"></a>**
 
-```
+```cpp
 #include <IndexILFlat.h>
 #include <iostream>
 #include <numeric>
@@ -185,7 +185,7 @@ int main(int argc, char **argv)
 
     执行以下命令，会在Host侧“mxIndex/modelpath”目录下会生成相关算子文件，算子也需要部署到Device侧。
 
-    ```
+    ```bash
     cd mxIndex
     ./ops/custom*
     cd tools
@@ -197,7 +197,7 @@ int main(int argc, char **argv)
 
     在Index SDK工程内新建test路径（mxIndex/test），在test路径下创建“IndexILDemo.cpp”源文件，复制[参考用例代码](#section15454820982)，编译命令参考如下。
 
-    ```
+    ```bash
     /usr/local/Ascend/ascend-toolkit/latest/toolkit/toolchain/hcc/bin/aarch64-target-linux-gnu-g++ -fPIC -fPIE -fstack-protector-all -D_FORTIFY_SOURCE=2 -O2 \ 
     -o IndexILDemo IndexILDemo.cpp \ 
     -fopenmp -O3 -frename-registers -fpeel-loops -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack -pie -s \ 
@@ -244,7 +244,7 @@ int main(int argc, char **argv)
 
 3. 登录到Device侧，配置以下环境变量。
 
-    ```
+    ```bash
     # 配置环境变量
     export LD_LIBRARY_PATH=./lib:./lib64:./
     # 配置version.info文件所在的目录

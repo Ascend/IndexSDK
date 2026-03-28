@@ -6,7 +6,7 @@
 
 对于标准态部署，检索的日志属于应用类日志，可以参考《CANN 日志参考》中的“查看日志（Ascend EP标准形态）”章节的“查看应用类日志”描述。默认路径为“$HOME/ascend/log”。也可以使用环境变量ASCEND\_PROCESS\_LOG\_PATH指定日志落盘路径。命令参考如下：
 
-```
+```bash
 export ASCEND_PROCESS_LOG_PATH=$HOME/xxx
 ```
 
@@ -14,7 +14,7 @@ export ASCEND_PROCESS_LOG_PATH=$HOME/xxx
 
 日志级别由低到高依次为DEBUG < INFO < WARNING < ERROR，级别越低，输出日志越详细，可以通过ASCEND\_GLOBAL\_LOG\_LEVEL环境变量设置日志级别。命令参考如下：
 
-```
+```bash
 export ASCEND_GLOBAL_LOG_LEVEL=1
 ```
 

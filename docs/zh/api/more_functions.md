@@ -89,7 +89,7 @@ IReduction是特征检索组件中降维方法的统一接口，目前支持**PC
 |dimOut|int|输出特征维度，即降维后的维度。PCAR需要配置此参数。|
 |eigenPower|float|奇异值的power数。PCAR需要配置此参数。|
 |randomRotation|bool|是否进行随机旋转。PCAR需要配置此参数。|
-|deviceList|std::vector<int>|Device侧资源配置。NN需要配置此参数。|
+|deviceList|std::vector\<int>|Device侧资源配置。NN需要配置此参数。|
 |model|const char *|神经网络降维模型。NN需要配置此参数。|
 |modelSize|uint64_t|模型的大小。NN需要配置此参数。|
 

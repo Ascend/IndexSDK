@@ -77,20 +77,20 @@ Index SDK特征检索的使用，依赖NPU固件驱动包、CANN软件包、[Ope
 
 1. 下载OpenBLAS v0.3.10源码压缩包并解压。
 
-    ```
+    ```bash
     wget https://github.com/xianyi/OpenBLAS/archive/v0.3.10.tar.gz -O OpenBLAS-0.3.10.tar.gz
     tar -xf OpenBLAS-0.3.10.tar.gz
     ```
 
 2. 进入OpenBLAS目录。
 
-    ```
+    ```bash
     cd OpenBLAS-0.3.10
     ```
 
 3. 编译安装。
 
-    ```
+    ```bash
     make FC=gfortran USE_OPENMP=1 -j
     # 默认将OpenBLAS安装在/opt/OpenBLAS目录下
     make install
@@ -100,7 +100,7 @@ Index SDK特征检索的使用，依赖NPU固件驱动包、CANN软件包、[Ope
 
 4. 配置库路径的环境变量。
 
-    ```
+    ```bash
     ln -s /opt/OpenBLAS/lib/libopenblas.so /usr/lib/libopenblas.so
     # 配置/etc/profile
     vim /etc/profile
@@ -110,7 +110,7 @@ Index SDK特征检索的使用，依赖NPU固件驱动包、CANN软件包、[Ope
 
 5. 验证是否安装成功。
 
-    ```
+    ```bash
     cat /opt/OpenBLAS/lib/cmake/openblas/OpenBLASConfigVersion.cmake | grep 'PACKAGE_VERSION "'
     ```
 
@@ -132,7 +132,7 @@ Index SDK特征检索的使用，依赖NPU固件驱动包、CANN软件包、[Ope
 
 1. 下载Faiss源码包并解压。
 
-    ```
+    ```bash
     # Faiss 1.10.0
     wget https://github.com/facebookresearch/faiss/archive/v1.10.0.tar.gz
     tar -xf v1.10.0.tar.gz && cd faiss-1.10.0/faiss
@@ -140,13 +140,13 @@ Index SDK特征检索的使用，依赖NPU固件驱动包、CANN软件包、[Ope
 
 2. 创建install\_faiss\_sh.sh脚本。
 
-    ```
+    ```bash
     vi install_faiss_sh.sh
     ```
 
 3. 在install\_faiss\_sh.sh脚本中写入如下内容。
 
-    ```
+    ```bash
     # modify source code
     # 步骤1：修改Faiss源码
     arch="$(uname -m)"
@@ -196,7 +196,7 @@ Index SDK特征检索的使用，依赖NPU固件驱动包、CANN软件包、[Ope
 4. 按“Esc”键，输入<b>:wq!</b>，按“Enter”保存并退出编辑。
 5. 下载Faiss源码压缩包并解压安装。
 
-    ```
+    ```bash
     bash install_faiss_sh.sh
     ```
 
@@ -213,7 +213,7 @@ Index SDK特征检索的使用，依赖NPU固件驱动包、CANN软件包、[Ope
 
     动态链接依赖Faiss的程序在运行时需要知道Faiss动态库所在路径，需要在Faiss的库目录加入“LD\_LIBRARY\_PATH”环境变量。
 
-    ```
+    ```bash
     # 配置/etc/profile
     vim /etc/profile
     # 在/etc/profile中添加: export LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
@@ -224,7 +224,7 @@ Index SDK特征检索的使用，依赖NPU固件驱动包、CANN软件包、[Ope
 
 7. 验证是否安装成功。
 
-    ```
+    ```bash
     cat /usr/local/share/faiss/faiss-config-version.cmake |grep 'PACKAGE_VERSION "'
     ```
 
@@ -273,19 +273,19 @@ Index SDK特征检索的使用，依赖NPU固件驱动包、CANN软件包、[Ope
 2. 将软件包上传到安装环境的任意路径下（如：“/home/work/FeatureRetrieval”）并进入软件包所在路径。
 3. 增加对软件包的可执行权限。
 
-    ```
+    ```bash
     chmod u+x Ascend-mindxsdk-mxindex_{version}_linux-{arch}.run
     ```
 
 4. 执行如下命令，校验软件包的一致性和完整性。
 
-    ```
+    ```bash
     ./Ascend-mindxsdk-mxindex_{version}_linux-{arch}.run --check
     ```
 
     若显示如下信息，说明软件包已通过校验。
 
-    ```
+    ```bash
     Verifying archive integrity...  100%   SHA256 checksums are OK. All good.    
     ```
 
@@ -293,7 +293,7 @@ Index SDK特征检索的使用，依赖NPU固件驱动包、CANN软件包、[Ope
     - **若用户未指定安装路径**，软件会默认安装到软件包所在的路径。
     - **若用户想指定安装路径**，需要先创建安装路径。以安装路径“/home/work/FeatureRetrieval”为例：
 
-        ```
+        ```bash
         mkdir -p /home/work/FeatureRetrieval
         ```
 
@@ -476,16 +476,16 @@ Index SDK特征检索的使用，依赖NPU固件驱动包、CANN软件包、[Ope
     </tr>
     </table>
 
-1. 执行安装命令，安装软件包。用户需确保整个安装过程由同一用户执行，安装路径和解压路径仅允许该用户访问。
+    1. 执行安装命令，安装软件包。用户需确保整个安装过程由同一用户执行，安装路径和解压路径仅允许该用户访问。
 
-    > [!NOTE] 说明 
-    >--install安装命令同时支持输入可选参数，如[表2](#table7138521890)所示。输入不在列表中的参数可能正常安装或者报错。
+        > [!NOTE] 说明 
+        >--install安装命令同时支持输入可选参数，如[表2](#table7138521890)所示。输入不在列表中的参数可能正常安装或者报错。
 
-2. 添加Index软件包路径的环境变量。以Index SDK的安装路径“/home/work/FeatureRetrieval”为例：
+    2. 添加Index软件包路径的环境变量。以Index SDK的安装路径“/home/work/FeatureRetrieval”为例：
 
-    ```
-    export LD_LIBRARY_PATH=/home/work/FeatureRetrieval/mxIndex/host/lib/:$LD_LIBRARY_PATH
-    ```
+        ```bash
+        export LD_LIBRARY_PATH=/home/work/FeatureRetrieval/mxIndex/host/lib/:$LD_LIBRARY_PATH
+        ```
 
 **相关参考<a name="section111812571483"></a>**
 
@@ -504,9 +504,9 @@ Index SDK特征检索的使用，依赖NPU固件驱动包、CANN软件包、[Ope
 |--tar arg1 [arg2 ...]|对软件包执行tar命令，使用tar后面的参数作为命令的参数。例如执行--tar xvf命令，解压run安装包的内容到当前目录。|
 |--version|查询安装包Index SDK版本。|
 |--install|特征检索软件包安装操作命令。|
-|--install-path=*\<path>*|（可选）自定义特征检索软件包安装根目录。如未设置，默认为当前命令执行所在目录。配置的路径必须以/或~开头，路径取值仅支持大小写字母、数字、-_./字符。<br>若不指定，将安装到默认路径下：<li>若使用root用户安装，默认安装路径为：/usr/local/Ascend。<li>若使用非root用户安装，则默认安装路径为：${HOME}/Ascend。<br>若通过该参数指定了安装目录，该目录other用户不能有写权限，如果指定普通用户安装，安装目录属主必须为当前安装用户。|
+|--install-path=*\<path>*|（可选）自定义特征检索软件包安装根目录。如未设置，默认为当前命令执行所在目录。配置的路径必须以/或~开头，路径取值仅支持大小写字母、数字、-_./字符。<br>若不指定，将安装到默认路径下：<li>若使用root用户安装，默认安装路径为：/usr/local/Ascend。</li><li>若使用非root用户安装，则默认安装路径为：${HOME}/Ascend。</li><br>若通过该参数指定了安装目录，该目录other用户不能有写权限，如果指定普通用户安装，安装目录属主必须为当前安装用户。|
 |--upgrade|特征检索软件包升级操作命令，将特征检索升级到安装包所包含的Index SDK版本。|
-|--platform|对应昇腾AI处理器类型。<li>使用Atlas 200/300/500 推理产品请输入310。使用Atlas 推理系列产品请输入310P。<li>使用Atlas 800I A3 超节点服务器请输入“A3”。<li>使用Atlas A2 推理系列产品，请在安装昇腾AI处理器的服务器执行npu-smi info命令进行查询，将查询到的“Name”最后一位数字删掉，即是--platform的取值。|
+|--platform|对应昇腾AI处理器类型。<li>使用Atlas 200/300/500 推理产品请输入310。使用Atlas 推理系列产品请输入310P。</li><li>使用Atlas 800I A3 超节点服务器请输入“A3”。</li><li>使用Atlas A2 推理系列产品，请在安装昇腾AI处理器的服务器执行npu-smi info命令进行查询，将查询到的“Name”最后一位数字删掉，即是--platform的取值。</li>|
 
 > [!NOTE] 说明
 >以下参数未展示在--help参数中，用户请勿直接使用。
@@ -528,7 +528,7 @@ Index SDK特征检索的使用，依赖NPU固件驱动包、CANN软件包、[Ope
 
 特征检索包升级操作参考以下命令执行，升级操作参数说明请参见[表1](#table121021026102016)。
 
-```
+```bash
 ./Ascend-mindxsdk-mxindex_{version}_linux-{arch}.run --upgrade --platform=form --install-path={mxIndex_install_path}
 ```
 
@@ -537,7 +537,7 @@ Index SDK特征检索的使用，依赖NPU固件驱动包、CANN软件包、[Ope
 |参数名|参数说明|
 |--|--|
 |--upgrade|特征检索软件包升级操作命令，将特征检索升级到安装包所包含的Index SDK版本。|
-|--platform|对应昇腾AI处理器类型。<li>使用Atlas 200/300/500 推理产品请输入310。<li>使用Atlas 推理系列产品请输入310P。<li>使用Atlas 800I A3 超节点服务器请输入“A3”。<li>使用Atlas A2 推理系列产品，请在安装昇腾AI处理器的服务器执行npu-smi info命令进行查询，将查询到的“Name”最后一位数字删掉，即是--platform的取值。|
+|--platform|对应昇腾AI处理器类型。<li>使用Atlas 200/300/500 推理产品请输入310。</li><li>使用Atlas 推理系列产品请输入310P。</li><li>使用Atlas 800I A3 超节点服务器请输入“A3”。</li><li>使用Atlas A2 推理系列产品，请在安装昇腾AI处理器的服务器执行npu-smi info命令进行查询，将查询到的“Name”最后一位数字删掉，即是--platform的取值。</li>|
 |--install-path|（可选）自定义特征检索软件包安装根目录。如未设置，默认为当前命令执行所在目录。<br>如使用自定义目录安装，建议在升级操作时使用该参数。|
 
 **操作步骤<a name="section1479912418555"></a>**
@@ -546,19 +546,19 @@ Index SDK特征检索的使用，依赖NPU固件驱动包、CANN软件包、[Ope
 
     - 对于Atlas 200/300/500 推理产品：
 
-        ```
+        ```bash
         ./Ascend-mindxsdk-mxindex_{version}_linux-{arch}.run --upgrade --platform=310 --install-path=/home/work/FeatureRetrieval
         ```
 
     - 对于Atlas 推理系列产品：
 
-        ```
+        ```bash
         ./Ascend-mindxsdk-mxindex_{version}_linux-{arch}.run --upgrade --platform=310P --install-path=/home/work/FeatureRetrieval
         ```
 
     - 对于Atlas A2 推理系列产品：
 
-        ```
+        ```bash
         ./Ascend-mindxsdk-mxindex_{version}_linux-{arch}.run --upgrade --platform=form --install-path=/home/work/FeatureRetrieval
         ```
 
@@ -566,7 +566,7 @@ Index SDK特征检索的使用，依赖NPU固件驱动包、CANN软件包、[Ope
 
     命令执行后返回如下信息，则表示特征检索包升级成功。
 
-    ```
+    ```text
     Upgrade package successfully.
     ```
 
@@ -586,19 +586,19 @@ Index SDK特征检索的使用，依赖NPU固件驱动包、CANN软件包、[Ope
 
 1. 进入安装目录mxIndex-_\{version\}_。
 
-    ```
+    ```bash
     cd mxIndex-{version}
     ```
 
 2. 进入“script”目录。
 
-    ```
+    ```bash
     cd script
     ```
 
 3. 添加“uninstall.sh”文件可执行权限，并执行，完成卸载。
 
-    ```
+    ```bash
     chmod u+x uninstall.sh
     ./uninstall.sh
     ```
