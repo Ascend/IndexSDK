@@ -21,15 +21,32 @@
 #include "tiling/tiling_api.h"
 #include "op_host_common.h"
 
+#define ERROR_LOG(fmt, args...) fprintf(stderr, "[ERROR] " fmt "\n", ##args)
+
 namespace {
+const uint32_t QUERY_TIME_STAMP_INPUT_DIM = 0;
 const uint32_t QUERY_TOKEN_SET_INPUT_DIM = 1;
 const uint32_t DB_TIME_STAMP_INPUT_DIM = 2;
 
+const uint32_t QUERY_TIME_STAMP1_DIM = 1;
 const uint32_t DB_TIME_STAMP_SIZE_DIM = 0;
 const uint32_t QUERY_TOKEN_SET_BATCH_DIM = 0;
 const uint32_t QUERY_TOKEN_SET_TOKEN_CNT_DIM = 1;
 
 const uint32_t TILE_LEN = 8192;
+const uint32_t TILE_LEN_SMALL = 4096;
+const uint32_t MAX_TOKEN_CNT = 300000;
+const uint32_t TOKEN_CNT_THRES = 24576;
+const uint32_t MAX_K = 2097152;
+const uint32_t LEN_OF_EIGHT = 8;
+
+uint32_t DivCeil(uint32_t a, uint32_t b) 
+{
+    if (b == 0) {
+        return a;
+    }
+    return (a + b - 1) / b;
+}
 } // namespace
 
 namespace optiling {
@@ -47,15 +64,18 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     if (coreNum == 0) {
         return ge::GRAPH_FAILED;
     }
+    const auto queryTimeStampPtr = context->GetInputShape(QUERY_TIME_STAMP_INPUT_DIM);
     const auto dbTimeStampPtr = context->GetInputShape(DB_TIME_STAMP_INPUT_DIM);
     const auto queryTokenSetPtr = context->GetInputShape(QUERY_TOKEN_SET_INPUT_DIM);
-    if ((dbTimeStampPtr == nullptr) || (queryTokenSetPtr == nullptr)) {
+    if ((queryTimeStampPtr == nullptr) || (dbTimeStampPtr == nullptr) || (queryTokenSetPtr == nullptr)) {
         return ge::GRAPH_FAILED;
     }
+    auto queryTimeStampShape = queryTimeStampPtr->GetStorageShape();
     auto dbTimeStampShape = dbTimeStampPtr->GetStorageShape();
     auto queryTokenSetShape = queryTokenSetPtr->GetStorageShape();
 
     AscendcDistanceBatchMaskGeneratorTilingData tiling;
+    uint32_t timeLen;
     uint32_t dbLen;
     uint32_t batchSize;
     uint32_t tokenCnt;
@@ -65,11 +85,24 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     uint32_t tailNum;
     uint32_t tailRepeatNum;
     uint32_t tileLen = TILE_LEN;
+    timeLen = queryTimeStampShape.GetDim(QUERY_TIME_STAMP1_DIM);
+    if (timeLen != LEN_OF_EIGHT) {
+        ERROR_LOG("query_time_stamp.shape[1] must be %u.", LEN_OF_EIGHT);
+        return ge::GRAPH_FAILED;
+    }
     dbLen = dbTimeStampShape.GetDim(DB_TIME_STAMP_SIZE_DIM);
+    if (dbLen > 0 && dbLen % TILE_LEN != 0) {
+        ERROR_LOG("total_db_num must be multiple of %u.", TILE_LEN);
+        return ge::GRAPH_FAILED;
+    }
     batchSize = queryTokenSetShape.GetDim(QUERY_TOKEN_SET_BATCH_DIM);
     tokenCnt = queryTokenSetShape.GetDim(QUERY_TOKEN_SET_TOKEN_CNT_DIM);
-    if (tokenCnt > 32768) {
-        tileLen = 4096;
+    if (tokenCnt >= DivCeil(MAX_TOKEN_CNT, 8) * 2) {
+        ERROR_LOG("MAX_TOKEN_CNT must be less than %u.", DivCeil(MAX_TOKEN_CNT, 8) * 2);
+        return ge::GRAPH_FAILED;
+    }
+    if (tokenCnt > TOKEN_CNT_THRES) {
+        tileLen = TILE_LEN_SMALL;
     }
     totalTileNum = dbLen / tileLen;
     if (totalTileNum <= coreNum) {
