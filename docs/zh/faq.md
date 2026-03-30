@@ -166,22 +166,24 @@ export IGNORE_INFER_ERROR=1
 export LD_PRELOAD={…/libgomp.so}  # 请将{}里的内容替换成libgomp.so文件的实际路径
 ```
 
-### openEuler24.03操作系统下生成算子失败<a name="ZH-CN_TOPIC_0000002356700501"></a>
+### 部分操作系统下生成算子失败<a name="ZH-CN_TOPIC_0000002356700501"></a>
 
 **问题现象<a name="section238219259714"></a>**
 
-openEuler24.03操作系统下，生成算子失败，报错：fatal error: 'cstdint' file not found。
+部分操作系统下，生成算子失败，报错：fatal error: 'cstdint' file not found 或 fatal error: 'cstdio' file not found。
 
 **问题原因<a name="section147095251275"></a>**
 
-问题原因可参见《CANN 软件安装指南》中的“执行ATC转换或模型训练时，报错：fatal error: 'cstdint' file not found”章节中的“可能原因”部分。
+问题原因一：可参见《CANN 软件安装指南》中的“执行ATC转换或模型训练时，报错：fatal error: 'cstdint' file not found”章节中的“可能原因”部分。
+
+问题原因二：在部分特定系统中，该问题源于操作系统发行版的工具链命名差异。昇腾 CANN 软件栈在构建算子时，默认会去查找标准的 aarch64-linux-gnu 工具链目录以获取 C++ 标准库头文件。然而，在部分特定操作系统（kylin、openEuler、ctyunos）中，为了区分特定的系统 ABI，其工具链目录被重命名（例如 aarch64-kylin-linux）。由于 CANN 编译器未在默认路径中找到对应的头文件，从而导致编译中断。
 
 **解决方案<a name="section19641271973"></a>**
 
-执行以下命令导入环境变量可解决以上问题。
+您需要手动将系统实际的 C++ 头文件路径添加到环境变量 CPLUS_INCLUDE_PATH 中，以指引编译器找到正确的文件。以 Kylin 系统（GCC 12）为例，请执行以下命令：
 
 ```bash
-export CPLUS_INCLUDE_PATH=/usr/include/c++/12:/usr/include/c++/12/aarch64-openEuler-linux:$CPLUS_INCLUDE_PATH
+export CPLUS_INCLUDE_PATH=/usr/include/c++/12/aarch64-kylin-linux:/usr/include/c++/12:$CPLUS_INCLUDE_PATH 
 ```
 
 ## 运行推理常见问题<a name="ZH-CN_TOPIC_0000002283277033"></a>
