@@ -168,9 +168,11 @@ SET(ASCENDFAISS_HOST_SRC
     ${CMAKE_CURRENT_LIST_DIR}/../ascendhost/src/impl/TSFlatIP.cpp
     ${CMAKE_CURRENT_LIST_DIR}/../ascendhost/src/impl/AscendIndexClusterImpl.cpp
     ${CMAKE_CURRENT_LIST_DIR}/../ascendhost/src/impl/AscendIndexILFlatImpl.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/../ascendhost/src/impl/AscendIndexCagraImpl.cpp
     ${CMAKE_CURRENT_LIST_DIR}/../ascendhost/src/index/AscendIndexBinaryFlat.cpp
     ${CMAKE_CURRENT_LIST_DIR}/../ascendhost/src/index/AscendIndexCluster.cpp
     ${CMAKE_CURRENT_LIST_DIR}/../ascendhost/src/index/AscendIndexILFlat.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/../ascendhost/src/index/AscendIndexCagra.cpp
     ${CMAKE_CURRENT_LIST_DIR}/../ascendhost/src/index/AscendIndexTS.cpp
     ${CMAKE_CURRENT_LIST_DIR}/../ascendhost/src/index/IndexFlatIPAicpu.cpp
     ${CMAKE_CURRENT_LIST_DIR}/../ascendhost/src/index/IndexFlatL2Aicpu.cpp
