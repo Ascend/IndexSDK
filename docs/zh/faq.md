@@ -92,6 +92,21 @@
         cmake version 3.24.0
         ```
 
+### IVFSQT算法在添加较大底库后，update接口性能下降
+
+**问题现象<a name="section428442235616"></a>**
+
+从Faiss 1.7.1版本升级到Faiss 1.10.0版本后，IVFSQT算法在添加较大底库后，update接口性能下降。
+
+**问题原因<a name="section243812295615"></a>**
+
+IVFSQT算法在添加较大底库后，update接口会使用IndexFlat来进行CPU聚类。IndexFlat在Faiss 1.7.1版本中，使用了exhaustive_L2sqr_seq接口；在Faiss 1.10.0版本中，exhaustive_L2sqr_seq添加了omp的线程数约束，导致了性能下降。
+
+**解决方案<a name="section18586112214564"></a>**
+
+Faiss源码的exhaustive_L2sqr_seq接口中去掉omp的num_threads(nt)约束后，重新编译安装Faiss 1.10.0版本。多卡场景可设置export OMP_NUM_THREADS=2。
+
+
 ## 生成算子常见问题<a name="ZH-CN_TOPIC_0000002283337613"></a>
 
 ### 提示MemoryError错误或者multiprocessing报错<a name="ZH-CN_TOPIC_0000002252470708"></a>
