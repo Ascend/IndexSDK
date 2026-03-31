@@ -20,6 +20,7 @@ set -e
 readonly CUR_DIR=$(dirname "$(readlink -f "$0")")
 readonly RUN_PKG_PATH="${CUR_DIR}/../.."
 readonly PRESMOKE_DIR="/home/indexSDK/preSmokeTestFiles"
+readonly CHANGE_FILE="${CUR_DIR}/../../change.txt"
 export MX_INDEX_INSTALL_PATH=/usr/local/Ascend/mxIndex
 export MX_INDEX_MODELPATH=$PRESMOKE_DIR/pkg/modelpath
 export MX_INDEX_FINALIZE=1
@@ -28,6 +29,58 @@ export LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
 export LD_LIBRARY_PATH=/usr/local/Ascend/mxIndex/host/lib/:$LD_LIBRARY_PATH
 export LD_LIBRARY_PATH=/usr/local/Ascend/driver/lib64/driver:$LD_LIBRARY_PATH
 source /usr/local/Ascend/ascend-toolkit/set_env.sh
+
+ALGORITHMS=("flat" "binary_flat" "sq" "int8" "cluster" "ilflat" "ivfsq" "ivfsqt" "ts" "multi")
+
+# 每个算法的关键词（空格分隔，支持多个）
+declare -A ALG_KEYWORDS=(
+    ["flat"]="IndexFlat flat"
+    ["binary_flat"]="IndexBinaryFlat binary_flat"
+    ["sq"]="IndexSQ sq"
+    ["int8"]="IndexInt8 int8"
+    ["cluster"]="IndexCluster cluster"
+    ["ilflat"]="IndexILFlat ilflat"
+    ["ivfsq"]="IndexIVFSQ ivfsq"
+    ["ivfsqt"]="IndexIVFSQT ivfsqt"
+    ["ts"]="IndexTS ts"
+    ["multi"]="MultiIndex multi"
+)
+
+# 每个算法的测试用例文件（多个用空格分隔）
+declare -A ALG_TEST=(                                                  # 包含用例个数(25)
+    ["flat"]="TestAscendIndexFlat"                                     # 2
+    ["binary_flat"]="TestAscendIndexBinaryFlat"                        # 1
+    ["sq"]="TestAscendIndexSQ TestAscendIndexSQMulPerformance"         # 2
+    ["int8"]="TestAscendIndexInt8Flat TestAscendIndexInt8FlatWithSQ"   # 4
+    ["cluster"]="TestAscendIndexCluster"                               # 1
+    ["ilflat"]="TestAscendIndexILFlat"                                 # 1
+    ["ivfsq"]="TestAscendIndexIVFSQ"                                   # 1
+    ["ivfsqt"]="TestAscendIndexIVFSQT"                                 # 1
+    ["ts"]="TestAscendIndexTS"                                         # 8
+    ["multi"]="TestAscendMultiSearch"                                  # 4
+)
+
+# 每个算法的算子生成命令（根据实际项目修改）
+declare -A ALG_GEN_CMD=(
+    ["flat"]="python3 flat_generate_model.py -d 512 -t 310P"
+    ["binary_flat"]="python3 binary_flat_generate_model.py -d 512"
+    ["sq"]="python3 sq8_generate_model.py -d 256 -t 310P"
+    ["int8"]="python3 int8flat_generate_model.py -d 512 -t 310P"
+    ["cluster"]="python3 flat_generate_model.py -d 64 -t 310P"
+    ["ilflat"]="python3 flat_generate_model.py -d 512 -t 310P"
+    ["ivfsq"]="python3 ivfsq8_generate_model.py -d 64 -c 8192 -t 310P && \
+               python3 flat_at_generate_model.py -d 64 -c 8192 -t 310P"
+    ["ivfsqt"]="python3 ivfsqt_generate_model.py -d 256 -c 16384 -t 310P && \
+                python3 flat_at_generate_model.py -d 256 -c 16384 -t 310P && \
+                python3 flat_at_int8_generate_model.py -d 256 -c 16384 -t 310P"
+    ["ts"]="python3 binary_flat_generate_model.py -d 512 && \
+            python3 mask_generate_model.py -t 310P"
+    ["multi"]="python3 int8flat_generate_model.py -d 64 -t 310P && \
+               python3 sq8_generate_model.py -d 64 -t 310P"
+)
+
+# 存储需要处理的算法（去重）
+declare -A ALGS_TO_PROCESS
 
 echo "[PRESMOKE_INFO] indexPreSmoke start"
 
@@ -55,106 +108,28 @@ cp "$RUN_PKG_PATH"/Ascend-mindxsdk-mxindex_*_linux-aarch64.run "$PRESMOKE_DIR/pk
 cd "$PRESMOKE_DIR/pkg"
 chmod +x *.run
 echo "[PRESMOKE_INFO] start installing run pkg"
-./Ascend-mindxsdk-mxindex_*_linux-aarch64.run --install --platform=310P 
+./Ascend-mindxsdk-mxindex_*_linux-aarch64.run --install --platform=310P
 
-# ============== 2. generate ops ==============
-echo "[PRESMOKE_INFO] start generate ops..."
+# ============== 2. generate aicpu ops ==============
+echo "[PRESMOKE_INFO] start generate aicpu ops..."
 
 bash /usr/local/Ascend/mxIndex/ops/custom_opp_*.run
 cd $MX_INDEX_INSTALL_PATH/tools
 python3 aicpu_generate_model.py -t 310P
 
-cp op_models/* $MX_INDEX_MODELPATH
-cd $MX_INDEX_MODELPATH && chmod 644 *
+# ============== 3. detect algorithms to test ==============
+echo "[PRESMOKE_INFO] start detect algorithms to test..."
 
-# ============== 3. run test demo ==============
-echo "[PRESMOKE_INFO] start run test demo..."
-
-if [ ! -d "${PRESMOKE_DIR}/mindsdk-referenceapps" ]; then
-    cd "$PRESMOKE_DIR"
-    git clone https://gitcode.com/Ascend/mindsdk-referenceapps.git
-fi
-
-cd /opt/buildtools/googletest-1.11.0
-wget --no-check-certificate https://github.com/google/googletest/archive/refs/tags/release-1.11.0.tar.gz
-tar -xzf release-1.11.0.tar.gz
-cd googletest-release-1.11.0
-
-cmake -DCMAKE_INSTALL_PREFIX=/opt/buildtools/googletest-1.11.0 \
-      -DBUILD_SHARED_LIBS=ON \
-      ../googletest-release-1.11.0
-
-make -j10
-make install
-
-cd "$PRESMOKE_DIR"/mindsdk-referenceapps/IndexSDK
-rm -rf TestAscendIndexIVFPQ.cpp TestAscendIndexIVFRabitQ.cpp
-sed -i '1c SET(MXINDEX_HOME /usr/local/Ascend/mxIndex  CACHE STRING "")' dependencies.cmake
-sed -i '2c SET(FAISS_HOME /usr/local/faiss/  CACHE STRING "")' dependencies.cmake
-sed -i '3c SET(GTEST_HOME /opt/buildtools/googletest-1.11.0  CACHE STRING "")' dependencies.cmake
-bash build.sh
-cd build
-
-changed=$(git diff ${servicebranch_1} --no-commit-id --name-only)
-echo "$changed" > change.txt
-
-ALGORITHMS=("flat" "binary_flat" "sq" "int8" "cluster" "ilflat" "ivfsq" "ivfsqt" "ts" "multi")
-
-# 每个算法的关键词（空格分隔，支持多个）
-declare -A ALG_KEYWORDS=(
-    ["flat"]="IndexFlat flat"
-    ["binary_flat"]="IndexBinaryFlat binary_flat"
-    ["sq"]="IndexSQ sq"
-    ["int8"]="IndexInt8 int8"
-    ["cluster"]="IndexCluster cluster"
-    ["ilflat"]="IndexILFlat ilflat"
-    ["ivfsq"]="IndexIVFSQ ivfsq"
-    ["ivfsqt"]="IndexIVFSQT ivfsqt"
-    ["ts"]="IndexTS ts"
-    ["multi"]="IndexMulti multi"
-)
-
-# 每个算法的测试用例文件
-declare -A ALG_TEST=(
-    ["flat"]="TestAscendIndexFlat"
-    ["binary_flat"]="TestAscendIndexBinaryFlat"
-    ["sq"]="TestAscendIndexSQ"
-    ["int8"]="TestAscendIndexInt8Flat"
-    ["cluster"]="TestAscendIndexCluster"
-    ["ilflat"]="TestAscendIndexILFlat"
-    ["ivfsq"]="TestAscendIndexIVFSQ"
-    ["ivfsqt"]="TestAscendIndexIVFSQT"
-    ["ts"]="TestAscendIndexTS"
-    ["multi"]="TestAscendIndexMultiSearch"
-)
-
-# 每个算法的算子生成命令（根据实际项目修改）
-declare -A ALG_GEN_CMD=(
-    ["flat"]="python3 flat_generate_model.py -d 512 -t 310P"
-    ["binary_flat"]="python3 binary_flat_generate_model.py -d 512"
-    ["sq"]="python3 sq_generate_model.py -d 512 -t 310P"
-    ["int8"]="python3 int8_generate_model.py -d 512 -t 310P"
-    ["cluster"]="python3 flat_generate_model.py -d 64 -t 310P"
-    ["ilflat"]="python3 flat_generate_model.py -d 512 -t 310P"
-    ["ivfsq"]="python3 ivfsq8_generate_model.py -d 64 -c 8192"
-    ["ivfsqt"]="python3 ivfsqt_generate_model.py -d 512"
-    ["ts"]="python3 ts_generate_model.py -d 512"
-    ["multi"]="python3 multi_generate_model.py -d 512"
-    ["ivfflat"]="python3 ivfflat_generate_model.py -d 512"
-
-)
-# ====================================================
-
-# 存储需要处理的算法（去重）
-declare -A ALGS_TO_PROCESS
-
-CHANGE_FILE="$PRESMOKE_DIR"/mindsdk-referenceapps/IndexSDK/build/change.txt
 if [[ ! -f "$CHANGE_FILE" ]]; then
-    echo "❌ Error: $CHANGE_FILE not found!"
+    echo "[PRESMOKE_ERROR] $CHANGE_FILE not found!"
     exit 1
+    # 调试用
+    # cd "$CUR_DIR/.."
+    # changed=$(git diff master --no-commit-id --name-only)
+    # echo "$changed" > "$CHANGE_FILE"
 fi
-
-echo "🔍 Analyzing changed files in $CHANGE_FILE ..."
+echo "[PRESMOKE_INFO] Changed files:"
+cat "$CHANGE_FILE"
 
 # 逐行读取变更文件
 while IFS= read -r file; do
@@ -165,11 +140,15 @@ while IFS= read -r file; do
         for kw in $keywords; do
             # 使用单词边界匹配，避免误匹配（如 flat 不会匹配 flatten）
             if echo "$file" | grep -q "$kw"; then
+                if [[ "$alg" == "ivfsq" && "$file" == *"IVFSQT"* ]]; then
+                    echo "    ⏭️ Skipping 'ivfsq' because file looks like 'ivfsqt'"
+                    break
+                fi
                 if [[ -z "${ALGS_TO_PROCESS[$alg]}" ]]; then
                     ALGS_TO_PROCESS["$alg"]=1
                     echo "    ✅ Detected keyword '$kw' → algorithm: $alg"
                 else
-                    echo "    ⏭️  Already detected algorithm: $alg (from keyword '$kw')"
+                    echo "    ⏭️ Already detected algorithm: $alg (from keyword '$kw')"
                 fi
                 break  # 一个文件匹配到一个算法的任一关键词后即可跳出内层循环
             fi
@@ -177,11 +156,40 @@ while IFS= read -r file; do
     done
 done < "$CHANGE_FILE"
 
-# 如果没有检测到任何算法，退出
+# 如果没有检测到任何算法，跑默认用例（flat）
 if [[ ${#ALGS_TO_PROCESS[@]} -eq 0 ]]; then
-    echo "📦 No algorithm-specific changes detected. Exiting."
-    exit 0
+    echo "[PRESMOKE_INFO] No algorithm-specific changes detected. Running default test: flat"
+    ALGS_TO_PROCESS["flat"]=1
 fi
+
+# ============== 4. compile test demo ==============
+echo "[PRESMOKE_INFO] start compile test demo..."
+
+if [ ! -d "${PRESMOKE_DIR}/mindsdk-referenceapps" ]; then
+    cd "$PRESMOKE_DIR"
+    git clone https://gitcode.com/Ascend/mindsdk-referenceapps.git
+fi
+
+if [ ! -d "/opt/buildtools/googletest-1.11.0/googletest" ]; then
+    cd /opt/buildtools/googletest-1.11.0
+    git clone -b release-1.11.0 https://gitcode.com/GitHub_Trending/go/googletest.git googletest
+    cd googletest
+    cmake -DCMAKE_INSTALL_PREFIX=/opt/buildtools/googletest-1.11.0 \
+        -DBUILD_SHARED_LIBS=ON \
+        ../googletest
+    make -j10
+    make install
+fi
+
+cd "$PRESMOKE_DIR"/mindsdk-referenceapps/IndexSDK
+rm -rf TestAscendIndexIVFPQ.cpp TestAscendIndexIVFRabitQ.cpp
+sed -i '1c SET(MXINDEX_HOME /usr/local/Ascend/mxIndex  CACHE STRING "")' dependencies.cmake
+sed -i '2c SET(FAISS_HOME /usr/local/faiss/  CACHE STRING "")' dependencies.cmake
+sed -i '3c SET(GTEST_HOME /opt/buildtools/googletest-1.11.0  CACHE STRING "")' dependencies.cmake
+bash build.sh
+
+# ============== 5. run test demo ==============
+echo "[PRESMOKE_INFO] start run test demo..."
 
 echo ""
 echo "🚀 Algorithms to process (${#ALGS_TO_PROCESS[@]}):"
@@ -201,28 +209,37 @@ for alg in "${!ALGS_TO_PROCESS[@]}"; do
 
     # 1. 生成算子
     cd $MX_INDEX_INSTALL_PATH/tools
-    echo "   Running: $gen_cmd"
-    eval "$gen_cmd" || { echo "❌ Gen command failed for $alg"; exit 1; }
+    echo "[PRESMOKE_INFO] Running: $gen_cmd"
+    eval "$gen_cmd" || { echo "[PRESMOKE_ERROR] Gen command failed for $alg"; exit 1; }
     cp op_models/* $MX_INDEX_MODELPATH
-    # 2. 运行测试用例
 
+    # 2. 运行测试用例
     cd "$PRESMOKE_DIR"/mindsdk-referenceapps/IndexSDK/build
-    echo "   Running test: $test_case"
-    if [[ -x "$test_case" ]]; then
-        # 如果文件本身是可执行文件，直接运行
-        ./"$test_case"
-    elif [[ -f "$test_case" ]]; then
-        # 如果是源文件，假设项目使用 Makefile，目标名 = 文件名去掉 .cpp
-        test_name=$(basename "$test_case" .cpp)
-        make "$test_name"
+    # 如果包含空格，说明有多个测试用例
+    if [[ "$test_case" == *" "* ]]; then
+        # 用空格分割，逐个执行
+        for test_file in $test_case; do
+            if [[ -x "$test_file" ]]; then
+                echo "[PRESMOKE_INFO] Running test: $test_file"
+                ./"$test_file"
+            else
+                echo "[PRESMOKE_WARNING] $test_file not found or not executable. Skipping test."
+            fi
+        done
     else
-        echo "⚠️  Warning: $test_case not found or not executable. Skipping test."
+        if [[ -x "$test_case" ]]; then
+            echo "[PRESMOKE_INFO] Running test: $test_case"
+            ./"$test_case"
+        elif [[ -f "$test_case" ]]; then
+            test_name=$(basename "$test_case" .cpp)
+            make "$test_name"
+        else
+            echo "[PRESMOKE_WARNING] $test_case not found or not executable. Skipping test."
+        fi
     fi
 
     echo "✅ Finished processing $alg"
     echo ""
 done
-
-echo "🎉 All done."
 
 echo "[PRESMOKE_INFO] indexPreSmoke finished"
