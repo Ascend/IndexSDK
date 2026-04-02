@@ -56,7 +56,7 @@ std::shared_ptr<StandardAscendResources> StandardAscendResources::getInstance()
         APP_LOG_ERROR("failed to rt get device, acl ret: %d", ret);
         curDeviceId = 0;
     }
-    auto lock = AscendMultiThreadManager::GetWriteLock(mtx);
+    std::lock_guard<std::mutex> lock(mtx);
     if (resources.find(curDeviceId) == resources.end()) {
         std::shared_ptr<StandardAscendResources> res = nullptr;
         if (AscendMultiThreadManager::IsMultiThreadMode()) {
