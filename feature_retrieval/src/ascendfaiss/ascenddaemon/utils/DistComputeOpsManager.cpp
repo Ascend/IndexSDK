@@ -32,7 +32,7 @@ std::shared_ptr<DistComputeOpsManager> &DistComputeOpsManager::getShared()
         APP_LOG_ERROR("failed to get device, ret: %d", ret);
         deviceId = 0;
     }
-    auto lock = AscendMultiThreadManager::GetWriteLock(getMtx);
+    std::lock_guard<std::mutex> lock(getMtx);
     if (mngs.find(deviceId) == mngs.end()) {
         if (AscendMultiThreadManager::IsMultiThreadMode()) {
             mngs[deviceId] = std::make_shared<ThreadSafeDistComputeOpsManager>();
