@@ -10,7 +10,7 @@
 </tr>
 <tr id="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_row255mcpsimp"><th class="firstcol" valign="top" width="25%" id="mcps1.1.3.2.1"><p id="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p257mcpsimp"><a name="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p257mcpsimp"></a><a name="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p257mcpsimp"></a>产品版本</p>
 </th>
-<td class="cellrowborder" valign="top" width="75%" headers="mcps1.1.3.2.1 "><p id="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p233mcpsimp"><a name="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p233mcpsimp"></a><a name="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p233mcpsimp"></a>7.3.0</p>
+<td class="cellrowborder" valign="top" width="75%" headers="mcps1.1.3.2.1 "><p id="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p233mcpsimp"><a name="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p233mcpsimp"></a><a name="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p233mcpsimp"></a>26.0.0</p>
 </td>
 </tr>
 <tr id="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_row7259721105019"><th class="firstcol" valign="top" width="25%" id="mcps1.1.3.3.1"><p id="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p7260182135013"><a name="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p7260182135013"></a><a name="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p7260182135013"></a>版本类型</p>
@@ -30,8 +30,8 @@
 
 |产品名称|版本|
 |--|--|
-|Ascend HDK|25.5.0|
-|CANN|8.5.0|
+|Ascend HDK|26.0.0|
+|CANN|9.0.0|
 
 ## 病毒扫描结果<a name="ZH-CN_TOPIC_0000002492442006"></a>
 
@@ -45,7 +45,7 @@
 
 |MindSDK软件版本|MindSDK待升级版本|CANN版本兼容性|Ascend HDK版本兼容性|
 |--|--|--|--|
-|MindSDK 7.3.0|<li>MindSDK 6.0.RC3及6.0.RC3.x</li><li>MindSDK 6.0.0及6.0.0.x</li><li>MindSDK 7.0.RC1及7.0.RC1.x</li><li>MindSDK 7.1.RC1及7.1.RC1.x</li><li>MindSDK 7.2.RC1及7.2.RC1.x</li><li>MindSDK 7.3.0及7.3.0.x</li>|<li>CANN 8.1.RC1及8.1.RC1.x</li><li>CANN 8.2.RC1及8.2.RC1.x</li><li>CANN 8.3.RC1及8.3.RC1.x</li><li>CANN 8.5.0及8.5.0.x</li>|<li>Ascend HDK 25.0.RC1及Ascend HDK 25.0.RC1.x</li><li>Ascend HDK 25.2.0及Ascend HDK 25.2.0.x</li><li>Ascend HDK 25.3.RC1及Ascend HDK 25.3.RC1.x</li><li>Ascend HDK 25.5.0及Ascend HDK 25.5.0.x</li>|
+|MindSDK 26.0.0|<li>MindSDK 6.0.RC3及6.0.RC3.x</li><li>MindSDK 6.0.0及6.0.0.x</li><li>MindSDK 7.0.RC1及7.0.RC1.x</li><li>MindSDK 7.1.RC1及7.1.RC1.x</li><li>MindSDK 7.2.RC1及7.2.RC1.x</li><li>MindSDK 7.3.0及7.3.0.x</li>|<li>CANN 8.1.RC1及8.1.RC1.x</li><li>CANN 8.2.RC1及8.2.RC1.x</li><li>CANN 8.3.RC1及8.3.RC1.x</li><li>CANN 8.5.0及8.5.0.x</li><li>CANN 9.0.0及9.0.0.x</li>|<li>Ascend HDK 25.0.RC1及Ascend HDK 25.0.RC1.x</li><li>Ascend HDK 25.2.0及Ascend HDK 25.2.0.x</li><li>Ascend HDK 25.3.RC1及Ascend HDK 25.3.RC1.x</li><li>Ascend HDK 25.5.0及Ascend HDK 25.5.0.x</li><li>Ascend HDK 26.0.0及Ascend HDK 26.0.0.x</li>|
 
 > [!NOTE] 说明 
 >软件版本兼容性是指网元软件版本升级时，关联设备、网管和上层OSS不需要联动升级或打补丁，仍然可以支持已有功能。
@@ -60,7 +60,7 @@
 
 |特性名称|特性描述|配套产品型号|
 |--|--|--|
-|Index SDK|<li>标准态ILFlat算法增强</li><li>支持IVFFlat检索算法</li><li>小batch场景IVFSP算法Add接口性能优化</li>|Atlas 300I Pro 推理卡<br>Atlas 300V 视频解析卡<br>Atlas 300V Pro 视频解析卡<br>Atlas 300I Duo 推理卡<br>Atlas 200I SoC A1 核心板<br>Atlas 300I 推理卡（型号 3000）<br>Atlas 300I 推理卡（型号 3010）<br>Atlas 800I A2 推理服务器|
+|Index SDK|<li>ILFlat标准态性能优化</li><li>异构内存支持时空库附加属性</li>|Atlas 300I Pro 推理卡<br>Atlas 300V 视频解析卡<br>Atlas 300V Pro 视频解析卡<br>Atlas 300I Duo 推理卡<br>Atlas 200I SoC A1 核心板<br>Atlas 300I 推理卡（型号 3000）<br>Atlas 300I 推理卡（型号 3010）<br>Atlas 800I A2 推理服务器|
 
 ## 业务接口变更<a name="ZH-CN_TOPIC_0000002492442008"></a>
 
@@ -72,9 +72,8 @@
 
 **Index SDK<a name="zh-cn_topic_0000001935999544_section18133752165114"></a>**
 
-- 标准态ILFlat算法增强。
-- 支持IVFFlat检索算法。
-- 小batch场景IVFSP算法Add接口性能优化。
+- ILFlat标准态性能优化，底库500w， 256维度，通过GetFeature随机获取4w底库，耗时减少到25ms内。
+- 异构内存支持时空库附加属性，功能支持：时空库TSInt8FlatCos，1024维度下，异构内存场景能添加附加属性，检索能正常过滤附加属性。
 
 ## 已解决的问题<a name="ZH-CN_TOPIC_0000002492442002"></a>
 
@@ -82,7 +81,7 @@
 
 ## 遗留问题<a name="ZH-CN_TOPIC_0000002524561719"></a>
 
-- Index SDK：在Atlas 800I A2 推理服务器上使用Flat和int8算法小底库场景，会有性能劣化。
+- 无遗留问题。
 
 # 升级影响<a name="ZH-CN_TOPIC_0000002524561715"></a>
 
@@ -94,12 +93,12 @@
 
 无
 
-# 7.3.0版本配套文档<a name="ZH-CN_TOPIC_0000002524561717"></a>
+# 26.0.0版本配套文档<a name="ZH-CN_TOPIC_0000002524561717"></a>
 
 |文档名称|内容简介|更新说明|
 |--|--|--|
-|《Index SDK 7.3.0 用户指南》|主要包括Index SDK的使用流程、算法介绍、算子生成说明、API接口说明以及其他常用的操作。|变更详见《[Index SDK 7.3.0 用户指南](introduction.md#软件架构)》。|
+|《Index SDK 26.0.0 用户指南》|主要包括Index SDK的使用流程、算法介绍、算子生成说明、API接口说明以及其他常用的操作。|变更详见《[Index SDK 26.0.0 用户指南](introduction.md#软件架构)》。|
 
 # 漏洞修补列表<a name="ZH-CN_TOPIC_0000002492282030"></a>
 
-请参见[MindSDK_7.3.0_漏洞修补列表.xlsx](./resource/MindSDK_7.3.0_漏洞修补列表.xlsx)。
+无
