@@ -170,13 +170,10 @@ if [ ! -d "${PRESMOKE_DIR}/mindsdk-referenceapps" ]; then
     git clone https://gitcode.com/Ascend/mindsdk-referenceapps.git
 fi
 
-if [ ! -d "/opt/buildtools/googletest-1.11.0/googletest" ]; then
-    cd /opt/buildtools/googletest-1.11.0
-    git clone -b release-1.11.0 https://gitcode.com/GitHub_Trending/go/googletest.git googletest
-    cd googletest
+if [ ! -d "/opt/buildtools/googletest-1.11.0/lib" ]; then
+    cd /opt/buildtools/googletest-1.11.0/googletest-release-1.11.0/
     cmake -DCMAKE_INSTALL_PREFIX=/opt/buildtools/googletest-1.11.0 \
-        -DBUILD_SHARED_LIBS=ON \
-        ../googletest
+        -DBUILD_SHARED_LIBS=ON
     make -j10
     make install
 fi
