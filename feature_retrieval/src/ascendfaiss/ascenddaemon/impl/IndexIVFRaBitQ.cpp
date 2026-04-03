@@ -1433,8 +1433,12 @@ APP_ERROR IndexIVFRaBitQ::addEncodedVectors(int listId, size_t numVecs,
 
     size_t codePartBytes = utils::divUp(dims, 8);          // 压缩码部分字节数
     size_t factorBytes = sizeof(float);              // 每个因子字节数
-    size_t totalEncodedPerVec = codePartBytes + 2 * factorBytes;
-    uint64_t encodedOffset = 0;  // 编码偏移量
+
+    const uint8_t* allCodesPtr = encodedCodes;
+    const uint8_t* allL2Ptr = encodedCodes + numVecs * codePartBytes;
+    const uint8_t* allL1Ptr = allL2Ptr + numVecs * factorBytes;
+
+    size_t vecOffset = 0;
 
     for (size_t i = 0; i < tileNum; i++) {
         size_t tileVecs = baseSizeHost[i];
@@ -1444,29 +1448,28 @@ APP_ERROR IndexIVFRaBitQ::addEncodedVectors(int listId, size_t numVecs,
         // 拷贝压缩码到 baseFp32 对应块
         uint8_t* codeBlockPtr = reinterpret_cast<uint8_t*>(reinterpret_cast<uint64_t>(pBaseFp32) + offsetHost[i]);
         auto ret = aclrtMemcpy(codeBlockPtr, tileCodeBytes,
-                               encodedCodes + encodedOffset, tileCodeBytes,
+                               allCodesPtr + vecOffset * codePartBytes, tileCodeBytes,
                                ACL_MEMCPY_HOST_TO_DEVICE);
         APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR,
                                  "copy codes failed for list %d tile %zu, ret=%d", listId, i, ret);
-        encodedOffset += tileCodeBytes;
 
         // 拷贝 L2 因子到 IndexL2OnDevice
         float* l2Ptr = IndexL2OnDevice[listId]->data() + indexl2offsetHost[i];
         ret = aclrtMemcpy(l2Ptr, tileFactorBytes,
-                          encodedCodes + encodedOffset, tileFactorBytes,
+                          allL2Ptr + vecOffset * factorBytes, tileFactorBytes,
                           ACL_MEMCPY_HOST_TO_DEVICE);
         APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR,
                                  "copy L2 factors failed for list %d tile %zu, ret=%d", listId, i, ret);
-        encodedOffset += tileFactorBytes;
 
         // 拷贝 L1 因子到 IndexL1OnDevice
         float* l1Ptr = IndexL1OnDevice[listId]->data() + indexl2offsetHost[i];
         ret = aclrtMemcpy(l1Ptr, tileFactorBytes,
-                          encodedCodes + encodedOffset, tileFactorBytes,
+                          allL1Ptr + vecOffset * factorBytes, tileFactorBytes,
                           ACL_MEMCPY_HOST_TO_DEVICE);
         APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR,
                                  "copy L1 factors failed for list %d tile %zu, ret=%d", listId, i, ret);
-        encodedOffset += tileFactorBytes;
+
+        vecOffset += tileVecs;
     }
 
     auto ret = synchronizeStream(stream);
