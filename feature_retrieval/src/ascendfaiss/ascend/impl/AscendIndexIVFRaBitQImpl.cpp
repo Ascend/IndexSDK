@@ -755,6 +755,9 @@ void AscendIndexIVFRaBitQImpl::copyFrom(const faiss::IndexIVFRaBitQ *index)
             FAISS_THROW_IF_NOT_FMT(ret == ::ascend::APP_ERR_OK,
                                    "Failed to add encoded vectors to device %d, list %d, ret=%d",
                                    deviceId, listId, ret);
+
+            updateIdMapping(reinterpret_cast<const ascend_idx_t*>(perDeviceIds[devIdx].data()),
+                            deviceId, numVecs);
         }
 
         totalAdded += listLen;
