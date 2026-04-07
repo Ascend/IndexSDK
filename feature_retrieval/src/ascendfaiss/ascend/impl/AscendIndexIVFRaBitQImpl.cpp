@@ -32,11 +32,8 @@ const size_t DEFAULT_DIM = 128;
 // Default nlist in case of nullptr index
 const size_t DEFAULT_NLIST = 1024;
 
-// The value range of dim
-const std::vector<int> DIMS = { 128 };
-
 // The value range of nlist
-const std::vector<int> NLISTS = { 1024, 2048, 4096, 8192, 16384, 32768 };
+const std::vector<int> NLISTS = { 1024, 2048, 4096, 8192, 10048, 16384, 32768 };
 const size_t KB = 1024;
 const size_t RETAIN_SIZE = 2048;
 const size_t UNIT_PAGE_SIZE = 640;
@@ -197,7 +194,7 @@ void AscendIndexIVFRaBitQImpl::checkParams() const
     FAISS_THROW_IF_NOT_MSG(this->intf_->metric_type == MetricType::METRIC_L2, "Unsupported metric type");
     FAISS_THROW_IF_NOT_FMT(std::find(NLISTS.begin(), NLISTS.end(), this->nlist) != NLISTS.end(),
                            "Unsupported nlists %d", this->nlist);
-    FAISS_THROW_IF_NOT_MSG(std::find(DIMS.begin(), DIMS.end(), this->intf_->d) != DIMS.end(), "Unsupported dims");
+    FAISS_THROW_IF_NOT_MSG(this->intf_->d >=64 && this->intf_->d <= 4096 && this->intf_->d % 16 == 0, "Unsupported dims");
     FAISS_THROW_IF_NOT_MSG(ivfConfig.deviceList.size() != 0, "deviceList is empty");
 }
 
@@ -357,7 +354,7 @@ void AscendIndexIVFRaBitQImpl::addPaged(int n, const float* x, const idx_t* ids)
         addImpl(n, x, ids);
     }
     copyVectorToDevice(n);
-    this->srcIndexes.insert(this->srcIndexes.end(), x, x + n * this->intf_->d);
+    this->srcIndexes.insert(this->srcIndexes.end(), x, x + static_cast<size_t>(n) * static_cast<size_t>(this->intf_->d));
     std::unordered_map<int, AscendIVFAddInfo>().swap(assignCounts); // 释放host侧占用的内存
     APP_LOG_INFO("AscendIndexIVFRaBitQImpl addPaged operation finished.\n");
 }
