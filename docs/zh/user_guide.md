@@ -2,7 +2,7 @@
 
 安装Index SDK后，需要依照本章节的指导，设置算子相关的环境变量，并生成算法所需要的算子。
 
-> [!NOTE] 说明
+> [!NOTE]
 >
 >- AscendIndexFlat算法L2和IP距离支持在线算子转换，如果环境变量**MX\_INDEX\_USE\_ONLINEOP**设置为1（设置命令：export MX\_INDEX\_USE\_ONLINEOP=1），则会在线转换算子并调用，不需要按照本章节生成离线算子。使用在线算子需要用户在应用程序的最后显式调用<b>\(void\)aclFinalize\(\)</b>（需要包含头文件：\#include "acl/acl.h"）。
 >- 对于不支持在线算子的算法，如果设置了环境变量**MX\_INDEX\_USE\_ONLINEOP=1**，会导致程序运行失败。
@@ -42,7 +42,7 @@
     - “ASCEND\_VERSION”表示当前使用的Ascend版本，如果ATC工具安装路径是“/usr/local/Ascend/ascend-toolkit/latest”则无需设置“ASCEND\_HOME”和“ASCEND\_VERSION”。
     - “ASCEND\_OPP\_PATH”表示算子库根目录，用户需要该目录的写权限。
 
-    > [!NOTE] 说明
+    > [!NOTE]
     >“MAX\_COMPILE\_CORE\_NUMBER”环境变量用于指定图编译时可用的CPU核数，在算子运行时使用，当前默认为“1”，用户无需设置。
 
 3. 根据实际系统架构执行对应脚本。
@@ -75,7 +75,7 @@
     |--extract=\<path>|解压软件包中文件到指定目录。可配套--noexec参数使用。|
     |--tar arg1 [arg2 ...]|对软件包执行tar命令，使用tar后面的参数作为命令的参数。例如执行--tar xvf命令，解压run安装包的内容到当前目录。|
 
-    > [!NOTE] 说明 
+    > [!NOTE]
     >以下参数未展示在--help参数中，用户请勿直接使用。
     >- --xwin：使用xwin模式运行。
     >- --phase2：要求执行第二步动作。
@@ -91,7 +91,7 @@
         |参数名称|\<mode>：算法模式，\<mode>支持ALL以及Flat，SQ8，IVFSQ8，INT8中的一种或多种，多种之间用逗号隔开，如：**python3 run_generate_model.py** **-m Flat,IVFSQ8**。默认全选，可以直接执行**python3 run_generate_model.py**。<br><npu_type>：*npu_type*表示芯片名称。<li>对于Atlas 200/300/500 推理产品、Atlas 推理系列产品，可在安装昇腾AI处理器的服务器执行**npu-smi info**命令进行查询，将查询到的“Name”最后一位数字删除，即是npu_type的取值。</li><li>对于Atlas 800I A2 推理服务器，可在安装昇腾AI处理器的服务器执行**npu-smi info**命令进行查询，查询到的“Name”即是npu_type的取值。</li><li>对于Atlas 800I A3 超节点服务器，可以通过**npu-smi info -t board -i 0 -c 0**命令进行查询，获取**NPU Name**信息，910_**NPU Name**即是npu_type的取值。</li><br>\<pipeline>：是否使用多线程并行流水生成算子模型，默认为true。设置为true时，使用默认的pool_size的值为32。<br><pool_size>：批量生成算子多进程调度的进程池大小。<br>--help \| -h：查询帮助信息。|
         |说明| <li>执行此命令，用户可以得到多组算子模型文件。执行命令前，用户需要更改当前目录下的para_table.xml文件，将所需的参数填入表中。</li><li>1 ≤ pool_size ≤ 32</li>|
 
-        > [!NOTE] 说明 
+        > [!NOTE]
         >算子生成说明表格中的约束说明，代表业务中经常涉及的参数组合，使用其他参数运行异常请参见《CANN ATC离线模型编译工具用户指南》。
 
 5. 准备算子模型文件。
@@ -107,7 +107,7 @@
 
     算子生成后，请妥善保管相关om文件并确保文件不被篡改。
 
-    > [!NOTE] 说明
+    > [!NOTE]
     >生成算子时如果出现报错：Failed to import Python module，请参照[NumPy的数据类型np.float\_ 已被移除](./faq.md#numpy的数据类型npfloat_-已被移除)解决。
 
 # 使用样例<a name="ZH-CN_TOPIC_0000001649689164"></a>
@@ -119,7 +119,7 @@
 **前提条件<a name="section42712132135"></a>**
 
 - 已完成[安装部署](./installation_guide.md#安装部署)操作。
-- 已经生成Flat和AICPU算子。
+- 已经生成[Flat](#flat)和[AICPU](#aicpu)算子。
 
 **操作步骤<a name="section1592313504162"></a>**
 
@@ -250,7 +250,7 @@
 
 # 算法介绍<a name="ZH-CN_TOPIC_0000001649848468"></a>
 
-> [!NOTE] 说明 
+> [!NOTE]
 >标准态部署主要使用AI CPU，Ctrl CPU和AI CPU的最佳推荐配比如下。
 >
 >- 使用Atlas 200/300/500 推理产品，建议设置为2:6。
@@ -380,7 +380,7 @@
 
 ### SQ8<a name="ZH-CN_TOPIC_0000001506614921"></a>
 
-> [!NOTE] 说明
+> [!NOTE]
 >INT8Flat和SQ8的区别主要在于：INT8由外部进行量化，Index的输入特征是INT8类型，SQ8由Index内部量化，Index的输入特征是Float32类型。
 
 <a name="table3955133174816"></a>
@@ -460,7 +460,7 @@
 
 ### INT8Flat<a name="ZH-CN_TOPIC_0000001456695008"></a>
 
-> [!NOTE] 说明 
+> [!NOTE]
 >INT8Flat和SQ8的区别主要在于：INT8由外部进行量化，Index的输入特征是INT8类型，SQ8由Index内部量化，Index的输入特征是Float32类型。
 
 <a name="table3955133174816"></a>
@@ -502,7 +502,7 @@
 
 ### IVFSQT<a name="ZH-CN_TOPIC_0000001506414677"></a>
 
-> [!NOTE] 说明
+> [!NOTE]
 >为了减少train和add的耗时，需要生成FlatAT算子。其中，Flat的<dim\>需与IVFSQT的<dim\_in\>相同，Flat的<code\_num\>与IVFSQT的<coarse\_centroid\_num\>一致。
 
 <a name="table3955133174816"></a>
@@ -542,7 +542,7 @@
 
 ### FlatAT<a name="ZH-CN_TOPIC_0000001506414881"></a>
 
-> [!NOTE] 说明 
+> [!NOTE]
 >当前FlatAT算子配合IVF类型的算子使用，用来加速IVF类型算子的add、train等过程，不支持直接调用FlatAT算子。当前的add/train加速功能通过IVF中AscendIndexIVFConfig.useKmeansPP进行指定，此时仅支持训练规模在7,000,000以下的训练。
 
 <a name="table17415417319"></a>

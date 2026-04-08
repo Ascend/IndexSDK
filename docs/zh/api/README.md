@@ -51,7 +51,7 @@
 
 ## 调用流程与继承关系<a name="ZH-CN_TOPIC_0000001506615153"></a>
 
-> [!NOTE] 说明 
+> [!NOTE]
 >Index SDK特征检索组件的C++接口遵循开源的Faiss接口的异常处理机制，故用户必须在**try**/**catch**语句块内进行调用以及异常处理，具体的处理范例请参见[代码参考](../appendix.md#代码参考)中的处理方式，防止在使用的过程中出现异常抛出导致程序退出的情况。
 
 检索接口调用的基本流程如[图1 检索接口调用的基本流程](#fig7270141171511)所示。
@@ -68,7 +68,7 @@
 **图 3**  部分AscendIndex间继承关系<a id="fig13557318153512"></a>  
 ![](../figures/部分AscendIndex间继承关系.png "部分AscendIndex间继承关系")
 
-> [!NOTE] 说明
+> [!NOTE]
 >
 >- 由于部分特征检索的输入为指针类型的输入，请用户确保此类指针为合法值，以防止特征检索的运行过程中可能产生的越界读写等潜在风险和问题。此外，特征检索是助力昇腾AI处理器完成向量检索计算，因此输入的Device ID需要用户确保为合法值，否则可能因为连接设备侧失败导致功能失效。
 >- [Faiss](https://github.com/facebookresearch/faiss)是在业界使用非常广泛的向量检索加速库，为了便于生态用户将向量检索聚类业务快速从CPU/GPU平台迁移到昇腾平台，昇腾平台众多算法的基类AscendIndex继承自faiss::Index类，faiss::Index类中d、ntotal等成员变量为public，在使用AscendIndex和AscendIndexInt8各子类过程中，请勿直接修改此类public成员变量。
@@ -108,5 +108,5 @@
 |AscendIndexVStar.h|${mxIndex_install_path}/mxIndex/include/faiss/ascend/|VStar检索的对外接口定义。|
 |AscendIndexMixSearchParams.h|${mxIndex_install_path}/mxIndex/include/faiss/ascend/|Vstar和Great检索所需的参数结构体对外头文件。|
 
-> [!NOTE] 说明 
+> [!NOTE]
 >$\{mxIndex\_install\_path\}表示Index SDK的安装路径。
