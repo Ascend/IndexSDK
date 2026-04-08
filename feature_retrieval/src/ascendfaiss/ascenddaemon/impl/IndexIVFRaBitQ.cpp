@@ -1622,10 +1622,10 @@ void IndexIVFRaBitQ::moveVectorForward(int listId, idx_t srcIdx, idx_t dstIdx)
         static_cast<size_t>(listId), static_cast<size_t>(dstIdx)
     };
 
-    ret = RemoveForwardNDFormat(param, 1, IndexL1OnDevice);
+    ret = RemoveForwardNDFormat(L1param, 1, IndexL1OnDevice);
     ASCEND_THROW_IF_NOT_FMT(ret == ACL_SUCCESS, "RemoveForwardNDFormat error %d", ret);
 
-    ret = RemoveForwardNDFormat(param, 1, IndexL2OnDevice);
+    ret = RemoveForwardNDFormat(L1param, 1, IndexL2OnDevice);
     ASCEND_THROW_IF_NOT_FMT(ret == ACL_SUCCESS, "RemoveForwardNDFormat error %d", ret);
 
     listVecNum[listId]--;
