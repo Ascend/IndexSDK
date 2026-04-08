@@ -47,7 +47,7 @@
 |--|--|--|--|
 |MindSDK 26.0.0|<li>MindSDK 6.0.RC3及6.0.RC3.x</li><li>MindSDK 6.0.0及6.0.0.x</li><li>MindSDK 7.0.RC1及7.0.RC1.x</li><li>MindSDK 7.1.RC1及7.1.RC1.x</li><li>MindSDK 7.2.RC1及7.2.RC1.x</li><li>MindSDK 7.3.0及7.3.0.x</li>|<li>CANN 8.1.RC1及8.1.RC1.x</li><li>CANN 8.2.RC1及8.2.RC1.x</li><li>CANN 8.3.RC1及8.3.RC1.x</li><li>CANN 8.5.0及8.5.0.x</li><li>CANN 9.0.0及9.0.0.x</li>|<li>Ascend HDK 25.0.RC1及Ascend HDK 25.0.RC1.x</li><li>Ascend HDK 25.2.0及Ascend HDK 25.2.0.x</li><li>Ascend HDK 25.3.RC1及Ascend HDK 25.3.RC1.x</li><li>Ascend HDK 25.5.0及Ascend HDK 25.5.0.x</li><li>Ascend HDK 26.0.0及Ascend HDK 26.0.0.x</li>|
 
-> [!NOTE] 说明 
+> [!NOTE]
 >软件版本兼容性是指网元软件版本升级时，关联设备、网管和上层OSS不需要联动升级或打补丁，仍然可以支持已有功能。
 
 # 版本使用注意事项<a name="ZH-CN_TOPIC_0000002492282032"></a>

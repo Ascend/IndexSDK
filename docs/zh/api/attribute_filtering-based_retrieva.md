@@ -52,12 +52,12 @@
 </tbody>
 </table>
 
-> [!NOTE] 说明 
+> [!NOTE]
 >AddFeature不能与AddWithExtraVal接口混用。
 
 #### AddFeatureByIndice接口<a name="ZH-CN_TOPIC_0000002411433020"></a>
 
-> [!NOTE] 说明
+> [!NOTE]
 >
 >- AddFeatureByIndice接口不能和AddFeature、AddWithExtraVal接口混用。
 >- 使用AddFeatureByIndice接口按位置添加底库之后，不能使用GetExtraValAttrByLabel等依赖Label的接口，AddFeatureByIndice和GetFeatureByIndice需配套使用。
@@ -1085,7 +1085,7 @@
 </tbody>
 </table>
 
-> [!NOTE] 说明
+> [!NOTE]
 >SearchWithExtraVal不能与Search接口混用。
 
 #### SetHeteroParam接口<a name="ZH-CN_TOPIC_0000001630850578"></a>
@@ -1188,7 +1188,7 @@ uint8\_t\*：特征token ID的列表，每个uint8\_t成员从低位到高位，
 
 例如：一个过滤器的token列表包含两个非零的uint8\_t成员：\[7, 15, 0, 0, ……, 0\]，非零成员的二进制表示为00000111、00001111，则它们表达的有效token ID为：0，1，2，8，9，10，11。
 
-> [!NOTE] 说明 
+> [!NOTE]
 >“tokenBitSet”长度应为“tokenBitSetLen”，否则可能出现越界读写错误并引起程序崩溃。
 
 #### tokenBitSetLen接口<a name="ZH-CN_TOPIC_0000001458687402"></a>
@@ -1238,7 +1238,7 @@ int16\_t：附加属性查询模式，分为模式0和模式1。
 
 int32\_t：记录当前特征的时间信息，以时间戳（秒级）形式表示。
 
-> [!NOTE] 说明 
+> [!NOTE]
 >由于昇腾硬件限制，只能处理int32类型数据，因此用户需要保证当前时间戳不会超过int32的最大值，建议在实际操作时，将当前实际时间戳减去固定的一个历史时间戳，然后再存入。
 
 #### tokenId接口<a name="ZH-CN_TOPIC_0000001507887269"></a>

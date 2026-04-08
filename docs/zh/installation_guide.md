@@ -22,6 +22,86 @@ Index SDK特征检索的使用，依赖NPU固件驱动包、CANN软件包、[Ope
 
 ## 安装依赖<a name="ZH-CN_TOPIC_0000001506414849"></a>
 
+### Ubuntu系统<a name="ZH-CN_TOPIC_0000001631987505"></a>
+
+Ubuntu系统环境中所需依赖名称、对应版本及获取建议请参见[表1](#table20540329125613)。
+
+**表 1**  Ubuntu系统依赖名称对应版本
+<a name="table20540329125613"></a>
+
+|依赖名称|版本建议|获取建议|
+|--|--|--|
+|gcc|7.5.0|建议通过获取源码包编译安装|
+|cmake|不低于3.24.0|建议通过包管理安装，安装命令参考如下。<br>```sudo apt-get install -y cmake```<br>若包管理中的版本不符合最低版本要求，可自行通过源码方式安装。|
+|Python|3.9/3.10/3.11/3.12|建议通过获取源码包编译安装|
+
+参考如下命令，检查是否已安装GCC、CMake等依赖软件。
+
+```bash
+gcc --version
+cmake --version
+python3 --version
+```
+
+若分别返回如下信息，说明相应软件已安装（以下回显仅为示例，请以实际情况为准）。
+
+```bash
+gcc (Ubuntu 7.5.0-3ubuntu1~18.04) 7.5.0
+cmake version 3.24.0
+Python 3.9.11
+```
+
+### CentOS系统<a name="ZH-CN_TOPIC_0000001632546921"></a>
+
+CentOS系统环境中所需依赖名称、对应版本及获取建议请参见[表2](#table20540329125611)。
+
+**表 2** CentOS系统依赖名称对应版本
+<a id="table20540329125611"></a>
+
+|依赖名称|版本建议|获取建议|
+|--|--|--|
+|gcc|7.5.0|建议通过获取源码包编译安装|
+|cmake|不低于3.24.0|建议通过包管理安装，安装命令参考如下。<br>```sudo yum install -y cmake```<br>若包管理中的版本不符合最低版本要求，可自行通过源码方式安装。|
+|Python|3.9|建议通过获取源码包编译安装|
+
+参考如下命令，检查是否已安装GCC、CMake等依赖软件。
+
+```bash
+gcc --version
+cmake --version
+python3 --version
+```
+
+若分别返回如下信息，说明相应软件已安装（以下回显仅为示例，请以实际情况为准）。
+
+```bash
+gcc 7.5.0
+cmake version 3.24.0
+Python 3.9.11
+```
+
+### Python依赖<a name="ZH-CN_TOPIC_0000001632546921"></a>
+
+Python安装好后，pip所需依赖名称、对应版本及获取建议请参见[表3](#table20540329125612)。
+
+**表 3** pip依赖名称对应版本
+<a id="table20540329125612"></a>
+
+|依赖名称|版本建议|获取建议|
+|--|--|--|
+|numpy|1.25.0|安装命令参考如下。<br>```pip3 install numpy==1.25.0```<br>|
+|decorator|5.2.1|安装命令参考如下。<br>```pip3 install decorator==5.2.1```<br>|
+|sympy|1.14|安装命令参考如下。<br>```pip3 install sympy==1.14```<br>|
+|cffi|1.15.1|安装命令参考如下。<br>```pip3 install cffi==1.15.1```<br>|
+|pyyaml|无|安装命令参考如下。<br>```pip3 install pyyaml```<br>|
+|pathlib2|无|安装命令参考如下。<br>```pip3 install pathlib2```<br>|
+|protobuf|无|安装命令参考如下。<br>```pip3 install protobuf```<br>|
+|scipy|无|安装命令参考如下。<br>```pip3 install scipy```<br>|
+|requests|无|安装命令参考如下。<br>```pip3 install requests```<br>|
+|attrs|无|安装命令参考如下。<br>```pip3 install attrs```<br>|
+|psutil|无|安装命令参考如下。<br>```pip3 install psutil```<br>|
+|faiss-cpu|1.13.2|安装命令参考如下。<br>```pip3 install faiss-cpu==1.13.2```<br>|
+
 ### 安装NPU驱动固件和CANN<a name="ZH-CN_TOPIC_0000001456854880"></a>
 
 **下载依赖软件包<a name="section119752030133014"></a>**
@@ -53,7 +133,7 @@ Index SDK特征检索的使用，依赖NPU固件驱动包、CANN软件包、[Ope
 </tr>
 </table>
 
-> [!NOTE] 说明 
+> [!NOTE]
 >
 >- \{version\}表示软件版本号。
 >- \{arch\}表示CPU架构。
@@ -65,7 +145,7 @@ Index SDK特征检索的使用，依赖NPU固件驱动包、CANN软件包、[Ope
 1. 参考《CANN 软件安装指南》中的“安装NPU驱动和固件”章节（商用版）或“安装NPU驱动和固件”章节（社区版）安装NPU驱动固件。
 2. 参考《CANN 软件安装指南》的“安装CANN”章节（商用版）或《CANN 软件安装指南》的“安装CANN”章节（社区版）安装CANN。
 
-    > [!NOTE] 说明 
+    > [!NOTE]
     >- 安装CANN时，为确保Index SDK正常使用，CANN的相关依赖也需要一并安装。
     >- 安装CANN和安装Index SDK的用户需为同一用户，建议为普通用户。
 
@@ -123,7 +203,7 @@ Index SDK特征检索的使用，依赖NPU固件驱动包、CANN软件包、[Ope
 - 请在安装Faiss之前，完成OpenBLAS的安装，具体安装步骤请参见[安装OpenBLAS](#安装openblas)。
 - 当前发布的特征检索依赖于Faiss v1.10.0执行构建和发布，推荐用户使用对应版本的Faiss，在此处仅提供Faiss v1.10.0的安装参考，具体安装步骤请以实际Faiss版本和环境为准。
 
-> [!NOTE] 说明 
+> [!NOTE]
 >
 >- 如果是ARM平台，编译安装Faiss前请根据gcc版本适配Faiss源码。
 >- ARM平台上，部分旧版本的gcc（如4.8.5等）不支持直接编译Faiss 1.10.0版本，部分旧版本的编译器不支持“simdlib\_neon.h”的相关实现，需要改用默认CPU上的SIMD实现，使用该方法时功能可以正常运行，但是部分Index算法（IVF类、SQ类等）会出现较大性能退化。推荐使用gcc7.5.0进行编译和安装，高于gcc9.5.0版本可能出现兼容性问题。
@@ -190,7 +270,6 @@ Index SDK特征检索的使用，依赖NPU固件驱动包、CANN软件包、[Ope
     cmake -B build . -DFAISS_ENABLE_GPU=OFF -DFAISS_ENABLE_PYTHON=OFF -DBUILD_TESTING=OFF -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=Release
     # 步骤3：编译安装
     cd build && make -j && make install
-    cd ../.. && rm -f v1.10.0.tar.gz && rm -rf faiss-1.10.0
     ```
 
 4. 按“Esc”键，输入<b>:wq!</b>，按“Enter”保存并退出编辑。
@@ -200,14 +279,14 @@ Index SDK特征检索的使用，依赖NPU固件驱动包、CANN软件包、[Ope
     bash install_faiss_sh.sh
     ```
 
-    > [!NOTE] 说明 
+    > [!NOTE]
     >- 编译该Faiss 1.10.0需要CMake的版本不低于CMake 3.24.0，如果编译Faiss时提示CMake版本过低，请参考[编译Faiss 1.10.0时，CMake出现报错信息](./faq.md#编译faiss-1100时cmake出现报错信息)解决。
     >- Faiss默认安装目录为“/usr/local/lib”，如需指定安装目录，例如“install\_path=/usr/local/faiss/faiss1.10.0”，则在CMake编译配置加**-DCMAKE\_INSTALL\_PREFIX=$\{**_install\_path_**\}**选项即可。
->
-    > ```
+    >
+    > ```bash
     > install_path=/usr/local/faiss/faiss1.10.0
     > cmake -B build . -DFAISS_ENABLE_GPU=OFF -DFAISS_ENABLE_PYTHON=OFF -DBUILD_TESTING=OFF -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${install_path}
-    >    ```
+    >  ```
 
 6. 配置系统库查找路径的环境变量。
 
@@ -217,7 +296,7 @@ Index SDK特征检索的使用，依赖NPU固件驱动包、CANN软件包、[Ope
     # 配置/etc/profile
     vim /etc/profile
     # 在/etc/profile中添加: export LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
-    # /usr/local/lib是Faiss的安装目录,如果安装在其他目录下,将/usr/local/lib替换为Faiss实际安装路径，部分操作系统和环境中，Faiss可能会安装在其他目录下。
+    # /usr/local/lib是Faiss的安装目录,如果安装在其他目录下,将/usr/local/lib替换为Faiss实际安装路径，部分操作系统和环境中，Faiss可能会安装在其他目录下。例如在CentOS操作系统下，路径为/usr/local/lib64。
     source /etc/profile
     cd ..
     ```
@@ -230,8 +309,8 @@ Index SDK特征检索的使用，依赖NPU固件驱动包、CANN软件包、[Ope
 
     如果正确显示软件的版本信息，则表示安装成功。
 
-> [!NOTE] 说明 
->如果在openEuler系统中编译Faiss后报错，请参见[链接libfaiss.so时，返回undefined reference错误。](./faq.md#链接libfaissso时返回undefined-reference错误)解决。
+> [!NOTE]
+>如果在openEuler系统中编译Faiss后报错，请参见[链接libfaiss.so时，返回undefined reference错误](./faq.md#链接libfaissso时返回undefined-reference错误)解决。
 
 ## 获取Index SDK软件包<a name="ZH-CN_TOPIC_0000001456695124"></a>
 
@@ -480,7 +559,7 @@ Index SDK特征检索的使用，依赖NPU固件驱动包、CANN软件包、[Ope
 
     1. 执行安装命令，安装软件包。用户需确保整个安装过程由同一用户执行，安装路径和解压路径仅允许该用户访问。
 
-        > [!NOTE] 说明 
+        > [!NOTE]
         >--install安装命令同时支持输入可选参数，如[表2](#table7138521890)所示。输入不在列表中的参数可能正常安装或者报错。
 
     2. 添加Index软件包路径的环境变量。以Index SDK的安装路径“/home/work/FeatureRetrieval”为例：
@@ -510,7 +589,7 @@ Index SDK特征检索的使用，依赖NPU固件驱动包、CANN软件包、[Ope
 |--upgrade|特征检索软件包升级操作命令，将特征检索升级到安装包所包含的Index SDK版本。|
 |--platform|对应昇腾AI处理器类型。<li>使用Atlas 200/300/500 推理产品请输入310。使用Atlas 推理系列产品请输入310P。</li><li>使用Atlas 800I A3 超节点服务器请输入“A3”。</li><li>使用Atlas A2 推理系列产品，请在安装昇腾AI处理器的服务器执行npu-smi info命令进行查询，将查询到的“Name”最后一位数字删掉，即是--platform的取值。</li>|
 
-> [!NOTE] 说明
+> [!NOTE]
 >以下参数未展示在--help参数中，用户请勿直接使用。
 >
 >- --xwin：使用xwin模式运行。
@@ -576,7 +655,7 @@ Index SDK特征检索的使用，依赖NPU固件驱动包、CANN软件包、[Ope
 
 # 卸载<a name="ZH-CN_TOPIC_0000001698153309"></a>
 
-> [!NOTE] 说明
+> [!NOTE]
 >卸载操作涉及对安装目录的删除步骤，如目录下存在其他文件，也会被一并删除。请在执行卸载操作前，确保所有数据都已妥善处理。
 >算子文件需要用户手动进行删除。用户在卸载时请同时删除检索相关算子文件，其中\{ASCEND\_OPP\_PATH\}为[安装Index SDK](#安装index-sdk)时设置的环境变量目录。
 >

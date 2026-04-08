@@ -26,7 +26,7 @@
 
 手册中提供了在全量和近似的场景下推荐客户所使用的性能最优的Index算法，用户可以参考此章节的参考样例以及Faiss的开源代码开发自己的应用程序，其他算法亦同理。
 
-> [!NOTE] 说明
+> [!NOTE]
 >
 >- 请注意**AscendFaiss**/**Faiss**需要运行在**try**/**catch**的语句块中，并按照示例中建议的方式进行调用和异常处理。
 >- 请确认执行以下代码前已经生成并部署了对应维度的算子。
@@ -239,7 +239,7 @@ int main(int argc, char **argv)
     - toolkit目录下的latest/opp/version.info文件
     - 算子文件：$\{MX\_INDEX\_HOME\}/modelpath/
 
-        > [!NOTE] 说明 
+        > [!NOTE]
         >算子文件必须保证只有Atlas 推理系列产品的算子，不能有其他产品的算子，否则可能导致Device侧运行失败。
 
 3. 登录到Device侧，配置以下环境变量。
