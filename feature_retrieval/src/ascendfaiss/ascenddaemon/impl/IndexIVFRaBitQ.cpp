@@ -661,7 +661,7 @@ void IndexIVFRaBitQ::runL1TopkOp(AscendTensor<float, DIMS_2> &dists,
     ASCEND_THROW_IF_NOT(op);
     AscendTensor<float, DIMS_3> distsTopk(dists.data(), {1, batch, numLists});
     AscendTensor<float, DIMS_3> vmdistsTopk(vmdists.data(), {1, batch,
-                                            std::min(numLists / IVF_RABITQ_BURST_LEN * 2, MIN_EXTREME_SIZE)});
+                                            numLists / IVF_RABITQ_BURST_LEN * 2});
     AscendTensor<uint32_t, DIMS_3> sizesTopk(sizes.data(), {1, CORE_NUM, SIZE_ALIGN});
     AscendTensor<uint16_t, DIMS_3> flagsTopk(flags.data(), {1, CORE_NUM, FLAG_SIZE});
     std::shared_ptr<std::vector<const aclDataBuffer *>> topkOpInput(
