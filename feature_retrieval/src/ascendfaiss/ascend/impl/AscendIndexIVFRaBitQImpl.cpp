@@ -34,6 +34,8 @@ const size_t DEFAULT_NLIST = 1024;
 
 // The value range of nlist
 const std::vector<int> NLISTS = { 1024, 2048, 4096, 8192, 10048, 16384, 32768 };
+// The value range of dims
+const std::vector<int> DIMS = { 64, 128, 256, 384, 512, 768, 1024, 2048 };
 const size_t KB = 1024;
 const size_t RETAIN_SIZE = 2048;
 const size_t UNIT_PAGE_SIZE = 640;
@@ -194,7 +196,8 @@ void AscendIndexIVFRaBitQImpl::checkParams() const
     FAISS_THROW_IF_NOT_MSG(this->intf_->metric_type == MetricType::METRIC_L2, "Unsupported metric type");
     FAISS_THROW_IF_NOT_FMT(std::find(NLISTS.begin(), NLISTS.end(), this->nlist) != NLISTS.end(),
                            "Unsupported nlists %d", this->nlist);
-    FAISS_THROW_IF_NOT_MSG(this->intf_->d >=64 && this->intf_->d <= 4096 && this->intf_->d % 16 == 0, "Unsupported dims");
+    FAISS_THROW_IF_NOT_FMT(std::find(DIMS.begin(), DIMS.end(), this->intf_->d) != DIMS.end(),
+                           "Unsupported dimensions %d, should be in {64, 128, 256, 384, 512, 768, 1024, 2048}", this->intf_->d);
     FAISS_THROW_IF_NOT_MSG(ivfConfig.deviceList.size() != 0, "deviceList is empty");
 }
 
@@ -439,6 +442,29 @@ void AscendIndexIVFRaBitQImpl::train(idx_t n, const float *x, bool clearNpuData)
         return;
     }
 
+    size_t trainNum = std::min(static_cast<size_t>(n), static_cast<size_t>(nlist) * 256);
+    const float* trainData = x;
+    std::vector<float> trainVector;
+    
+    if (static_cast<size_t>(n) > trainNum) {
+        APP_LOG_INFO("AscendIndexIVFRaBitQImpl train: sampling %zu vectors from %ld for training\n", trainNum, n);
+        trainVector.resize(trainNum * this->intf_->d);
+        std::vector<size_t> indices(n);
+        for (size_t i = 0; i < static_cast<size_t>(n); ++i) {
+            indices[i] = i;
+        }
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        std::shuffle(indices.begin(), indices.end(), gen);
+        for (size_t i = 0; i < trainNum; ++i) {
+            size_t srcIdx = indices[i];
+            std::copy(x + srcIdx * this->intf_->d,
+                      x + (srcIdx + 1) * this->intf_->d,
+                      trainVector.begin() + i * this->intf_->d);
+        }
+        trainData = trainVector.data();
+    }
+
     randomOrthogonalGivens(this->intf_->d, this->orthogonalMatrix);
     uploadorthogonalMatrix(this->orthogonalMatrix);
     if (this->intf_->metric_type == MetricType::METRIC_INNER_PRODUCT) {
@@ -449,7 +475,7 @@ void AscendIndexIVFRaBitQImpl::train(idx_t n, const float *x, bool clearNpuData)
         pQuantizerImpl->npuClus->verbose = this->intf_->verbose;
         std::vector<float> tmpCentroids(nlist * this->intf_->d);
         if (pQuantizerImpl->npuClus->GetNTotal() == 0) {
-            pQuantizerImpl->npuClus->AddFp32(n, x);
+            pQuantizerImpl->npuClus->AddFp32(trainNum, trainData);
         }
         if (this->intf_->verbose) {
             printf("Ascend cluster start training %zu vectors\n", pQuantizerImpl->npuClus->GetNTotal());
@@ -463,7 +489,7 @@ void AscendIndexIVFRaBitQImpl::train(idx_t n, const float *x, bool clearNpuData)
         Clustering clus(this->intf_->d, nlist, this->ivfConfig.cp);
         clus.verbose = this->intf_->verbose;
         FAISS_THROW_IF_NOT_MSG(pQuantizerImpl->cpuQuantizer, "cpuQuantizer is not init.");
-        clus.train(n, x, *(pQuantizerImpl->cpuQuantizer));
+        clus.train(trainNum, trainData, *(pQuantizerImpl->cpuQuantizer));
         updateCoarseCenter(clus.centroids);
         ::ascend::AscendTensor<float, ::ascend::DIMS_2> centroidsTrained(clus.centroids.data(), {nlist, intf_->d});
         assignIndex->addVectorsAsCentroid(centroidsTrained);

@@ -27,6 +27,7 @@ import common as utils
 from common import OpJsonGenerator
 
 _CODE_NUM = 16384 * 2
+_CODE_NUM_FLAT = 16384 * 16
 _SCAN_BIT = 8
 _LUT_NUM = 2 ** _SCAN_BIT
 
@@ -39,7 +40,7 @@ def arg_parse():
     parser = argparse.ArgumentParser(
         description="generate distance_compute_ivf_sq8 operator model")
     utils.op_common_parse(parser, "--cores", 'core_num', 40, int, "Core number, 40 by default")
-    utils.op_common_parse(parser, "-d", "dim", 128, int, "Feature dimension, 128 is only support now")
+    utils.op_common_parse(parser, "-d", "dim", 128, int, "Number of Feature dimension")
     utils.op_common_parse(parser, "-c", "coarse_centroid_num", 16384, int, "Number of coarse centroid")
     utils.op_common_parse(parser, "-p", "process_id", 0, int, "Number of process_id")
     utils.op_common_parse(parser, "-pool", "pool_size", 10, int, "Number of pool_size")
@@ -50,7 +51,7 @@ def arg_parse():
 def generate_distance_rabitq_l2_fp32_json(core_num, list_num, dim, file_path):
     search_batch_sizes = (64, 32, 16, 8, 4, 2, 1)
     dist_rabitq_l2_obj = []
-    burst_len = 16 if dim > 256 else 64
+    burst_len = 64
     for query_num in search_batch_sizes:
         generator = OpJsonGenerator("DistanceIVFRabitqL2FP32")
         generator.add_input("ND", [1, dim], "float32")
@@ -77,7 +78,7 @@ def generate_distance_rabitq_l2_fp32_json(core_num, list_num, dim, file_path):
 def generate_distance_rabitq_l2_fp32_simt_json(core_num, list_num, dim, file_path):
     search_batch_sizes = (64, 32, 16, 8, 4, 2, 1)
     dist_rabitq_l2_simt_obj = []
-    burst_len = 16 if dim > 256 else 64
+    burst_len = 64
     for query_num in search_batch_sizes:
         generator = OpJsonGenerator("DistanceIVFRabitqL2FP32Simt")
         generator.add_input("ND", [1, dim], "float32")
@@ -103,7 +104,7 @@ def generate_distance_rabitq_l2_fp32_simt_json(core_num, list_num, dim, file_pat
 
 def generate_910b_index_code_and_precompute_json(dim, file_path):
     index_code_and_precompute_obj = []
-    burst_len = 16 if dim > 256 else 64
+    burst_len = 64
     generator = OpJsonGenerator("IndexCodeAndPrecompute")
     generator.add_input("ND", [1], "int32")
     generator.add_input("ND", [_CODE_NUM, dim], "float32")
@@ -179,6 +180,20 @@ def generate_distance_flat_l2_mins_at_fp32_json(core_num, code_num, dim, file_pa
         dist_flat_mins_obj.append(generator.generate_obj())
     utils.generate_op_config(dist_flat_mins_obj, file_path)
 
+def generate_910b_flat_ip_fp32_json(core_num, dim, file_path):
+    # write dist_compute_flat_mins json
+    dist_flat_ip_obj = []
+    burst_len = 64
+    generator = OpJsonGenerator("DistanceIVFFlatIpFP32")
+    generator.add_input("ND", [1, dim], "float32")
+    generator.add_input("ND", [_CODE_NUM_FLAT, dim], "float32")
+    generator.add_input("ND", [core_num], "uint64")
+    generator.add_input("ND", [core_num], "uint32")
+    generator.add_output("ND", [core_num, _CODE_NUM_FLAT], "float32")
+    generator.add_output("ND", [core_num, (_CODE_NUM_FLAT + burst_len - 1) // burst_len * 2], "float32")
+    generator.add_output("ND", [core_num, 16], "uint16")
+    dist_flat_ip_obj.append(generator.generate_obj())
+    utils.generate_op_config(dist_flat_ip_obj, file_path)
 
 def generate_rabitq_offline_model():
     utils.set_env()
@@ -191,9 +206,9 @@ def generate_rabitq_offline_model():
     valid_centroid_num = {1024, 2048, 4096, 8192, 10048, 16384, 32768}
     utils.check_param_range(args.coarse_centroid_num, valid_centroid_num, "coarse_centroid_num")
     config_path = utils.get_config_path(work_dir)
-
-    if dim < 64 or dim > 4096 or dim % 16 != 0:
-        raise ValueError("not support dim: {1}, dim should be in [64, 4096] and dim % 16 should be 0".format(dim))
+    valid_dims = {64, 128, 256, 384, 512, 768, 1024, 2048}
+    if dim not in valid_dims:
+        raise ValueError(f"not support dim: {dim}, dim should be in {sorted(valid_dims)}")
 
     op_name_ = f"rotate_and_l2_at_fp32_op_pid{process_id}"
     file_path_ = os.path.join(config_path, f"{op_name_}.json")
@@ -224,6 +239,11 @@ def generate_rabitq_offline_model():
     op_name_ = f"flat_l2_mins_at_fp32_op_pid{process_id}"
     file_path_ = os.path.join(config_path, f"{op_name_}.json")
     generate_distance_flat_l2_mins_at_fp32_json(core_num, args.coarse_centroid_num, dim, file_path_)
+    utils.atc_model(op_name_, soc_version)
+
+    op_name_ = f"distance_flat_ip_fp32_op_pid{process_id}"
+    file_path_ = os.path.join(config_path, f"{op_name_}.json")
+    generate_910b_flat_ip_fp32_json(core_num, dim, file_path_)
     utils.atc_model(op_name_, soc_version)
 
 

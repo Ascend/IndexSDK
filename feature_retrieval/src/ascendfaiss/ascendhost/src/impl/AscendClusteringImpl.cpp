@@ -39,6 +39,7 @@ namespace ascend {
 namespace {
 const int64_t CLUSTERING_MAX_MEM = 0x100000000; // 0x100000000 mean 4096MB
 const idx_t CLUSTERING_MAX_N = 7000001;
+const idx_t CLUSTERING_MAX_POINTS = 32768 * 256;
 const int MAX_CPU_AVAILABLE = 20;
 const int NUM_BUCK_PER_BATCH = 64;
 const int SUBCENTER_NUM = 64;
@@ -46,7 +47,7 @@ const int LOWER_BOUND = 32;
 const int MAX_CLUS_POINTS = 16384;
 const int MAX_NCENTROIDS = 32768;
 const int MAX_NITER = 65536;
-const std::vector<int> DIMS = { 64, 128, 256, 384, 512, 1024, 2048 };
+const std::vector<int> DIMS = { 64, 128, 256, 384, 512, 768, 1024, 2048 };
 const int MAX_NLISTS = 32768;
 const int64_t RAND_SEED = 1234;
 const int CORR_COMPUTE_SIZE = 1024;
@@ -152,13 +153,10 @@ void AscendClusteringImpl::addFp32(idx_t n, const float *x)
     APP_LOG_INFO("AscendClustering addFp32 start: searchNum=%ld, d %zu, k %zu", n, intf_->d, intf_->k);
 
     FAISS_THROW_IF_NOT_MSG(x, "x can not be nullptr.");
-    ASCEND_THROW_IF_NOT_FMT((n > 0) && (n < CLUSTERING_MAX_N),
-        "n must be > 0 and n < %ld", CLUSTERING_MAX_N);
-    ASCEND_THROW_IF_NOT_FMT((n > 0) && (ntotal + static_cast<size_t>(n) < CLUSTERING_MAX_N),
-        "n must be > 0 and ntotal+n < %ld", CLUSTERING_MAX_N);
-    FAISS_THROW_IF_NOT_FMT(
-        static_cast<size_t>(CLUSTERING_MAX_N) * static_cast<size_t>(intf_->d) < static_cast<size_t>(INT_MAX),
-        "dim*n must be > 0 and < %zu", static_cast<size_t>(INT_MAX));
+    ASCEND_THROW_IF_NOT_FMT((n > 0) && (n < CLUSTERING_MAX_POINTS),
+        "n must be > 0 and n < %ld", CLUSTERING_MAX_POINTS);
+    ASCEND_THROW_IF_NOT_FMT((n > 0) && (ntotal + static_cast<size_t>(n) < CLUSTERING_MAX_POINTS),
+        "n must be > 0 and ntotal+n < %ld", CLUSTERING_MAX_POINTS);
     codesFp32.resize((ntotal + n) * intf_->d);
     std::copy(x, x + n * static_cast<idx_t>(intf_->d), codesFp32.begin() + ntotal);
     ntotal += static_cast<size_t>(n);
