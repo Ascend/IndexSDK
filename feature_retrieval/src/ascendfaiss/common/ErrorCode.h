@@ -36,13 +36,13 @@ enum {
     APP_ERR_ACL_UNLOAD_MODEL_FAILED,                        // ACL: model unload failed
     APP_ERR_ACL_GET_DIMS_FAILURE,                           // ACL: failed to get dimension information
     APP_ERR_ACL_CREATE_MODEL_DESC_FAILED,                   // ACL: failed to create model information
-    APP_ERR_ACL_DESTORY_MODEL_DESC_FAILED,                  // ACL: failed to destory model information
+    APP_ERR_ACL_DESTROY_MODEL_DESC_FAILED,                  // ACL: failed to destroy model information
     APP_ERR_ACL_GET_MODEL_DESC_FAILED,                      // ACL: failed to get model information
     APP_ERR_ACL_MODEL_EXEC_FAILURE,                         // ACL: model inference failed
     APP_ERR_ACL_CREATE_DATA_SET_FAILED,                     // ACL: failed to create dataset
-    APP_ERR_ACL_DESTORY_DATA_SET_FAILED,                    // ACL: failed to destory dataset
+    APP_ERR_ACL_DESTROY_DATA_SET_FAILED,                    // ACL: failed to destroy dataset
     APP_ERR_ACL_CREATE_DATA_BUF_FAILED,                     // ACL: failed to create databuffer
-    APP_ERR_ACL_DESTORY_DATA_BUF_FAILED,                    // ACL: failed to destory databuffer
+    APP_ERR_ACL_DESTROY_DATA_BUF_FAILED,                    // ACL: failed to destroy databuffer
     APP_ERR_ACL_ADD_DATA_BUF_FAILED,                        // ACL: failed to add databuffer to dataset
     APP_ERR_ACL_GET_DATA_BUF_ADDR_NULL,                     // ACL: failed to get the address of databuffer
     APP_ERR_ACL_OP_NOT_FOUND,                               // ACL: op model not found

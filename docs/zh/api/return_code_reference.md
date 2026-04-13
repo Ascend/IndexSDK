@@ -1,5 +1,5 @@
 
-## 接口调用返回值参考<a id="ZH-CN_TOPIC_0000001456375228"></a>
+# 接口调用返回值参考<a id="ZH-CN_TOPIC_0000001456375228"></a>
 
 **表 1**  APP\_ERR，Device侧接口调用返回值表
 
@@ -12,13 +12,13 @@
 |APP_ERR_ACL_UNLOAD_MODEL_FAILED = 1003|ACL: model unload failed|
 |APP_ERR_ACL_GET_DIMS_FAILURE = 1004|ACL: failed to get dimension information|
 |APP_ERR_ACL_CREATE_MODEL_DESC_FAILED = 1005|ACL: failed to create model information|
-|APP_ERR_ACL_DESTORY_MODEL_DESC_FAILED = 1006|ACL: failed to destory model information|
+|APP_ERR_ACL_DESTROY_MODEL_DESC_FAILED = 1006|ACL: failed to destroy model information|
 |APP_ERR_ACL_GET_MODEL_DESC_FAILED = 1007|ACL: failed to get model information|
 |APP_ERR_ACL_MODEL_EXEC_FAILURE = 1008|ACL: model inference failed|
 |APP_ERR_ACL_CREATE_DATA_SET_FAILED = 1009|ACL: failed to create dataset|
-|APP_ERR_ACL_DESTORY_DATA_SET_FAILED = 1010|ACL: failed to destory dataset|
+|APP_ERR_ACL_DESTROY_DATA_SET_FAILED = 1010|ACL: failed to destroy dataset|
 |APP_ERR_ACL_CREATE_DATA_BUF_FAILED = 1011|ACL: failed to create databuffer|
-|APP_ERR_ACL_DESTORY_DATA_BUF_FAILED = 1012|ACL: failed to destory databuffer|
+|APP_ERR_ACL_DESTROY_DATA_BUF_FAILED = 1012|ACL: failed to destroy databuffer|
 |APP_ERR_ACL_ADD_DATA_BUF_FAILED = 1013|ACL: failed to add databuffer to dataset|
 |APP_ERR_ACL_GET_DATA_BUF_ADDR_NULL = 1014|ACL: failed to get the address of databuffer|
 |APP_ERR_ACL_OP_NOT_FOUND = 1015|ACL: op model not found|
