@@ -36,13 +36,23 @@ namespace optiling {
 static void SetCodeTilingInfo(gert::TilingContext *context, DistanceIVFRabitqL2FP32TilingData &tiling, int32_t ubSize)
 {
     int32_t dimLength = tiling.get_dimLength();
-    uint64_t remianingSize = (ubSize * 9 / 10) - 6 * dimLength * FLOAT32_BYTES;
+    // in_querylut_que 存放当前核要计算的query，占用内存 dimLength * FLOAT32_BYTES
+    // vec_in_que 存放select接口需要的 src0，为保证量化编码32字节对齐，需要4个一算，占用内存 4 * dimLength * FLOAT32_BYTES
+    uint64_t remianingSize = (ubSize * 9 / 10) - (4 + 1) * dimLength * FLOAT32_BYTES;
     int32_t code_tile_length =
         remianingSize /
-        (dimLength / 8 * INT8_BYTES + dimLength * FLOAT32_BYTES + FLOAT32_BYTES + (64 + 1 + 1 + 1) * FLOAT32_BYTES) /
-        8 * 8;
+        (dimLength / 8 * INT8_BYTES + dimLength * FLOAT32_BYTES + FLOAT32_BYTES);
     tiling.set_codeTileLength(code_tile_length);
     std::cout << "code tile length: " << code_tile_length << std::endl;
+}
+
+static void SetDistTilingInfo(gert::TilingContext *context, DistanceIVFRabitqL2FP32TilingData &tiling, int32_t ubSize)
+{
+    uint64_t remainingSize = (ubSize * 9 / 10);
+    // 64 为 minResult 需要的空间，4个1分别表示 sumResult, L1, L2, distResult 占用的空间
+    int32_t dist_tile_length = remainingSize / ((64 + 1 + 1 + 1 + 1) * FLOAT32_BYTES) / 16 * 16;
+
+    tiling.set_distTileLength(dist_tile_length);
 }
 
 static ge::graphStatus TilingFunc(gert::TilingContext *context)
@@ -61,6 +71,7 @@ static ge::graphStatus TilingFunc(gert::TilingContext *context)
     int32_t dimLength = context->GetInputShape(BASE)->GetStorageShape().GetDim(1);  // indexcode维度 存储类型为int8
     tiling.set_dimLength(dimLength * 8);
     SetCodeTilingInfo(context, tiling, ubSize);
+    SetDistTilingInfo(context, tiling, ubSize);
     int32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     context->SetBlockDim(aivNum);
     int32_t codeBlockLength = context->GetInputShape(BASE)->GetStorageShape().GetDim(0);  // indexcode数量

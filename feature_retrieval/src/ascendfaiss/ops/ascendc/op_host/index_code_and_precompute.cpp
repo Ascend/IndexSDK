@@ -86,8 +86,8 @@ namespace optiling {
 
         // 根据 dim_len 等，确定tileLength：表示每次循环处理的向量数量
         int32_t tileLength = (ub_size - 2048) / (dim_len * FLOAT32_BYTES * 10 * 2 + FLOAT32_BYTES * 2) / 16 * 16;
-        int32_t tileLengthStage1 = (ub_size - 2048 - dim_len * FLOAT32_BYTES*2) /
-                                   (dim_len * FLOAT32_BYTES*2 + dim_len / 8 * UINT8_BYTES + FLOAT32_BYTES*2) / 16 * 16;
+        int32_t tileLengthStage1 = (ub_size - 2048 - dim_len * FLOAT32_BYTES) /
+                                   (dim_len * FLOAT32_BYTES*2 + dim_len / 8 * UINT8_BYTES + FLOAT32_BYTES*2);
         int32_t tileLengthStage2 = (ub_size - 2048 - FLOAT32_BYTES *2) / (5 * FLOAT32_BYTES*2) / 16 * 16;
 
         if (tileLengthStage1 > MAX_PER_LOOP_PROCESS_LEN) {
