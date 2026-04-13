@@ -84,7 +84,7 @@
 |头文件名称|所在目录|用途|
 |--|--|--|
 |AscendCloner.h|${mxIndex_install_path}/mxIndex/include/faiss/ascend/|该头文件提供了将NPU上的检索Index资源拷贝到CPU侧Faiss的操作，拷贝过程发生在内存中，原始NPU的Index上加载的数据会被拷贝到CPU侧的内存中，方便用户在CPU上使用相同的底库执行检索。|
-|AscendClonerOptions.h|${mxIndex_install_path}/mxIndex/include/faiss/ascend/|AscendClonerOptions提供。|
+|AscendClonerOptions.h|${mxIndex_install_path}/mxIndex/include/faiss/ascend/|AscendClonerOptions提供配置选项。|
 |AscendIndex.h|${mxIndex_install_path}/mxIndex/include/faiss/ascend/|AscendIndex作为特征检索组件中的大部分检索的Index的基类，向上承接Faiss，向下为特征检索中的其他Index定义接口。|
 |AscendIndexBinaryFlat.h|${mxIndex_install_path}/mxIndex/include/faiss/ascend/|AscendIndexBinaryFlat.h是汉明距离的接口类，定义汉明距离对外接口。|
 |AscendIndexCluster.h|${mxIndex_install_path}/mxIndex/include/faiss/ascend/|AscendIndexCluster对外接口。|
