@@ -34,6 +34,8 @@ BEGIN_TILING_DATA_DEF(DistanceIVFRabitqL2FP32TilingData)
 
     TILING_DATA_FIELD_DEF(int32_t, codeTileLength);
 
+    TILING_DATA_FIELD_DEF(int32_t, distTileLength);
+
     TILING_DATA_FIELD_DEF(int32_t, codeBlockLength); // 每个块的长度
 
 END_TILING_DATA_DEF;
