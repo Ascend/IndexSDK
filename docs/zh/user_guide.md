@@ -289,7 +289,7 @@
 
 |算法（API参考）|算法使用场景|需要生成的算子|样例链接|
 |--|--|--|--|
-|[AscendIndexTS](./api/attribute_filtering-based_retrieva.md#ascendindexts)|<li>特征类型：uint8二值化特征、int8、FP32（具体算法不同而不同）</li><li>特征维度：具体算法不同而不同</li><li>距离类型：Hamming、Cos、IP、L2</li><li>计算精度：较高</li><li>Device内存占用：较高</li><li>适应场景：需要过滤属性的时空库场景</li><li>Hamming距离仅支持Atlas 推理系列产品</li>|<li>[Mask](#mask)</li><li>[BinaryFlat](#binaryflat)</li><li>[Int8Flat](#int8flat)</li><li>[Flat](#flat)</li><li>[AICPU](#aicpu)</li>|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexTS.cpp">链接</a>|
+|[AscendIndexTS](./api/attribute_filtering-based_retrieval.md#ascendindexts)|<li>特征类型：uint8二值化特征、int8、FP32（具体算法不同而不同）</li><li>特征维度：具体算法不同而不同</li><li>距离类型：Hamming、Cos、IP、L2</li><li>计算精度：较高</li><li>Device内存占用：较高</li><li>适应场景：需要过滤属性的时空库场景</li><li>Hamming距离仅支持Atlas 推理系列产品</li>|<li>[Mask](#mask)</li><li>[BinaryFlat](#binaryflat)</li><li>[Int8Flat](#int8flat)</li><li>[Flat](#flat)</li><li>[AICPU](#aicpu)</li>|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexTS.cpp">链接</a>|
 
 ## 多Index批量检索<a name="ZH-CN_TOPIC_0000001649848472"></a>
 
