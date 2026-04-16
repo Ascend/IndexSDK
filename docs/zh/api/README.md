@@ -4,7 +4,7 @@
 |--|--|
 |全量检索|[full_retrieval](./full_retrieval.md)|
 |近似检索|[approximate_retrieval](./approximate_retrieval.md)|
-|属性过滤检索|[attribute_filtering-based_retrieva](./attribute_filtering-based_retrieva.md)|
+|属性过滤检索|[attribute_filtering-based_retrieval](./attribute_filtering-based_retrieval.md)|
 |多index批量检索|[multi-index_batch_retrieval](./multi-index_batch_retrieval.md)|
 |其他功能|[more_functions](./more_functions.md)|
 |未使用接口|[unused_apis](./unused_apis.md)|
@@ -26,21 +26,21 @@
 |AscendIndexBinaryFlat的[search接口](./approximate_retrieval.md#search接口)|新增|AscendIndexBinaryFlat新增入库特征为二进制特征，检索特征为float类型的检索方式。|6.0.RC2|
 |AscendIndexInt8Flat的[AscendIndexInt8FlatConfig](./full_retrieval.md#ascendindexint8flatconfig)（表2）|修改|“resourceSize”配置的值不超过16 \* 1024MB（16 \* 1024 \* 1024 \* 1024字节）。|6.0.RC3|
 |AscendIndexInt8Flat的[AscendIndexInt8FlatConfig](./full_retrieval.md#ascendindexint8flatconfig)（表3）|修改|“resourceSize”配置的值不超过16 \* 1024MB（16 \* 1024 \* 1024 \* 1024字节）。|6.0.RC3|
-|AscendIndexTS的[Init](./attribute_filtering-based_retrieva.md#init接口)|修改|修改“maxFeatureRowCount”参数约束。|6.0.RC3|
+|AscendIndexTS的[Init](./attribute_filtering-based_retrieval.md#init接口)|修改|修改“maxFeatureRowCount”参数约束。|6.0.RC3|
 |AscendIndexInt8Flat的[setPageSize](./full_retrieval.md#setpagesize接口)|新增|设置该AscendIndexInt8Flat在search时一次性连续计算底库的block数量。|6.0.RC3|
-|AscendIndexTS的[InitWithExtraVal](./attribute_filtering-based_retrieva.md#initwithextraval接口)|新增|实例带附加属性的初始化函数。|6.0.RC3|
-|AscendIndexTS的[AddWithExtraVal](./attribute_filtering-based_retrieva.md#addwithextraval接口)|新增|添加附加属性特征接口。|6.0.RC3|
-|AscendIndexTS的[GetBaseByRangeWithExtraVal](./attribute_filtering-based_retrieva.md#getbasebyrangewithextraval接口)|新增|基于范围查询带附加属性的底库。|6.0.RC3|
-|AscendIndexTS的[GetExtraValAttrByLabel](./attribute_filtering-based_retrieva.md#getextravalattrbylabel接口)|新增|获取指定Label特征的属性。|6.0.RC3|
-|AscendIndexTS的[ExtraValAttr](./attribute_filtering-based_retrieva.md#extravalattr)|新增|附加属性信息。|6.0.RC3|
-|AscendIndexTS的[ExtraValFilter](./attribute_filtering-based_retrieva.md#extravalfilter)|新增|附加属性过滤器。|6.0.RC3|
+|AscendIndexTS的[InitWithExtraVal](./attribute_filtering-based_retrieval.md#initwithextraval接口)|新增|实例带附加属性的初始化函数。|6.0.RC3|
+|AscendIndexTS的[AddWithExtraVal](./attribute_filtering-based_retrieval.md#addwithextraval接口)|新增|添加附加属性特征接口。|6.0.RC3|
+|AscendIndexTS的[GetBaseByRangeWithExtraVal](./attribute_filtering-based_retrieval.md#getbasebyrangewithextraval接口)|新增|基于范围查询带附加属性的底库。|6.0.RC3|
+|AscendIndexTS的[GetExtraValAttrByLabel](./attribute_filtering-based_retrieval.md#getextravalattrbylabel接口)|新增|获取指定Label特征的属性。|6.0.RC3|
+|AscendIndexTS的[ExtraValAttr](./attribute_filtering-based_retrieval.md#extravalattr)|新增|附加属性信息。|6.0.RC3|
+|AscendIndexTS的[ExtraValFilter](./attribute_filtering-based_retrieval.md#extravalfilter)|新增|附加属性过滤器。|6.0.RC3|
 |AscendIndexBinaryFlat的[setRemoveFast](./approximate_retrieval.md#setremovefast接口)|新增|AscendIndexBinaryFlat设置是否快速删除底库中的向量。|6.0.RC3|
 |[AscendIndexVStar](./approximate_retrieval.md#ascendindexvstar)|新增|新增AscendIndexVStar新算法|6.0.RC3|
 |[AscendIndexGreat](./approximate_retrieval.md#ascendindexgreat)|新增|新增AscendIndexGreat新算法|6.0.RC3|
 |AscendIndexIVFSQT的[setSearchParams](./approximate_retrieval.md#setsearchparams接口)|新增|设置影响检索精度和性能的参数|6.0.RC3|
 |AscendIndexIVFSQT的[setNumProbes](./approximate_retrieval.md#setnumprobes接口)|退出声明|预计2025年9月废除，请使用setSearchParams|6.0.RC3|
 |AscendIndexIVFSQT的[updateTParams](./approximate_retrieval.md#updatetparams接口)|退出声明|预计2025年9月废除，请使用setSearchParams|6.0.RC3|
-|AscendIndexTS的[SetSaveHostMemory](./attribute_filtering-based_retrieva.md#setsavehostmemory接口)|新增|设置使用节约host内存模式的接口|6.0.0|
+|AscendIndexTS的[SetSaveHostMemory](./attribute_filtering-based_retrieval.md#setsavehostmemory接口)|新增|设置使用节约host内存模式的接口|6.0.0|
 |AscendIndex的[add](./full_retrieval.md#add接口)|新增|Flat算法新增支持FP16数据底库入库函数|6.0.0|
 |AscendIndex的[add_with_ids](./full_retrieval.md#add_with_ids接口)|新增|Flat算法新增支持FP16数据底库带id入库函数|6.0.0|
 |AscendIndex的[search](./full_retrieval.md#search接口)|新增|Flat算法新增支持FP16数据检索函数|6.0.0|

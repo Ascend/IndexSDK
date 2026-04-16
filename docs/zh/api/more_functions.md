@@ -1,3 +1,5 @@
+# API参考——其他功能
+
 ## 其他功能<a name="ZH-CN_TOPIC_0000001482684458"></a>
 
 ### IReduction<a name="ZH-CN_TOPIC_0000001456694992"></a>
@@ -59,7 +61,7 @@ IReduction是特征检索组件中降维方法的统一接口，目前支持**PC
 </tr>
 <tr id="row122155911383"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.3.1"><p id="p112195910383"><a name="p112195910383"></a><a name="p112195910383"></a>输入</p>
 </th>
-<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.3.1 "><p id="p1963814585141"><a name="p1963814585141"></a><a name="p1963814585141"></a><strong id="b104261847125210"><a name="b104261847125210"></a><a name="b104261847125210"></a>idx_t n</strong>：输入的待执行推理的输入数量。</p>
+<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.3.1 "><p id="p1963814585141"><a name="p1963814585141"></a><a name="p1963814585141"></a><strong id="b104261847125210"><a name="b104261847125210"></a><a name="b104261847125210"></a>idx_t n</strong>：待执行推理的输入数量。</p>
 <p id="p1633753171511"><a name="p1633753171511"></a><a name="p1633753171511"></a><strong id="b1937815534524"><a name="b1937815534524"></a><a name="b1937815534524"></a>const float *x</strong>：待执行推理的特征向量。</p>
 </td>
 </tr>
@@ -160,7 +162,7 @@ IReduction是特征检索组件中降维方法的统一接口，目前支持**PC
 </tr>
 <tr id="row9011417617"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.6.1"><p id="p8010419616"><a name="p8010419616"></a><a name="p8010419616"></a>约束说明</p>
 </th>
-<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.6.1 "><a name="ul29631955112419"></a><a name="ul29631955112419"></a><ul id="ul29631955112419"><li>deviceList取值范围(0, 32]。</li><li>使用不同的降维算法，需要配置对应的参数并且降维后的维度需要满足后续使用降维数据Index的维度限制。</li><li><span class="parmname" id="parmname17928145516416"><a name="parmname17928145516416"></a><a name="parmname17928145516416"></a>“model”</span>需要为合法有效的深度神经网络降维模型的内存指针，大小为<span class="parmname" id="parmname13470125964114"><a name="parmname13470125964114"></a><a name="parmname13470125964114"></a>“modelSize”</span>，modelSize取值范围为(0, 128MB]，参数不匹配可能造成模型实例化或推理失败。非法的模型可能会对系统造成危害，请确保模型的来源合法有效。<a name="ul78321143192514"></a><a name="ul78321143192514"></a><ul id="ul78321143192514"><li>dimsIn ∈ {64, 128, 256, 384, 512, 768, 1024}。</li><li>dimsOut ∈ {32, 64, 96, 128, 256,}。</li><li>batches ∈ {1, 2, 4, 8, 16, 32, 64, 128}</li></ul>
+<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.6.1 "><a name="ul29631955112419"></a><a name="ul29631955112419"></a><ul id="ul29631955112419"><li>deviceList取值范围(0, 32]。</li><li>使用不同的降维算法，需要配置对应的参数并且降维后的维度需要满足后续使用降维数据Index的维度限制。</li><li><span class="parmname" id="parmname17928145516416"><a name="parmname17928145516416"></a><a name="parmname17928145516416"></a>“model”</span>需要为合法有效的深度神经网络降维模型的内存指针，大小为<span class="parmname" id="parmname13470125964114"><a name="parmname13470125964114"></a><a name="parmname13470125964114"></a>“modelSize”</span>，modelSize取值范围为(0, 128MB]，参数不匹配可能造成模型实例化或推理失败。非法的模型可能会对系统造成危害，请确保模型的来源合法有效。<a name="ul78321143192514"></a><a name="ul78321143192514"></a><ul id="ul78321143192514"><li>dimsIn ∈ {64, 128, 256, 384, 512, 768, 1024}。</li><li>dimsOut ∈ {32, 64, 96, 128, 256}。</li><li>batches ∈ {1, 2, 4, 8, 16, 32, 64, 128}</li></ul>
 </li></ul>
 </td>
 </tr>
@@ -278,7 +280,7 @@ IReduction是特征检索组件中降维方法的统一接口，目前支持**PC
 </tr>
 <tr id="row22159193815"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.6.1"><p id="p423590386"><a name="p423590386"></a><a name="p423590386"></a>约束说明</p>
 </th>
-<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.6.1 "><a name="ul246474615523"></a><a name="ul246474615523"></a><ul id="ul246474615523"><li>deviceList取值范围(0, 32]。</li><li><span class="parmname" id="parmname17928145516416"><a name="parmname17928145516416"></a><a name="parmname17928145516416"></a>“model”</span>需要为合法有效的深度神经网络降维模型的内存指针，大小为<span class="parmname" id="parmname13470125964114"><a name="parmname13470125964114"></a><a name="parmname13470125964114"></a>“modelSize”</span>，modelSize取值范围为(0, 128MB]，参数不匹配可能造成模型实例化或推理失败。非法的模型可能会对系统造成危害，请确保模型的来源合法有效。<a name="ul29631955112419"></a><a name="ul29631955112419"></a><ul id="ul29631955112419"><li>dimsIn ∈ {64, 128, 256, 384, 512, 768, 1024}。</li><li>dimsOut ∈ {32, 64, 96, 128, 256,}。</li><li>batches ∈ {1, 2, 4, 8, 16, 32, 64, 128}</li></ul>
+<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.6.1 "><a name="ul246474615523"></a><a name="ul246474615523"></a><ul id="ul246474615523"><li>deviceList取值范围(0, 32]。</li><li><span class="parmname" id="parmname17928145516416"><a name="parmname17928145516416"></a><a name="parmname17928145516416"></a>“model”</span>需要为合法有效的深度神经网络降维模型的内存指针，大小为<span class="parmname" id="parmname13470125964114"><a name="parmname13470125964114"></a><a name="parmname13470125964114"></a>“modelSize”</span>，modelSize取值范围为(0, 128MB]，参数不匹配可能造成模型实例化或推理失败。非法的模型可能会对系统造成危害，请确保模型的来源合法有效。<a name="ul29631955112419"></a><a name="ul29631955112419"></a><ul id="ul29631955112419"><li>dimsIn ∈ {64, 128, 256, 384, 512, 768, 1024}。</li><li>dimsOut ∈ {32, 64, 96, 128, 256}。</li><li>batches ∈ {1, 2, 4, 8, 16, 32, 64, 128}</li></ul>
 </li></ul>
 </td>
 </tr>
@@ -550,7 +552,7 @@ IReduction是特征检索组件中降维方法的统一接口，目前支持**PC
 </tr>
 <tr id="row122155911383"><th class="firstcol" valign="top" width="19.96%" id="mcps1.1.3.3.1"><p id="p112195910383"><a name="p112195910383"></a><a name="p112195910383"></a>输入</p>
 </th>
-<td class="cellrowborder" valign="top" width="80.04%" headers="mcps1.1.3.3.1 "><p id="p1963814585141"><a name="p1963814585141"></a><a name="p1963814585141"></a><strong id="b33632034317"><a name="b33632034317"></a><a name="b33632034317"></a>size_t n</strong>：输入的待执行推理的输入数量。</p>
+<td class="cellrowborder" valign="top" width="80.04%" headers="mcps1.1.3.3.1 "><p id="p1963814585141"><a name="p1963814585141"></a><a name="p1963814585141"></a><strong id="b33632034317"><a name="b33632034317"></a><a name="b33632034317"></a>size_t n</strong>：待执行推理的输入数量。</p>
 <p id="p1633753171511"><a name="p1633753171511"></a><a name="p1633753171511"></a><strong id="b12723522435"><a name="b12723522435"></a><a name="b12723522435"></a>const char* inputData</strong>：待执行推理的特征向量。</p>
 </td>
 </tr>
