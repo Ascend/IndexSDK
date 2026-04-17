@@ -173,7 +173,6 @@ namespace ascend {
                          aclrtStream stream);
         void runL2DistOp(int batch, AscendTensor<float, DIMS_2> &queries,
                          AscendTensor<float, DIMS_3> &codeBook, AscendTensor<float, DIMS_3, size_t> &dists,
-                         AscendTensor<float, DIMS_3> &vmdists, AscendTensor<uint16_t, DIMS_3> &opFlag,
                          aclrtStream stream);
         void runL3TopkOp(AscendTensor<uint64_t, DIMS_3, size_t> &topkIndex,
                          AscendTensor<float, DIMS_3, size_t> &topkValue,

@@ -54,8 +54,6 @@ def generate_subspace_distance_json(batch_size, m, dim, ksub, file_path):
     generator.add_input("ND", [m, ksub, int(dim / m)], "float32")
 
     generator.add_output("ND", [batch_size, m, ksub], "float32")
-    generator.add_output("ND", [batch_size, m, int(ksub / 64 * 2)], "float32")
-    generator.add_output("ND", [batch_size, m, int(ksub / 16)], "uint16")
     subspace_distance_obj.append(generator.generate_obj())
     utils.generate_op_config(subspace_distance_obj, file_path)
 

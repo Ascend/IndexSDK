@@ -176,12 +176,6 @@ static ge::graphStatus InferShape(gert::InferShapeContext* context)
     gert::Shape* distanceShape = context->GetOutputShape(0);
     *distanceShape = gert::Shape({batch, subSpaceNum, kSub});
 
-    gert::Shape* minDistShape = context->GetOutputShape(1);
-    *minDistShape = gert::Shape({batch, subSpaceNum, kSub / REDUCE_BASE_SIZE * 2});
-
-    gert::Shape* flagShape = context->GetOutputShape(2);
-    *flagShape = gert::Shape({batch, subSpaceNum, 16});
-
     return GRAPH_SUCCESS;
 }
 
@@ -214,19 +208,11 @@ public:
             .DataType({ge::DT_FLOAT})
             .Format({ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND});
-        this->Output("minDistResult")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT})
-            .Format({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND});
-        this->Output("flag")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_UINT16})
-            .Format({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND});
         this->SetInferShape(ge::InferShape).SetInferDataType(ge::InferDataType);
         this->AICore()
             .SetTiling(optiling::TilingFunc);
+        this->AICore().AddConfig("ascend910b");
+        this->AICore().AddConfig("ascend910_93");
         this->AICore().AddConfig("ascend950");
     }
 };

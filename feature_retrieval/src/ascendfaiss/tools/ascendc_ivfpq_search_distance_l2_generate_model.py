@@ -65,7 +65,26 @@ def generate_search_distance_l2_json(m, ksub, blockNum, blockSize, topK, batch, 
     search_distance_obj.append(generator.generate_obj())
     utils.generate_op_config(search_distance_obj, file_path)
 
-
+def generate_search_distance_simd_l2_json(m, ksub, blockNum, blockSize, topK, batch, file_path):
+    # write dist_compute_flat_mins json
+    search_distance_obj = []
+    generator = OpJsonGenerator("AscendcIvfpqSearchDistanceSimdL2")
+    generator.add_input("ND", [batch, m, ksub], "float32")
+    generator.add_input("ND", [m], "uint8")
+    generator.add_input("ND", [batch, blockNum], "int64")
+    generator.add_input("ND", [batch, blockNum], "int64")
+    generator.add_input("ND", [topK], "int32")
+    generator.add_input("ND", [m], "uint64")
+    generator.add_input("ND", [batch, blockNum], "int64")
+    
+    generator.add_output("ND", [batch, blockNum, blockSize], "float32")
+    generator.add_output("ND", [batch, blockNum, topK], "int32")
+    generator.add_output("ND", [batch, blockNum, topK], "float32")
+    generator.add_output("ND", [batch, topK], "uint64")
+    generator.add_output("ND", [batch, topK], "float32")
+    generator.add_output("ND", [16], "uint16")
+    search_distance_obj.append(generator.generate_obj())
+    utils.generate_op_config(search_distance_obj, file_path)
 
 def generate_search_distance_l2_offline_model():
     utils.set_env()
@@ -87,10 +106,16 @@ def generate_search_distance_l2_offline_model():
     blockSize = 16384 * 16
     config_path = utils.get_config_path(work_dir)
 
-    op_name_ = f"ascendc_ivfpq_search_distance_op_pid{process_id}"
-    file_path_ = os.path.join(config_path, f"{op_name_}.json")
-    generate_search_distance_l2_json(m, ksub, blockNum, blockSize, topk, batch, file_path_)
-    utils.atc_model(op_name_, soc_version)
+    if args.npu_type != 'Ascend950PR':
+        op_name_ = f"ascendc_ivfpq_search_distance_simd_op_pid{process_id}"
+        file_path_ = os.path.join(config_path, f"{op_name_}.json")
+        generate_search_distance_simd_l2_json(m, ksub, blockNum, blockSize, topk, batch, file_path_)
+        utils.atc_model(op_name_, soc_version)
+    else:
+        op_name_ = f"ascendc_ivfpq_search_distance_op_pid{process_id}"
+        file_path_ = os.path.join(config_path, f"{op_name_}.json")
+        generate_search_distance_l2_json(m, ksub, blockNum, blockSize, topk, batch, file_path_)
+        utils.atc_model(op_name_, soc_version)
 
 
 
