@@ -279,6 +279,9 @@ private:
         auto topkShape = context_->GetInputShape(4)->GetStorageShape();       // 第4个输入 topk
 
         auto ret = ParamDimCheck(queryPQShape, codeBaseShape, codeOffsetShape, codeSizeShape, topkShape);
+        if (ret != ge::GRAPH_SUCCESS) {
+            return ret;
+        }
 
         batch_ = static_cast<uint32_t>(queryPQShape.GetDim(0));
         subSpaceNum_ = static_cast<uint32_t>(queryPQShape.GetDim(1));
