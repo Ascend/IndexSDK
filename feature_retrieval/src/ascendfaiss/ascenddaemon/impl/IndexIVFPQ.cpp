@@ -1060,14 +1060,10 @@ APP_ERROR IndexIVFPQ::resetL2DistOp()
         std::vector<int64_t> queryShape({batch, dims});
         std::vector<int64_t> codeBookShape({M, ksub, dsub});
         std::vector<int64_t> distResultShape({batch, M, ksub});
-        std::vector<int64_t> minResultShape({batch, M, ksub / IVF_PQ_BURST_LEN * 2});
-        std::vector<int64_t> flagShapeShape({batch, M, 16});
 
         desc.addInputTensorDesc(ACL_FLOAT, queryShape.size(), queryShape.data(), ACL_FORMAT_ND);
         desc.addInputTensorDesc(ACL_FLOAT, codeBookShape.size(), codeBookShape.data(), ACL_FORMAT_ND);
         desc.addOutputTensorDesc(ACL_FLOAT, distResultShape.size(), distResultShape.data(), ACL_FORMAT_ND);
-        desc.addOutputTensorDesc(ACL_FLOAT, minResultShape.size(), minResultShape.data(), ACL_FORMAT_ND);
-        desc.addOutputTensorDesc(ACL_UINT16, flagShapeShape.size(), flagShapeShape.data(), ACL_FORMAT_ND);
         op.reset();
         op = CREATE_UNIQUE_PTR(AscendOperator, desc);
         return op->init();
@@ -1084,7 +1080,12 @@ APP_ERROR IndexIVFPQ::resetL2DistOp()
 APP_ERROR IndexIVFPQ::resetL3DistOp()
 {
     auto l3DistOpReset = [&](std::unique_ptr<AscendOperator> &op, int batch) {
-        AscendOpDesc desc("AscendcIvfpqSearchDistanceL2");
+        AscendOpDesc desc;
+        if (faiss::ascend::SocUtils::GetInstance().IsAscendA5()) {
+            desc.setOpName("AscendcIvfpqSearchDistanceL2");
+        } else {
+            desc.setOpName("AscendcIvfpqSearchDistanceSimdL2");
+        }
 
         std::vector<int64_t> queryPQShape({ batch, M, ksub });
         std::vector<int64_t> codeBaseShape({ M });
@@ -1158,7 +1159,6 @@ void IndexIVFPQ::runL1DistOp(int batch, AscendTensor<float, DIMS_2> &queries,
 
 void IndexIVFPQ::runL2DistOp(int batch, AscendTensor<float, DIMS_2> &queries,
                              AscendTensor<float, DIMS_3> &codeBook, AscendTensor<float, DIMS_3, size_t> &dists,
-                             AscendTensor<float, DIMS_3> &vmdists, AscendTensor<uint16_t, DIMS_3> &opFlag,
                              aclrtStream stream)
 {
     AscendOperator *op = nullptr;
@@ -1174,8 +1174,6 @@ void IndexIVFPQ::runL2DistOp(int batch, AscendTensor<float, DIMS_2> &queries,
     std::shared_ptr<std::vector<aclDataBuffer *>> topkOpOutput(
             new std::vector<aclDataBuffer *>(), CommonUtils::AclOutputBufferDelete);
     topkOpOutput->emplace_back(aclCreateDataBuffer(dists.data(), dists.getSizeInBytes()));
-    topkOpOutput->emplace_back(aclCreateDataBuffer(vmdists.data(), vmdists.getSizeInBytes()));
-    topkOpOutput->emplace_back(aclCreateDataBuffer(opFlag.data(), opFlag.getSizeInBytes()));
 
     op->exec(*topkOpInput, *topkOpOutput, stream);
     return;
@@ -1469,14 +1467,12 @@ APP_ERROR IndexIVFPQ::searchImplL1(AscendTensor<float, DIMS_2> &queries,
     AscendTensor<int64_t, DIMS_2> l1TopNprobeIndices(mem, {n, nprobe}, stream);
 
     AscendTensor<float, DIMS_3> codeBookDev(codeBookOnDevice->data(), {M, ksub, dsub});
-    AscendTensor<float, DIMS_3> l2MinSubspaceDistsDev(mem, {n, M, ksub / IVF_PQ_BURST_LEN * 2}, stream);
-    AscendTensor<uint16_t, DIMS_3> opFlagL2(mem, {n, M, 16}, stream);
 
     // run l1&l2 distance calculation
     AscendTensor<float, DIMS_2> centroidsDev(centroidsOnDevice->data(), {numLists, dims});
     runL1TopkOp(dists, vmdists, opSize, opFlag, attrsInput, l1TopNprobeDists, l1TopNprobeIndices, streamAicpu);
     runL1DistOp(n, queries, centroidsDev, dists, vmdists, opFlag, stream);
-    runL2DistOp(n, queries, codeBookDev, l2SubspaceDistsDev, l2MinSubspaceDistsDev, opFlagL2, stream);
+    runL2DistOp(n, queries, codeBookDev, l2SubspaceDistsDev, stream);
 
     ret = synchronizeStream(stream);
     APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR,

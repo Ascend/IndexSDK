@@ -42,8 +42,7 @@ class AscendcIvfpqSubspaceDistance {
 public:
     __aicore__ inline AscendcIvfpqSubspaceDistance(){};
     __aicore__ inline ~AscendcIvfpqSubspaceDistance(){};
-    __aicore__ inline void Init(GM_ADDR query, GM_ADDR codeBook, GM_ADDR distance, GM_ADDR minDistResult, GM_ADDR flag,
-                                GM_ADDR workspace,
+    __aicore__ inline void Init(GM_ADDR query, GM_ADDR codeBook, GM_ADDR distance, GM_ADDR workspace,
                                 const AscendcIvfpqSubspaceDistanceTilingData *__restrict tilingData, TPipe *tPipe);
     __aicore__ inline void Process();
 
@@ -54,9 +53,8 @@ private:
     __aicore__ inline void ComputeCodeBookL2Norm(uint32_t codeBookOffset);
     __aicore__ inline void ComputeIpMuls(uint32_t ipOffset);
     __aicore__ inline void AddDistance();
-    __aicore__ inline void CopyOutDistance(uint32_t nBlockOffset, uint32_t subSpaceIdx, uint32_t minDistBlockOffset);
+    __aicore__ inline void CopyOutDistance(uint32_t nBlockOffset, uint32_t subSpaceIdx);
     __aicore__ inline void ComputeL2Norm(LocalTensor<float> tensor, uint32_t nums);
-    __aicore__ inline void ComputeFlag();
 
 private:
     TPipe pipe;
@@ -64,8 +62,6 @@ private:
     GlobalTensor<float> queryGm;
     GlobalTensor<float> codeBookGm;
     GlobalTensor<float> distanceGm;
-    GlobalTensor<float> minDistResultGm;
-    GlobalTensor<uint16_t> flagGm;
     GlobalTensor<float> ipGm;
 
     LocalTensor<float> codeBookNormBrcbUb;  // UB上NBlockTile条codeBook广播后的L2Norm数据[batch, nBlockTile/2]
@@ -78,7 +74,6 @@ private:
     TQue<AscendC::TPosition::VECIN, CONST_ONE> codeBookQueue;
     TQue<AscendC::TPosition::VECIN, CONST_ONE> ipQueue;
     TQue<AscendC::TPosition::VECOUT, CONST_ONE> distResultQueue;
-    TQue<AscendC::TPosition::VECOUT, CONST_ONE> minDistResultQueue;
 
     TBuf<AscendC::TPosition::VECCALC> queryNormBuf;
     TBuf<AscendC::TPosition::VECCALC> queryNormBrcbBuf;
@@ -104,8 +99,7 @@ private:
 };
 
 __aicore__ inline void AscendcIvfpqSubspaceDistance::Init(GM_ADDR query, GM_ADDR codeBook, GM_ADDR distance,
-    GM_ADDR minDistResult, GM_ADDR flag, GM_ADDR workspace,
-    const AscendcIvfpqSubspaceDistanceTilingData *__restrict tilingData, TPipe *tPipe)
+    GM_ADDR workspace, const AscendcIvfpqSubspaceDistanceTilingData *__restrict tilingData, TPipe *tPipe)
 {
     this->blockIdx = GetBlockIdx();
     this->pipe = *tPipe;
@@ -115,16 +109,11 @@ __aicore__ inline void AscendcIvfpqSubspaceDistance::Init(GM_ADDR query, GM_ADDR
     this->queryGm.SetGlobalBuffer((__gm__ float *)query);
     this->codeBookGm.SetGlobalBuffer((__gm__ float *)codeBook);
     this->distanceGm.SetGlobalBuffer((__gm__ float *)distance);
-    this->minDistResultGm.SetGlobalBuffer((__gm__ float *)minDistResult);
-    this->flagGm.SetGlobalBuffer((__gm__ uint16_t *)flag);
 
     pipe.InitBuffer(queryQueue, CONST_ONE, this->batch * this->dSub * sizeof(float));
     pipe.InitBuffer(codeBookQueue, CONST_ONE, this->nBlockTilePerVec * this->dSub * sizeof(float));
     pipe.InitBuffer(ipQueue, CONST_ONE, this->batch * this->nBlockTilePerVec * sizeof(float));
     pipe.InitBuffer(distResultQueue, CONST_ONE, this->batch * this->nBlockTilePerVec * sizeof(float));
-    pipe.InitBuffer(minDistResultQueue, CONST_ONE,
-                    this->batch * this->nBlockTilePerVec /
-                        (REDUCE_BASE_SIZE / FLOAT_DATA_BLOCK_SIZE) * sizeof(float));
 
     pipe.InitBuffer(queryNormBuf, this->batch * sizeof(float));
     pipe.InitBuffer(queryNormBrcbBuf, this->batch * this->nBlockTilePerVec * sizeof(float));
@@ -163,7 +152,6 @@ __aicore__ inline void AscendcIvfpqSubspaceDistance::Process()
         ComputeDistance(subSpaceIdx, nBlockIdx);
     }
     AscendC::SyncAll();
-    ComputeFlag();
 }
 
 __aicore__ inline void AscendcIvfpqSubspaceDistance::ComputeDistance(uint32_t subSpaceIdx, uint32_t baseBlockIdx)
@@ -174,13 +162,11 @@ __aicore__ inline void AscendcIvfpqSubspaceDistance::ComputeDistance(uint32_t su
     uint32_t curAicIdx = blockIdx / CONST_TWO;
     uint32_t ipOffset = curAicIdx * batch * nBlockTile;
     uint32_t nBlockOffset = baseBlockIdx * nBlockTile;
-    uint32_t minDistBlockOffset = baseBlockIdx * nBlockTile / REDUCE_BASE_SIZE * MIN_DIST_RESULT_BASE_SIZE;
     if (subBlockIdx == CONST_ONE)
     {
         codeBookOffset += nBlockTilePerVec * dSub;
         ipOffset += nBlockTilePerVec;
         nBlockOffset += nBlockTilePerVec;
-        minDistBlockOffset += nBlockTilePerVec / REDUCE_BASE_SIZE * MIN_DIST_RESULT_BASE_SIZE;
     }
 
     // step1: 将当前子空间的batch条query搬入UB, 并计算L2Norm, 且broadcast
@@ -202,7 +188,7 @@ __aicore__ inline void AscendcIvfpqSubspaceDistance::ComputeDistance(uint32_t su
     AddDistance();      // -> distanceUb[batch, nBlockTilePerVec]
 
     // step6: 将计算出来的 distance[batch, nBlockTile]的结果, 按照目标格式, 搬出到GM上
-    CopyOutDistance(nBlockOffset, subSpaceIdx, minDistBlockOffset);    // -> distanceGm
+    CopyOutDistance(nBlockOffset, subSpaceIdx);    // -> distanceGm
 }
 
 __aicore__ inline void AscendcIvfpqSubspaceDistance::ComputeQueryL2Norm(uint32_t subSpaceIdx)
@@ -299,22 +285,11 @@ __aicore__ inline void AscendcIvfpqSubspaceDistance::AddDistance()
     // + ipUb
     AscendC::Add(distanceEnqueUb, distanceEnqueUb, ipUb, nBlockTilePerVec * this->batch);
     AscendC::PipeBarrier<PIPE_V>();
-
-    LocalTensor<float> minDistResultEnqueUb = minDistResultQueue.AllocTensor<float>();
-    AscendC::WholeReduceMin<float>(minDistResultEnqueUb,         // dst
-                                   distanceEnqueUb,             // src
-                                   REDUCE_BASE_SIZE,       // mask
-                                   this->batch * curReduceRepeatTimePerBatch,    // repeatTime
-                                   4,                      // dstRepStride
-                                   1,                      // srcBlkStride
-                                   8);                     // srcRepStride
     distResultQueue.EnQue(distanceEnqueUb);
-    minDistResultQueue.EnQue(minDistResultEnqueUb);
 }
 
 __aicore__ inline void AscendcIvfpqSubspaceDistance::CopyOutDistance(uint32_t nBlockOffset,
-                                                                     uint32_t subSpaceIdx,
-                                                                     uint32_t minDistBlockOffset)
+                                                                     uint32_t subSpaceIdx)
 {
     uint32_t distanceOffset = nBlockOffset + subSpaceIdx * this->kSub;
     LocalTensor<float> distanceDequeUb = distResultQueue.DeQue<float>();
@@ -324,26 +299,7 @@ __aicore__ inline void AscendcIvfpqSubspaceDistance::CopyOutDistance(uint32_t nB
         0,                                      // srcGap
         static_cast<uint16_t>((this->subSpaceNum * this->kSub - nBlockTilePerVec) / FLOAT_DATA_BLOCK_SIZE)}; // dstGap
     AscendC::DataCopy(distanceGm[distanceOffset], distanceDequeUb, copyParams);
-    minDistResultQueue.FreeTensor(distanceDequeUb);
-
-    uint32_t dstStride = this->subSpaceNum * this->kSub / REDUCE_BASE_SIZE * MIN_DIST_RESULT_BASE_SIZE -
-                         curReduceRepeatTimePerBatch * MIN_DIST_RESULT_BASE_SIZE;
-    uint32_t minDistResultOffset = subSpaceIdx * this->kSub / REDUCE_BASE_SIZE *
-                                       MIN_DIST_RESULT_BASE_SIZE + minDistBlockOffset;
-    LocalTensor<float> minDistResultDequeUb = minDistResultQueue.DeQue<float>();
-    AscendC::DataCopyParams minDistCopyParams{
-        static_cast<uint16_t>(this->batch),      // blockCount this->batch
-        static_cast<uint16_t>(curReduceRepeatTimePerBatch * MIN_DIST_RESULT_BASE_SIZE * sizeof(float)),  // blockLen
-        0,                                       // srcStride
-        static_cast<uint16_t>((this->subSpaceNum * this->kSub / REDUCE_BASE_SIZE * MIN_DIST_RESULT_BASE_SIZE -
-                               curReduceRepeatTimePerBatch * MIN_DIST_RESULT_BASE_SIZE) * sizeof(float))};  // dstStride
-    AscendC::DataCopyPad(minDistResultGm[minDistResultOffset], minDistResultDequeUb, minDistCopyParams);
-    minDistResultQueue.FreeTensor(minDistResultDequeUb);
-}
-
-__aicore__ inline void AscendcIvfpqSubspaceDistance::ComputeFlag() {
-    AscendC::InitGlobalMemory(flagGm, static_cast<uint64_t>(this->batch * this->subSpaceNum * FLAG_ALIGN),
-                              (uint16_t) 1);
+    distResultQueue.FreeTensor(distanceDequeUb);
 }
 
 class IvfpqSubspaceDistanceMatmul {
@@ -385,9 +341,7 @@ public:
 
 
 __aicore__ inline void IvfpqSubspaceDistanceMatmul::Init(GM_ADDR query, GM_ADDR codeBook, GM_ADDR distance,
-                                                         GM_ADDR workspace,
-                                                         const AscendcIvfpqSubspaceDistanceTilingData
-                                                             *__restrict tilingData,
+                                                         GM_ADDR workspace, const AscendcIvfpqSubspaceDistanceTilingData* __restrict tilingData,
                                                          const TCubeTiling &tiling, TPipe *tPipe)
 {
     this->blockIdx = GetBlockIdx();
@@ -444,7 +398,7 @@ __aicore__ inline void IvfpqSubspaceDistanceMatmul::ComputeInnerProduct(uint32_t
 }  // namespace IndexOps
 
 extern "C" __global__ __aicore__ void ascendc_ivfpq_subspace_distance(GM_ADDR query, GM_ADDR codeBook,
-        GM_ADDR distance, GM_ADDR minDistResult, GM_ADDR flag, GM_ADDR workspace, GM_ADDR tiling)
+        GM_ADDR distance, GM_ADDR workspace, GM_ADDR tiling)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     TPipe tPipe;
@@ -461,7 +415,7 @@ extern "C" __global__ __aicore__ void ascendc_ivfpq_subspace_distance(GM_ADDR qu
         }
         if ASCEND_IS_AIV {
             IndexOps::AscendcIvfpqSubspaceDistance op;
-            op.Init(query, codeBook, distance, minDistResult, flag, workspace, &tiling_data, &tPipe);
+            op.Init(query, codeBook, distance, workspace, &tiling_data, &tPipe);
             op.Process();
         }
     }
