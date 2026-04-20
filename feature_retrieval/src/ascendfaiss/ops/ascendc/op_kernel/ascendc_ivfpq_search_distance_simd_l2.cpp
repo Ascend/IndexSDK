@@ -21,6 +21,7 @@
 #include "kernel_operator.h"
 
 #include "ascendc_ivfpq_search_distance_simd_topk.h"
+#include "ascendc_ivfpq_search_distance_simd_topk_small.h"
 
 using namespace AscendC;
 
@@ -50,7 +51,7 @@ ascendc_ivfpq_search_distance_simd_l2(GM_ADDR queryPQ, GM_ADDR codeBase, GM_ADDR
             queryPQ, codeBase, codeOffset, codeSize, topk, labelBase, labelOffset, distResult, topkIndex, topkValue,
             topkLabelFinal, topkValueFinal, flag, workspace, &tiling_data, &tPipe);
     } else if (TILING_KEY_IS(1)) {
-        RunDistOperator<IndexOps::AscendcIvfpqSearchDistanceSimdTopK>(
+        RunDistOperator<IndexOps::AscendcIvfpqSearchDistanceSimdTopKSmall>(
             queryPQ, codeBase, codeOffset, codeSize, topk, labelBase, labelOffset, distResult, topkIndex, topkValue,
             topkLabelFinal, topkValueFinal, flag, workspace, &tiling_data, &tPipe);
     }
