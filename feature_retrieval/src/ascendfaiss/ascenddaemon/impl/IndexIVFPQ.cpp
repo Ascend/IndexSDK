@@ -1556,12 +1556,12 @@ APP_ERROR IndexIVFPQ::searchImplL3(AscendTensor<int64_t, DIMS_2> &l1TopNprobeInd
         return APP_ERR_OK;
     }
 
+    runL3TopkOp(topkIndexFinal, topkValueFinal, opFlag, attrs, outDist, outLabel, streamAicpu);
     callL3DistanceOp(batch, tileNum, segNum, coreNum, kAligned, l2SubspaceDistsDev, offset,
                      baseSize, topk, labelOffset, opFlag, distResult, topkIndex, topkValue,
                      topkIndexFinal, topkValueFinal, codeBase, labelBase, stream);
     auto ret = synchronizeStream(stream);
     APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, APP_ERR_INNER_ERROR, "sync aicore stream failed %d", ret);
-    runL3TopkOp(topkIndexFinal, topkValueFinal, opFlag, attrs, outDist, outLabel, streamAicpu);
     ret = synchronizeStream(streamAicpu);
     APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, APP_ERR_INNER_ERROR, "sync aicpu stream failed %d", ret);
 

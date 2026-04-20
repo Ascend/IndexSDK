@@ -1,7 +1,7 @@
 /*
  * -------------------------------------------------------------------------
  * This file is part of the IndexSDK project.
- * Copyright (c) 2025 Huawei Technologies Co.,Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co.,Ltd.
  *
  * IndexSDK is licensed under Mulan PSL v2.
  * You can use this software according to the terms and conditions of the Mulan PSL v2.
@@ -16,110 +16,28 @@
  * -------------------------------------------------------------------------
  */
 
-#ifndef ASCENDC_IVFPQ_SEARCH_DISTANCE_TOPK_SMALL_H
-#define ASCENDC_IVFPQ_SEARCH_DISTANCE_TOPK_SMALL_H
+#ifndef ASCENDC_IVFPQ_SEARCH_DISTANCE_SIMD_TOPK_SMALL_H
+#define ASCENDC_IVFPQ_SEARCH_DISTANCE_SIMD_TOPK_SMALL_H
 #include <limits>
-
 #include "kernel_operator.h"
 
 using namespace AscendC;
 
 namespace IndexOps {
-
-template <uint8_t NumSubQuantizers>
-__aicore__ inline float SimtSearchTableSumSmallV1(__ubuf__ float *queryPQ, __gm__ uint8_t *codeBase,
-                                                  int64_t curBlockIndex, uint32_t taskIdx, uint32_t ksub)
-{
-    uint8_t codeBookIndices[IVFPQ_UNROLL_FACTOR];
-    float sumDist = 0;
-    uint8_t codeBookIndex = 0;
-    uint8_t m = 0;
-#pragma unroll
-    for (; m + IVFPQ_UNROLL_FACTOR <= NumSubQuantizers; m += IVFPQ_UNROLL_FACTOR) {
-        // 先批量读取indices，让后续访问可以并行
-#pragma unroll
-        for (uint8_t i = 0; i < IVFPQ_UNROLL_FACTOR; i++) {
-            codeBookIndices[i] = codeBase[curBlockIndex + taskIdx * NumSubQuantizers + m + i];
-        }
-        // 再批量访问queryPQ和累加，减少数据依赖
-#pragma unroll
-        for (int i = 0; i < IVFPQ_UNROLL_FACTOR; i++) {
-            sumDist += queryPQ[(m + i) * ksub + codeBookIndices[i]];
-        }
-    }
-
-    // 处理剩余部分
-#pragma unroll
-    for (; m < NumSubQuantizers; m++) {
-        codeBookIndex = codeBase[curBlockIndex + taskIdx * NumSubQuantizers + m];
-        sumDist += queryPQ[m * ksub + codeBookIndex];
-    }
-    return sumDist;
-}
-
-template <int NumSubQuantizers>
-__simt_vf__ __aicore__ LAUNCH_BOUND(IVFPQ_THREAD_NUM) inline void SimtSearchComputeSmallV1(
-    __ubuf__ float *queryPQ, __gm__ uint8_t *codeBase, __ubuf__ float *distance, __gm__ int64_t *codeSize,
-    __gm__ int64_t *codeOffset, uint32_t ksub, uint32_t codeBlockNum, uint32_t perCoreInnerBlockDealSize,
-    float distResultInitValue, uint32_t innerBlockindex, uint32_t blockIndex, uint32_t usedAivNum)
-{
-    uint32_t curBlockThreadIdx = static_cast<uint32_t>(Simt::GetThreadIdx<0>());
-    uint32_t threadCount = static_cast<uint32_t>(Simt::GetThreadNum<0>());
-
-    uint32_t curBlockIdx1 = Simt::GetBlockIdx();
-    uint32_t blockCount = Simt::GetBlockNum();
-
-    uint32_t curBlockNum = codeSize[blockIndex * usedAivNum + curBlockIdx1];
-
-    uint32_t startTaskId = perCoreInnerBlockDealSize * innerBlockindex;
-    uint32_t endtaskId = Simt::Min(perCoreInnerBlockDealSize * (innerBlockindex + 1), curBlockNum);
-
-    // 当前block的起始地址
-    int64_t curBlockIndex = codeOffset[blockIndex * usedAivNum + curBlockIdx1];
-
-    for (uint32_t taskIdx = curBlockThreadIdx + startTaskId; taskIdx < endtaskId; taskIdx += threadCount) {
-        uint32_t dstIndex = taskIdx - startTaskId;
-        distance[dstIndex] =
-            SimtSearchTableSumSmallV1<NumSubQuantizers>(queryPQ, codeBase, curBlockIndex, taskIdx, ksub);
-    }
-
-    AscendC::Simt::ThreadBarrier();
-}
-
-__simt_vf__ __aicore__ LAUNCH_BOUND(512) inline void SimtSearchGatherSmallV1(__ubuf__ int32_t *topkMergeEndDisIndex,
-                                                                             __gm__ int64_t *labelOffsetGm,
-                                                                             __gm__ uint64_t *labelBaseGm,
-                                                                             __gm__ uint64_t *topkMergeEndLabel,
-                                                                             uint32_t topk)
-{
-    uint32_t curBlockThreadIdx = static_cast<uint32_t>(Simt::GetThreadIdx<0>());
-    uint32_t threadCount = static_cast<uint32_t>(Simt::GetThreadNum<0>());
-
-    for (uint32_t i = curBlockThreadIdx; i < topk; i += threadCount) {
-        int32_t topkIndex = topkMergeEndDisIndex[i];
-        int32_t labelBlockId = topkIndex / IVFPQ_CODE_BLOCK_SIZE;
-        int32_t labelInnerBlockId = topkIndex % IVFPQ_CODE_BLOCK_SIZE;
-        int64_t labelOffset = labelOffsetGm[labelBlockId];
-        topkMergeEndLabel[i] = labelBaseGm[labelOffset + labelInnerBlockId];
-    }
-
-    AscendC::Simt::ThreadBarrier();
-}
-
-class AscendcIvfpqSearchDistanceTopKSmall {
+class AscendcIvfpqSearchDistanceSimdTopKSmall {
 public:
-    __aicore__ inline AscendcIvfpqSearchDistanceTopKSmall(){};
-    __aicore__ inline ~AscendcIvfpqSearchDistanceTopKSmall(){};
+    __aicore__ inline AscendcIvfpqSearchDistanceSimdTopKSmall(){};
+    __aicore__ inline ~AscendcIvfpqSearchDistanceSimdTopKSmall(){};
     __aicore__ inline void Init(GM_ADDR queryPQ, GM_ADDR codeBase, GM_ADDR codeOffset, GM_ADDR codeSize, GM_ADDR topk,
                                 GM_ADDR labelBase, GM_ADDR labelOffset, GM_ADDR distResult, GM_ADDR topkIndex,
                                 GM_ADDR topkValue, GM_ADDR topkLabelFinal, GM_ADDR topkValueFinal, GM_ADDR flag,
                                 GM_ADDR workspace,
-                                const AscendcIvfpqSearchDistanceTopKTilingData *__restrict tilingData, TPipe *tPipe);
+                                const AscendcIvfpqSearchDistanceSimdTopKTilingData *__restrict tilingData, TPipe *tPipe);
     __aicore__ inline void Process();
     __aicore__ inline void ProcessMerge();
 
 private:
-    __aicore__ inline void ParseTilingData(const AscendcIvfpqSearchDistanceTopKTilingData *__restrict tilingData);
+    __aicore__ inline void ParseTilingData(const AscendcIvfpqSearchDistanceSimdTopKTilingData *__restrict tilingData);
     __aicore__ inline void InitReduceUbTensor();
     __aicore__ inline void WholeBlockTopK(LocalTensor<float> dist_local_value, LocalTensor<int32_t> dist_local_index,
                                           LocalTensor<float> src_local_value, LocalTensor<int32_t> src_local_index,
@@ -129,9 +47,8 @@ private:
                                                         LocalTensor<int32_t> dst_local_index,
                                                         LocalTensor<float> distResultUb, LocalTensor<uint8_t> tmp_local,
                                                         int innerBlockindex);
-    __aicore__ inline void DistCompute(__ubuf__ float *queryPQUb, __gm__ uint8_t *codeBase, __gm__ int64_t *codeSize,
-                                       __gm__ int64_t *codeOffset, __ubuf__ float *distResultUbPtr, int innerBlockindex,
-                                       int blockIndex);
+    __aicore__ inline void DistComputeSimd(LocalTensor<float> queryPQUb, LocalTensor<float> distResultUb, uint32_t innerBlockindex,
+                                           uint32_t blockIndex, uint32_t batchIndex); 
 
 private:
     TPipe pipe;
@@ -165,6 +82,13 @@ private:
     AscendC::TBuf<AscendC::TPosition::VECCALC> top_k_result_value_buf_whole;
     AscendC::TBuf<AscendC::TPosition::VECCALC> top_k_result_index_buf_whole;
 
+    AscendC::TBuf<AscendC::TPosition::VECCALC> dist_code_tmp_buf;
+    AscendC::TBuf<AscendC::TPosition::VECCALC> dist_add_const_tmp_buf;
+    AscendC::TBuf<AscendC::TPosition::VECCALC> dist_gather_offset_tmp_buf;
+    AscendC::TBuf<AscendC::TPosition::VECCALC> dist_gather_result_tmp_buf;
+    AscendC::TBuf<AscendC::TPosition::VECCALC> dist_trans_tmp_buf;
+    AscendC::TBuf<AscendC::TPosition::VECCALC> dist_add_value_tmp_buf;
+
     AscendC::TBuf<AscendC::TPosition::VECCALC> flag_buf;
 
     // 从gm获取block内的topk结果
@@ -180,6 +104,7 @@ private:
     AscendC::TBuf<AscendC::TPosition::VECCALC> top_k_merge_end_dst_value_buf;
     AscendC::TBuf<AscendC::TPosition::VECCALC> top_k_merge_end_dst_index_buf;
     AscendC::TBuf<AscendC::TPosition::VECCALC> top_k_merge_end_temp_buf;
+    AscendC::TBuf<AscendC::TPosition::VECCALC> top_k_merge_end_label_buf;
 
     int64_t blockIdx = 0;
     uint32_t aivNum = 0;
@@ -222,16 +147,15 @@ private:
     uint32_t minSizeMergeBeginTail = 0;
     uint32_t minSizeMergeEnd = 0;
 
-    bool isLargest;
-
     uint32_t batch = 0;
+    bool isLargest;
 };
 
-__aicore__ inline void AscendcIvfpqSearchDistanceTopKSmall::Init(
+__aicore__ inline void AscendcIvfpqSearchDistanceSimdTopKSmall::Init(
     GM_ADDR queryPQ, GM_ADDR codeBase, GM_ADDR codeOffset, GM_ADDR codeSize, GM_ADDR topk, GM_ADDR labelBase,
     GM_ADDR labelOffset, GM_ADDR distResult, GM_ADDR topkIndex, GM_ADDR topkValue, GM_ADDR topkLabelFinal,
     GM_ADDR topkValueFinal, GM_ADDR flag, GM_ADDR workspace,
-    const AscendcIvfpqSearchDistanceTopKTilingData *__restrict tilingData, TPipe *tPipe)
+    const AscendcIvfpqSearchDistanceSimdTopKTilingData *__restrict tilingData, TPipe *tPipe)
 {
     blockIdx = GetBlockIdx();
     if (tPipe == nullptr || tilingData == nullptr) {
@@ -257,8 +181,8 @@ __aicore__ inline void AscendcIvfpqSearchDistanceTopKSmall::Init(
     InitReduceUbTensor();
 }
 
-__aicore__ inline void AscendcIvfpqSearchDistanceTopKSmall::ParseTilingData(
-    const AscendcIvfpqSearchDistanceTopKTilingData *__restrict tilingData)
+__aicore__ inline void AscendcIvfpqSearchDistanceSimdTopKSmall::ParseTilingData(
+    const AscendcIvfpqSearchDistanceSimdTopKTilingData *__restrict tilingData)
 {
     this->codeBlockSize = 0;
     for (int i = 0; i < tilingData->batch * tilingData->codeBlockNum; i++) {
@@ -316,13 +240,20 @@ __aicore__ inline void AscendcIvfpqSearchDistanceTopKSmall::ParseTilingData(
     this->batch = tilingData->batch;
 }
 
-__aicore__ inline void AscendcIvfpqSearchDistanceTopKSmall::InitReduceUbTensor()
+__aicore__ inline void AscendcIvfpqSearchDistanceSimdTopKSmall::InitReduceUbTensor()
 {
     pipe.InitBuffer(top_k_result_value_buf, top_k_result_value_buf_num * sizeof(float));
     pipe.InitBuffer(top_k_result_index_buf, top_k_result_value_buf_num * sizeof(int32_t));
 
     pipe.InitBuffer(top_k_result_value_buf_whole, topk * sizeof(float));
     pipe.InitBuffer(top_k_result_index_buf_whole, topk * sizeof(int32_t));
+
+    pipe.InitBuffer(dist_code_tmp_buf, IVFPQ_DIST_REDUCE_NUM * this->subSpaceNum * sizeof(uint8_t));
+    pipe.InitBuffer(dist_add_const_tmp_buf, IVFPQ_DIST_REDUCE_NUM * this->subSpaceNum * sizeof(int32_t));
+    pipe.InitBuffer(dist_gather_offset_tmp_buf, IVFPQ_DIST_REDUCE_NUM * this->subSpaceNum * sizeof(int32_t));
+    pipe.InitBuffer(dist_gather_result_tmp_buf, IVFPQ_DIST_REDUCE_NUM * this->subSpaceNum * sizeof(float));
+    pipe.InitBuffer(dist_trans_tmp_buf, IVFPQ_DIST_REDUCE_NUM * this->subSpaceNum * sizeof(float));
+    pipe.InitBuffer(dist_add_value_tmp_buf, IVFPQ_DIST_REDUCE_NUM * sizeof(float));
 
     pipe.InitBuffer(queryPQUbQueue, 1, this->ksub * this->subSpaceNum * sizeof(float));
     pipe.InitBuffer(distResultQueue, 1, this->perCoreInnerBlockDealSize * sizeof(float));
@@ -334,11 +265,10 @@ __aicore__ inline void AscendcIvfpqSearchDistanceTopKSmall::InitReduceUbTensor()
     pipe.InitBuffer(top_k_tmp_single_buf, this->min_size_single * sizeof(uint8_t));
 }
 
-__aicore__ inline void AscendcIvfpqSearchDistanceTopKSmall::SingleBlockTopKAndIndexAlign(
+__aicore__ inline void AscendcIvfpqSearchDistanceSimdTopKSmall::SingleBlockTopKAndIndexAlign(
     LocalTensor<float> dst_local_value, LocalTensor<int32_t> dst_local_index, LocalTensor<float> distResultUb,
     LocalTensor<uint8_t> tmp_local, int innerBlockindex)
 {
-    static constexpr TopKConfig topkConfig{TopKAlgo::RADIX_SELECT, TopKOrder::UNSET, false};
     for (uint32_t index = 0; index < this->single_core_total_block; index++) {
         LocalTensor<int32_t> src_local_index; // 源索引缓冲区（不需要输入）
         LocalTensor<bool> src_local_finish;   // 源完成标志（不需要输入）
@@ -348,7 +278,7 @@ __aicore__ inline void AscendcIvfpqSearchDistanceTopKSmall::SingleBlockTopKAndIn
         topKInfo.inner = this->topk_outter_num; // 内层块大小
         topKInfo.n = this->topk_outter_num;     // 数据总数
 
-        AscendC::TopK<float, false, false, false, AscendC::TopKMode::TOPK_NORMAL, topkConfig>(
+        AscendC::TopK<float, false, false, false, AscendC::TopKMode::TOPK_NORMAL>(
             dst_local_value[index * topk], dst_local_index[index * topk], distResultUb[index * this->topk_outter_num],
             src_local_index, src_local_finish, tmp_local, this->topk, this->topkTilingData, topKInfo, this->isLargest);
     }
@@ -356,17 +286,16 @@ __aicore__ inline void AscendcIvfpqSearchDistanceTopKSmall::SingleBlockTopKAndIn
 
     for (uint32_t index = 0; index < this->single_core_total_block; index++) {
         AscendC::Adds(dst_local_index[index * this->topk], dst_local_index[index * this->topk],
-                      index * this->topk_outter_num + innerBlockindex * this->perCoreInnerBlockDealSize, this->topk);
+                      int32_t(index * this->topk_outter_num + innerBlockindex * this->perCoreInnerBlockDealSize), this->topk);
     }
     AscendC::PipeBarrier<PIPE_V>();
 }
 
-__aicore__ inline void AscendcIvfpqSearchDistanceTopKSmall::WholeBlockTopK(
+__aicore__ inline void AscendcIvfpqSearchDistanceSimdTopKSmall::WholeBlockTopK(
     LocalTensor<float> dist_local_value, LocalTensor<int32_t> dist_local_index, LocalTensor<float> src_local_value,
     LocalTensor<int32_t> src_local_index, LocalTensor<uint8_t> tmp_local_whole, LocalTensor<uint8_t> tmp_local_single,
     int innerBlockindex)
 {
-    static constexpr TopKConfig topkConfigSort{TopKAlgo::RADIX_SELECT, TopKOrder::UNSET, false};
     if (innerBlockindex > 0) {
         // 需要两次对比
         TopKInfo topKInfoWhole;
@@ -375,7 +304,7 @@ __aicore__ inline void AscendcIvfpqSearchDistanceTopKSmall::WholeBlockTopK(
         topKInfoWhole.n = this->top_k_result_value_buf_num;
         LocalTensor<bool> src_local_finish_whole;
 
-        AscendC::TopK<float, true, false, false, AscendC::TopKMode::TOPK_NORMAL, topkConfigSort>(
+        AscendC::TopK<float, true, false, false, AscendC::TopKMode::TOPK_NORMAL>(
             dist_local_value, dist_local_index, src_local_value, src_local_index, src_local_finish_whole,
             tmp_local_whole, topk, this->topkTilingDataWhole, topKInfoWhole, this->isLargest);
     } else {
@@ -384,111 +313,227 @@ __aicore__ inline void AscendcIvfpqSearchDistanceTopKSmall::WholeBlockTopK(
         topKInfoWhole.outter = 1;                            // 外层循环次数
         topKInfoWhole.inner = top_k_result_value_single_num; // 内层块大小
         topKInfoWhole.n = top_k_result_value_single_num;     // 数据总数
-        LocalTensor<bool> src_local_finish_whole;
+        LocalTensor<bool> src_local_finish_whole;            // TopK临时缓冲区
 
-        AscendC::TopK<float, true, false, false, AscendC::TopKMode::TOPK_NORMAL, topkConfigSort>(
+        AscendC::TopK<float, true, false, false, AscendC::TopKMode::TOPK_NORMAL>(
             dist_local_value, dist_local_index, src_local_value, src_local_index, src_local_finish_whole,
             tmp_local_single, topk, this->topkTilingDataSingle, topKInfoWhole, this->isLargest);
     }
     AscendC::PipeBarrier<PIPE_ALL>();
 }
 
-__aicore__ inline void
-AscendcIvfpqSearchDistanceTopKSmall::DistCompute(__ubuf__ float *queryPQUb, __gm__ uint8_t *codeBase,
-                                                 __gm__ int64_t *codeSize, __gm__ int64_t *codeOffset,
-                                                 __ubuf__ float *distResultUbPtr, int innerBlockindex, int blockIndex)
+__aicore__ inline void AscendcIvfpqSearchDistanceSimdTopKSmall::DistComputeSimd(LocalTensor<float> queryPQUb, 
+                                                                           LocalTensor<float> distResultUb, 
+                                                                           uint32_t innerBlockindex, 
+                                                                           uint32_t blockIndex, 
+                                                                           uint32_t batchIndex)
 {
-    if (this->subSpaceNum == 2) {
-        Simt::VF_CALL<SimtSearchComputeSmallV1<2>>(Simt::Dim3{IVFPQ_THREAD_NUM, 1, 1}, queryPQUb, codeBase,
-                                                   distResultUbPtr, codeSize, codeOffset, this->ksub,
-                                                   this->codeBlockNum, this->perCoreInnerBlockDealSize,
-                                                   this->distResultInitValue, innerBlockindex, blockIndex, usedAivNum);
-    } else if (this->subSpaceNum == 4) {
-        Simt::VF_CALL<SimtSearchComputeSmallV1<4>>(Simt::Dim3{IVFPQ_THREAD_NUM, 1, 1}, queryPQUb, codeBase,
-                                                   distResultUbPtr, codeSize, codeOffset, this->ksub,
-                                                   this->codeBlockNum, this->perCoreInnerBlockDealSize,
-                                                   this->distResultInitValue, innerBlockindex, blockIndex, usedAivNum);
-    } else if (this->subSpaceNum == 8) {
-        Simt::VF_CALL<SimtSearchComputeSmallV1<8>>(Simt::Dim3{IVFPQ_THREAD_NUM, 1, 1}, queryPQUb, codeBase,
-                                                   distResultUbPtr, codeSize, codeOffset, this->ksub,
-                                                   this->codeBlockNum, this->perCoreInnerBlockDealSize,
-                                                   this->distResultInitValue, innerBlockindex, blockIndex, usedAivNum);
-    } else if (this->subSpaceNum == 16) {
-        Simt::VF_CALL<SimtSearchComputeSmallV1<16>>(Simt::Dim3{IVFPQ_THREAD_NUM, 1, 1}, queryPQUb, codeBase,
-                                                    distResultUbPtr, codeSize, codeOffset, this->ksub,
-                                                    this->codeBlockNum, this->perCoreInnerBlockDealSize,
-                                                    this->distResultInitValue, innerBlockindex, blockIndex, usedAivNum);
+    __ubuf__ float *queryPQ = (__ubuf__ float *)queryPQUb.GetPhyAddr();
+    __gm__ uint8_t *codeBase = (__gm__ uint8_t *)this->codeBaseGm.GetPhyAddr();
+
+    LocalTensor<uint8_t> dist_code_tmp = dist_code_tmp_buf.Get<uint8_t>();
+    LocalTensor<int32_t> dist_add_const_tmp = dist_add_const_tmp_buf.Get<int32_t>();
+
+    LocalTensor<int32_t> dist_code_int32_tmp = dist_gather_offset_tmp_buf.Get<int32_t>();
+    LocalTensor<uint32_t> dist_gather_offset_tmp = dist_gather_offset_tmp_buf.Get<uint32_t>();
+
+    LocalTensor<half> dist_code_half_tmp = dist_gather_result_tmp_buf.Get<half>();
+    LocalTensor<float> dist_gather_result_tmp = dist_gather_result_tmp_buf.Get<float>();
+
+    LocalTensor<float> dist_trans_tmp = dist_trans_tmp_buf.Get<float>();
+    LocalTensor<float> dist_add_value_tmp = dist_add_value_tmp_buf.Get<float>();
+
+    // 根据block下标获取实际有效行数，获取任务起点与终点
+    uint32_t curBlockNum = static_cast<uint32_t>(this->codeSizeGm.GetValue(batchIndex * this->codeBlockNum + blockIndex));
+    uint32_t startTaskId = perCoreInnerBlockDealSize * innerBlockindex;
+    uint32_t endtaskId = AscendC::Std::min(perCoreInnerBlockDealSize * (innerBlockindex + 1), curBlockNum);
+    uint32_t curTaskNum = endtaskId - startTaskId;
+    uint64_t curBlockOffset = static_cast<uint64_t>(this->codeOffsetGm.GetValue(batchIndex * this->codeBlockNum + blockIndex));
+
+    // batch分批处理
+    uint32_t batchNum = curTaskNum / IVFPQ_DIST_REDUCE_NUM;
+    uint32_t processedNum = 0;
+    uint32_t batchCodeSize = IVFPQ_DIST_REDUCE_NUM * this->subSpaceNum;
+    uint32_t reduceShape[] = {IVFPQ_DIST_REDUCE_NUM, this->subSpaceNum};
+    for (uint32_t batchidx = 0; batchidx < batchNum; batchidx++)
+    {
+        uint64_t curBatchGmOffset = curBlockOffset + (startTaskId + processedNum) * this->subSpaceNum;
+        LocalTensor<float> curBatchDistResult = distResultUb[processedNum];
+
+        DataCopy(dist_code_tmp, this->codeBaseGm[curBatchGmOffset], batchCodeSize);
+        AscendC::PipeBarrier<PIPE_ALL>();
+        Cast(dist_code_half_tmp, dist_code_tmp, RoundMode::CAST_NONE, batchCodeSize);
+        AscendC::PipeBarrier<PIPE_V>();
+        Cast(dist_code_int32_tmp, dist_code_half_tmp, RoundMode::CAST_ROUND, batchCodeSize);
+        AscendC::PipeBarrier<PIPE_V>();
+
+        Add(dist_code_int32_tmp, dist_code_int32_tmp, dist_add_const_tmp, (int32_t)batchCodeSize);
+        AscendC::PipeBarrier<PIPE_V>();
+        Muls(dist_code_int32_tmp, dist_code_int32_tmp, (int32_t)sizeof(float), (int32_t)batchCodeSize);
+        AscendC::PipeBarrier<PIPE_V>();
+        Gather(dist_gather_result_tmp, queryPQUb, dist_gather_offset_tmp, 0, batchCodeSize);
+        AscendC::PipeBarrier<PIPE_V>();
+
+         if (this->subSpaceNum >= 8) {
+             AscendC::ReduceSum<float, AscendC::Pattern::Reduce::AR, true>(curBatchDistResult, dist_gather_result_tmp, dist_code_tmp, reduceShape, true);
+             AscendC::PipeBarrier<PIPE_V>();
+        } else {
+            // shape转换：(16,8,m) => (8,m,16)
+            AscendC::TransDataTo5HDParams transDataParams;
+            transDataParams.dstHighHalf = false;
+            transDataParams.srcHighHalf = false;
+            transDataParams.repeatTimes = this->subSpaceNum;
+            transDataParams.dstRepStride = 16;
+            transDataParams.srcRepStride = 1;
+            AscendC::LocalTensor<float> srcLocalList[16];
+            for (int i = 0; i < 16; i++) {
+                srcLocalList[i] = dist_gather_result_tmp[8 * this->subSpaceNum * i];
+            }
+            AscendC::LocalTensor<float> dstLocalList[16];
+            for (int i = 0; i < 16; i++) {
+                dstLocalList[i] = dist_trans_tmp[8 * i];
+            }
+            AscendC::TransDataTo5HD(dstLocalList, srcLocalList, transDataParams);
+            AscendC::PipeBarrier<PIPE_V>();
+
+            // 子空间批量累加：(8,m,16) => (8,16)
+            AscendC::Duplicate<float>(dist_add_value_tmp, 0.0f, IVFPQ_DIST_REDUCE_NUM);
+            AscendC::PipeBarrier<PIPE_V>();
+            for (int i = 0; i < 8; i++) {
+                for(int j = 0; j < this->subSpaceNum; j++) {
+                    Add(dist_add_value_tmp[i * 16], dist_add_value_tmp[i * 16], dist_trans_tmp[i * 16 * this->subSpaceNum + j * 16], 16);
+                }
+            }
+            AscendC::PipeBarrier<PIPE_V>();
+
+             // shape转换：(8,16) => (16,8)
+            transDataParams.repeatTimes = 2;
+            transDataParams.dstRepStride = 8;
+            transDataParams.srcRepStride = 1;
+            
+            for (int i = 0; i < 8; i++) {
+                srcLocalList[i] = dist_add_value_tmp[i * 16];
+            }
+            for (int i = 8; i < 16; i++) {
+                srcLocalList[i] = dist_add_value_tmp[(i - 8) * 16]; // 不参与计算，仅占位
+            }
+            for (int i = 0; i < 16; i += 2) {
+                dstLocalList[i] = curBatchDistResult[8 * i / 2];
+            }
+            for (int i = 1; i < 16; i += 2) {
+                dstLocalList[i] = dist_trans_tmp[8 * i / 2]; // 不参与计算，仅占位
+            }
+            AscendC::TransDataTo5HD(dstLocalList, srcLocalList, transDataParams);
+            AscendC::PipeBarrier<PIPE_V>();
+        }
+        AscendC::PipeBarrier<PIPE_ALL>();
+        processedNum += IVFPQ_DIST_REDUCE_NUM;
+    }
+
+    while (processedNum < curTaskNum) {
+        uint32_t taskIdx = startTaskId + processedNum;
+        if(this->subSpaceNum == 2) {
+            distResultUb(processedNum) = SearchTableSumV1<2>(queryPQ, codeBase, curBlockOffset, taskIdx, this->ksub);
+        } else if (this->subSpaceNum == 4) {
+            distResultUb(processedNum) = SearchTableSumV1<4>(queryPQ, codeBase, curBlockOffset, taskIdx, this->ksub);
+        } else if (this->subSpaceNum == 8) {
+            distResultUb(processedNum) = SearchTableSumV1<8>(queryPQ, codeBase, curBlockOffset, taskIdx, this->ksub);
+        } else if (this->subSpaceNum == 16) {
+            distResultUb(processedNum) = SearchTableSumV1<16>(queryPQ, codeBase, curBlockOffset, taskIdx, this->ksub);
+        } 
+        processedNum++;
     }
     AscendC::PipeBarrier<PIPE_ALL>();
 }
-
-__aicore__ inline void AscendcIvfpqSearchDistanceTopKSmall::Process()
+                                           
+__aicore__ inline void AscendcIvfpqSearchDistanceSimdTopKSmall::Process()
 {
+    // 单核处理的batch内的block数量
     uint32_t perCoreBlockNum = (codeBlockNum + usedAivNum - 1) / usedAivNum;
+    // block大小按照perCoreInnerBlockDealSize进行切分后的个数
     uint32_t perCoreInnerBlockLoopNum =
         (codeBlockSize + this->perCoreInnerBlockDealSize - 1) / this->perCoreInnerBlockDealSize;
-
+    // 用于存放单轮topk结果的ub空间，实际长度是（16384/4096）* （topk + 1）
     LocalTensor<float> dst_local_value = top_k_result_value_buf.Get<float>();                 // TopK结果值
+    // 用于存放单轮topk索引的ub空间，实际长度是（16384/4096）* （topk + 1）
     LocalTensor<int32_t> dst_local_index = top_k_result_index_buf.Get<int32_t>();             // TopK结果索引
+    // 用作存放临时块内topk结果
     LocalTensor<float> dst_local_value_whole = top_k_result_value_buf_whole.Get<float>();     // TopK结果值
     LocalTensor<int32_t> dst_local_index_whole = top_k_result_index_buf_whole.Get<int32_t>(); // TopK结果索引
-
+    // tiling侧计算出来的topk的临时空间大小
     LocalTensor<uint8_t> tmp_local = top_k_tmp_buf.Get<uint8_t>();
     LocalTensor<uint8_t> tmp_local_single = top_k_tmp_single_buf.Get<uint8_t>();
     LocalTensor<uint8_t> tmp_local_whole = top_k_tmp_whole_buf.Get<uint8_t>();
 
+    LocalTensor<int32_t> dist_add_const_tmp = dist_add_const_tmp_buf.Get<int32_t>();
+    for(uint32_t v = 0; v < IVFPQ_DIST_REDUCE_NUM; v++) {
+        for(uint32_t m = 0; m < this->subSpaceNum; m++) {
+            dist_add_const_tmp.SetValue(v * this->subSpaceNum + m, (int32_t)(m * this->ksub));
+        }
+    }
+    // batch分摊到各核
     for (int batchIndex = 0; batchIndex < batch; batchIndex++) {
+        // queryPQ全载
         LocalTensor<float> queryPQEnqueUb = queryPQUbQueue.AllocTensor<float>();
         AscendC::DataCopy(queryPQEnqueUb, queryPQGm[batchIndex * this->ksub * this->subSpaceNum],
                           this->ksub * this->subSpaceNum);
         queryPQUbQueue.EnQue(queryPQEnqueUb);
         LocalTensor<float> queryPQDequeUb = queryPQUbQueue.DeQue<float>();
+        // 获取物理地址
         __ubuf__ float *queryPQUb = (__ubuf__ float *)queryPQDequeUb.GetPhyAddr();
         __gm__ uint8_t *codeBase = (__gm__ uint8_t *)this->codeBaseGm.GetPhyAddr();
         __gm__ int64_t *codeSize = (__gm__ int64_t *)this->codeSizeGm[batchIndex * codeBlockNum].GetPhyAddr();
         __gm__ int64_t *codeOffset = (__gm__ int64_t *)this->codeOffsetGm[batchIndex * codeBlockNum].GetPhyAddr();
-
+        // 各核处理其负责的block
         for (int blockIndex = 0; blockIndex < perCoreBlockNum; blockIndex++) {
+            // 获取当前block的实际有效行数
             uint32_t blockOffsetNum = blockIdx + blockIndex * usedAivNum;
             int64_t codeBlockSizeTmp = codeSizeGm.GetValue(batchIndex * codeBlockNum + blockOffsetNum);
+            // 有效行数不为0，此时需要进行距离计算，以及block内topk排序
+            // 有效行数为0，此时只需要赋初始值，保证不影响后续block间topk排序
             if (codeBlockSizeTmp != 0) {
+                // 按照块对block进行切分，此处默认16384
                 for (int innerBlockindex = 0; innerBlockindex < perCoreInnerBlockLoopNum; innerBlockindex++) {
+                    // 申请距离计算UB空间，用于存放距离结果
                     LocalTensor<float> distResultUb = distResultQueue.AllocTensor<float>();
+                    // 赋初始值
                     AscendC::Duplicate<float>(distResultUb, this->distResultInitValue, this->perCoreInnerBlockDealSize);
                     AscendC::PipeBarrier<PIPE_V>();
                     __ubuf__ float *distResultUbPtr = (__ubuf__ float *)distResultUb.GetPhyAddr();
-                    DistCompute(queryPQUb, codeBase, codeSize, codeOffset, distResultUbPtr, innerBlockindex,
-                                blockIndex);
+                    // 距离计算
+                    DistComputeSimd(queryPQDequeUb, distResultUb, innerBlockindex, blockOffsetNum, batchIndex); 
+                    // 按照4096为单位，对块内数据进行topk排序，并保证索引正确性
                     SingleBlockTopKAndIndexAlign(dst_local_value, dst_local_index, distResultUb, tmp_local,
                                                  innerBlockindex);
+                    // 对topk结果进行进一步排序
                     WholeBlockTopK(dst_local_value_whole, dst_local_index_whole, dst_local_value, dst_local_index,
                                    tmp_local_whole, tmp_local_single, innerBlockindex);
-
-                    AscendC::DataCopy(dst_local_value[top_k_result_value_single_num], dst_local_value_whole,
-                                      topk);
-                    AscendC::DataCopy(dst_local_index[top_k_result_value_single_num], dst_local_index_whole,
-                                      topk);
+                    // 对整块排序结果进行数据拷贝，将整块topk结果放到额外空间中
+                    AscendC::DataCopy(dst_local_value[top_k_result_value_single_num], dst_local_value_whole, topk);
+                    AscendC::DataCopy(dst_local_index[top_k_result_value_single_num], dst_local_index_whole, topk);
                     distResultQueue.FreeTensor(distResultUb);
                 }
-                AscendC::DataCopy(topkValueGm[batchIndex * topk * codeBlockNum + (blockOffsetNum)*topk],
+                // block数据计算完成后，将block的排序结果放到gm中
+                AscendC::DataCopy(topkValueGm[batchIndex * topk * codeBlockNum + blockOffsetNum * topk],
                                   dst_local_value_whole, topk);
-                AscendC::DataCopy(topkIndexGm[batchIndex * topk * codeBlockNum + (blockOffsetNum)*topk],
+                AscendC::DataCopy(topkIndexGm[batchIndex * topk * codeBlockNum + blockOffsetNum * topk],
                                   dst_local_index_whole, topk);
             } else {
+                // 同步信号，vector等mte3，等上次的数据搬运结束，避免数据干扰
                 int32_t eventIDMTE3ToV = static_cast<int32_t>(GetTPipePtr()->FetchEventID(AscendC::HardEvent::MTE3_V));
                 AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(eventIDMTE3ToV);
                 AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(eventIDMTE3ToV);
-
+                // 进行数据赋初始值，vector流水
                 AscendC::Duplicate<float>(dst_local_value_whole, this->distResultInitValue, topk);
                 AscendC::Duplicate<int32_t>(dst_local_index_whole, 0, topk);
-
+                // 同步信号，mte3等Vector，等vector赋值结束，避免数据干扰
                 int32_t eventIDVToMTE3 = static_cast<int32_t>(GetTPipePtr()->FetchEventID(AscendC::HardEvent::V_MTE3));
                 AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(eventIDVToMTE3);
                 AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(eventIDVToMTE3);
-
-                AscendC::DataCopy(topkValueGm[batchIndex * topk * codeBlockNum + (blockOffsetNum)*topk],
+                // 数据拷贝到GM，mte3流水
+                AscendC::DataCopy(topkValueGm[batchIndex * topk * codeBlockNum + blockOffsetNum * topk],
                                   dst_local_value_whole, topk);
-                AscendC::DataCopy(topkIndexGm[batchIndex * topk * codeBlockNum + (blockOffsetNum)*topk],
+                AscendC::DataCopy(topkIndexGm[batchIndex * topk * codeBlockNum + blockOffsetNum * topk],
                                   dst_local_index_whole, topk);
             }
         }
@@ -497,13 +542,11 @@ __aicore__ inline void AscendcIvfpqSearchDistanceTopKSmall::Process()
     AscendC::SyncAll();
 }
 
-__aicore__ inline void AscendcIvfpqSearchDistanceTopKSmall::ProcessMerge()
+__aicore__ inline void AscendcIvfpqSearchDistanceSimdTopKSmall::ProcessMerge()
 {
-    static constexpr TopKConfig topkConfig{TopKAlgo::RADIX_SELECT, TopKOrder::UNSET, false};
-    static constexpr TopKConfig topkConfigSort{TopKAlgo::RADIX_SELECT, TopKOrder::UNSET, true};
-
+    // 资源释放
     pipe.Reset();
-
+    // 初始化UB空间
     pipe.InitBuffer(top_k_merge_src_value_que, 1, topk * mergeBeginTopNumInLoop * sizeof(float));
     pipe.InitBuffer(top_k_merge_src_index_que, 1, topk * mergeBeginTopNumInLoop * sizeof(int32_t));
 
@@ -517,6 +560,8 @@ __aicore__ inline void AscendcIvfpqSearchDistanceTopKSmall::ProcessMerge()
     pipe.InitBuffer(top_k_merge_end_dst_index_buf, topk * sizeof(int32_t));
     pipe.InitBuffer(top_k_merge_end_temp_buf, minSizeMergeEnd * sizeof(uint8_t));
 
+    pipe.InitBuffer(top_k_merge_end_label_buf, topk * sizeof(int64_t));
+
     LocalTensor<float> top_k_merge_begin_dst_value_buf_local = top_k_merge_begin_dst_value_buf.Get<float>();
     LocalTensor<int32_t> top_k_merge_begin_dst_index_buf_local = top_k_merge_begin_dst_index_buf.Get<int32_t>();
 
@@ -525,22 +570,29 @@ __aicore__ inline void AscendcIvfpqSearchDistanceTopKSmall::ProcessMerge()
 
     LocalTensor<uint8_t> top_k_merge_begin_temp_buf_local = top_k_merge_begin_temp_buf.Get<uint8_t>();
     LocalTensor<uint8_t> top_k_merge_end_temp_buf_local = top_k_merge_end_temp_buf.Get<uint8_t>();
+    LocalTensor<int64_t> top_k_merge_end_label_buf_local = top_k_merge_end_label_buf.Get<int64_t>();
 
     LocalTensor<bool> src_local_finish; // 源完成标志（不需要输入）
-
+    // 按核切batch
     for (int batchIndex = blockIdx; batchIndex < batch; batchIndex += usedAivNum) {
+        // 获取label基地址地址
         __gm__ uint64_t *labelBaseGmAddr = (__gm__ uint64_t *)this->labelBaseGm.GetPhyAddr();
+        // 获取label偏移量
         __gm__ int64_t *labelOffsetGmAddr =
             (__gm__ int64_t *)this->labelOffsetGm[batchIndex * codeBlockNum].GetPhyAddr();
+        // 获取输出地址
         __gm__ uint64_t *topkLabelFinalGmAddr =
             (__gm__ uint64_t *)this->topkLabelFinalGm[batchIndex * topk].GetPhyAddr();
-
+        // 按照 首轮+尾轮 总轮次进行循环，对batch内，block间的topk结果进行归并
         for (int i = 0; i < (mergeBeginBlockLoopTime + mergeBeginTailBlockLoopTime); i++) {
+            // 获取当前轮次的首个block的实际有效行数
             int64_t codeBlockSizeTmp = codeSizeGm.GetValue(batchIndex * codeBlockNum + i * mergeBeginBlockLoopTime);
+            // 如果不为0，则需要进行归并排序
+            // 如果为0，则只需要进行复初始制
             if (codeBlockSizeTmp != 0) {
+                // topk结果搬运到UB上
                 LocalTensor<float> top_k_merge_src_value = top_k_merge_src_value_que.AllocTensor<float>();
                 LocalTensor<int32_t> top_k_merge_src_index = top_k_merge_src_index_que.AllocTensor<int32_t>();
-
                 AscendC::DataCopy(top_k_merge_src_value,
                                   topkValueGm[batchIndex * codeBlockNum * topk + i * topk * mergeBeginTopNumInLoop],
                                   topk * mergeBeginTopNumInLoop);
@@ -553,20 +605,20 @@ __aicore__ inline void AscendcIvfpqSearchDistanceTopKSmall::ProcessMerge()
 
                 LocalTensor<float> top_k_merge_src_value_deque = top_k_merge_src_value_que.DeQue<float>();
                 LocalTensor<int32_t> top_k_merge_src_index_deque = top_k_merge_src_index_que.DeQue<int32_t>();
-
+                // 对索引进行偏移矫正
                 for (int indexId = 0; indexId < mergeBeginTopNumInLoop; indexId++) {
                     AscendC::Adds(top_k_merge_src_index_deque[indexId * this->topk],
                                   top_k_merge_src_index_deque[indexId * this->topk],
-                                  IVFPQ_CODE_BLOCK_SIZE * (i * mergeBeginTopNumInLoop + indexId), this->topk);
+                                  static_cast<int32_t>(IVFPQ_CODE_BLOCK_SIZE * (i * mergeBeginTopNumInLoop + indexId)), this->topk);
                 }
                 AscendC::PipeBarrier<PIPE_V>();
-
+                // 首轮、尾轮实际的内轴长度不一致
                 if (i != mergeBeginBlockLoopTime) {
                     TopKInfo topKInfo;
                     topKInfo.outter = 1;
                     topKInfo.inner = topk * mergeBeginTopNumInLoop;
                     topKInfo.n = topk * mergeBeginTopNumInLoop;
-                    AscendC::TopK<float, true, false, false, AscendC::TopKMode::TOPK_NORMAL, topkConfig>(
+                    AscendC::TopK<float, true, false, false, AscendC::TopKMode::TOPK_NORMAL>(
                         top_k_merge_begin_dst_value_buf_local[i * topk],
                         top_k_merge_begin_dst_index_buf_local[i * topk], top_k_merge_src_value_deque,
                         top_k_merge_src_index_deque, src_local_finish, top_k_merge_begin_temp_buf_local, topk,
@@ -576,7 +628,7 @@ __aicore__ inline void AscendcIvfpqSearchDistanceTopKSmall::ProcessMerge()
                     topKInfo.outter = 1;
                     topKInfo.inner = topk * mergeBeginTailTopNumInLoop;
                     topKInfo.n = topk * mergeBeginTailTopNumInLoop;
-                    AscendC::TopK<float, true, false, false, AscendC::TopKMode::TOPK_NORMAL, topkConfig>(
+                    AscendC::TopK<float, true, false, false, AscendC::TopKMode::TOPK_NORMAL>(
                         top_k_merge_begin_dst_value_buf_local[i * topk],
                         top_k_merge_begin_dst_index_buf_local[i * topk], top_k_merge_src_value_deque,
                         top_k_merge_src_index_deque, src_local_finish, top_k_merge_begin_temp_buf_local, topk,
@@ -586,33 +638,40 @@ __aicore__ inline void AscendcIvfpqSearchDistanceTopKSmall::ProcessMerge()
                 top_k_merge_src_value_que.FreeTensor(top_k_merge_src_value_deque);
                 top_k_merge_src_index_que.FreeTensor(top_k_merge_src_index_deque);
             } else {
+                // 赋值即可
                 AscendC::Duplicate<float>(top_k_merge_begin_dst_value_buf_local[i * topk], this->distResultInitValue,
                                           topk);
                 AscendC::Duplicate<int32_t>(top_k_merge_begin_dst_index_buf_local[i * topk], 0, topk);
                 AscendC::PipeBarrier<PIPE_V>();
             }
         }
+        // 进行最终归并
+        // 内轴长度为 topk*（首轮+尾轮的个数）
         TopKInfo topKInfo;
         topKInfo.outter = 1;
         topKInfo.inner = topk * (mergeBeginBlockLoopTime + mergeBeginTailBlockLoopTime);
         topKInfo.n = topk * (mergeBeginBlockLoopTime + mergeBeginTailBlockLoopTime);
 
-        AscendC::TopK<float, true, false, false, AscendC::TopKMode::TOPK_NORMAL, topkConfigSort>(
+        AscendC::TopK<float, true, false, false, AscendC::TopKMode::TOPK_NORMAL>(
             top_k_merge_end_dst_value_buf_local, top_k_merge_end_dst_index_buf_local,
             top_k_merge_begin_dst_value_buf_local, top_k_merge_begin_dst_index_buf_local, src_local_finish,
             top_k_merge_end_temp_buf_local, topk, this->topkTilingDataMergeEnd, topKInfo, this->isLargest);
         AscendC::PipeBarrier<PIPE_ALL>();
 
+        // 获取最终归并索引的物理地址
         __ubuf__ int32_t *top_k_merge_end_dst_index_buf_local_addr =
             (__ubuf__ int32_t *)top_k_merge_end_dst_index_buf_local.GetPhyAddr();
-        Simt::VF_CALL<SimtSearchGatherSmallV1>(Simt::Dim3{512, 1, 1}, top_k_merge_end_dst_index_buf_local_addr,
-                                               labelOffsetGmAddr, labelBaseGmAddr, topkLabelFinalGmAddr, topk);
+        // 进行gather操作，并对GM的label赋值
+        SearchGatherV1(top_k_merge_end_dst_index_buf_local_addr,
+                       labelOffsetGmAddr, labelBaseGmAddr, topkLabelFinalGmAddr, topk);
         AscendC::PipeBarrier<PIPE_V>();
+        // 最终归并结果拷贝到GM
         AscendC::DataCopy(topkValueFinalGm[batchIndex * topk], top_k_merge_end_dst_value_buf_local, topk);
     }
     AscendC::SyncAll();
 
     if (blockIdx == 0) {
+        // 初始化同步信号
         AscendC::InitGlobalMemory(flagGm, static_cast<uint64_t>(IVFPQ_FLAG_ALIGN), (uint16_t)1);
     }
 }

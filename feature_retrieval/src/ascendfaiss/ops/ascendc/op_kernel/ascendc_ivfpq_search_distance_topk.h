@@ -662,6 +662,7 @@ __aicore__ inline void AscendcIvfpqSearchDistanceTopK::ProcessMerge()
         // 最终归并结果拷贝到GM
         AscendC::DataCopy(topkValueFinalGm[batchIndex * topk], top_k_merge_end_dst_value_buf_local, topk);
     }
+    AscendC::SyncAll();
 
     if (blockIdx == 0) {
         // 初始化同步信号

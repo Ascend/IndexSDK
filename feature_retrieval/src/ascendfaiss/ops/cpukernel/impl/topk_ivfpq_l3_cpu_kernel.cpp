@@ -157,7 +157,7 @@ void TopkIvfpqL3CpuKernel::UpdateInOutShape(Inputs &inputs, Outputs &outputs) co
 
     auto shapeOpFlag = inputs.opflag->GetTensorShape();
     std::vector<int64_t> dimOpFlag = shapeOpFlag->GetDimSizes();
-    dimOpFlag[INPUT_NUM1] = tileNum_;
+    dimOpFlag[INPUT_NUM0] = tileNum_;
     shapeOpFlag->SetDimSizes(dimOpFlag);
 
     auto shapeOutdists = outputs.outdists->GetTensorShape();
