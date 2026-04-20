@@ -97,11 +97,11 @@ APP_ERROR IndexInt8FlatCosAicpu::copyNormByIndice(int64_t startIndice, int64_t l
             precompData.data() + precompDataOffset, cpyNum * sizeof(float16_t), ACL_MEMCPY_DEVICE_TO_DEVICE);
         APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "copy precompData failed %d", ret);
         mantainLen -= cpyNum;
-        noremVecOffset = (noremVecOffset + cpyNum) % this->codeBlockSize;
         precompDataOffset += cpyNum;
         if (noremVecOffset + cpyNum >= this->codeBlockSize) {
             normVecId++;
         }
+        noremVecOffset = (noremVecOffset + cpyNum) % this->codeBlockSize;
     };
     return APP_ERR_OK;
 }
