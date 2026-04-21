@@ -49,7 +49,7 @@ public:
 private:
     __aicore__ inline void ParseTilingData(const AscendcIvfpqSubspaceDistanceTilingData *__restrict tilingData);
     __aicore__ inline void ComputeQueryL2Norm(uint32_t subSpaceIdx);
-    __aicore__ inline void ComputeDistance(uint32_t subSpaceIdx, uint32_t baseBlockIdx);
+    __aicore__ inline void ComputeDistance(uint32_t taskIdx, uint32_t subSpaceIdx, uint32_t baseBlockIdx);
     __aicore__ inline void ComputeCodeBookL2Norm(uint32_t codeBookOffset);
     __aicore__ inline void ComputeIpMuls(uint32_t ipOffset);
     __aicore__ inline void AddDistance();
@@ -149,17 +149,17 @@ __aicore__ inline void AscendcIvfpqSubspaceDistance::Process()
         uint32_t subSpaceIdx = curAicIdx / nBlockNum;  // 当前AICORE处理的子空间idx
         uint32_t nBlockIdx = curAicIdx % nBlockNum;    // 当前AICORE处理的码本基本块idx
         // Vector: 将nBlockTile条codeBook拆成两份, 每个Vector负责处理 nBlockTile/2 条码本数据的计算
-        ComputeDistance(subSpaceIdx, nBlockIdx);
+        ComputeDistance(taskIdx, subSpaceIdx, nBlockIdx);
     }
     AscendC::SyncAll();
 }
 
-__aicore__ inline void AscendcIvfpqSubspaceDistance::ComputeDistance(uint32_t subSpaceIdx, uint32_t baseBlockIdx)
+__aicore__ inline void AscendcIvfpqSubspaceDistance::ComputeDistance(uint32_t taskIdx, uint32_t subSpaceIdx, uint32_t baseBlockIdx)
 {
     // AI Core上Vector核的ID
     uint32_t subBlockIdx = AscendC::GetSubBlockIdx();
     uint32_t codeBookOffset = subSpaceIdx * kSub * dSub + baseBlockIdx * nBlockTile * dSub;
-    uint32_t curAicIdx = blockIdx / CONST_TWO;
+    uint32_t curAicIdx = taskIdx / CONST_TWO;
     uint32_t ipOffset = curAicIdx * batch * nBlockTile;
     uint32_t nBlockOffset = baseBlockIdx * nBlockTile;
     if (subBlockIdx == CONST_ONE)
@@ -392,7 +392,7 @@ __aicore__ inline void IvfpqSubspaceDistanceMatmul::ComputeInnerProduct(uint32_t
     matmulObj.SetSingleShape(this->batch, this->nBlockTile, this->dSub);
     matmulObj.SetTensorA(queryGm[queryGmOffset]);
     matmulObj.SetTensorB(codeBookGm[codeBookGmOffset], true);
-    matmulObj.template IterateAll(mmResGm[blockIdx * this->batch * this->nBlockTile]);
+    matmulObj.template IterateAll(mmResGm[taskIdx * this->batch * this->nBlockTile]);
 }
 
 }  // namespace IndexOps
