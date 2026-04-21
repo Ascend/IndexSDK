@@ -288,7 +288,6 @@ void AscendIndexIVFRaBitQImpl::addImpl(int n, const float *x, const idx_t *ids)
         for (size_t j = 1; j < deviceCnt; j++) {
             if (deviceAddNumMap[listId][j] < deviceAddNumMap[listId][devIdx]) {
                 devIdx = j;
-                break;
             }
         }
         deviceAddNumMap[listId][devIdx]++;
@@ -702,7 +701,8 @@ void AscendIndexIVFRaBitQImpl::copyFrom(const faiss::IndexIVFRaBitQ *index)
 
     AscendIndexIVFImpl::copyFrom(index);
 
-    // 正交矩阵，FAISS 侧无对应存储接口，采用相同种子配置重新生成
+    // Orthogonal matrix: FAISS has no corresponding storage interface,
+    // regenerate with the same seed configuration
     orthogonalMatrix.resize(intf_->d * intf_->d);
     if (ivfrabitqConfig.useRandomOrthogonalMatrix) {
         try {
@@ -744,12 +744,18 @@ void AscendIndexIVFRaBitQImpl::copyFrom(const faiss::IndexIVFRaBitQ *index)
         const faiss::idx_t* ids = index->invlists->get_ids(listId);
         const uint8_t* codes = index->invlists->get_codes(listId);
 
-        // 为每个设备创建临时缓冲区，存储该列表分配给该设备的编码数据和ID
+        // ArrayInvertedLists storage format: [vec0: code+L2+L1][vec1: code+L2+L1]...
+        size_t codePartBytesPerVec = ::ascend::utils::divUp(intf_->d, 8);  // Compressed code bytes per vector
+        size_t factorBytesPerVec = sizeof(float);         // Factor bytes per vector
+
+        // Create temporary buffers for each device to store encoded data and IDs
         std::vector<std::vector<uint8_t>> perDeviceCodes(deviceCnt);
         std::vector<std::vector<faiss::idx_t>> perDeviceIds(deviceCnt);
+        // Record vector indices assigned to each device
+        std::vector<std::vector<size_t>> perDeviceVecIndices(deviceCnt);
 
         for (size_t j = 0; j < listLen; ++j) {
-            // 按负载均衡选择设备
+            // Select device based on load balancing
             size_t devIdx = 0;
             for (size_t d = 1; d < deviceCnt; ++d) {
                 if (deviceAddNumMap[listId][d] < deviceAddNumMap[listId][devIdx]) {
@@ -757,10 +763,40 @@ void AscendIndexIVFRaBitQImpl::copyFrom(const faiss::IndexIVFRaBitQ *index)
                 }
             }
             deviceAddNumMap[listId][devIdx]++;
-
-            const uint8_t* codePtr = codes + j * codeSize;
-            perDeviceCodes[devIdx].insert(perDeviceCodes[devIdx].end(), codePtr, codePtr + codeSize);
+            perDeviceVecIndices[devIdx].push_back(j);
             perDeviceIds[devIdx].push_back(ids[j]);
+        }
+
+        // Build per-device encoded data in block format: [all codes][all L2][all L1]
+        for (size_t devIdx = 0; devIdx < deviceCnt; ++devIdx) {
+            if (perDeviceVecIndices[devIdx].empty()) continue;
+
+            size_t numVecs = perDeviceVecIndices[devIdx].size();
+            size_t totalCodeBytes = numVecs * codePartBytesPerVec;
+            size_t totalFactorBytes = numVecs * factorBytesPerVec;
+            perDeviceCodes[devIdx].resize(totalCodeBytes + 2 * totalFactorBytes);
+
+            // Extract data from per-vector format
+            uint8_t* dstCodesPtr = perDeviceCodes[devIdx].data();
+            uint8_t* dstL2Ptr = dstCodesPtr + totalCodeBytes;
+            uint8_t* dstL1Ptr = dstL2Ptr + totalFactorBytes;
+
+            for (size_t k = 0; k < numVecs; ++k) {
+                size_t srcIdx = perDeviceVecIndices[devIdx][k];
+                const uint8_t* vecPtr = codes + srcIdx * codeSize;
+                // Extract compressed code
+                auto ret = memcpy_s(dstCodesPtr + k * codePartBytesPerVec, codePartBytesPerVec,
+                                    vecPtr, codePartBytesPerVec);
+                FAISS_THROW_IF_NOT_FMT(ret == 0, "memcpy_s failed for codes, ret=%d", ret);
+                // Extract L2 factor
+                ret = memcpy_s(dstL2Ptr + k * factorBytesPerVec, factorBytesPerVec,
+                               vecPtr + codePartBytesPerVec, factorBytesPerVec);
+                FAISS_THROW_IF_NOT_FMT(ret == 0, "memcpy_s failed for L2, ret=%d", ret);
+                // Extract L1 factor
+                ret = memcpy_s(dstL1Ptr + k * factorBytesPerVec, factorBytesPerVec,
+                               vecPtr + codePartBytesPerVec + factorBytesPerVec, factorBytesPerVec);
+                FAISS_THROW_IF_NOT_FMT(ret == 0, "memcpy_s failed for L1, ret=%d", ret);
+            }
         }
 
         for (size_t devIdx = 0; devIdx < deviceCnt; ++devIdx) {
@@ -836,7 +872,7 @@ void AscendIndexIVFRaBitQImpl::copyTo(faiss::IndexIVFRaBitQ *index) const
     int totalCopied = 0;
 
     for (int listId = 0; listId < nlist; ++listId) {
-        // 计算该列表在所有设备上的总长度
+        // calculate the total length of this list on all devices
         size_t totalLen = 0;
         for (size_t devIdx = 0; devIdx < deviceCnt; ++devIdx) {
             auto pIndex = getActualIndex(indexConfig.deviceList[devIdx]);
@@ -844,18 +880,30 @@ void AscendIndexIVFRaBitQImpl::copyTo(faiss::IndexIVFRaBitQ *index) const
         }
         if (totalLen == 0) continue;
 
-        std::vector<faiss::idx_t> allIds;
-        std::vector<uint8_t> allCodes;
-        allIds.reserve(totalLen);
-        allCodes.reserve(totalLen * devCodeSize);
-        
+        // getListRawCodes return format: [all codes][all L2][all L1]
+        size_t codePartBytesPerVec = ::ascend::utils::divUp(intf_->d, 8);  // Compressed code bytes per vector
+        size_t factorBytesPerVec = sizeof(float);         // Factor bytes per vector
+
+        size_t totalCodeBytes = totalLen * codePartBytesPerVec;
+        size_t totalFactorBytes = totalLen * factorBytesPerVec;
+
+        std::vector<faiss::idx_t> allIds(totalLen);
+        std::vector<uint8_t> allCodesPart(totalCodeBytes);
+        std::vector<uint8_t> allL2Part(totalFactorBytes);
+        std::vector<uint8_t> allL1Part(totalFactorBytes);
+
+        size_t idOffset = 0;
+        size_t codeOffset = 0;
+        size_t l2Offset = 0;
+        size_t l1Offset = 0;
+
         for (size_t devIdx = 0; devIdx < deviceCnt; ++devIdx) {
             int deviceId = indexConfig.deviceList[devIdx];
             auto pIndex = getActualIndex(deviceId);
             size_t devLen = pIndex->getListLength(listId);
             if (devLen == 0) continue;
 
-            // 获取 IDs
+            // get IDs
             std::vector<faiss::idx_t> devIds;
             ret = pIndex->getListIds(listId, devIds);
             FAISS_THROW_IF_NOT_FMT(ret == ::ascend::APP_ERR_OK,
@@ -863,7 +911,7 @@ void AscendIndexIVFRaBitQImpl::copyTo(faiss::IndexIVFRaBitQ *index) const
             FAISS_THROW_IF_NOT_FMT(devIds.size() == devLen,
                                    "Device %d list %d ID count mismatch", deviceId, listId);
 
-            // 获取压缩编码
+            // get compressed codes
             std::vector<uint8_t> devCodes;
             ret = pIndex->getListRawCodes(listId, devCodes);
             FAISS_THROW_IF_NOT_FMT(ret == ::ascend::APP_ERR_OK,
@@ -871,11 +919,54 @@ void AscendIndexIVFRaBitQImpl::copyTo(faiss::IndexIVFRaBitQ *index) const
             FAISS_THROW_IF_NOT_FMT(devCodes.size() == devLen * devCodeSize,
                                    "Device %d list %d codes size mismatch", deviceId, listId);
 
-            allIds.insert(allIds.end(), devIds.begin(), devIds.end());
-            allCodes.insert(allCodes.end(), devCodes.begin(), devCodes.end());
+            // Parse block format: [codes][L2][L1]
+            const uint8_t* devCodesPtr = devCodes.data();
+            const uint8_t* devL2Ptr = devCodesPtr + devLen * codePartBytesPerVec;
+            const uint8_t* devL1Ptr = devL2Ptr + devLen * factorBytesPerVec;
+
+            // Use memcpy_s to copy data
+            ret = memcpy_s(allIds.data() + idOffset, (totalLen - idOffset) * sizeof(faiss::idx_t),
+                           devIds.data(), devIds.size() * sizeof(faiss::idx_t));
+            FAISS_THROW_IF_NOT_FMT(ret == 0, "memcpy_s failed for ids, ret=%d", ret);
+            idOffset += devIds.size();
+
+            ret = memcpy_s(allCodesPart.data() + codeOffset, totalCodeBytes - codeOffset,
+                           devCodesPtr, devLen * codePartBytesPerVec);
+            FAISS_THROW_IF_NOT_FMT(ret == 0, "memcpy_s failed for codes, ret=%d", ret);
+            codeOffset += devLen * codePartBytesPerVec;
+
+            ret = memcpy_s(allL2Part.data() + l2Offset, totalFactorBytes - l2Offset,
+                           devL2Ptr, devLen * factorBytesPerVec);
+            FAISS_THROW_IF_NOT_FMT(ret == 0, "memcpy_s failed for L2, ret=%d", ret);
+            l2Offset += devLen * factorBytesPerVec;
+
+            ret = memcpy_s(allL1Part.data() + l1Offset, totalFactorBytes - l1Offset,
+                           devL1Ptr, devLen * factorBytesPerVec);
+            FAISS_THROW_IF_NOT_FMT(ret == 0, "memcpy_s failed for L1, ret=%d", ret);
+            l1Offset += devLen * factorBytesPerVec;
         }
 
-        // 添加到倒排列表
+        // Convert to per-vector format: [vec0: code+L2+L1][vec1: code+L2+L1]...
+        std::vector<uint8_t> allCodes(totalLen * devCodeSize);
+        size_t allCodesOffset = 0;
+        for (size_t i = 0; i < totalLen; ++i) {
+            auto memcpyRet = memcpy_s(allCodes.data() + allCodesOffset, totalLen * devCodeSize - allCodesOffset,
+                                      allCodesPart.data() + i * codePartBytesPerVec, codePartBytesPerVec);
+            FAISS_THROW_IF_NOT_FMT(memcpyRet == 0, "memcpy_s failed for codes interleave, ret=%d", memcpyRet);
+            allCodesOffset += codePartBytesPerVec;
+
+            memcpyRet = memcpy_s(allCodes.data() + allCodesOffset, totalLen * devCodeSize - allCodesOffset,
+                                 allL2Part.data() + i * factorBytesPerVec, factorBytesPerVec);
+            FAISS_THROW_IF_NOT_FMT(memcpyRet == 0, "memcpy_s failed for L2 interleave, ret=%d", memcpyRet);
+            allCodesOffset += factorBytesPerVec;
+
+            memcpyRet = memcpy_s(allCodes.data() + allCodesOffset, totalLen * devCodeSize - allCodesOffset,
+                                 allL1Part.data() + i * factorBytesPerVec, factorBytesPerVec);
+            FAISS_THROW_IF_NOT_FMT(memcpyRet == 0, "memcpy_s failed for L1 interleave, ret=%d", memcpyRet);
+            allCodesOffset += factorBytesPerVec;
+        }
+
+        // Add to inverted lists
         newInvlists->add_entries(listId, totalLen, allIds.data(), allCodes.data());
         totalCopied += totalLen;
     }
