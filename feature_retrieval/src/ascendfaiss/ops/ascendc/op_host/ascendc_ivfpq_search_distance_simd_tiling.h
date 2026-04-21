@@ -31,18 +31,12 @@ TILING_DATA_FIELD_DEF(uint32_t, ksub);
 TILING_DATA_FIELD_DEF(uint32_t, codeBaseSize);
 TILING_DATA_FIELD_DEF(uint32_t, codeBlockSize);
 TILING_DATA_FIELD_DEF(uint32_t, codeBlockNum);
-TILING_DATA_FIELD_DEF(uint32_t, reduceBaseSize);
 TILING_DATA_FIELD_DEF(uint32_t, usedAivNum);
-TILING_DATA_FIELD_DEF(uint32_t, headAivNum);
 
-TILING_DATA_FIELD_DEF(uint32_t, headAivDealDistResultNum);
-TILING_DATA_FIELD_DEF(uint32_t, tailAivDealDistResultNum);
 TILING_DATA_FIELD_DEF(uint32_t, reduceMode);
 TILING_DATA_FIELD_DEF(uint32_t, tilingKey);
 TILING_DATA_FIELD_DEF(uint32_t, minSize);
 TILING_DATA_FIELD_DEF(uint32_t, singleCoretotalBlock);
-TILING_DATA_FIELD_DEF(uint32_t, minSizeWhole);
-TILING_DATA_FIELD_DEF(uint32_t, minSizeSingle);
 TILING_DATA_FIELD_DEF(uint32_t, topk);
 TILING_DATA_FIELD_DEF(uint32_t, perCoreInnerBlockDealSize);
 TILING_DATA_FIELD_DEF(uint32_t, topkOutterNum);
@@ -73,7 +67,6 @@ REGISTER_TILING_DATA_CLASS(AscendcIvfpqSearchDistanceSimdL2, AscendcIvfpqSearchD
 REGISTER_TILING_DATA_CLASS(AscendcIvfpqSearchDistanceSimdIP, AscendcIvfpqSearchDistanceSimdTopKTilingData)
 
 enum class ReduceMode { L2, IP };
-constexpr uint32_t IVFPQ_REDUCE_BASE_SIZE = 64;
 constexpr uint32_t IVFPQ_ONE = 1;
 constexpr uint32_t IVFPQ_NUM_32 = 32;
 constexpr uint32_t IVFPQ_TOPK_OUTTER_NUM = 4096;
@@ -125,8 +118,6 @@ private:
         auto platformInfo = platform_ascendc::PlatformAscendC(context_->GetPlatformInfo());
         uint32_t maxSize = 0;
         minSize_ = 0;
-        minSizeWhole_ = 0;
-        minSizeSingle_ = 0;
         uint32_t blockSize = IVFPQ_TOPK_OUTTER_NUM;
         uint32_t dtypeSize = sizeof(float);
         bool isLargest = (reduceMode_ == 1);
@@ -153,19 +144,12 @@ private:
                                 topk_, dtypeSize, true, AscendC::TopKMode::TOPK_NORMAL, isLargest,
                                 tilingData_->topkTilingDataWhole);
 
-        AscendC::GetTopKMaxMinTmpSize(platformInfo, topk_ * (singleCoretotalBlock_ + 1), 1, false, true,
-                                      AscendC::TopKMode::TOPK_NORMAL, isLargest, ge::DataType::DT_FLOAT, maxSize, minSizeWhole_);
-
-
         // 首轮topk，不包含累计topk结果，此时内轴长度就是 topk * singleCoretotalBlock_
         AscendC::TopKTilingFunc(platformInfo,
                                 topk_ * (singleCoretotalBlock_), // inner
                                 1,                               // outter
                                 topk_, dtypeSize, true, AscendC::TopKMode::TOPK_NORMAL, isLargest,
                                 tilingData_->topkTilingDataSingle);
-
-        AscendC::GetTopKMaxMinTmpSize(platformInfo, topk_ * (singleCoretotalBlock_), 1, false, true,
-                                      AscendC::TopKMode::TOPK_NORMAL, isLargest, ge::DataType::DT_FLOAT, maxSize, minSizeSingle_);
 
         // 单轮最多可以处理多少个block topk的结果
         mergeBeginTopNumInLoop_ = IVFPQ_TOPK_OUTTER_NUM / topk_;
@@ -283,17 +267,9 @@ private:
         ksub_ = static_cast<uint32_t>(queryPQShape.GetDim(2));
         codeBlockNum_ = static_cast<uint32_t>(codeOffsetShape.GetDim(1));
         codeSizeNum_ = static_cast<uint32_t>(codeSizeShape.GetDim(1));
-
         topk_ = static_cast<uint32_t>(topkShape.GetDim(0));
-
         codeBlockSize_ = IVFPQ_CODE_BLOCK_SIZE;
 
-        if (batch_ <= 16) {
-            aivNum_ = IVFPQ_NUM_32;
-            tilingKey_ = 1;
-        } else {
-            aivNum_ = std::min(batch_, aivNum_);
-        }
         ret = ParamValueCheck();
         return ret;
     }
@@ -305,16 +281,12 @@ private:
         tilingData_->set_codeBaseSize(codeBaseSize_);
         tilingData_->set_codeBlockSize(codeBlockSize_);
         tilingData_->set_codeBlockNum(codeBlockNum_);
-        tilingData_->set_reduceBaseSize(IVFPQ_REDUCE_BASE_SIZE);
         tilingData_->set_usedAivNum(aivNum_);
-        tilingData_->set_headAivNum(headAivNum_);
         tilingData_->set_reduceMode(reduceMode_);
         tilingData_->set_tilingKey(tilingKey_);
 
         tilingData_->set_singleCoretotalBlock(singleCoretotalBlock_);
         tilingData_->set_minSize(minSize_);
-        tilingData_->set_minSizeWhole(minSizeWhole_);
-        tilingData_->set_minSizeSingle(minSizeSingle_);
         tilingData_->set_topk(topk_);
         tilingData_->set_perCoreInnerBlockDealSize(perCoreInnerBlockDealSize_);
         tilingData_->set_topkOutterNum(IVFPQ_TOPK_OUTTER_NUM);
@@ -355,7 +327,6 @@ private:
     AscendcIvfpqSearchDistanceSimdTopKTilingData *tilingData_ = nullptr;
 
     uint32_t aivNum_ = 0;
-    uint32_t usedAivNum_ = 0;
     uint32_t libapiSize_ = 0;
     uint32_t workSpaceSize_ = 0;
     uint64_t ubSize_ = 0;
@@ -367,15 +338,11 @@ private:
     uint32_t codeBlockNum_ = 0;
     uint32_t codeSizeNum_ = 0;
 
-    uint32_t headAivNum_ = 0;
-    uint32_t reduceBlockNumPerTailCore_ = 0;
     uint32_t reduceMode_ = 0;
 
     uint32_t codeBlockSize_ = 0;
 
     uint32_t minSize_ = 0;
-    uint32_t minSizeWhole_ = 0;
-    uint32_t minSizeSingle_ = 0;
     uint32_t singleCoretotalBlock_ = 0;
 
     uint32_t perCoreInnerBlockDealSize_ = 0;

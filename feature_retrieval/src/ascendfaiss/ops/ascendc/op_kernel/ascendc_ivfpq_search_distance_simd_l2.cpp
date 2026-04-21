@@ -19,24 +19,9 @@
 #include <limits>
 
 #include "kernel_operator.h"
-
 #include "ascendc_ivfpq_search_distance_simd_topk.h"
-#include "ascendc_ivfpq_search_distance_simd_topk_small.h"
 
 using namespace AscendC;
-
-template <typename OpType>
-__aicore__ inline void RunDistOperator(GM_ADDR queryPQ, GM_ADDR codeBase, GM_ADDR codeOffset, GM_ADDR codeSize,
-                GM_ADDR topk, GM_ADDR labelBase, GM_ADDR labelOffset, GM_ADDR distResult, GM_ADDR topkIndex,
-                GM_ADDR topkValue, GM_ADDR topkLabelFinal, GM_ADDR topkValueFinal, GM_ADDR flag, GM_ADDR workspace,
-                const AscendcIvfpqSearchDistanceSimdTopKTilingData *__restrict tilingData, TPipe *tPipe)
-{
-    OpType op;
-    op.Init(queryPQ, codeBase, codeOffset, codeSize, topk, labelBase, labelOffset, distResult, topkIndex, topkValue,
-            topkLabelFinal, topkValueFinal, flag, workspace, tilingData, tPipe);
-    op.Process();
-    op.ProcessMerge();
-}
 
 extern "C" __global__ __aicore__ void
 ascendc_ivfpq_search_distance_simd_l2(GM_ADDR queryPQ, GM_ADDR codeBase, GM_ADDR codeOffset, GM_ADDR codeSize, GM_ADDR topk,
@@ -46,13 +31,9 @@ ascendc_ivfpq_search_distance_simd_l2(GM_ADDR queryPQ, GM_ADDR codeBase, GM_ADDR
 {
     TPipe tPipe;
     GET_TILING_DATA(tiling_data, tiling);
-    if (TILING_KEY_IS(0)) {
-        RunDistOperator<IndexOps::AscendcIvfpqSearchDistanceSimdTopK>(
-            queryPQ, codeBase, codeOffset, codeSize, topk, labelBase, labelOffset, distResult, topkIndex, topkValue,
+    IndexOps::AscendcIvfpqSearchDistanceSimdTopK op;
+    op.Init(queryPQ, codeBase, codeOffset, codeSize, topk, labelBase, labelOffset, distResult, topkIndex, topkValue,
             topkLabelFinal, topkValueFinal, flag, workspace, &tiling_data, &tPipe);
-    } else if (TILING_KEY_IS(1)) {
-        RunDistOperator<IndexOps::AscendcIvfpqSearchDistanceSimdTopKSmall>(
-            queryPQ, codeBase, codeOffset, codeSize, topk, labelBase, labelOffset, distResult, topkIndex, topkValue,
-            topkLabelFinal, topkValueFinal, flag, workspace, &tiling_data, &tPipe);
-    }
+    op.Process();
+    op.ProcessMerge();
 }
