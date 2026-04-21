@@ -136,12 +136,7 @@ private:
                                 1,         // outter
                                 topk_, dtypeSize, false, AscendC::TopKMode::TOPK_NORMAL, isLargest,
                                 tilingData_->topkTilingData);
-        // 设置topk算法信息
-        // AscendC::TopKConfig config;
-        // config.algo = AscendC::TopKAlgo::RADIX_SELECT;
-        // config.order = AscendC::TopKOrder::UNSET;
-        // config.sorted = false;
-
+    
         // 块内数据循环topk，单轮topk内轴设置为4096，外轴设置为1
         AscendC::GetTopKMaxMinTmpSize(platformInfo, blockSize, 1, false, false, AscendC::TopKMode::TOPK_NORMAL, isLargest,
                                       ge::DataType::DT_FLOAT, maxSize, minSize_);
@@ -203,7 +198,7 @@ private:
                                 tilingData_->topkTilingDataMergeBeginTail);
         AscendC::GetTopKMaxMinTmpSize(platformInfo, mergeBeginTailBlockSize, 1, false, true, AscendC::TopKMode::TOPK_NORMAL,
                                       isLargest, ge::DataType::DT_FLOAT, maxSize, minSizeMergeBeginTail_);
-        // config.sorted = true;
+       
         // 最终归并topk
         // 内轴长度为 topk_ * (mergeBeginBlockLoopTime_ + mergeBeginTailBlockLoopTime_)
         AscendC::TopKTilingFunc(platformInfo,
@@ -297,7 +292,7 @@ private:
             aivNum_ = IVFPQ_NUM_32;
             tilingKey_ = 1;
         } else {
-            aivNum_ = batch_;
+            aivNum_ = std::min(batch_, aivNum_);
         }
         ret = ParamValueCheck();
         return ret;

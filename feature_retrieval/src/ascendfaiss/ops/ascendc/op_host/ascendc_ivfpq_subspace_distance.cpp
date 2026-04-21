@@ -24,7 +24,6 @@
 namespace {
     constexpr uint32_t N_BLOCK_BASE_SIZE = 128;
     constexpr uint32_t ONE = 1;
-    constexpr uint32_t REDUCE_BASE_SIZE = 64;
     constexpr uint32_t BATCH_MIN = 1;
     constexpr uint32_t BATCH_MAX = 256;
     constexpr uint32_t KSUB_DEFAULT = 256;
@@ -130,7 +129,7 @@ ge::graphStatus IvfpqSubspaceTiling::SetExtraConfig()
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->GetPlatformInfo());
     workSpaceSize_ = ascendcPlatform.GetLibApiWorkSpaceSize();
 
-    uint32_t userSize = batch_ * nBlockTile_ * usedAicNum_ * sizeof(float); // M * N * coreNum * dataTypeSize
+    uint32_t userSize = batch_ * nBlockTile_ * totalTaskNum_ * sizeof(float); // M * N * totalTaskNum * dataTypeSize
     currentWorkspace[0] = workSpaceSize_ + userSize;
     return ge::GRAPH_SUCCESS;
 }
