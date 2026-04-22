@@ -56,8 +56,6 @@ IndexIVFPQ::IndexIVFPQ(int numList, int dim, int M, int nbits, int nprobes, int6
     listVecNum = std::vector<size_t>(numList, 0);
     basePQCoder.resize(numList);
     pBasePQCoder = reinterpret_cast<uint8_t*>(0xffffffffffffffff);
-    pBaseIndices = reinterpret_cast<idx_t*>(0xffffffffffffffff);
-    pMaxBaseIndices = reinterpret_cast<idx_t*>(0x0);
     blockNum = 128;
     this->nbits = nbits;
     ksub = (1 << nbits);
@@ -66,7 +64,6 @@ IndexIVFPQ::IndexIVFPQ(int numList, int dim, int M, int nbits, int nprobes, int6
     centroidsOnDevice->resize(numList * dim);
     centroidsSqrSumOnDevice = CREATE_UNIQUE_PTR(DeviceVector<float>, MemorySpace::DEVICE_HUGEPAGE);
     centroidsSqrSumOnDevice->resize(numList);
-    listIndices.resize(numList);
     initializeCodeBook(M, nbits, dim/M);
     auto ret = resetL1TopkOp();
     ASCEND_THROW_IF_NOT_MSG(ret == APP_ERR_OK, "resetL1TopkOp failed!");
@@ -207,13 +204,6 @@ APP_ERROR IndexIVFPQ::addPQCodes(int listId, size_t numVecs, const uint8_t *pqCo
     IndexIVF::ntotal += numVecs;
 
     deviceListIndices[listId]->append(indices, numVecs, true);
-    listIndices[listId].reserve(listIndices[listId].size() + numVecs);
-    listIndices[listId].insert(listIndices[listId].end(), const_cast<idx_t *>(indices),
-                               const_cast<idx_t *>(indices + numVecs));
-    pBaseIndices = listIndices[listId].data() < pBaseIndices ?
-                   listIndices[listId].data() : pBaseIndices;
-    pMaxBaseIndices = &listIndices[listId].back() > pMaxBaseIndices ?
-                   &listIndices[listId].back() : pMaxBaseIndices;
 
     return APP_ERR_OK;
 }
@@ -422,7 +412,6 @@ APP_ERROR IndexIVFPQ::updateDeviceData(int listId, size_t newVecNum, std::vector
 {
     basePQCoder[listId].clear();
     deviceListIndices[listId]->resize(0, true);
-    listIndices[listId].clear();
 
     if (newVecNum > 0) {
         listVecNum[listId] = 0;
@@ -440,13 +429,6 @@ APP_ERROR IndexIVFPQ::updateDeviceData(int listId, size_t newVecNum, std::vector
                                  "Failed to add PQ codes to device: %d", ret);
 
         deviceListIndices[listId]->append(newIds.data(), newVecNum, true);
-        listIndices[listId].reserve(listIndices[listId].size() + newVecNum);
-        listIndices[listId].insert(listIndices[listId].end(), newIds.begin(), newIds.end());
-        pBaseIndices = listIndices[listId].data() < pBaseIndices ?
-                       listIndices[listId].data() : pBaseIndices;
-        pMaxBaseIndices = &listIndices[listId].back() > pMaxBaseIndices ?
-                          &listIndices[listId].back() : pMaxBaseIndices;
-
         listVecNum[listId] = newVecNum;
     } else {
         listVecNum[listId] = 0;
