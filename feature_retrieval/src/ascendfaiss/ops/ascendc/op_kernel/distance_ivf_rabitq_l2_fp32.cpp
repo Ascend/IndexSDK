@@ -43,21 +43,27 @@ public:
         tiling_ = *tiling_data;
         this->dimLength = tiling_.dimLength;  // 这个dimLength应该是原向量的dim
         this->codeBlockLength = tiling_.codeBlockLength;
+        this->lutDimLength = tiling_.lutDimLength;  // lut的维度 值应该固定256
+        this->lutLength = tiling_.lutLength;        // = this->dimLength / 8
+
+        this->lutTileNum = tiling_.lutTileNum;
+        this->lutTileLength = tiling_.lutTileLength;          // 每次处理多少lut
+        this->lastLutTileLength = tiling_.lastLutTileLength;  // 最后一次处理多少lut
 
         this->maskNum = this->dimLength / this->mask;
         this->multiplier = static_cast<T>(2) / sqrt(static_cast<T>(this->dimLength));
 
         queryid_gm_.SetGlobalBuffer((__gm__ uint32_t *)queryid);
         uint32_t cur_queryid = queryid_gm_.GetValue(this->blockIdx);  // 获取当前coreid对应的查询id
-        querylut_gm_.SetGlobalBuffer((__gm__ T *)querylut + this->dimLength * cur_queryid,
-                                     this->dimLength);  // 根据查询id获取当前core需要的查询lut
+        querylut_gm_.SetGlobalBuffer((__gm__ T *)querylut + this->lutLength * this->lutDimLength * cur_queryid,
+                                     this->lutLength * this->lutDimLength);  // 根据查询id获取当前core需要的查询lut
 
         centroidsid_gm_.SetGlobalBuffer((__gm__ uint32_t *)centroidsid);
         uint32_t cur_centroidsid = centroidsid_gm_.GetValue(this->blockIdx);  // 获取当前coreid对应的质心id
         centroidsl2_gm_.SetGlobalBuffer((__gm__ T *)centroidsl2);
         cur_centroidsl2 = centroidsl2_gm_.GetValue(this->blockIdx);  // 获取当前coreid对应的质心到query的l2距离
-        cur_centroidslut_gm_.SetGlobalBuffer((__gm__ T *)centroidslut + this->dimLength * cur_centroidsid,
-                                             this->dimLength);  // 根据质心id获取当前core需要的质心lut
+        cur_centroidslut_gm_.SetGlobalBuffer((__gm__ T *)centroidslut + this->lutLength * this->lutDimLength * cur_centroidsid,
+                                             this->lutLength * this->lutDimLength);  // 根据质心id获取当前core需要的质心lut
 
         offset_gm_.SetGlobalBuffer((__gm__ uint64_t *)offset);
         actual_size_gm_.SetGlobalBuffer((__gm__ uint32_t *)actual_size);
@@ -75,7 +81,7 @@ public:
         result_gm_.SetGlobalBuffer((__gm__ T *)result + this->blockIdx * this->codeBlockLength);
         min_res_gm_.SetGlobalBuffer((__gm__ T *)min_result +
                                     (this->codeBlockLength + this->mask - 1) / this->mask * 2 * this->blockIdx);
-        flag_gm_.SetGlobalBuffer((__gm__ uint16_t *)flag + this->blockIdx * 16);
+        flag_gm_.SetGlobalBuffer((__gm__ uint16_t *)flag + this->blockIdx * 32);
 
         this->codeTileLength = tiling_.codeTileLength;  // 每次处理多少codes
 
@@ -93,10 +99,13 @@ public:
             this->lastDistTileLength = this->distTileLength;
         }
 
-        pipe_->InitBuffer(in_querylut_que, 1, RoundUp(this->dimLength * sizeof(T), 64));
-        pipe_->InitBuffer(vec_in_que, 1, RoundUp(4 * this->dimLength * sizeof(T), 64));
+        pipe_->InitBuffer(in_querylut_que, 1, 
+                          RoundUp(this->lutLength * this->lutDimLength * sizeof(T), 64)); // querylut全部拉取，该空间可以存储q-c
         pipe_->InitBuffer(codes_in_que, 1, RoundUp(this->dimLength / 8 * this->codeTileLength, 64));
-        pipe_->InitBuffer(select_out_que, 1, RoundUp(this->codeTileLength * this->dimLength * sizeof(T), 64));
+        pipe_->InitBuffer(codes_half_que, 1, RoundUp(this->dimLength / 8 * this->codeTileLength * sizeof(half), 64));
+        pipe_->InitBuffer(codes_int32_que, 1, RoundUp(this->dimLength / 8 * this->codeTileLength * sizeof(int32_t), 64));
+        pipe_->InitBuffer(idx_calc_que, 1, RoundUp(this->dimLength / 8 * sizeof(int32_t), 64));
+        pipe_->InitBuffer(select_out_que, 1, RoundUp(this->dimLength / 8 * this->codeTileLength * sizeof(T), 64));
         pipe_->InitBuffer(ip_out_que, 1, RoundUp(this->codeTileLength * sizeof(T), 64));
     }
 
@@ -126,7 +135,7 @@ public:
             DistCompute();   // 计算距离
         }
         PipeBarrier<PIPE_ALL>();
-        AscendC::InitGlobalMemory(flag_gm_, static_cast<uint64_t>(16), (uint16_t)1);
+        AscendC::InitGlobalMemory(flag_gm_, static_cast<uint64_t>(32), (uint16_t)1);
     }
 
 private:
@@ -134,50 +143,46 @@ private:
     {  // 计算q-c
         CopyInForQueryLUT();
         LocalTensor<T> querylutLocal = in_querylut_que.DeQue<T>();
-        LocalTensor<T> centroidslutLocal = select_out_que.DeQue<T>();
-
-        Sub(querylutLocal, querylutLocal, centroidslutLocal, this->dimLength);
+        for (int32_t i = 0; i < this->lutTileNum; i++) {
+            int32_t computeLutLength = (i == this->lutTileNum - 1) ? this->lastLutTileLength : this->lutTileLength;
+            CopyInForCentroidsLUT(i, computeLutLength);
+            LocalTensor<T> centroidslutLocal = select_out_que.DeQue<T>();
+            Sub(querylutLocal[i * this->lutDimLength * this->lutTileLength],
+                querylutLocal[i * this->lutDimLength * this->lutTileLength], centroidslutLocal,
+                computeLutLength * this->lutDimLength);
+            select_out_que.FreeTensor(centroidslutLocal);
+        }
         PipeBarrier<PIPE_V>();
-        Duplicate(centroidslutLocal, static_cast<T>(0), this->mask);
-        PipeBarrier<PIPE_V>();
-        Add(centroidslutLocal, querylutLocal, centroidslutLocal, this->mask, this->maskNum, {1, 1, 1, 0, 8, 0});
-        PipeBarrier<PIPE_V>();
-        WholeReduceSum<T>(centroidslutLocal[this->mask], centroidslutLocal, this->mask, 1, 1, 1, 0);
-        PipeBarrier<PIPE_V>();
-        this->sumQuery = centroidslutLocal.GetValue(this->mask);
-        this->sumQuery = this->sumQuery / sqrt(static_cast<T>(this->dimLength)) * static_cast<T>(-1);
+        for (int i = 0; i < this->lutLength; i++) {
+            this->sumQuery += querylutLocal.GetValue(i * this->lutDimLength + this->lutDimLength - 1);
+        }
+        this->sumQuery = this->sumQuery / sqrt(static_cast<T>(this->dimLength)) * (T)(-1);
         PipeBarrier<PIPE_ALL>();
-        select_out_que.FreeTensor(centroidslutLocal);
         in_querylut_que.EnQue(querylutLocal);  // 将q-c结果放入in_querylut_que
     }
 
     __aicore__ inline void CopyInForQueryLUT()
     {
         LocalTensor<T> querylutLocal = in_querylut_que.AllocTensor<T>();
-        LocalTensor<T> centroidslutLocal = select_out_que.AllocTensor<T>();
-        DataCopy(querylutLocal, querylut_gm_, this->dimLength);
-        DataCopy(centroidslutLocal, cur_centroidslut_gm_, this->dimLength);
+        DataCopy(querylutLocal, querylut_gm_, this->lutLength * this->lutDimLength);
         in_querylut_que.EnQue(querylutLocal);
-        select_out_que.EnQue(centroidslutLocal);
     }
 
-    __aicore__ inline void CopyInForLUT()
+    __aicore__ inline void CopyInForCentroidsLUT(int32_t progress, int32_t copyLength)
     {
-        LocalTensor<T> querylutLocal = in_querylut_que.DeQue<T>();
-        LocalTensor<T> vecsLocal = vec_in_que.AllocTensor<T>();
-        Copy(vecsLocal, querylutLocal, this->mask, this->maskNum, {1, 1, 8, 8});
-        Copy(vecsLocal[this->dimLength], querylutLocal, this->mask, this->maskNum, {1, 1, 8, 8});
-        Copy(vecsLocal[this->dimLength * 2], querylutLocal, this->mask, this->maskNum, {1, 1, 8, 8});
-        Copy(vecsLocal[this->dimLength * 3], querylutLocal, this->mask, this->maskNum, {1, 1, 8, 8});
-        vec_in_que.EnQue(vecsLocal);
-        in_querylut_que.FreeTensor(querylutLocal);
+        LocalTensor<T> centroidslutLocal = select_out_que.AllocTensor<T>();
+        DataCopy(centroidslutLocal, cur_centroidslut_gm_[progress * this->lutDimLength * this->lutTileLength],
+                 copyLength * this->lutDimLength);
+        select_out_que.EnQue(centroidslutLocal);
     }
 
     __aicore__ inline void LookUpTableAndSum()
     {
-        CopyInForLUT();
-        PipeBarrier<PIPE_ALL>();
-        LocalTensor<T> vecsLocal = vec_in_que.DeQue<T>();
+        LocalTensor<T> querylutLocal = in_querylut_que.DeQue<T>();
+        LocalTensor<int32_t> idxLocal = idx_calc_que.AllocTensor<int32_t>();
+        CreateVecIndex(idxLocal, 0, this->dimLength / 8);
+        PipeBarrier<PIPE_V>();
+        ShiftLeft(idxLocal, idxLocal, 8, this->dimLength / 8); // 每行 LUT 为 2^8 个，因此每行的偏移值需要左移 8
         PipeBarrier<PIPE_ALL>();
         for (int32_t i = 0; i < this->codeTileNum; i++) {
             int32_t copyLength = this->codeTileLength;
@@ -185,10 +190,11 @@ private:
                 copyLength = this->lastCodeTileLength;
             }
             CopyInForCode(i, copyLength);
-            SelectAndReduceSum(i, copyLength, vecsLocal);
+            SelectAndReduceSum(i, copyLength, querylutLocal, idxLocal);
         }
         PipeBarrier<PIPE_ALL>();
-        vec_in_que.FreeTensor(vecsLocal);
+        in_querylut_que.FreeTensor(querylutLocal);
+        idx_calc_que.FreeTensor(idxLocal);
     }
 
     __aicore__ inline void CopyInForCode(int32_t progress, int32_t copyLength)
@@ -198,57 +204,75 @@ private:
         uint8_t paddingBytes = RoundUp(this->dimLength / 8 * copyLength, 32) - this->dimLength / 8 * copyLength;
         DataCopyPadExtParams<uint8_t> padParams{true, 0, paddingBytes, 0};
         DataCopyExtParams copyParams1{1, (uint32_t)(this->dimLength / 8 * copyLength * sizeof(uint8_t)), 0, 0, 0};
-        DataCopyPad(codesLocal, code_gm_[this->dimLength / 8 * progress * this->codeTileLength], copyParams1,
-                    padParams);
+        DataCopyPad(codesLocal, code_gm_[this->dimLength / 8 * progress * this->codeTileLength],
+                    copyParams1, padParams);
         codes_in_que.EnQue(codesLocal);
     }
 
-    __aicore__ inline void SelectAndReduceSum(int32_t progress, int32_t copyLength, LocalTensor<T> vecsLocal)
+    __aicore__ inline void SelectAndReduceSum(int32_t progress, int32_t copyLength, LocalTensor<T> vecsLocal, LocalTensor<int32_t> idxLocal)
     {
         LocalTensor<uint8_t> codesLocal = codes_in_que.DeQue<uint8_t>();
+        LocalTensor<half> codesHalfLocal = codes_half_que.AllocTensor<half>();
+        LocalTensor<int32_t> codesInt32Local = codes_int32_que.AllocTensor<int32_t>();
+        
         LocalTensor<T> selResultLocal = select_out_que.AllocTensor<T>();
         LocalTensor<T> ipResultLocal = ip_out_que.AllocTensor<T>();
 
-        if (this->maskNum == 64) { //dim大于4096时，maskNum大于64，maskNum * len大于255，暂不支持
-            for (int32_t i = 0; i < copyLength; i++) {
-                Select(selResultLocal[i * this->dimLength], codesLocal[this->dimLength / 8 * i], vecsLocal,
-                    static_cast<T>(0), AscendC::SELMODE::VSEL_TENSOR_SCALAR_MODE, this->mask, this->maskNum,
-                    {1, 1, 0, 8, 8, 0});
+        uint32_t codeSize = this->dimLength / 8 * copyLength;
+        Cast(codesHalfLocal, codesLocal, RoundMode::CAST_NONE, codeSize);
+        PipeBarrier<PIPE_V>();
+        Cast(codesInt32Local, codesHalfLocal, RoundMode::CAST_ROUND, codeSize);
+        PipeBarrier<PIPE_V>();
+        uint32_t addNum = this->dimLength / 8;
+        int32_t addTileNum = (addNum + 63) / 64;
+        uint8_t repeatStride = addNum / 8;
+        for (int32_t k = 0; k < addTileNum; k++) {
+            uint64_t maskLen = 64;
+            if (k == addTileNum - 1) {
+                maskLen = addNum % 64;
+                if (maskLen == 0) {
+                    maskLen = 64;
+                }
             }
-        } else {
-            for (int32_t i = 0; i < copyLength; i += 4) {
+            for (int32_t i = 0; i < copyLength; i += 255) {
                 int32_t len = copyLength - i;
-                if (len > 4)
-                    len = 4;
-
-                Select(selResultLocal[i * this->dimLength], codesLocal[this->dimLength / 8 * i], vecsLocal,
-                    static_cast<T>(0), AscendC::SELMODE::VSEL_TENSOR_SCALAR_MODE, this->mask, this->maskNum * len,
-                    {1, 1, 0, 8, 8, 0});
+                if (len > 255)
+                    len = 255;
+                // dimLength是64的倍数, dimLength / 8 是 32B 对齐
+                Add(codesInt32Local[i * this->dimLength / 8 + k * 64], idxLocal[k * 64],
+                    codesInt32Local[i * this->dimLength / 8 + k * 64], maskLen, len, {1, 1, 1, repeatStride, 0, repeatStride});       
             }
         }
-        PipeBarrier<PIPE_ALL>();
-        if (this->maskNum > 1) {
-            for (int32_t i = 0; i < copyLength; i++) {
-                // dimLength不是64的倍数时？
-                Add(selResultLocal[i * this->dimLength], selResultLocal[i * this->dimLength + this->mask],
-                    selResultLocal[i * this->dimLength], this->mask, this->maskNum - 1, {1, 1, 1, 0, 8, 0});
-                PipeBarrier<PIPE_V>();
-            }
-        }
-        int32_t repStride = 8 * this->maskNum;
-        for (int32_t i = 0; i < copyLength; i += 255) {
-            int32_t len = copyLength - i;
-            if (len > 255)
-                len = 255;
-            WholeReduceSum<T>(ipResultLocal[i], selResultLocal[i * this->dimLength], this->mask, len, 1, 1, repStride);
-        }
-        PipeBarrier<PIPE_ALL>();
+        PipeBarrier<PIPE_V>();
+        ShiftLeft(codesInt32Local, codesInt32Local, 2, codeSize); //sizeof(float) = 2^2，因此字节偏移需要左移 2
+        PipeBarrier<PIPE_V>();
+        Gather(selResultLocal, vecsLocal, codesInt32Local.ReinterpretCast<uint32_t>(), (uint32_t)0, codeSize);
+        PipeBarrier<PIPE_V>();
 
+        codes_int32_que.FreeTensor(codesInt32Local);
+        if (this->dimLength / 8 > 64) {
+            LocalTensor<uint8_t> tmpLocal = codes_int32_que.AllocTensor<uint8_t>();
+            uint32_t shape[] = {static_cast<uint32_t>(this->codeTileLength), static_cast<uint32_t>(this->dimLength / 8)};
+            AscendC::ReduceSum<float, AscendC::Pattern::Reduce::AR, true>(ipResultLocal, selResultLocal, tmpLocal, shape, true);
+            PipeBarrier<PIPE_V>();
+            codes_int32_que.FreeTensor(tmpLocal);
+        } else {
+            for (int32_t i = 0; i < copyLength; i += 255) {
+                int32_t len = copyLength - i;
+                if (len > 255)
+                    len = 255;
+                WholeReduceSum<T>(ipResultLocal[i], selResultLocal[this->dimLength / 8 * i], this->dimLength / 8, len, 1, 1, repeatStride);
+            }
+            PipeBarrier<PIPE_V>();
+        }
+
+        PipeBarrier<PIPE_ALL>();
         DataCopyExtParams copyParams{1, (uint32_t)(copyLength * sizeof(T)), 0, 0, 0};
         DataCopyPad(result_gm_[progress * this->codeTileLength], ipResultLocal, copyParams);
         ip_out_que.FreeTensor(ipResultLocal);
         select_out_que.FreeTensor(selResultLocal);
         codes_in_que.FreeTensor(codesLocal);
+        codes_half_que.FreeTensor(codesHalfLocal);
     }
 
     __aicore__ inline void DistCompute()
@@ -388,9 +412,10 @@ private:
 
 private:
     TQue<QuePosition::VECIN, 1> in_querylut_que;
-    TQue<QuePosition::VECIN, 1> vec_in_que, codes_in_que;
-    TQue<QuePosition::VECCALC, 1> ip_out_que;
-    TQue<QuePosition::VECOUT, 1> select_out_que;
+    TQue<QuePosition::VECIN, 1> codes_in_que;
+    TQue<QuePosition::VECIN, 1> select_out_que;
+    TQue<QuePosition::VECCALC, 1> codes_half_que, codes_int32_que, idx_calc_que;
+    TQue<QuePosition::VECOUT, 1> ip_out_que;
 
     TQue<QuePosition::VECIN, 1> in_mat_res_que, in_indexl1_que, in_indexl2_que;
     TQue<QuePosition::VECOUT, 1> dist_result_que, min_result_que;
@@ -416,6 +441,12 @@ private:
 
     int32_t blockIdx;
     uint32_t actualSizeVal;
+    int32_t lutLength;
+    int32_t lutDimLength;
+
+    int32_t lutTileLength;
+    int32_t lutTileNum;
+    int32_t lastLutTileLength;
 
     int32_t codeTileNum;
     int32_t codeTileLength;
@@ -434,8 +465,8 @@ private:
     float32_t oneFloat = 1.0;
     float32_t zeroFloat = 0.0;
     T cur_centroidsl2;
-    T multiplier;
-    T sumQuery;
+    T multiplier = 0.0;
+    T sumQuery = 0.0;
 };
 
 }

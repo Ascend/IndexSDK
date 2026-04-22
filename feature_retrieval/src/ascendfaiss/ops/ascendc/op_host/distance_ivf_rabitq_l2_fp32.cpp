@@ -24,26 +24,64 @@
 
 
 namespace {
+static const int32_t QUERYLUT = 1;
 static const int32_t BASE = 6;
 static const int32_t BASE_N = 128;
 static const int32_t FLOAT32_BYTES = 4;
 static const int32_t INT8_BYTES = 1;
+static const int32_t HALF_BYTES = 2;
 static const int32_t INT32_BYTES = 4;
 static const int32_t GM_ALIGN = 512;  // 全局内存对齐大小
 }
 namespace optiling {
 
-static void SetCodeTilingInfo(gert::TilingContext *context, DistanceIVFRabitqL2FP32TilingData &tiling, int32_t ubSize)
+static void SetLutAndCodeTilingInfo(gert::TilingContext *context, DistanceIVFRabitqL2FP32TilingData &tiling, int32_t ubSize)
 {
+    int32_t lutLength = context->GetInputShape(0)->GetStorageShape().GetDim(1) / 8;
+    int32_t lutDimLength = context->GetInputShape(QUERYLUT)->GetStorageShape().GetDim(1);  // 一般为固定值256
+
+    int32_t lutTileNum = 0;
+    int32_t lutTileLength = 0;
+    int32_t lastLutTileLength = 0;
+
+    int32_t lutTotalSize = lutDimLength * lutLength * FLOAT32_BYTES;
+    int32_t remianSize = (ubSize * 9 / 10) - lutTotalSize;
+
     int32_t dimLength = tiling.get_dimLength();
-    // in_querylut_que 存放当前核要计算的query，占用内存 dimLength * FLOAT32_BYTES
-    // vec_in_que 存放select接口需要的 src0，为保证量化编码32字节对齐，需要4个一算，占用内存 4 * dimLength * FLOAT32_BYTES
-    uint64_t remianingSize = (ubSize * 9 / 10) - (4 + 1) * dimLength * FLOAT32_BYTES;
+    
+    // idx_calc_que 存放gather偏移，占用内存 dimLength / 8 * INT32_BYTES
+    // codes_in_que、codes_half_que、codes_int32_que 存放 code_tile_length 行量化编码，每行占用内存 dimLength / 8 * INT8_BYTES、dimLength / 8 * HALF_BYTES、dimLength / 8 * INT32_BYTES
+    // select_out_que 存放code_tile_length 行gather结果，每行占用内存 dimLength / 8 * FLOAT32_BYTES
+    // ip_out_que 存放code_tile_length 个内积结果，每个结果占用内存 FLOAT32_BYTES
     int32_t code_tile_length =
-        remianingSize /
-        (dimLength / 8 * INT8_BYTES + dimLength * FLOAT32_BYTES + FLOAT32_BYTES);
+        (remianSize - dimLength / 8 * INT32_BYTES) /
+        (dimLength / 8 * INT8_BYTES + dimLength / 8 * HALF_BYTES + dimLength / 8 * INT32_BYTES + dimLength / 8 * FLOAT32_BYTES + FLOAT32_BYTES);
     tiling.set_codeTileLength(code_tile_length);
     std::cout << "code tile length: " << code_tile_length << std::endl;
+
+    // select_out_que 可复用，用以存储分段输入的 centroid LUT
+    // select_out_que 大小为 dimLength / 8 * code_tile_lengt 个float，而 LUT 每行为 lutDimLength 个 float
+    // 据此可计算每次搬运多少行LUT
+    int32_t lut_tile_length = dimLength / 8 * code_tile_length / lutDimLength;
+    if (lutLength < lut_tile_length) {
+        lutTileNum = 1;
+        lutTileLength = lutLength;
+        lastLutTileLength = lutLength;
+    } else if (lutLength % lut_tile_length == 0) {
+        lutTileNum = lutLength / lut_tile_length;
+        lutTileLength = lut_tile_length;
+        lastLutTileLength = lut_tile_length;
+    } else {
+        lutTileNum = lutLength / lut_tile_length + 1;
+        lutTileLength = lut_tile_length;
+        lastLutTileLength = lutLength % lut_tile_length;
+    }
+
+    tiling.set_lutLength(lutLength);
+    tiling.set_lutDimLength(lutDimLength);
+    tiling.set_lutTileNum(lutTileNum);
+    tiling.set_lutTileLength(lutTileLength);
+    tiling.set_lastLutTileLength(lastLutTileLength);  
 }
 
 static void SetDistTilingInfo(gert::TilingContext *context, DistanceIVFRabitqL2FP32TilingData &tiling, int32_t ubSize)
@@ -70,7 +108,7 @@ static ge::graphStatus TilingFunc(gert::TilingContext *context)
     }
     int32_t dimLength = context->GetInputShape(BASE)->GetStorageShape().GetDim(1);  // indexcode维度 存储类型为int8
     tiling.set_dimLength(dimLength * 8);
-    SetCodeTilingInfo(context, tiling, ubSize);
+    SetLutAndCodeTilingInfo(context, tiling, ubSize);
     SetDistTilingInfo(context, tiling, ubSize);
     int32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     context->SetBlockDim(aivNum);
@@ -111,7 +149,7 @@ static ge::graphStatus InferShape(gert::InferShapeContext *context)
 
     gert::Shape *output_shape2 = context->GetOutputShape(2);
     output_shape2->SetDimNum(1);
-    output_shape2->SetDim(0, 16);
+    output_shape2->SetDim(0, 32);
 
     return GRAPH_SUCCESS;
 }

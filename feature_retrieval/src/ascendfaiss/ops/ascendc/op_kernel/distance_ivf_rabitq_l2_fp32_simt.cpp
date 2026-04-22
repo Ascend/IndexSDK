@@ -145,7 +145,7 @@ public:
         result_gm_.SetGlobalBuffer((__gm__ T *)result + this->blockIdx * this->codeBlockLength);
         min_res_gm_.SetGlobalBuffer((__gm__ T *)min_result +
                                     (this->codeBlockLength + this->mask - 1) / this->mask * 2 * this->blockIdx);
-        flag_gm_.SetGlobalBuffer((__gm__ uint16_t *)flag + this->blockIdx * 16);
+        flag_gm_.SetGlobalBuffer((__gm__ uint16_t *)flag + this->blockIdx * 32);
 
         int32_t mmoutBufferSize = tiling_.mmoutBufferSize;
 
@@ -187,7 +187,7 @@ public:
             PipeBarrier<PIPE_ALL>();
         }
         PipeBarrier<PIPE_ALL>();
-        AscendC::InitGlobalMemory(flag_gm_, static_cast<uint64_t>(16), (uint16_t)1);
+        AscendC::InitGlobalMemory(flag_gm_, static_cast<uint64_t>(32), (uint16_t)1);
     }
 
 private:

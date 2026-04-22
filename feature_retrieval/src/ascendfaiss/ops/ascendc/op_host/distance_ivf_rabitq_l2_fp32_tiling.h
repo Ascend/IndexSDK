@@ -32,6 +32,12 @@ namespace optiling {
 BEGIN_TILING_DATA_DEF(DistanceIVFRabitqL2FP32TilingData)
     TILING_DATA_FIELD_DEF(int32_t, dimLength);  // dim大小
 
+    TILING_DATA_FIELD_DEF(int32_t, lutLength);
+    TILING_DATA_FIELD_DEF(int32_t, lutDimLength);
+    TILING_DATA_FIELD_DEF(int32_t, lutTileNum);
+    TILING_DATA_FIELD_DEF(int32_t, lutTileLength);
+    TILING_DATA_FIELD_DEF(int32_t, lastLutTileLength);
+
     TILING_DATA_FIELD_DEF(int32_t, codeTileLength);
 
     TILING_DATA_FIELD_DEF(int32_t, distTileLength);

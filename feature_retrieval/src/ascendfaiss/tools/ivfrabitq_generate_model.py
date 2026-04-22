@@ -55,8 +55,8 @@ def generate_distance_rabitq_l2_fp32_json(core_num, list_num, dim, file_path):
     for query_num in search_batch_sizes:
         generator = OpJsonGenerator("DistanceIVFRabitqL2FP32")
         generator.add_input("ND", [1, dim], "float32")
-        generator.add_input("ND", [query_num, dim], "float32")
-        generator.add_input("ND", [list_num, dim], "float32")
+        generator.add_input("ND", [query_num * dim // _SCAN_BIT, _LUT_NUM], "float32")
+        generator.add_input("ND", [list_num * dim // _SCAN_BIT, _LUT_NUM], "float32")
         generator.add_input("ND", [core_num], "uint32")
         generator.add_input("ND", [core_num], "uint32")
         generator.add_input("ND", [core_num], "float32")
@@ -69,7 +69,7 @@ def generate_distance_rabitq_l2_fp32_json(core_num, list_num, dim, file_path):
         generator.add_input("ND", [core_num], "uint64")
         generator.add_output("ND", [core_num, _CODE_NUM], "float32")
         generator.add_output("ND", [core_num, (_CODE_NUM + burst_len - 1) // burst_len * 2], "float32")
-        generator.add_output("ND", [core_num, 16], "uint16")
+        generator.add_output("ND", [core_num, 32], "uint16")
         dist_rabitq_l2_obj.append(generator.generate_obj())
     
     utils.generate_op_config(dist_rabitq_l2_obj, file_path)
@@ -96,7 +96,7 @@ def generate_distance_rabitq_l2_fp32_simt_json(core_num, list_num, dim, file_pat
         generator.add_input("ND", [core_num], "uint64")
         generator.add_output("ND", [core_num, _CODE_NUM], "float32")
         generator.add_output("ND", [core_num, (_CODE_NUM + burst_len - 1) // burst_len * 2], "float32")
-        generator.add_output("ND", [core_num, 16], "uint16")
+        generator.add_output("ND", [core_num, 32], "uint16")
         dist_rabitq_l2_simt_obj.append(generator.generate_obj())
     
     utils.generate_op_config(dist_rabitq_l2_simt_obj, file_path)
@@ -206,7 +206,7 @@ def generate_rabitq_offline_model():
     valid_centroid_num = {1024, 2048, 4096, 8192, 10048, 16384, 32768}
     utils.check_param_range(args.coarse_centroid_num, valid_centroid_num, "coarse_centroid_num")
     config_path = utils.get_config_path(work_dir)
-    valid_dims = {64, 128, 256, 384, 512, 768, 1024, 2048}
+    valid_dims = {64, 128, 256, 384, 512, 768, 1024}
     if dim not in valid_dims:
         raise ValueError(f"not support dim: {dim}, dim should be in {sorted(valid_dims)}")
 

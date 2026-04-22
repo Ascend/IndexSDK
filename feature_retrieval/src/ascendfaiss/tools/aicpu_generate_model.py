@@ -131,6 +131,7 @@ def generate_topk_ivf_rabitq_fp32_obj():
     generator.add_dynamic_input("ND", [-1, -1], [[1, -1], [1, -1]], "float")
     generator.add_dynamic_input("ND", [-1, -1], [[1, -1], [1, -1]], "int64")
     generator.add_dynamic_input("ND", [-1, -1], [[1, -1], [1, -1]], "uint32")
+    generator.add_dynamic_input("ND", [-1], [[1, -1]], "int64")
     generator.add_dynamic_input("ND", [-1, -1], [[1, -1], [1, -1]], "uint16")
     generator.add_dynamic_input("ND", [-1], [[1, -1]], "int64")
     generator.add_dynamic_output("ND", [-1, -1], [[1, -1], [1, -1]], "float")

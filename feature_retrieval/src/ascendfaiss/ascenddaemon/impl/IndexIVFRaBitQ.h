@@ -179,12 +179,13 @@ protected:
                      AscendTensor<float, DIMS_2, size_t> &vmdistResult,
                      AscendTensor<int64_t, DIMS_2, size_t> &ids,
                      AscendTensor<uint32_t, DIMS_2, size_t> &sizes,
+                     AscendTensor<int64_t, DIMS_1, size_t> &blockNumPerQ,
                      AscendTensor<uint16_t, DIMS_2, size_t> &flags,
                      AscendTensor<int64_t, DIMS_1> &attrs,
                      AscendTensor<float, DIMS_2, size_t> &outdists,
                      AscendTensor<uint64_t, DIMS_2, size_t> &outlabel,
                      aclrtStream stream);
-    APP_ERROR fillDisOpInputData(int k, size_t batch, size_t segNum, size_t coreNum,
+    APP_ERROR fillDisOpInputData(int k, size_t batch, size_t totalBlockNum, size_t coreNum,
                                  AscendTensor<uint64_t, DIMS_2, size_t> &offset,
                                  AscendTensor<uint64_t, DIMS_2, size_t> &indexl2offset,
                                  AscendTensor<uint64_t, DIMS_2, size_t> &indexl1offset,
@@ -193,13 +194,14 @@ protected:
                                  AscendTensor<float, DIMS_2, size_t> &centroidsl2,
                                  AscendTensor<uint32_t, DIMS_2, size_t> &baseSize,
                                  AscendTensor<int64_t, DIMS_2, size_t> &ids,
+                                 AscendTensor<int64_t, DIMS_1, size_t> &blockNumPerQ,
                                  AscendTensor<int64_t, DIMS_1> &attrs,
                                  AscendTensor<int64_t, DIMS_2> &l1TopNprobeIndicesHost,
                                  AscendTensor<float, DIMS_2> &l1TopNprobeDistsHost);
-    APP_ERROR fillL2TopkOpInputData(int k, size_t batch, size_t segNum, size_t coreNum,
+    APP_ERROR fillL2TopkOpInputData(int k, size_t batch, size_t coreNum,
                                   AscendTensor<int64_t, DIMS_1> &attrs);
     APP_ERROR fillL1TopkOpInputData(AscendTensor<int64_t, DIMS_1> &attrsInput);
-    void fillDisOpInputDataByBlock(size_t batch, size_t segNum, size_t coreNum, size_t ivfFlatBlockSize,
+    void fillDisOpInputDataByBlock(size_t batch, size_t coreNum, size_t ivfRabitqBlockSize,
                                    AscendTensor<uint32_t, DIMS_2, size_t> &queryidHostVec,
                                    AscendTensor<uint32_t, DIMS_2, size_t> &centroidsidHostVec,
                                    AscendTensor<float, DIMS_2, size_t> &centroidsl2HostVec,
@@ -208,9 +210,10 @@ protected:
                                    AscendTensor<uint64_t, DIMS_2, size_t> &indexl2OffsetHostVec,
                                    AscendTensor<uint64_t, DIMS_2, size_t> &indexl1OffsetHostVec,
                                    AscendTensor<int64_t, DIMS_2, size_t> &idsHostVec,
+                                   AscendTensor<int64_t, DIMS_1, size_t> &blockNumPerQHostVec,
                                    AscendTensor<int64_t, DIMS_2> &l1TopNprobeIndicesHost,
                                    AscendTensor<float, DIMS_2> &l1TopNprobeDistsHost);
-    void callL2DistanceOp(size_t batch, size_t segNum, size_t coreNum, size_t vcMaxLen,
+    void callL2DistanceOp(size_t batch, size_t totalBlockNum, size_t coreNum, size_t vcMaxLen,
                           AscendTensor<float, DIMS_2> &queryVec,
                           AscendTensor<float, DIMS_2> &queryLutVec,
                           AscendTensor<float, DIMS_2, size_t> &centroidsLutVec,
@@ -230,6 +233,8 @@ protected:
                           aclrtStream &stream);
     size_t getMaxListNum(size_t batch, AscendTensor<int64_t, DIMS_2> &l1TopNprobeIndicesHost) const;
     size_t getMaxListNum(size_t batch, AscendTensor<int64_t, DIMS_2> &l1TopNprobeIndicesHost, int k,
+                         float* distances, idx_t* labels) const;
+    size_t getTotalBlockNum(size_t batch, AscendTensor<int64_t, DIMS_2> &l1TopNprobeIndicesHost, int k,
                          float* distances, idx_t* labels) const;
 
     void moveVectorForward(int listId, idx_t srcIdx, idx_t dstIdx);
