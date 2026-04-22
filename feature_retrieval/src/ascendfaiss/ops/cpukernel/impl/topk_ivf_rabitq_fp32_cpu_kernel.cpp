@@ -50,6 +50,16 @@ uint32_t TopkIvfRabitqfP32CpuKernel::Compute(CpuKernelContext &ctx)
         return ret;
     }
 
+    blockOffset_.resize(nq_ + 1);
+    KernelTensor<int64_t> blocknums(inputs.blocknums);
+    int64_t offset = 0;
+    for (int64_t qidx = 0; qidx < nq_; qidx++) {
+        blockOffset_[qidx] = offset;
+        int64_t thisBlockNum = *(blocknums.GetSubTensorDim0(qidx));
+        offset += thisBlockNum;
+    }
+    blockOffset_[nq_] = offset;
+
     UpdateInOutShape(inputs, outputs);
 
     InitTopkHeap(outputs);
@@ -92,17 +102,19 @@ uint32_t TopkIvfRabitqfP32CpuKernel::GetInOutAndCheck(const CpuKernelContext &ct
     inputs.vmdists = ctx.Input(INPUT_NUM1);
     inputs.ids = ctx.Input(INPUT_NUM2);
     inputs.size = ctx.Input(INPUT_NUM3);
-    inputs.opflag = ctx.Input(INPUT_NUM4);
-    inputs.attr = ctx.Input(INPUT_NUM5);
+    inputs.blocknums = ctx.Input(INPUT_NUM4);
+    inputs.opflag = ctx.Input(INPUT_NUM5);
+    inputs.attr = ctx.Input(INPUT_NUM6);
     outputs.outdists = ctx.Output(INPUT_NUM0);
     outputs.outlabels = ctx.Output(INPUT_NUM1);
 
     KERNEL_CHECK_NULLPTR(inputs.indists, KERNEL_STATUS_PARAM_INVALID, "Get input[0], name[indists] failed");
     KERNEL_CHECK_NULLPTR(inputs.vmdists, KERNEL_STATUS_PARAM_INVALID, "Get input[1], name[vmdists] failed");
-    KERNEL_CHECK_NULLPTR(inputs.ids, KERNEL_STATUS_PARAM_INVALID, "Get input[1], name[ids] failed");
-    KERNEL_CHECK_NULLPTR(inputs.size, KERNEL_STATUS_PARAM_INVALID, "Get input[2], name[size] failed");
-    KERNEL_CHECK_NULLPTR(inputs.opflag, KERNEL_STATUS_PARAM_INVALID, "Get input[3], name[opflag] failed");
-    KERNEL_CHECK_NULLPTR(inputs.attr, KERNEL_STATUS_PARAM_INVALID, "Get input[4], name[attr] failed");
+    KERNEL_CHECK_NULLPTR(inputs.ids, KERNEL_STATUS_PARAM_INVALID, "Get input[2], name[ids] failed");
+    KERNEL_CHECK_NULLPTR(inputs.size, KERNEL_STATUS_PARAM_INVALID, "Get input[3], name[size] failed");
+    KERNEL_CHECK_NULLPTR(inputs.blocknums, KERNEL_STATUS_PARAM_INVALID, "Get input[4], name[blocknums] failed");
+    KERNEL_CHECK_NULLPTR(inputs.opflag, KERNEL_STATUS_PARAM_INVALID, "Get input[5], name[opflag] failed");
+    KERNEL_CHECK_NULLPTR(inputs.attr, KERNEL_STATUS_PARAM_INVALID, "Get input[6], name[attr] failed");
     KERNEL_CHECK_NULLPTR(outputs.outdists, KERNEL_STATUS_PARAM_INVALID, "Get output[0], name[outdists] failed");
     KERNEL_CHECK_NULLPTR(outputs.outlabels, KERNEL_STATUS_PARAM_INVALID, "Get output[1], name[outlabels] failed");
 
@@ -114,9 +126,11 @@ uint32_t TopkIvfRabitqfP32CpuKernel::GetInOutAndCheck(const CpuKernelContext &ct
         ShapeToString(inputs.ids->GetTensorShape()->GetDimSizes()).c_str());
     KERNEL_LOG_INFO("Shape of input[3][size] is %s",
         ShapeToString(inputs.size->GetTensorShape()->GetDimSizes()).c_str());
-    KERNEL_LOG_INFO("Shape of input[4][opflag] is %s",
+    KERNEL_LOG_INFO("Shape of input[4][blocknums] is %s",
+        ShapeToString(inputs.blocknums->GetTensorShape()->GetDimSizes()).c_str());
+    KERNEL_LOG_INFO("Shape of input[5][opflag] is %s",
         ShapeToString(inputs.opflag->GetTensorShape()->GetDimSizes()).c_str());
-    KERNEL_LOG_INFO("Shape of input[5][attr] is %s",
+    KERNEL_LOG_INFO("Shape of input[6][attr] is %s",
         ShapeToString(inputs.attr->GetTensorShape()->GetDimSizes()).c_str());
 
     return KERNEL_STATUS_OK;
@@ -130,21 +144,25 @@ uint32_t TopkIvfRabitqfP32CpuKernel::CheckInputShapes(const Inputs &inputs)
     auto shapeVmdists = inputs.vmdists->GetTensorShape();
     auto shapeIds = inputs.ids->GetTensorShape();
     auto shapeSize = inputs.size->GetTensorShape();
+    auto shapeBlocknums = inputs.blocknums->GetTensorShape();
     auto shapeOpflag = inputs.opflag->GetTensorShape();
     auto shapeAttr = inputs.attr->GetTensorShape();
 
     KERNEL_CHECK_TRUE(shapeIndists->GetDims() == INPUT_NUM2,
-        KERNEL_STATUS_PARAM_INVALID, "Dims of input[0][indists] must be 4");
+        KERNEL_STATUS_PARAM_INVALID, "Dims of input[0][indists] must be 2");
     KERNEL_CHECK_TRUE(shapeVmdists->GetDims() == INPUT_NUM2,
-        KERNEL_STATUS_PARAM_INVALID, "Dims of input[0][vmdists] must be 4");
+        KERNEL_STATUS_PARAM_INVALID, "Dims of input[1][vmdists] must be 2");
     KERNEL_CHECK_TRUE(shapeIds->GetDims() == INPUT_NUM2,
-        KERNEL_STATUS_PARAM_INVALID, "Dims of input[0][ids] must be 3");
+        KERNEL_STATUS_PARAM_INVALID, "Dims of input[2][ids] must be 2");
     KERNEL_CHECK_TRUE(shapeSize->GetDims() == INPUT_NUM2,
-        KERNEL_STATUS_PARAM_INVALID, "Dims of input[0][size] must be 3");
+        KERNEL_STATUS_PARAM_INVALID, "Dims of input[3][size] must be 2");
+    KERNEL_CHECK_TRUE(shapeBlocknums->GetDims() == INPUT_NUM1,
+        KERNEL_STATUS_PARAM_INVALID, "Dims of input[4][blocknums] must be 1");
     KERNEL_CHECK_TRUE(shapeAttr->GetDims() == INPUT_NUM1,
-        KERNEL_STATUS_PARAM_INVALID, "Dims of input[0][attr] must be 1");
+        KERNEL_STATUS_PARAM_INVALID, "Dims of input[6][attr] must be 1");
 
     flagSize_ = shapeOpflag->GetDimSize(INPUT_NUM1);
+    nq_ = shapeBlocknums->GetDimSize(INPUT_NUM0);
 
     auto attrCount = shapeAttr->GetDimSize(INPUT_NUM0);
     KERNEL_CHECK_TRUE(attrCount == TOPK_IVF_RABITQ_ATTR_IDX_COUNT,
@@ -154,11 +172,9 @@ uint32_t TopkIvfRabitqfP32CpuKernel::CheckInputShapes(const Inputs &inputs)
     asc_ = *(attr + TOPK_IVF_RABITQ_ATTR_ASC_IDX);
     k_ = *(attr + TOPK_IVF_RABITQ_ATTR_K_IDX);
     burstLen_ = *(attr + TOPK_IVF_RABITQ_ATTR_BURST_LEN_IDX);
-    blockNum_ = *(attr + TOPK_IVF_RABITQ_ATTR_BLOCK_NUM_IDX);
-    nq_ = *(attr + TOPK_IVF_RABITQ_ATTR_QUERY_NUM_IDX);
     core_ = *(attr + TOPK_IVF_RABITQ_ATTR_CORE_NUM_IDX);
-    KERNEL_CHECK_TRUE(k_ > 0 && burstLen_ > 0 && asc_ >= 0 && blockNum_ > 0 && nq_ > 0,
-        KERNEL_STATUS_PARAM_INVALID, "Value of asc, k, bustLen, blockNum, flagNum must ge 0");
+    KERNEL_CHECK_TRUE(k_ > 0 && burstLen_ > 0 && asc_ >= 0 && core_ > 0 && nq_ > 0,
+        KERNEL_STATUS_PARAM_INVALID, "Value of asc, k, bustLen, core, nq must ge 0");
 
     return KERNEL_STATUS_OK;
 }
@@ -167,7 +183,7 @@ void TopkIvfRabitqfP32CpuKernel::UpdateInOutShape(Inputs &inputs, Outputs &outpu
 {
     KERNEL_LOG_INFO("TopkIvfRabitqfP32CpuKernel UpdateInOutShape begin");
 
-    int64_t allBlock = (nq_ * blockNum_ + core_ - 1) / core_ * core_;
+    int64_t allBlock = (blockOffset_[nq_] + core_ - 1) / core_ * core_;
 
     auto shapeIndists = inputs.indists->GetTensorShape();
     std::vector<int64_t> dimIndists = shapeIndists->GetDimSizes();
@@ -226,22 +242,24 @@ void TopkIvfRabitqfP32CpuKernel::DoCompute(size_t tcnt, size_t tid, const Inputs
     KernelTensor<float> vmdists(inputs.vmdists);
     KernelTensor<int64_t> ids(inputs.ids);
     KernelTensor<uint32_t> size(inputs.size);
+    KernelTensor<int64_t> blocknums(inputs.blocknums);
     KernelTensor<uint16_t> opflag(inputs.opflag);
 
     KernelTensor<float> outdists(outputs.outdists);
     KernelTensor<int64_t> outlabels(outputs.outlabels);
 
     for (int64_t qidx = tid; qidx < nq_; qidx += tcnt) {
-        size_t offset = qidx * blockNum_;
-        for (int64_t blkidx = 0; blkidx < blockNum_; blkidx++) {
+        size_t offset = blockOffset_[qidx];
+        int64_t thisBlockNum = *(blocknums.GetSubTensorDim0(qidx));
+        for (int64_t blkidx = 0; blkidx < thisBlockNum; blkidx++) {
             if (*(size.GetSubTensorDim0(offset + blkidx)) == 0) {
                 continue;
             }
             auto flagPtr = opflag.GetSubTensorDim0(offset + blkidx);
             WAITING_FLAG_READY(*(flagPtr), TIMEOUT_CHECK_TICK, TIMEOUT_MS);
-            bool reorder = (blkidx + 1 == blockNum_);
-            ComputeQuery(qidx, offset + blkidx, indists, vmdists, ids, size, outdists, outlabels, reorder, cmp);
+            ComputeQuery(qidx, offset + blkidx, indists, vmdists, ids, size, outdists, outlabels, cmp);
         }
+        Reorder(qidx, outdists, outlabels, cmp);
     }
 }
 
@@ -254,7 +272,7 @@ void TopkIvfRabitqfP32CpuKernel::ComputeQuery(int64_t qidx,
                                               KernelTensor<uint32_t> &sizeTensor,
                                               KernelTensor<float> &outdistsTensor,
                                               KernelTensor<int64_t> &outlabelsTensor,
-                                              bool reorder, C &&cmp)
+                                              C &&cmp)
 {
     float *indists = indistsTensor.GetSubTensorDim0(blkidx);
     float *vmdists = vmdistsTensor.GetSubTensorDim0(blkidx);
@@ -290,12 +308,21 @@ void TopkIvfRabitqfP32CpuKernel::ComputeQuery(int64_t qidx,
         }
         ++idx;
     }
-    if (reorder) {
-        for (int64_t i = k_ - 1; i >= 1; --i) {
-            std::swap(outdists[0], outdists[i]);
-            std::swap(outlabel[0], outlabel[i]);
-            UpdateHeap(outdists, outlabel, i, 0, cmp);
-        }
+}
+
+template <typename C>
+void TopkIvfRabitqfP32CpuKernel::Reorder(int64_t qidx,
+                                         KernelTensor<float> &outdistsTensor,
+                                         KernelTensor<int64_t> &outlabelsTensor,
+                                         C &&cmp)
+{
+    float *outdists = outdistsTensor.GetSubTensorDim0(qidx);
+    int64_t *outlabel = outlabelsTensor.GetSubTensorDim0(qidx);
+
+    for (int64_t i = k_ - 1; i >= 1; --i) {
+        std::swap(outdists[0], outdists[i]);
+        std::swap(outlabel[0], outlabel[i]);
+        UpdateHeap(outdists, outlabel, i, 0, cmp);
     }
 }
 

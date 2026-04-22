@@ -29,6 +29,7 @@ struct Inputs {
     Tensor *vmdists = nullptr;
     Tensor *ids = nullptr;
     Tensor *size = nullptr;
+    Tensor *blocknums = nullptr;
     Tensor *opflag = nullptr;
     Tensor *attr = nullptr;
 };
@@ -66,8 +67,13 @@ private:
                       KernelTensor<uint32_t> &sizeTensor,
                       KernelTensor<float> &outdistsTensor,
                       KernelTensor<int64_t> &outlabelsTensor,
-                      bool reorder,
                       C &&cmp);
+    
+    template <typename C>
+    void Reorder(int64_t qidx,
+                 KernelTensor<float> &outdistsTensor,
+                 KernelTensor<int64_t> &outlabelsTensor,
+                 C &&cmp);
 
 private:
     int64_t nq_ = 0;
@@ -77,8 +83,9 @@ private:
     int64_t asc_ = 1;
     int64_t k_ = 0;
     int64_t burstLen_ = 0;
-    int64_t blockNum_ = 0;
     int64_t core_ = 0;
+
+    std::vector<int64_t> blockOffset_;
 };
 } // namespace aicpu
 #endif

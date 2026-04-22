@@ -35,7 +35,7 @@ const size_t DEFAULT_NLIST = 1024;
 // The value range of nlist
 const std::vector<int> NLISTS = { 1024, 2048, 4096, 8192, 10048, 16384, 32768 };
 // The value range of dims
-const std::vector<int> DIMS = { 64, 128, 256, 384, 512, 768, 1024, 2048 };
+const std::vector<int> DIMS = { 64, 128, 256, 384, 512, 768, 1024 };
 const size_t KB = 1024;
 const size_t RETAIN_SIZE = 2048;
 const size_t UNIT_PAGE_SIZE = 640;

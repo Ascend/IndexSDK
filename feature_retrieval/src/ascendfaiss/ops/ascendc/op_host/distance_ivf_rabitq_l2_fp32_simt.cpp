@@ -156,7 +156,7 @@ static ge::graphStatus InferShape(gert::InferShapeContext *context)
 
     gert::Shape *output_shape2 = context->GetOutputShape(2);
     output_shape2->SetDimNum(1);
-    output_shape2->SetDim(0, 16);
+    output_shape2->SetDim(0, 32);
 
     return GRAPH_SUCCESS;
 }
