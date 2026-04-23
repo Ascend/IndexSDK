@@ -66,6 +66,23 @@ APP_ERROR AscendIndexCagra::AddGraph(const std::vector<uint32_t>& graphData, con
     return this->pIndexCagraImpl->AddGraph(graphData, saveBinPath);
 }
 
+// 构建图结构
+APP_ERROR AscendIndexCagra::BuildGraph(int64_t n, const float* data, const std::string& graphFilePath, 
+                                       const IndexCagraBuildConfig& buildConfig)
+{
+    APPERR_RETURN_IF_NOT_LOG(pIndexCagraImpl != nullptr, APP_ERR_INVALID_PARAM, "pIndexCagraImpl is null");
+    APPERR_RETURN_IF_NOT_LOG(n > 0 && n <= 10000000, APP_ERR_INVALID_PARAM, 
+                             "Data size must be in range (0, 10000000]");
+    APPERR_RETURN_IF_NOT_LOG(data != nullptr, APP_ERR_INVALID_PARAM, "Data cannot be null");
+    APPERR_RETURN_IF_NOT_LOG(buildConfig.graphDegree >= 32 && buildConfig.graphDegree <= 512, 
+                             APP_ERR_INVALID_PARAM, "Graph degree must be in range [32, 512]");
+    
+    AscendIndexCagraImpl::BuildConfig implBuildConfig(buildConfig.graphDegree, 
+                                                      buildConfig.dataSize);
+    
+    return this->pIndexCagraImpl->BuildGraph(n, data, graphFilePath, implBuildConfig);
+}
+
 // 检索接口
 APP_ERROR AscendIndexCagra::Search(int n, const float* queryData, int topK, const uint32_t* graph, const uint32_t* hash,
     const float* data, float* dists, uint32_t* labels)

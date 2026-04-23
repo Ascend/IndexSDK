@@ -20,21 +20,31 @@
 
 #include <algorithm>
 #include <fstream>
+#include <cstdio>
+#include <string>
 #include <faiss/impl/FaissAssert.h>
 
 #include "ascend/utils/fp16.h"
 #include "ascenddaemon/utils/Limits.h"
 #include "ascenddaemon/utils/Random.h"
+#include "ascenddaemon/utils/AscendOpDesc.h"
+#include "ascenddaemon/utils/AscendUtils.h"
 #include "common/threadpool/AscendThreadPool.h"
 #include "common/utils/CommonUtils.h"
 #include "common/utils/LogUtils.h"
 #include "common/utils/SocUtils.h"
+#include "common/utils/DataType.h"
+#include "common/ErrorCode.h"
+#include "index_custom/IndexFlatATAicpu.h"
+#include "ops/cpukernel/impl/utils/kernel_shared_def.h"
+#include <acl/acl.h>
 using namespace ascend;
 namespace faiss {
 namespace ascend {
 namespace {
 const int64_t CAGRA_MAX_MEM = 0x100000000; // 0x100000000 mean 4096MB
 const int MAX_GRAPH_DEGREE = 256;
+const uint32_t RANDOM_SEED = 1234;
 std::vector<int> ASCEND_CAGRA_SEARCH_BATCHES = {32, 16, 8, 4, 2, 1};
 }
 
@@ -92,6 +102,40 @@ APP_ERROR AscendIndexCagraImpl::AddGraph(const std::vector<uint32_t>& graphData,
     this->graphBinPath = saveBinPath;
     
     APP_LOG_INFO("AscendIndexCagraImpl::AddGraph finished");
+    return APP_ERR_OK;
+}
+
+APP_ERROR AscendIndexCagraImpl::BuildGraph(int64_t n, const float* data, const std::string& graphFilePath, const BuildConfig& buildConfig)
+{
+    APP_LOG_INFO("AscendIndexCagraImpl::BuildGraph start");
+    
+    FAISS_THROW_IF_NOT_MSG(isInitialized, "AscendIndexCagraImpl is not initialized");
+    FAISS_THROW_IF_NOT_MSG(n > 0, "Data size must be positive");
+    FAISS_THROW_IF_NOT_MSG(data != nullptr, "Data cannot be null");
+    FAISS_THROW_IF_NOT_MSG(buildConfig.graphDegree > 0, "Graph degree must be positive");
+    
+    this->buildConfig = buildConfig;
+    this->buildConfig.dataSize = n;
+    
+    auto ret = resetAllGraphOps();
+    ASCEND_THROW_IF_NOT_MSG(ret == APP_ERR_OK, "Failed to reset graph operators!");
+    
+    size_t graphElements = static_cast<size_t>(n) * static_cast<size_t>(buildConfig.graphDegree);
+    auto graph = std::make_unique<uint32_t[]>(graphElements);
+    
+    ret = buildGraphImpl(n, data, graph.get());
+    ASCEND_THROW_IF_NOT_MSG(ret == APP_ERR_OK, "buildGraphImpl failed!");
+    
+    if (!graphFilePath.empty()) {
+        ret = saveGraphToFile(graphFilePath, graph.get(), graphElements);
+        ASCEND_THROW_IF_NOT_MSG(ret == APP_ERR_OK, "saveGraphToFile failed!");
+        APP_LOG_INFO("Graph saved to file: %s\n", graphFilePath.c_str());
+    }
+    
+    std::vector<uint32_t> graphVector(graph.get(), graph.get() + graphElements);
+    this->graphData = graphVector;
+    
+    APP_LOG_INFO("AscendIndexCagraImpl::BuildGraph finished, graph size: %zu elements", graphElements);
     return APP_ERR_OK;
 }
 
@@ -243,6 +287,552 @@ APP_ERROR AscendIndexCagraImpl::ResetCagraSearchOp()
     }
     
     APP_LOG_INFO("AscendIndexCagraImpl ResetCagraSearchOp operation end.\n");
+    return APP_ERR_OK;
+}
+
+// ==================== Graph Building Functions ====================
+
+APP_ERROR AscendIndexCagraImpl::resetAllGraphOps()
+{
+    APP_LOG_INFO("Resetting all graph building operators\n");
+    
+    auto ret = resetPreprocessDataOp();
+    ASCEND_THROW_IF_NOT_MSG(ret == APP_ERR_OK, "resetPreprocessDataOp failed!");
+    
+    ret = resetAddReverseEdgesOp();
+    ASCEND_THROW_IF_NOT_MSG(ret == APP_ERR_OK, "resetAddReverseEdgesOp failed!");
+    
+    ret = resetLocalJoinOp();
+    ASCEND_THROW_IF_NOT_MSG(ret == APP_ERR_OK, "resetLocalJoinOp failed!");
+    
+    ret = resetPruneOp();
+    ASCEND_THROW_IF_NOT_MSG(ret == APP_ERR_OK, "resetPruneOp failed!");
+    
+    ret = resetMakeRevGraphOp();
+    ASCEND_THROW_IF_NOT_MSG(ret == APP_ERR_OK, "resetMakeRevGraphOp failed!");
+    
+    APP_LOG_INFO("All graph building operators reset successfully\n");
+    
+    return APP_ERR_OK;
+}
+
+APP_ERROR AscendIndexCagraImpl::resetPreprocessDataOp()
+{
+    return APP_ERR_OK;
+}
+
+APP_ERROR AscendIndexCagraImpl::resetAddReverseEdgesOp()
+{
+    return APP_ERR_OK;
+}
+
+APP_ERROR AscendIndexCagraImpl::resetLocalJoinOp()
+{
+    return APP_ERR_OK;
+}
+
+APP_ERROR AscendIndexCagraImpl::resetPruneOp()
+{
+    return APP_ERR_OK;
+}
+
+APP_ERROR AscendIndexCagraImpl::resetMakeRevGraphOp()
+{
+    return APP_ERR_OK;
+}
+
+APP_ERROR AscendIndexCagraImpl::runPreprocessData(int64_t n, const float* data)
+{
+    return APP_ERR_OK;
+}
+
+APP_ERROR AscendIndexCagraImpl::runAddReverseEdges(int64_t n, uint32_t actualGraphDegree,
+                                                   const AscendTensor<uint64_t, DIMS_1>& numSamplesTensor,
+                                                   const AscendTensor<uint32_t, DIMS_2>& graphDevice,
+                                                   const AscendTensor<int, DIMS_1>& forwardEdgeCountsDevice,
+                                                   AscendTensor<uint32_t, DIMS_2>& reverseGraphDevice,
+                                                   AscendTensor<int, DIMS_1>& reverseEdgeCountsDevice)
+{
+    return APP_ERR_OK;
+}
+
+APP_ERROR AscendIndexCagraImpl::runLocalJoinKernel(int64_t n,
+                                                   const AscendTensor<uint32_t, DIMS_2>& newGraphDevice,
+                                                   const AscendTensor<uint32_t, DIMS_2>& newReverseGraphDevice,
+                                                   const AscendTensor<int, DIMS_1>& newForwardEdgeCountsDevice,
+                                                   const AscendTensor<int, DIMS_1>& newBackwardEdgeCountsDevice,
+                                                   const AscendTensor<uint32_t, DIMS_2>& oldGraphDevice,
+                                                   const AscendTensor<uint32_t, DIMS_2>& oldReverseGraphDevice,
+                                                   const AscendTensor<int, DIMS_1>& oldForwardEdgeCountsDevice,
+                                                   const AscendTensor<int, DIMS_1>& oldBackwardEdgeCountsDevice,
+                                                   const ascend::fp16* preprocessedData,
+                                                   const float* l2NormData,
+                                                   AscendTensor<uint32_t, DIMS_2>& outputGraphDevice,
+                                                   AscendTensor<float, DIMS_2>& outputDistancesDevice)
+{
+    return APP_ERR_OK;
+}
+
+APP_ERROR AscendIndexCagraImpl::runPrune(int64_t n,
+                                         const AscendTensor<uint64_t, DIMS_2>& knnGraphDevice,
+                                         AscendTensor<uint8_t, DIMS_2>& detourCountDevice,
+                                         AscendTensor<uint32_t, DIMS_1>& numNoDetourEdgesDevice,
+                                         AscendTensor<uint64_t, DIMS_1>& statsDevice)
+{
+    return APP_ERR_OK;
+}
+
+APP_ERROR AscendIndexCagraImpl::runPruneBatch(uint64_t batchId,
+                                              uint64_t batchSize,
+                                              uint64_t currentBatchSize,
+                                              const AscendTensor<uint64_t, DIMS_2>& knnGraphDevice,
+                                              const AscendTensor<uint64_t, DIMS_1>& nodeCountTensor,
+                                              const AscendTensor<uint64_t, DIMS_1>& inputDegreeTensor,
+                                              const AscendTensor<uint64_t, DIMS_1>& outputDegreeTensor,
+                                              AscendTensor<uint64_t, DIMS_1>& batchSizeTensor,
+                                              AscendTensor<uint8_t, DIMS_2>& detourCountDevice,
+                                              AscendTensor<uint32_t, DIMS_1>& numNoDetourEdgesDevice,
+                                              AscendTensor<uint64_t, DIMS_1>& statsDevice,
+                                              aclrtStream stream)
+{
+    return APP_ERR_OK;
+}
+
+APP_ERROR AscendIndexCagraImpl::runMakeRevGraph(int64_t n,
+                                                const AscendTensor<uint64_t, DIMS_1>& destNodesDevice,
+                                                AscendTensor<uint64_t, DIMS_2>& revGraphDevice,
+                                                AscendTensor<uint32_t, DIMS_1>& revGraphCountDevice)
+{
+    return APP_ERR_OK;
+}
+
+APP_ERROR AscendIndexCagraImpl::randomInitializeGraph(int64_t n, uint32_t* graph)
+{
+    APP_LOG_INFO("Randomly initializing graph for %ld points with degree %u\n", n, buildConfig.graphDegree);
+    
+    APPERR_RETURN_IF_NOT(n > 0, APP_ERR_INVALID_PARAM);
+    APPERR_RETURN_IF_NOT(graph != nullptr, APP_ERR_INVALID_PARAM);
+    APPERR_RETURN_IF_NOT(buildConfig.graphDegree > 0, APP_ERR_INVALID_PARAM);
+    APPERR_RETURN_IF_NOT(buildConfig.graphDegree <= static_cast<uint32_t>(n) - 1, APP_ERR_INVALID_PARAM);
+    
+    ascend::RandomGenerator rng(RANDOM_SEED);
+    
+    size_t totalElements = static_cast<size_t>(n) * static_cast<size_t>(buildConfig.graphDegree);
+    
+    for (int64_t i = 0; i < n; ++i) {
+        std::vector<bool> selected(n, false);
+        selected[i] = true;
+        
+        for (uint32_t j = 0; j < buildConfig.graphDegree; ++j) {
+            uint32_t neighbor;
+            int attempts = 0;
+            const int MAX_ATTEMPTS = 1000;
+            
+            do {
+                neighbor = static_cast<uint32_t>(rng.RandUnsignedInt(n));
+                attempts++;
+                
+                if (attempts > MAX_ATTEMPTS) {
+                    APP_LOG_ERROR("Failed to find unique neighbor for point %ld after %d attempts\n", i, MAX_ATTEMPTS);
+                    return APP_ERR_INNER_ERROR;
+                }
+            } while (selected[neighbor]);
+            
+            selected[neighbor] = true;
+            graph[i * buildConfig.graphDegree + j] = neighbor;
+        }
+    }
+    
+    APP_LOG_INFO("Graph randomly initialized successfully with seed %u\n", RANDOM_SEED);
+    
+    return APP_ERR_OK;
+}
+
+void AscendIndexCagraImpl::sampleNodeNeighbors(int64_t nodeId, int64_t n, const uint32_t* currentGraph,
+                                               uint32_t* candidates, SampleCounts& counts)
+{
+    const uint32_t* currentNeighbors = &currentGraph[nodeId * buildConfig.graphDegree];
+    counts.oldCount = 0;
+    counts.newCount = 0;
+    
+    // 前 graphDegree/2 个：从当前邻居中直接采样
+    for (uint32_t j = 0; j < buildConfig.graphDegree && counts.oldCount < buildConfig.graphDegree / 2; ++j) {
+        uint32_t neighbor = currentNeighbors[j];
+        if (neighbor >= static_cast<uint32_t>(n)) continue;
+        if (neighbor == static_cast<uint32_t>(nodeId)) continue;
+        candidates[counts.oldCount] = neighbor;
+        counts.oldCount++;
+    }
+    
+    // 后 graphDegree/2 个：从邻居的邻居中采样
+    for (uint32_t j = 0; j < buildConfig.graphDegree && counts.newCount < buildConfig.graphDegree - counts.oldCount; ++j) {
+        uint32_t neighbor = currentNeighbors[j];
+        if (neighbor >= static_cast<uint32_t>(n)) continue;
+        const uint32_t* neighborNeighbors = &currentGraph[neighbor * buildConfig.graphDegree];
+        
+        for (uint32_t k = 0; k < buildConfig.graphDegree && counts.newCount < buildConfig.graphDegree - counts.oldCount; ++k) {
+            uint32_t candidate = neighborNeighbors[k];
+            if (candidate >= static_cast<uint32_t>(n)) continue;
+            if (candidate == static_cast<uint32_t>(nodeId)) continue;
+            
+            bool alreadySampled = false;
+            for (int m = 0; m < counts.totalCount(); ++m) {
+                if (candidates[m] == candidate) {
+                    alreadySampled = true;
+                    break;
+                }
+            }
+            
+            if (!alreadySampled) {
+                candidates[counts.totalCount()] = candidate;
+                counts.newCount++;
+            }
+        }
+    }
+    
+    // 如果数据量不足，随机填充
+    ascend::RandomGenerator rng(RANDOM_SEED + static_cast<int64_t>(nodeId));
+    while (counts.totalCount() < buildConfig.graphDegree) {
+        uint32_t candidate = static_cast<uint32_t>(rng.RandUnsignedInt(n));
+        if (candidate == static_cast<uint32_t>(nodeId)) continue;
+        
+        // 检查是否已采样
+        bool alreadySampled = false;
+        for (int m = 0; m < counts.totalCount(); ++m) {
+            if (candidates[m] == candidate) {
+                alreadySampled = true;
+                break;
+            }
+        }
+        if (alreadySampled) continue;
+        
+        candidates[counts.totalCount()] = candidate;
+        counts.newCount++;
+    }
+}
+
+APP_ERROR AscendIndexCagraImpl::sampleOldNewNeighbors(int64_t n, const uint32_t* currentGraph, uint32_t* newCandidates,
+                                                      std::vector<int>& oldForwardEdgeCounts, std::vector<int>& newForwardEdgeCounts)
+{
+    APPERR_RETURN_IF_NOT(n > 0, APP_ERR_INVALID_PARAM);
+    APPERR_RETURN_IF_NOT(currentGraph != nullptr, APP_ERR_INVALID_PARAM);
+    APPERR_RETURN_IF_NOT(newCandidates != nullptr, APP_ERR_INVALID_PARAM);
+    APPERR_RETURN_IF_NOT(buildConfig.graphDegree > 0, APP_ERR_INVALID_PARAM);
+    
+    oldForwardEdgeCounts.resize(n, 0);
+    newForwardEdgeCounts.resize(n, 0);
+    
+    #pragma omp parallel for
+    for (int64_t i = 0; i < n; ++i) {
+        uint32_t* candidates = &newCandidates[i * buildConfig.graphDegree];
+        int oldCount = 0;
+        int newCount = 0;
+        
+        sampleNodeNeighbors(i, n, currentGraph, candidates, oldCount, newCount);
+        
+        // forwardEdgeCounts 表示有效邻居的总数
+        // oldForwardEdgeCounts 用于 currentGraph，表示当前图中每个节点的邻居数量（graphDegree）
+        // newForwardEdgeCounts 用于 newCandidates，表示新候选邻居的总数（oldCount + newCount）
+        oldForwardEdgeCounts[i] = buildConfig.graphDegree;
+        newForwardEdgeCounts[i] = oldCount + newCount;
+    }
+
+    return APP_ERR_OK;
+}
+
+APP_ERROR AscendIndexCagraImpl::prepareGraphBuild(int64_t n, const float* data, uint32_t* graph)
+{
+    auto ret = runPreprocessData(n, data);
+    ASCEND_THROW_IF_NOT_MSG(ret == APP_ERR_OK, "runPreprocessData failed!");
+    
+    ret = randomInitializeGraph(n, graph);
+    ASCEND_THROW_IF_NOT_MSG(ret == APP_ERR_OK, "randomInitializeGraph failed!");
+    
+    size_t graphElements = static_cast<size_t>(n) * static_cast<size_t>(buildConfig.graphDegree);
+    size_t candidateElements = static_cast<size_t>(n) * static_cast<size_t>(buildConfig.graphDegree);
+    
+    currentGraph = std::make_unique<uint32_t[]>(graphElements);
+    newCandidates = std::make_unique<uint32_t[]>(candidateElements);
+    
+    ret = memcpy_s(currentGraph.get(), graphElements * sizeof(uint32_t), graph, graphElements * sizeof(uint32_t));
+    APPERR_RETURN_IF_NOT_LOG(ret == 0, APP_ERR_INNER_ERROR, "memcpy_s failed in prepareGraphBuild");
+    
+    return APP_ERR_OK;
+}
+
+APP_ERROR AscendIndexCagraImpl::executeNNdescentIteration(int64_t n,
+                                                          const std::vector<int>& oldForwardEdgeCounts,
+                                                          const std::vector<int>& newForwardEdgeCounts)
+{
+    auto streamPtr = pResources->getDefaultStream();
+    auto stream = streamPtr->GetStream();
+    auto &mem = pResources->getMemoryManager();
+    
+    AscendTensor<uint32_t, DIMS_2> currentGraphDevice(mem, {static_cast<int>(n), static_cast<int>(buildConfig.graphDegree)}, stream);
+    size_t graphElements = static_cast<size_t>(n) * static_cast<size_t>(buildConfig.graphDegree);
+    auto ret = aclrtMemcpy(currentGraphDevice.data(), currentGraphDevice.getSizeInBytes(),
+                           currentGraph.get(), graphElements * sizeof(uint32_t), ACL_MEMCPY_HOST_TO_DEVICE);
+    ASCEND_THROW_IF_NOT_MSG(ret == APP_ERR_OK, "Failed to copy current graph to device!");
+    
+    AscendTensor<uint32_t, DIMS_2> newCandidatesDevice(mem, {static_cast<int>(n), static_cast<int>(buildConfig.graphDegree)}, stream);
+    size_t candidateElements = static_cast<size_t>(n) * static_cast<size_t>(buildConfig.graphDegree);
+    ret = aclrtMemcpy(newCandidatesDevice.data(), newCandidatesDevice.getSizeInBytes(),
+                      newCandidates.get(), candidateElements * sizeof(uint32_t), ACL_MEMCPY_HOST_TO_DEVICE);
+    ASCEND_THROW_IF_NOT_MSG(ret == APP_ERR_OK, "Failed to copy new candidates to device!");
+    
+    AscendTensor<int, DIMS_1> oldForwardEdgeCountsDevice(mem, {static_cast<int>(n)}, stream);
+    ret = aclrtMemcpy(oldForwardEdgeCountsDevice.data(), oldForwardEdgeCountsDevice.getSizeInBytes(),
+                      oldForwardEdgeCounts.data(), n * sizeof(int), ACL_MEMCPY_HOST_TO_DEVICE);
+    ASCEND_THROW_IF_NOT_MSG(ret == APP_ERR_OK, "Failed to copy old forward edge counts to device!");
+    
+    AscendTensor<int, DIMS_1> newForwardEdgeCountsDevice(mem, {static_cast<int>(n)}, stream);
+    ret = aclrtMemcpy(newForwardEdgeCountsDevice.data(), newForwardEdgeCountsDevice.getSizeInBytes(),
+                      newForwardEdgeCounts.data(), n * sizeof(int), ACL_MEMCPY_HOST_TO_DEVICE);
+    ASCEND_THROW_IF_NOT_MSG(ret == APP_ERR_OK, "Failed to copy new forward edge counts to device!");
+    
+    ret = synchronizeStream(stream);
+    ASCEND_THROW_IF_NOT_MSG(ret == APP_ERR_OK, "Failed to synchronize stream!");
+    
+    AscendTensor<uint64_t, DIMS_1> numSamplesTensor(mem, {1}, stream);
+    uint64_t numSamplesValue = static_cast<uint64_t>(buildConfig.graphDegree);
+    auto aclRet = aclrtMemcpy(numSamplesTensor.data(), numSamplesTensor.getSizeInBytes(),
+                              &numSamplesValue, sizeof(uint64_t), ACL_MEMCPY_HOST_TO_DEVICE);
+    ASCEND_THROW_IF_NOT_MSG(aclRet == ACL_ERROR_NONE, "Failed to copy numSamples to device!");
+    
+    AscendTensor<uint32_t, DIMS_2> newReverseGraphDevice(mem, {static_cast<int>(n), static_cast<int>(buildConfig.graphDegree)}, stream);
+    AscendTensor<int, DIMS_1> newBackwardEdgeCountsDevice(mem, {static_cast<int>(n)}, stream);
+    // 为新邻居候选图构建反向图
+    ret = runAddReverseEdges(n, buildConfig.graphDegree, numSamplesTensor, newCandidatesDevice, newForwardEdgeCountsDevice,
+                             newReverseGraphDevice, newBackwardEdgeCountsDevice);
+    ASCEND_THROW_IF_NOT_MSG(ret == APP_ERR_OK, "runAddReverseEdges for new graph failed!");
+    
+    AscendTensor<uint32_t, DIMS_2> oldReverseGraphDevice(mem, {static_cast<int>(n), static_cast<int>(buildConfig.graphDegree)}, stream);
+    AscendTensor<int, DIMS_1> oldBackwardEdgeCountsDevice(mem, {static_cast<int>(n)}, stream);
+    // 为当前邻居图构建反向图
+    ret = runAddReverseEdges(n, buildConfig.graphDegree, numSamplesTensor, currentGraphDevice, oldForwardEdgeCountsDevice,
+                             oldReverseGraphDevice, oldBackwardEdgeCountsDevice);
+    ASCEND_THROW_IF_NOT_MSG(ret == APP_ERR_OK, "runAddReverseEdges for old graph failed!");
+    
+    AscendTensor<uint32_t, DIMS_2> outputGraphDevice(mem, {static_cast<int>(n), static_cast<int>(buildConfig.graphDegree)}, stream);
+    AscendTensor<float, DIMS_2> outputDistancesDevice(mem, {static_cast<int>(n), static_cast<int>(buildConfig.graphDegree)}, stream);
+    
+    // 执行本地连接算子，将新候选邻居与当前邻居图合并
+    ret = runLocalJoinKernel(n, newCandidatesDevice, newReverseGraphDevice,
+                             newForwardEdgeCountsDevice, newBackwardEdgeCountsDevice,
+                             currentGraphDevice, oldReverseGraphDevice,
+                             oldForwardEdgeCountsDevice, oldBackwardEdgeCountsDevice,
+                             preprocessedDataDevice->data(), l2NormDataDevice->data(),
+                             outputGraphDevice, outputDistancesDevice);
+    ASCEND_THROW_IF_NOT_MSG(ret == APP_ERR_OK, "runLocalJoinKernel failed!");
+    
+    auto outputGraphHost = std::make_unique<uint32_t[]>(graphElements);
+    aclRet = aclrtMemcpy(outputGraphHost.get(), graphElements * sizeof(uint32_t),
+                         outputGraphDevice.data(), outputGraphDevice.getSizeInBytes(),
+                         ACL_MEMCPY_DEVICE_TO_HOST);
+    ASCEND_THROW_IF_NOT_MSG(aclRet == ACL_ERROR_NONE, "Failed to copy output graph from device!");
+    
+    auto outputDistancesHost = std::make_unique<float[]>(graphElements);
+    aclRet = aclrtMemcpy(outputDistancesHost.get(), graphElements * sizeof(float),
+                         outputDistancesDevice.data(), outputDistancesDevice.getSizeInBytes(),
+                         ACL_MEMCPY_DEVICE_TO_HOST);
+    ASCEND_THROW_IF_NOT_MSG(aclRet == ACL_ERROR_NONE, "Failed to copy distances from device!");
+    // 对每个节点，根据距离排序并更新当前邻居图
+    for (int64_t i = 0; i < n; ++i) {
+        uint32_t* candidates = &outputGraphHost[i * buildConfig.graphDegree];
+        float* distances = &outputDistancesHost[i * buildConfig.graphDegree];
+        
+        std::vector<int> indices(buildConfig.graphDegree);
+        for (uint32_t j = 0; j < buildConfig.graphDegree; ++j) {
+            indices[j] = j;
+        }
+        
+        std::sort(indices.begin(), indices.end(),
+                    [&](int a, int b) { return distances[a] < distances[b]; });
+        
+        for (uint32_t j = 0; j < buildConfig.graphDegree; ++j) {
+            currentGraph[i * buildConfig.graphDegree + j] = candidates[indices[j]];
+        }
+    }
+
+    return APP_ERR_OK;
+}
+
+APP_ERROR AscendIndexCagraImpl::executePruneAndFilter(int64_t n,
+                                                      std::vector<uint64_t>& destNodes)
+{
+    auto streamPtr = pResources->getDefaultStream();
+    auto stream = streamPtr->GetStream();
+    auto &mem = pResources->getMemoryManager();
+    
+    size_t graphElements = static_cast<size_t>(n) * static_cast<size_t>(buildConfig.graphDegree);
+    
+    AscendTensor<uint64_t, DIMS_2> knnGraphDevice(mem, {static_cast<int>(n), static_cast<int>(buildConfig.graphDegree)}, stream);
+    
+    auto knnGraphHost = std::make_unique<uint64_t[]>(graphElements);
+    for (size_t i = 0; i < graphElements; ++i) {
+        knnGraphHost[i] = static_cast<uint64_t>(currentGraph.get()[i]);
+    }
+    
+    auto aclRet = aclrtMemcpy(knnGraphDevice.data(), knnGraphDevice.getSizeInBytes(),
+                              knnGraphHost.get(), graphElements * sizeof(uint64_t),
+                              ACL_MEMCPY_HOST_TO_DEVICE);
+    ASCEND_THROW_IF_NOT_MSG(aclRet == ACL_ERROR_NONE, "Failed to copy knn graph to device!");
+    
+    AscendTensor<uint8_t, DIMS_2> detourCountDevice(mem, {static_cast<int>(n), static_cast<int>(buildConfig.graphDegree)}, stream);
+    AscendTensor<uint32_t, DIMS_1> numNoDetourEdgesDevice(mem, {static_cast<int>(n)}, stream);
+    AscendTensor<uint64_t, DIMS_1> statsDevice(mem, {2}, stream);
+    
+    auto ret = runPrune(n, knnGraphDevice, detourCountDevice, numNoDetourEdgesDevice, statsDevice);
+    ASCEND_THROW_IF_NOT_MSG(ret == APP_ERR_OK, "runPrune failed!");
+    
+    auto detourCountHost = std::make_unique<uint8_t[]>(graphElements);
+    aclRet = aclrtMemcpy(detourCountHost.get(), graphElements * sizeof(uint8_t),
+                         detourCountDevice.data(), detourCountDevice.getSizeInBytes(),
+                         ACL_MEMCPY_DEVICE_TO_HOST);
+    ASCEND_THROW_IF_NOT_MSG(aclRet == ACL_ERROR_NONE, "Failed to copy detour count from device!");
+    
+    auto numNoDetourEdgesHost = std::make_unique<uint32_t[]>(n);
+    aclRet = aclrtMemcpy(numNoDetourEdgesHost.get(), n * sizeof(uint32_t),
+                         numNoDetourEdgesDevice.data(), numNoDetourEdgesDevice.getSizeInBytes(),
+                         ACL_MEMCPY_DEVICE_TO_HOST);
+    ASCEND_THROW_IF_NOT_MSG(aclRet == ACL_ERROR_NONE, "Failed to copy numNoDetourEdges from device!");
+    
+    auto filteredGraphHost = std::make_unique<uint64_t[]>(graphElements);
+    auto filteredGraphCountHost = std::make_unique<uint32_t[]>(n);
+    
+    for (int64_t i = 0; i < n; ++i) {
+        filteredGraphCountHost[i] = 0;
+    }
+    
+    size_t totalFilteredEdges = 0;
+    for (int64_t i = 0; i < n; ++i) {
+        uint32_t filteredCount = 0;
+        for (uint32_t j = 0; j < buildConfig.graphDegree; ++j) {
+            size_t idx = i * buildConfig.graphDegree + j;
+            if (detourCountHost[idx] == 0) {
+                uint64_t neighbor = knnGraphHost[idx];
+                filteredGraphHost[i * buildConfig.graphDegree + filteredCount] = neighbor;
+                filteredCount++;
+                destNodes.push_back(neighbor);
+            }
+        }
+        filteredGraphCountHost[i] = filteredCount;
+        totalFilteredEdges += filteredCount;
+    }
+    
+    return APP_ERR_OK;
+}
+
+APP_ERROR AscendIndexCagraImpl::executeReverseGraphGeneration(int64_t n,
+                                                              const std::vector<uint64_t>& destNodes,
+                                                              uint32_t* graph)
+{
+    auto streamPtr = pResources->getDefaultStream();
+    auto stream = streamPtr->GetStream();
+    auto &mem = pResources->getMemoryManager();
+    
+    size_t graphElements = static_cast<size_t>(n) * static_cast<size_t>(buildConfig.graphDegree);
+    
+    AscendTensor<uint64_t, DIMS_1> destNodesDevice(mem, {static_cast<int>(destNodes.size())}, stream);
+    
+    if (destNodes.size() > 0) {
+        auto aclRet = aclrtMemcpy(destNodesDevice.data(), destNodesDevice.getSizeInBytes(),
+                                  destNodes.data(), destNodes.size() * sizeof(uint64_t),
+                                  ACL_MEMCPY_HOST_TO_DEVICE);
+        ASCEND_THROW_IF_NOT_MSG(aclRet == ACL_ERROR_NONE, "Failed to copy dest nodes to device!");
+    }
+    
+    AscendTensor<uint64_t, DIMS_2> revGraphDevice(mem, {static_cast<int>(n), static_cast<int>(buildConfig.graphDegree)}, stream);
+    AscendTensor<uint32_t, DIMS_1> revGraphCountDevice(mem, {static_cast<int>(n)}, stream);
+    
+    auto ret = runMakeRevGraph(n, destNodesDevice, revGraphDevice, revGraphCountDevice);
+    ASCEND_THROW_IF_NOT_MSG(ret == APP_ERR_OK, "runMakeRevGraph failed!");
+    
+    if (destNodes.size() > 0) {
+        auto revGraphHost = std::make_unique<uint64_t[]>(graphElements);
+        auto aclRet = aclrtMemcpy(revGraphHost.get(), graphElements * sizeof(uint64_t),
+                                  revGraphDevice.data(), revGraphDevice.getSizeInBytes(),
+                                  ACL_MEMCPY_DEVICE_TO_HOST);
+        if (aclRet == ACL_ERROR_NONE) {
+            for (size_t i = 0; i < graphElements; ++i) {
+                graph[i] = static_cast<uint32_t>(revGraphHost[i]);
+            }
+        }
+    }
+    
+    return APP_ERR_OK;
+}
+
+APP_ERROR AscendIndexCagraImpl::buildGraphImpl(int64_t n, const float* data, uint32_t* graph)
+{
+    APP_LOG_INFO("Executing complete graph build pipeline\n");
+    
+    auto ret = prepareGraphBuild(n, data, graph);
+    ASCEND_THROW_IF_NOT_MSG(ret == APP_ERR_OK, "prepareGraphBuild failed!");
+    
+    std::vector<int> oldForwardEdgeCounts(n);
+    std::vector<int> newForwardEdgeCounts(n);
+    
+    ret = sampleOldNewNeighbors(n, currentGraph.get(), newCandidates.get(),
+                                oldForwardEdgeCounts, newForwardEdgeCounts);
+    ASCEND_THROW_IF_NOT_MSG(ret == APP_ERR_OK, "sampleOldNewNeighbors failed!");
+    
+    const int MAX_ITERATIONS = 10;
+    for (int iteration = 0; iteration < MAX_ITERATIONS; ++iteration) {
+
+        APP_LOG_INFO("[TIMING] === NN-Descent Iteration %d/%d START ===\n", iteration + 1, MAX_ITERATIONS);
+        ret = executeNNdescentIteration(n, oldForwardEdgeCounts, newForwardEdgeCounts);
+        ASCEND_THROW_IF_NOT_MSG(ret == APP_ERR_OK, "executeNNdescentIteration failed!");
+        APP_LOG_INFO("[TIMING] === NN-Descent Iteration %d/%d END ===\n", iteration + 1, MAX_ITERATIONS);
+        
+        ret = sampleOldNewNeighbors(n, currentGraph.get(), newCandidates.get(),
+                                    oldForwardEdgeCounts, newForwardEdgeCounts);
+        ASCEND_THROW_IF_NOT_MSG(ret == APP_ERR_OK, "sampleOldNewNeighbors for next iteration failed!");
+    }
+    
+    size_t graphElements = static_cast<size_t>(n) * static_cast<size_t>(buildConfig.graphDegree);
+    ret = memcpy_s(graph, graphElements * sizeof(uint32_t), currentGraph.get(), graphElements * sizeof(uint32_t));
+    APPERR_RETURN_IF_NOT_LOG(ret == 0, APP_ERR_INNER_ERROR, "memcpy_s failed in buildGraphImpl");
+    
+    std::vector<uint64_t> destNodes;
+    
+    ret = executePruneAndFilter(n, destNodes);
+    ASCEND_THROW_IF_NOT_MSG(ret == APP_ERR_OK, "executePruneAndFilter failed!");
+    
+    ret = executeReverseGraphGeneration(n, destNodes, graph);
+    ASCEND_THROW_IF_NOT_MSG(ret == APP_ERR_OK, "executeReverseGraphGeneration failed!");
+    
+    currentGraph.reset();
+    newCandidates.reset();
+    
+    APP_LOG_INFO("NN-Descent iteration completed, %d iterations, graph size: %zu\n", MAX_ITERATIONS, graphElements);
+    
+    return APP_ERR_OK;
+}
+
+APP_ERROR AscendIndexCagraImpl::saveGraphToFile(const std::string& filePath, const uint32_t* graph, size_t numElements)
+{
+    APP_LOG_INFO("Saving graph to file: %s, elements: %zu\n", filePath.c_str(), numElements);
+    
+    FILE* fp = fopen(filePath.c_str(), "wb");
+    APPERR_RETURN_IF_FMT(fp == nullptr, APP_ERR_INNER_ERROR,
+                        "Failed to open file for writing: %s", filePath.c_str());
+    
+    size_t bytesToWrite = numElements * sizeof(uint32_t);
+    size_t written = fwrite(graph, sizeof(uint32_t), numElements, fp);
+    
+    if (written != numElements) {
+        fclose(fp);
+        APPERR_RETURN_IF_FMT(true, APP_ERR_INNER_ERROR,
+                             "Failed to write complete graph data to file: %s, expected %zu elements, wrote %zu",
+                             filePath.c_str(), numElements, written);
+    }
+    
+    int ret = fclose(fp);
+    ASCEND_THROW_IF_NOT_MSG(ret == 0, "Failed to close file!");
+    
+    APP_LOG_INFO("Graph saved successfully to %s, size: %zu bytes\n", filePath.c_str(), bytesToWrite);
+    
     return APP_ERR_OK;
 }
 
