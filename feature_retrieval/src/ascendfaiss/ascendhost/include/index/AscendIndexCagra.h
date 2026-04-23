@@ -28,7 +28,7 @@ struct IndexCagraInitParams {
 
     int dim = 128;
     int graph_degree = 64;
-    const std::vector<int>& deviceList = {0};
+    std::vector<int> deviceList = {0};
     int64_t ascendResourceSize = DEFAULT_MEM;
 };
 
@@ -51,6 +51,22 @@ struct IndexCagraSearchParams {
 };
 
 // ==============================================
+// 【CAGRA 构图配置】：构图时的参数配置
+// ==============================================
+struct IndexCagraBuildConfig {
+    IndexCagraBuildConfig() = default;
+
+    IndexCagraBuildConfig(uint32_t graph_degree, int64_t data_size)
+        : graphDegree(graph_degree),
+          dataSize(data_size)
+    {
+    }
+
+    uint32_t graphDegree = 32;           // 图的度数（K值）
+    int64_t dataSize = 0;                // 数据大小（数据点数量）
+};
+
+// ==============================================
 // CAGRA 索引类
 // ==============================================
 class AscendIndexCagra {
@@ -63,6 +79,10 @@ public:
 
     // ====================== 图结构 + 向量库 ======================
     APP_ERROR AddGraph(const std::vector<uint32_t>& graphData, const std::string& saveBinPath);
+
+    // ====================== 构图接口 ======================
+    APP_ERROR BuildGraph(int64_t n, const float* data, const std::string& graphFilePath, 
+                         const IndexCagraBuildConfig& buildConfig);
 
     // ====================== 检索接口 ======================
     APP_ERROR Search(int n, const float* queryData, int topK, const uint32_t* graph, const uint32_t* hash,
