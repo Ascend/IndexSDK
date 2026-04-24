@@ -31,8 +31,6 @@ constexpr uint32_t FLOAT_DATA_BLOCK_SIZE = 8;
 constexpr uint16_t IP_READY_ID = 1;
 constexpr float SCALAR = -2.0;
 constexpr uint8_t SYNC_MODE2 = 2;
-constexpr uint32_t MIN_DIST_RESULT_BASE_SIZE = 2;
-constexpr uint32_t REDUCE_BASE_SIZE = 64;
 constexpr uint32_t FLAG_ALIGN = 32;
 }  // namespace
 
@@ -95,7 +93,6 @@ private:
     uint32_t nBlockNum = 0;
     uint32_t totalTaskNum = 0;
     uint32_t usedCoreNum = 0;
-    uint32_t curReduceRepeatTimePerBatch = 0;
 };
 
 __aicore__ inline void AscendcIvfpqSubspaceDistance::Init(GM_ADDR query, GM_ADDR codeBook, GM_ADDR distance,
@@ -122,8 +119,6 @@ __aicore__ inline void AscendcIvfpqSubspaceDistance::Init(GM_ADDR query, GM_ADDR
 
     queryNormBrcbUb = queryNormBrcbBuf.Get<float>();
     ipGm.SetGlobalBuffer((__gm__ float *)workspace);
-
-    curReduceRepeatTimePerBatch = nBlockTilePerVec / REDUCE_BASE_SIZE;
 }
 
 __aicore__ inline void AscendcIvfpqSubspaceDistance::ParseTilingData(
@@ -182,7 +177,7 @@ __aicore__ inline void AscendcIvfpqSubspaceDistance::ComputeDistance(uint32_t ta
 
     // step4: 将当前vec负责的一半内积结果搬入UB, 并逐元素乘-2
     ComputeIpMuls(ipOffset);  // -> ipUb[batch, nBlockTilePerVec]
-    // AscendC::PipeBarrier<PIPE_V>();
+    AscendC::PipeBarrier<PIPE_V>();
 
     // step5: 计算Add: codeBookNormBrcbUb + queryNormBrcbUb + ipUb
     AddDistance();      // -> distanceUb[batch, nBlockTilePerVec]
@@ -201,6 +196,7 @@ __aicore__ inline void AscendcIvfpqSubspaceDistance::ComputeQueryL2Norm(uint32_t
     uint16_t dstGap = 0;
     DataCopyParams repeatParams{blockCount, blockLen, srcGap, dstGap};
     AscendC::DataCopy(queryEnqueUb, queryGm[subSpaceIdx * this->dSub], repeatParams);
+    AscendC::PipeBarrier<PIPE_ALL>();
     queryQueue.EnQue(queryEnqueUb);
 
     // 计算L2Norm
@@ -225,6 +221,7 @@ __aicore__ inline void AscendcIvfpqSubspaceDistance::ComputeQueryL2Norm(uint32_t
     const uint32_t dstShape_[] = {this->batch, nBlockTilePerVec};
     const uint32_t srcShape_[] = {this->batch, CONST_ONE};
     AscendC::Broadcast<float, CONST_TWO, CONST_ONE>(queryNormBrcbUb, reduceSumResult, dstShape_, srcShape_);
+    AscendC::PipeBarrier<PIPE_V>();
     queryQueue.FreeTensor(queryDequeUb);
 }
 
@@ -233,6 +230,7 @@ __aicore__ inline void AscendcIvfpqSubspaceDistance::ComputeCodeBookL2Norm(uint3
     // copyin
     LocalTensor<float> codeBookEnqueUb = codeBookQueue.AllocTensor<float>();
     AscendC::DataCopy(codeBookEnqueUb, codeBookGm[codeBookOffset], nBlockTilePerVec * dSub);
+    AscendC::PipeBarrier<PIPE_ALL>();
     codeBookQueue.EnQue(codeBookEnqueUb);
 
     // 计算L2Norm
@@ -258,6 +256,7 @@ __aicore__ inline void AscendcIvfpqSubspaceDistance::ComputeCodeBookL2Norm(uint3
     const uint32_t srcShape_[] = {CONST_ONE, nBlockTilePerVec};
     distanceEnqueUb = distResultQueue.AllocTensor<float>();
     AscendC::Broadcast<float, CONST_TWO, 0>(distanceEnqueUb, codeBookNormResult, dstShape_, srcShape_);
+    AscendC::PipeBarrier<PIPE_V>();
     codeBookQueue.FreeTensor(codeBookDequeUb);
 }
 
@@ -271,10 +270,12 @@ __aicore__ inline void AscendcIvfpqSubspaceDistance::ComputeIpMuls(uint32_t ipOf
         static_cast<uint16_t>((this->nBlockTile - nBlockTilePerVec) / FLOAT_DATA_BLOCK_SIZE),
         0};
     AscendC::DataCopy(ipEnqueUb, ipGm[ipOffset], copyParams);
+    AscendC::PipeBarrier<PIPE_ALL>();
     ipQueue.EnQue(ipEnqueUb);
     // muls -2
     ipUb = ipQueue.DeQue<float>();
     AscendC::Muls(ipUb, ipUb, SCALAR, this->batch * nBlockTilePerVec);
+    AscendC::PipeBarrier<PIPE_V>();
     ipQueue.FreeTensor(ipEnqueUb);
 }
 
@@ -299,6 +300,7 @@ __aicore__ inline void AscendcIvfpqSubspaceDistance::CopyOutDistance(uint32_t nB
         0,                                      // srcGap
         static_cast<uint16_t>((this->subSpaceNum * this->kSub - nBlockTilePerVec) / FLOAT_DATA_BLOCK_SIZE)}; // dstGap
     AscendC::DataCopy(distanceGm[distanceOffset], distanceDequeUb, copyParams);
+    AscendC::PipeBarrier<PIPE_ALL>();
     distResultQueue.FreeTensor(distanceDequeUb);
 }
 
