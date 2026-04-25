@@ -161,6 +161,30 @@ void AscendIndexIVFPQImpl::copyFromPQCodes(const faiss::IndexIVFPQ* index)
 
     uploadToDevicesParallel(deviceAssignments, invlists);
 
+    // Build ID to listId and deviceId mapping for delete support
+    {
+        std::lock_guard<std::mutex> lock(mapMutex);
+        idToListMap.clear();
+        idToDeviceMap.clear();
+        listInfos.clear();
+        listInfos.resize(nlist);
+
+        for (size_t devIdx = 0; devIdx < deviceCount; devIdx++) {
+            int deviceId = indexConfig.deviceList[devIdx];
+            for (const auto& [listNo, listSize] : deviceAssignments[devIdx]) {
+                if (listSize == 0) continue;
+
+                const faiss::idx_t* srcIds = invlists->get_ids(listNo);
+                for (size_t i = 0; i < listSize; i++) {
+                    idx_t id = srcIds[i];
+                    idToListMap[id] = listNo;
+                    idToDeviceMap[id] = deviceId;
+                    listInfos[listNo].idSet.insert(id);
+                }
+            }
+        }
+    }
+
     this->intf_->ntotal = index->ntotal;
     this->intf_->is_trained = index->is_trained;
 
@@ -479,6 +503,9 @@ void AscendIndexIVFPQImpl::addImpl(int n, const float* x, const idx_t* ids)
 
         auto it = assignCounts.find(listId);
         if (it != assignCounts.end()) {
+            int deviceIdx = it->second.addDeviceIdx;
+            deviceAddNumMap[listId][deviceIdx]++;
+            idToDeviceMap[ids[i]] = indexConfig.deviceList[deviceIdx];
             it->second.Add(pqCodes.data() + i * pq.M, ids + i);
             continue;
         }
@@ -489,6 +516,8 @@ void AscendIndexIVFPQImpl::addImpl(int n, const float* x, const idx_t* ids)
                 break;
             }
         }
+        deviceAddNumMap[listId][devIdx]++;
+        idToDeviceMap[ids[i]] = indexConfig.deviceList[devIdx];
         assignCounts.emplace(listId, AscendIVFAddInfo(devIdx, deviceCnt, code_size));
         assignCounts.at(listId).Add(pqCodes.data() + i * code_size, ids + i);
     }
@@ -866,38 +895,34 @@ void AscendIndexIVFPQImpl::searchImpl(int n, const float* x, int k, float* dista
 void AscendIndexIVFPQImpl::deleteImpl(int n, const idx_t* ids)
 {
     APP_LOG_INFO("AscendIndexIVFPQImpl deleteImpl operation started: n=%d.\n", n);
-    size_t deviceCnt = indexConfig.deviceList.size();
-    std::unordered_map<int, std::vector<idx_t>> idMap;
+
+    // Group by (deviceId, listId) pair
+    std::map<std::pair<int, idx_t>, std::vector<idx_t>> deviceListIdMap;
 
     for (int i = 0; i < n; i++) {
         idx_t id = ids[i];
+        int deviceId = findDeviceId(id);
         idx_t listId = findListId(id);
-        if (listId >= 0 && listId < this->nlist) {
-            idMap[listId].push_back(id);
+
+        if (deviceId >= 0 && listId >= 0 && listId < this->nlist) {
+            deviceListIdMap[{deviceId, listId}].push_back(id);
         } else {
-            APP_LOG_WARNING("Could not find valid listId for ID %ld, skipping\n", id);
+            APP_LOG_WARNING("Could not find valid mapping for ID %ld, skipping\n", id);
         }
     }
 
-    for (auto& centroid : idMap) {
-        int listId = centroid.first;
-        auto& deleteIds = centroid.second;
+    for (auto& entry : deviceListIdMap) {
+        int deviceId = entry.first.first;
+        idx_t listId = entry.first.second;
+        auto& deleteIds = entry.second;
 
         if (deleteIds.empty()) {
             continue;
         }
 
-        size_t devIdx = 0;
-        for (size_t j = 1; j < deviceCnt; j++) {
-            if (deviceAddNumMap[listId][j] < deviceAddNumMap[listId][devIdx]) {
-                devIdx = j;
-                break;
-            }
-        }
-
         std::vector<ascend_idx_t> ascendIds(deleteIds.begin(), deleteIds.end());
 
-        IndexParam<void, void, ascend_idx_t> param(indexConfig.deviceList[devIdx], deleteIds.size(), 0, 0);
+        IndexParam<void, void, ascend_idx_t> param(deviceId, deleteIds.size(), 0, 0);
         param.listId = listId;
         param.label = ascendIds.data();
         deleteFromIVFPQ(param);
@@ -937,6 +962,23 @@ idx_t AscendIndexIVFPQImpl::findListId(idx_t id)
     return fallbackListId;
 }
 
+int AscendIndexIVFPQImpl::findDeviceId(idx_t id)
+{
+    std::lock_guard<std::mutex> lock(mapMutex);
+
+    auto it = idToDeviceMap.find(id);
+    if (it != idToDeviceMap.end()) {
+        return it->second;
+    }
+
+    APP_LOG_WARNING("ID %ld not found in device mapping, attempting to find in device data\n", id);
+
+    size_t deviceCnt = indexConfig.deviceList.size();
+    int fallbackDeviceId = indexConfig.deviceList[id % deviceCnt];
+    APP_LOG_WARNING("ID %ld not found, using fallback deviceId: %d\n", id, fallbackDeviceId);
+    return fallbackDeviceId;
+}
+
 void AscendIndexIVFPQImpl::updateIdMapping(const std::vector<idx_t>& ids, const std::vector<idx_t>& listIds)
 {
     std::lock_guard<std::mutex> lock(mapMutex);
@@ -971,6 +1013,7 @@ void AscendIndexIVFPQImpl::removeIdMapping(const std::vector<idx_t>& ids)
             }
             idToListMap.erase(it);
         }
+        idToDeviceMap.erase(id);
     }
     APP_LOG_DEBUG("Removed batch mapping for %zu IDs\n", ids.size());
 }

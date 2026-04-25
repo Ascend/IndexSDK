@@ -61,6 +61,8 @@ public:
 
     idx_t findListId(idx_t id);
 
+    int findDeviceId(idx_t id);
+
     void updateIdMapping(const std::vector<idx_t>& ids, const std::vector<idx_t>& listIds);
 
     void removeIdMapping(const std::vector<idx_t>& ids);
@@ -157,6 +159,7 @@ private:
     AscendIndexIVFPQConfig ivfPQConfig;
 
     std::unordered_map<idx_t, idx_t> idToListMap;
+    std::unordered_map<idx_t, int> idToDeviceMap;
 
     std::mutex mapMutex;
 

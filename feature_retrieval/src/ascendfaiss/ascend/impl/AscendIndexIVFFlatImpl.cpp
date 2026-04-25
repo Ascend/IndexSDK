@@ -264,8 +264,8 @@ void AscendIndexIVFFlatImpl::addImpl(int n, const float *x, const idx_t *ids)
         FAISS_THROW_IF_NOT(listId >= 0 && listId < this->nlist);
         auto it = assignCounts.find(listId);
         if (it != assignCounts.end()) {
-            it->second.Add(const_cast<float *>(x) + i * dim, ids + i);
             deviceAddNumMap[listId][it->second.addDeviceIdx]++;
+            it->second.Add(const_cast<float *>(x) + i * dim, ids + i);
             continue;
         }
         size_t devIdx = 0;

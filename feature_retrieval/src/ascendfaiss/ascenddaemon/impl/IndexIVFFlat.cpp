@@ -831,9 +831,7 @@ size_t IndexIVFFlat::removeIds(const ascend::IDSelector& sel)
             hasMoved = true;
         }
         if (!delIndices.empty()) {
-            std::vector<idx_t> sortData(delIndices.begin(), delIndices.end());
-            std::sort(sortData.begin(), sortData.end(), std::greater<idx_t>());
-            for (const auto index : sortData) {
+            for (const auto index : delIndices) {
                 moveVectorForward(id, listVecNum[id] - 1, index);
                 removeCnt++;
                 --this->ntotal;
