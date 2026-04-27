@@ -193,7 +193,7 @@ void AscendIndexIVFRaBitQImpl::initFlatAtFp32()
  
 void AscendIndexIVFRaBitQImpl::checkParams() const
 {
-    FAISS_THROW_IF_NOT_MSG(this->intf_->metric_type == MetricType::METRIC_L2, "Unsupported metric type");
+    FAISS_THROW_IF_NOT_MSG(this->intf_->metric_type == MetricType::METRIC_L2 || this->intf_->metric_type == MetricType::METRIC_INNER_PRODUCT, "Unsupported metric type");
     FAISS_THROW_IF_NOT_FMT(std::find(NLISTS.begin(), NLISTS.end(), this->nlist) != NLISTS.end(),
                            "Unsupported nlists %d", this->nlist);
     FAISS_THROW_IF_NOT_FMT(std::find(DIMS.begin(), DIMS.end(), this->intf_->d) != DIMS.end(),
@@ -379,8 +379,12 @@ std::shared_ptr<::ascend::Index> AscendIndexIVFRaBitQImpl::createIndex(int devic
     APP_LOG_INFO("AscendIndexIVFRaBitQ  createIndex operation started, device id: %d\n", deviceId);
     auto res = aclrtSetDevice(deviceId);
     FAISS_THROW_IF_NOT_FMT(res == 0, "acl set device failed %d, deviceId: %d", res, deviceId);
+    std::string metric = "L2";
+    if (this->intf_->metric_type == MetricType::METRIC_INNER_PRODUCT) {
+        metric = "IP";
+    }
     std::shared_ptr<::ascend::IndexIVF> index =
-        std::make_shared<::ascend::IndexIVFRaBitQ>(nlist, this->intf_->d, nprobe, indexConfig.resourceSize);
+        std::make_shared<::ascend::IndexIVFRaBitQ>(nlist, this->intf_->d, nprobe, metric, indexConfig.resourceSize);
     auto ret = index->init();
     FAISS_THROW_IF_NOT_FMT(ret == ::ascend::APP_ERR_OK, "Failed to create index ivf rabitq, result is %d", ret);
 

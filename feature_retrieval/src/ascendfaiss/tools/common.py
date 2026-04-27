@@ -126,6 +126,7 @@ class OpJsonGenerator:
         self.op_name = op_name
         self.input_desc = []
         self.output_desc = []
+        self.attr = []
 
     def add_input(self, data_format: str, data_shape: list, data_type: str):
         self.input_desc.append({"format": data_format, "shape": data_shape, "type": data_type})
@@ -141,10 +142,15 @@ class OpJsonGenerator:
         self.output_desc.append({"format": data_format, "shape": data_shape,
                                 "shape_range": shape_range, "type": data_type})
 
+    def add_attr(self, data_name: str, data_param_type: str, data_type: str, data_value):
+        self.attr.append({"name": data_name, "param_type": data_param_type,
+                         "type": data_type, "value": data_value})
+
     def generate_obj(self):
         obj = {"op": self.op_name}
         obj['input_desc'] = self.input_desc
         obj['output_desc'] = self.output_desc
+        obj['attr'] = self.attr
         return obj
 
 

@@ -34,10 +34,16 @@ const int KB = 1024;
 const int IVF_RABITQ_BLOCK_SIZE = 16384 * 2;
 const int SCAN_BIT = 8;
 const int LUT_NUM = std::pow(2, SCAN_BIT);
-IndexIVFRaBitQ::IndexIVFRaBitQ(int numList, int dim, int nprobes, int64_t resourceSize)
+IndexIVFRaBitQ::IndexIVFRaBitQ(int numList, int dim, int nprobes, const std::string& metricType, int64_t resourceSize)
     : IndexIVF(numList, dim * 4, dim, nprobes, resourceSize), blockSize(IVF_RABITQ_BLOCK_SIZE)
 {
     ASCEND_THROW_IF_NOT(dim % CUBE_ALIGN == 0);
+    ASCEND_THROW_IF_NOT_MSG(metricType == "L2" || metricType == "IP", "Unsupported metric type!");
+    if (metricType == "L2") {
+        metric = MetricType::METRIC_L2;
+    } else {
+        metric = MetricType::METRIC_INNER_PRODUCT;
+    }
     isTrained = false;
     searchBatchSizes = {64, 32, 16, 8, 4, 2, 1}; // supported batch size
     listVecNum = std::vector<size_t>(numList, 0);
@@ -81,8 +87,8 @@ IndexIVFRaBitQ::IndexIVFRaBitQ(int numList, int dim, int nprobes, int64_t resour
     ASCEND_THROW_IF_NOT_MSG(ret == APP_ERR_OK, "resetIndexRotateL2Op failed!");
     ret = resetIndexCodeAndPreComputeOp();
     ASCEND_THROW_IF_NOT_MSG(ret == APP_ERR_OK, "resetIndexCodeAndPreComputeOp failed!");
-    ret = resetQueryRotateOp();
-    ASCEND_THROW_IF_NOT_MSG(ret == APP_ERR_OK, "resetQueryRotateOp failed!");
+    ret = resetQueryRotateL2Op();
+    ASCEND_THROW_IF_NOT_MSG(ret == APP_ERR_OK, "resetQueryRotateL2Op failed!");
     ret = resetQueryLUTOp();
     ASCEND_THROW_IF_NOT_MSG(ret == APP_ERR_OK, "resetQueryLUTOp failed!");
 }
@@ -480,6 +486,12 @@ APP_ERROR IndexIVFRaBitQ::resetIndexCodeAndPreComputeOp()
         desc.addOutputTensorDesc(ACL_UINT8, indexCodeShape.size(), indexCodeShape.data(), ACL_FORMAT_ND);
         desc.addOutputTensorDesc(ACL_FLOAT, l2ResultShape.size(), l2ResultShape.data(), ACL_FORMAT_ND);
         desc.addOutputTensorDesc(ACL_FLOAT, l1ResultShape.size(), l1ResultShape.data(), ACL_FORMAT_ND);
+        if (this->metric == MetricType::METRIC_L2) {
+            aclopSetAttrInt(desc.opAttr, "metric_type", 0);
+        } else if (this->metric == MetricType::METRIC_INNER_PRODUCT) {
+            aclopSetAttrInt(desc.opAttr, "metric_type", 1);
+        }
+        
         op.reset();
         op = CREATE_UNIQUE_PTR(AscendOperator, desc);
         return op->init();
@@ -520,47 +532,55 @@ void IndexIVFRaBitQ::runIndexCodeAndPreComputeOp(AscendTensor<int32_t, DIMS_1> &
     return;
 }
 
-APP_ERROR IndexIVFRaBitQ::resetQueryRotateOp()
+APP_ERROR IndexIVFRaBitQ::resetQueryRotateL2Op()
 {
-    auto queryRotateOpReset = [&](std::unique_ptr<AscendOperator> &op, int batch) {
-        AscendOpDesc desc("MatmulAtFP32");
+    auto queryRotateL2OpReset = [&](std::unique_ptr<AscendOperator> &op, int batch) {
+        AscendOpDesc desc("RotateAndL2AtFP32");
         std::vector<int64_t> queryShape({ batch, dims });
+        std::vector<int64_t> sizeShape({ 1 });
         std::vector<int64_t> matrixShape({ dims, dims });
         
         std::vector<int64_t> rotateResultShape({ batch, dims });
+        std::vector<int64_t> l2ResultShape({ batch });
         desc.addInputTensorDesc(ACL_FLOAT, queryShape.size(), queryShape.data(), ACL_FORMAT_ND);
+        desc.addInputTensorDesc(ACL_INT32, sizeShape.size(), sizeShape.data(), ACL_FORMAT_ND);
         desc.addInputTensorDesc(ACL_FLOAT, matrixShape.size(), matrixShape.data(), ACL_FORMAT_ND);
         desc.addOutputTensorDesc(ACL_FLOAT, rotateResultShape.size(), rotateResultShape.data(), ACL_FORMAT_ND);
+        desc.addOutputTensorDesc(ACL_FLOAT, l2ResultShape.size(), l2ResultShape.data(), ACL_FORMAT_ND);
         op.reset();
         op = CREATE_UNIQUE_PTR(AscendOperator, desc);
         return op->init();
     };
     for (auto batch: searchBatchSizes) {
-        queryRotateOps[batch] = std::unique_ptr<AscendOperator>(nullptr);
-        APPERR_RETURN_IF_NOT_LOG(queryRotateOpReset(queryRotateOps[batch], batch),
+        queryRotateL2Ops[batch] = std::unique_ptr<AscendOperator>(nullptr);
+        APPERR_RETURN_IF_NOT_LOG(queryRotateL2OpReset(queryRotateL2Ops[batch], batch),
                                  APP_ERR_ACL_OP_LOAD_MODEL_FAILED, "L1 distance op init failed");
     }
     return APP_ERR_OK;
 }
 
-void IndexIVFRaBitQ::runQueryRotateOp(int batch, AscendTensor<float, DIMS_2> &queries,
-                                      AscendTensor<float, DIMS_2> &matrix,
-                                      AscendTensor<float, DIMS_2> &rotateQueries,
-                                      aclrtStream stream)
+void IndexIVFRaBitQ::runQueryRotateL2Op(int batch, AscendTensor<float, DIMS_2> &queries,
+                                        AscendTensor<int32_t, DIMS_1> &vectorSize,
+                                        AscendTensor<float, DIMS_2> &matrix,
+                                        AscendTensor<float, DIMS_2> &rotateQueries,
+                                        AscendTensor<float, DIMS_1> &queryl2,
+                                        aclrtStream stream)
 {
     AscendOperator *op = nullptr;
-    if (queryRotateOps.find(batch) != queryRotateOps.end()) {
-        op = queryRotateOps[batch].get();
+    if (queryRotateL2Ops.find(batch) != queryRotateL2Ops.end()) {
+        op = queryRotateL2Ops[batch].get();
     }
     ASCEND_THROW_IF_NOT(op);
     std::shared_ptr<std::vector<const aclDataBuffer *>> topkOpInput(
         new std::vector<const aclDataBuffer *>(), CommonUtils::AclInputBufferDelete);
     topkOpInput->emplace_back(aclCreateDataBuffer(queries.data(), queries.getSizeInBytes()));
+    topkOpInput->emplace_back(aclCreateDataBuffer(vectorSize.data(), vectorSize.getSizeInBytes()));
     topkOpInput->emplace_back(aclCreateDataBuffer(matrix.data(), matrix.getSizeInBytes()));
 
     std::shared_ptr<std::vector<aclDataBuffer *>> topkOpOutput(
         new std::vector<aclDataBuffer *>(), CommonUtils::AclOutputBufferDelete);
     topkOpOutput->emplace_back(aclCreateDataBuffer(rotateQueries.data(), rotateQueries.getSizeInBytes()));
+    topkOpOutput->emplace_back(aclCreateDataBuffer(queryl2.data(), queryl2.getSizeInBytes()));
     op->exec(*topkOpInput, *topkOpOutput, stream);
     return;
 }
@@ -805,7 +825,7 @@ void IndexIVFRaBitQ::runL2TopkOp(int batch, AscendTensor<float, DIMS_2, size_t> 
 bool IndexIVFRaBitQ::l2DisOpReset(std::unique_ptr<AscendOperator> &op, int64_t batch)
 {
     AscendOpDesc desc;
-    std::vector<int64_t> queryShape({ 1, dims });
+    std::vector<int64_t> queryl2Shape({ batch });
     std::vector<int64_t> querylutShape({ batch * dims / SCAN_BIT, LUT_NUM });
     std::vector<int64_t> centroidslutShape({ numLists * dims / SCAN_BIT, LUT_NUM });
     std::vector<int64_t> queryidShape({ CORE_NUM });
@@ -827,7 +847,7 @@ bool IndexIVFRaBitQ::l2DisOpReset(std::unique_ptr<AscendOperator> &op, int64_t b
     } else {
         desc.setOpName("DistanceIVFRabitqL2FP32");
     }
-    desc.addInputTensorDesc(ACL_FLOAT, queryShape.size(), queryShape.data(), ACL_FORMAT_ND);
+    desc.addInputTensorDesc(ACL_FLOAT, queryl2Shape.size(), queryl2Shape.data(), ACL_FORMAT_ND);
     desc.addInputTensorDesc(ACL_FLOAT, querylutShape.size(), querylutShape.data(), ACL_FORMAT_ND);
     desc.addInputTensorDesc(ACL_FLOAT, centroidslutShape.size(), centroidslutShape.data(), ACL_FORMAT_ND);
     desc.addInputTensorDesc(ACL_UINT32, queryidShape.size(), queryidShape.data(), ACL_FORMAT_ND);
@@ -843,6 +863,11 @@ bool IndexIVFRaBitQ::l2DisOpReset(std::unique_ptr<AscendOperator> &op, int64_t b
     desc.addOutputTensorDesc(ACL_FLOAT, distResultShape.size(), distResultShape.data(), ACL_FORMAT_ND);
     desc.addOutputTensorDesc(ACL_FLOAT, mixResultShape.size(), mixResultShape.data(), ACL_FORMAT_ND);
     desc.addOutputTensorDesc(ACL_UINT16, flagShapeShape.size(), flagShapeShape.data(), ACL_FORMAT_ND);
+    if (this->metric == MetricType::METRIC_L2) {
+        aclopSetAttrInt(desc.opAttr, "metric_type", 0);
+    } else if (this->metric == MetricType::METRIC_INNER_PRODUCT) {
+        aclopSetAttrInt(desc.opAttr, "metric_type", 1);
+    }
     op.reset();
     op = CREATE_UNIQUE_PTR(AscendOperator, desc);
     return op->init();
@@ -858,7 +883,7 @@ APP_ERROR IndexIVFRaBitQ::resetL2DistOp()
     return APP_ERR_OK;
 }
 
-void IndexIVFRaBitQ::runL2DistOp(AscendTensor<float, DIMS_2> &subQuery,
+void IndexIVFRaBitQ::runL2DistOp(AscendTensor<float, DIMS_1> &queryL2Vec,
                                  AscendTensor<float, DIMS_2> &subQuerylut,
                                  AscendTensor<float, DIMS_2, size_t> &centroidslut,
                                  AscendTensor<uint32_t, DIMS_1, size_t> &subQueryid,
@@ -885,7 +910,7 @@ void IndexIVFRaBitQ::runL2DistOp(AscendTensor<float, DIMS_2> &subQuery,
     ASCEND_THROW_IF_NOT(op);
     std::shared_ptr<std::vector<const aclDataBuffer *>> topkOpInput(
         new std::vector<const aclDataBuffer *>(), CommonUtils::AclInputBufferDelete);
-    topkOpInput->emplace_back(aclCreateDataBuffer(subQuery.data(), subQuery.getSizeInBytes()));
+    topkOpInput->emplace_back(aclCreateDataBuffer(queryL2Vec.data(), queryL2Vec.getSizeInBytes()));
     topkOpInput->emplace_back(aclCreateDataBuffer(subQuerylut.data(), subQuerylut.getSizeInBytes()));
     topkOpInput->emplace_back(aclCreateDataBuffer(centroidslut.data(), centroidslut.getSizeInBytes()));
     topkOpInput->emplace_back(aclCreateDataBuffer(subQueryid.data(), subQueryid.getSizeInBytes()));
@@ -1034,7 +1059,11 @@ APP_ERROR IndexIVFRaBitQ::fillL2TopkOpInputData(int k, size_t batch, size_t core
                                                 AscendTensor<int64_t, DIMS_1> &attrs)
 {
     std::vector<int64_t> attrsVec(aicpu::TOPK_IVF_RABITQ_ATTR_IDX_COUNT);
-    attrsVec[aicpu::TOPK_IVF_RABITQ_ATTR_ASC_IDX] = 1;
+    if (this->metric == MetricType::METRIC_L2) {
+        attrsVec[aicpu::TOPK_IVF_RABITQ_ATTR_ASC_IDX] = 1;
+    } else if (this->metric == MetricType::METRIC_INNER_PRODUCT) {
+        attrsVec[aicpu::TOPK_IVF_RABITQ_ATTR_ASC_IDX] = 0;
+    }
     attrsVec[aicpu::TOPK_IVF_RABITQ_ATTR_K_IDX] = k;
     attrsVec[aicpu::TOPK_IVF_RABITQ_ATTR_BURST_LEN_IDX] = IVF_RABITQ_BURST_LEN;
     attrsVec[aicpu::TOPK_IVF_RABITQ_ATTR_BLOCK_NUM_IDX] = 0;
@@ -1065,7 +1094,7 @@ APP_ERROR IndexIVFRaBitQ::fillL1TopkOpInputData(AscendTensor<int64_t, DIMS_1> &a
 }
 
 void IndexIVFRaBitQ::callL2DistanceOp(size_t batch, size_t totalBlockNum, size_t coreNum, size_t vcMaxLen,
-                                      AscendTensor<float, DIMS_2> &queryVec,
+                                      AscendTensor<float, DIMS_1> &queryL2Vec,
                                       AscendTensor<float, DIMS_2> &queryLutVec,
                                       AscendTensor<float, DIMS_2, size_t> &centroidsLutVec,
                                       AscendTensor<uint32_t, DIMS_2, size_t> &queryid,
@@ -1086,7 +1115,6 @@ void IndexIVFRaBitQ::callL2DistanceOp(size_t batch, size_t totalBlockNum, size_t
     size_t ivfRabitqBlockSize = static_cast<size_t>(IVF_RABITQ_BLOCK_SIZE);
     size_t iterNum = (totalBlockNum + coreNum - 1)/ coreNum;
     for (size_t iter = 0; iter < iterNum; iter++) {
-        AscendTensor<float, DIMS_2> subQuery(queryVec[0][0].data(), {1, dims});
         AscendTensor<uint32_t, DIMS_1, size_t> subQueryid(queryid[iter].data(), {coreNum});
         AscendTensor<uint32_t, DIMS_1, size_t> subCentroidsid(centroidsid[iter].data(), {coreNum});
         AscendTensor<float, DIMS_1, size_t> subCentroidsl2(centroidsl2[iter].data(), {coreNum});
@@ -1098,7 +1126,7 @@ void IndexIVFRaBitQ::callL2DistanceOp(size_t batch, size_t totalBlockNum, size_t
         AscendTensor<float, DIMS_2, size_t> subDis(disVec[iter].data(), {coreNum, ivfRabitqBlockSize});
         AscendTensor<float, DIMS_2, size_t> subVcMaxDis(vcMaxDisVec[iter].data(), {coreNum, vcMaxLen});
         
-        runL2DistOp(subQuery, queryLutVec, centroidsLutVec, subQueryid, subCentroidsid,
+        runL2DistOp(queryL2Vec, queryLutVec, centroidsLutVec, subQueryid, subCentroidsid,
                     subCentroidsl2, codeVec, subOffset, subBaseSize, Indexl2,
                     Indexl1, subIndexl2Offset, subIndexl1Offset, subDis, subVcMaxDis, subOpFlag, stream);
     }
@@ -1160,6 +1188,7 @@ void IndexIVFRaBitQ::resizeDistResult(size_t iterNum, size_t coreNum, size_t ivf
 }
 
 APP_ERROR IndexIVFRaBitQ::searchImplL2(AscendTensor<float, DIMS_2> &queries,
+                                       AscendTensor<float, DIMS_1> &queryL2,
                                        AscendTensor<float, DIMS_2> &queriesLut,
                                        AscendTensor<int64_t, DIMS_2> &l1TopNprobeIndicesHost,
                                        AscendTensor<float, DIMS_2> &l1TopNprobeDistsHost,
@@ -1201,7 +1230,7 @@ APP_ERROR IndexIVFRaBitQ::searchImplL2(AscendTensor<float, DIMS_2> &queries,
     AscendTensor<float, DIMS_2, size_t> outDist(mem, {batch, static_cast<size_t>(k)}, stream);
     AscendTensor<idx_t, DIMS_2, size_t> outLabel(mem, {batch, static_cast<size_t>(k)}, stream);
     runL2TopkOp(batch, disVec, vcMaxDisVec, ids, baseSize, blocknumPerQ, opFlag, attrs, outDist, outLabel, streamAicpu);
-    callL2DistanceOp(batch, totalBlockNum, coreNum, vcMaxLen, queries, queriesLut, centroidsLutVec,
+    callL2DistanceOp(batch, totalBlockNum, coreNum, vcMaxLen, queryL2, queriesLut, centroidsLutVec,
                      queryid, centroidsid, centroidsl2, offset, baseSize, indexl2offset, indexl1offset,
                      opFlag, disVec, vcMaxDisVec, codeVec, Indexl2, Indexl1, stream);
     auto ret = synchronizeStream(stream);
@@ -1219,6 +1248,7 @@ APP_ERROR IndexIVFRaBitQ::searchImplL2(AscendTensor<float, DIMS_2> &queries,
 
 APP_ERROR IndexIVFRaBitQ::searchImplL1(AscendTensor<float, DIMS_2> &queries,
                                        AscendTensor<float, DIMS_2> &rotateQueries,
+                                       AscendTensor<float, DIMS_1> &queryL2,
                                        AscendTensor<float, DIMS_2> &queriesLut,
                                        AscendTensor<int64_t, DIMS_2> &l1TopNprobeIndicesHost,
                                        AscendTensor<float, DIMS_2> &l1TopNprobeDistsHost)
@@ -1228,7 +1258,14 @@ APP_ERROR IndexIVFRaBitQ::searchImplL1(AscendTensor<float, DIMS_2> &queries,
     auto stream = streamPtr->GetStream();
     int n = queries.getSize(0);
     AscendTensor<float, DIMS_2> rotatematrixDev(OrthogonalMatrixOnDevice->data(), {dims, dims});
-    runQueryRotateOp(n, queries, rotatematrixDev, rotateQueries, stream);
+    AscendTensor<int32_t, DIMS_1> vectorSizeVec(mem, {1}, stream);
+    std::vector<int32_t> vectorSize(1, 0);
+    vectorSize[0] = n;
+    auto ret = aclrtMemcpy(vectorSizeVec.data(), sizeof(int32_t), vectorSize.data(),
+                      sizeof(int32_t), ACL_MEMCPY_HOST_TO_DEVICE);
+    APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "copy vectorSize to device failed %d", ret);
+    runQueryRotateL2Op(n, queries, vectorSizeVec, rotatematrixDev, rotateQueries, queryL2, stream);
+
     auto streamAicpuPtr = resources.getAlternateStreams()[0];
     auto streamAicpu = streamAicpuPtr->GetStream();
     // L1 dist op output: dists / vmdists / opFlag
@@ -1243,7 +1280,7 @@ APP_ERROR IndexIVFRaBitQ::searchImplL1(AscendTensor<float, DIMS_2> &queries,
     fillL1TopkOpInputData(attrsInput);
     AscendTensor<float, DIMS_2> l1TopNprobeDists(mem, {n, nprobe}, stream);
     AscendTensor<int64_t, DIMS_2> l1TopNprobeIndices(mem, {n, nprobe}, stream);
-    auto ret = synchronizeStream(stream);
+    ret = synchronizeStream(stream);
     APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "synchronizeStream default stream: %i\n", ret);
     // run l1 distance calculation
     AscendTensor<float, DIMS_2> centroidsDev(centroidsOnDevice->data(), {numLists, dims});
@@ -1280,6 +1317,7 @@ APP_ERROR IndexIVFRaBitQ::searchWithBatch(int n, const float * x, int k,
     auto stream = streamPtr->GetStream();
     AscendTensor<float, DIMS_2> queries(mem, { n, dims }, stream);
     AscendTensor<float, DIMS_2> rotateQueries(mem, {n, dims}, stream);
+    AscendTensor<float, DIMS_1> queryL2(mem, {n}, stream);
     AscendTensor<float, DIMS_2> queriesLut(mem, {n * dims / SCAN_BIT, LUT_NUM}, stream);
     auto ret = aclrtMemcpy(queries.data(), queries.getSizeInBytes(),
                            x, n * dims * sizeof(float), ACL_MEMCPY_HOST_TO_DEVICE);
@@ -1289,18 +1327,18 @@ APP_ERROR IndexIVFRaBitQ::searchWithBatch(int n, const float * x, int k,
     std::vector<float> l1TopNprobeDistsVec(n * nprobe, 0);
     AscendTensor<float, DIMS_2> l1TopNprobeDistsHost(l1TopNprobeDistsVec.data(), { n, nprobe });
 
-    ret = searchImplL1(queries, rotateQueries, queriesLut, l1TopNprobeIndicesHost, l1TopNprobeDistsHost);
+    ret = searchImplL1(queries, rotateQueries, queryL2, queriesLut, l1TopNprobeIndicesHost, l1TopNprobeDistsHost);
     APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, ret, "ivfrabitq L1 search failed! %d", ret);
 
     if (srcIndexes == nullptr) {
-        ret = searchImplL2(rotateQueries, queriesLut, l1TopNprobeIndicesHost,
+        ret = searchImplL2(rotateQueries, queryL2, queriesLut, l1TopNprobeIndicesHost,
                            l1TopNprobeDistsHost, k, distances, labels);
         APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, ret, "ivfrabitq L2 search failed! %d", ret);
         return APP_ERR_OK;
     }
     std::vector<float> topkdist(n * k, 0);
     std::vector<idx_t> topklabel(n * k, 0);
-    ret = searchImplL2(rotateQueries, queriesLut, l1TopNprobeIndicesHost,
+    ret = searchImplL2(rotateQueries, queryL2, queriesLut, l1TopNprobeIndicesHost,
                        l1TopNprobeDistsHost, k, topkdist.data(), topklabel.data());
     APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, ret, "ivfrabitq L2 search failed! %d", ret);
     refine(n, x, k, distances, labels, topkdist.data(), topklabel.data(), srcIndexes);

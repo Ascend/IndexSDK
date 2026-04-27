@@ -63,6 +63,13 @@ namespace optiling {
         IndexCodeAndPrecomputeTilingData tiling;
         // 获取平台信息（如核心数、内存大小）
         ASCENDC_RETURN_IF_NOT(context != nullptr, ge::GRAPH_FAILED);
+
+        int metricType = *(context->GetAttrs()->GetAttrPointer<int>(0));
+        if (metricType != 0 && metricType !=  1) { // 0: L2, 1: IP
+            return ge::GRAPH_FAILED;
+        }
+        tiling.set_metricType(metricType);
+
         const auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
         uint64_t ub_size = 0;
         uint64_t l1_size = 0;
@@ -163,7 +170,7 @@ namespace ge {
  *      centroidl2: 1
  * output:
  *      codes_result: indexes - centroid 取符号 -> n * d/8
- *      l2_result: ||indexes - centroid||^2 = ||indexes||^2 - 2<indexes, centroid> + ||centroid||^2 -> n
+ *      l2_result: ||indexes - centroid||^2 = ||indexes||^2 - 2<indexes, centroid> + ||centroid||^2 -> n  (IP: ||indexes - centroid||^2 - ||indexes||^2)
  *      l1_result: 2||indexes - centroid||^2 * sqrt(d) / ||indexes - centroid||1 -> n
 */
 namespace ops {
@@ -212,6 +219,7 @@ public:
             .Format({ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND});
 
+        this->Attr("metric_type").AttrType(REQUIRED).Int();
         this->SetInferShape(ge::InferShape);
         this->SetInferDataType(ge::InferDataType);
 
