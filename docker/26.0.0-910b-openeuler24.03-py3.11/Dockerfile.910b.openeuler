@@ -1,8 +1,9 @@
-FROM swr.cn-south-1.myhuaweicloud.com/ascendhub/cann:9.0.0-beta.2-a3-openeuler24.03-py3.11
+ARG CANN_VERSION=9.0.0-beta.2
+FROM swr.cn-south-1.myhuaweicloud.com/ascendhub/cann:${CANN_VERSION}-910b-openeuler24.03-py3.11
 
 WORKDIR /tmp
 
-ARG PLATFORM=A3
+ARG PLATFORM=910B
 RUN export DEBIAN_FRONTEND=noninteractive && \
     export TZ=Asia/Shanghai && \
     for repo in /etc/yum.repos.d/*.repo; do \
@@ -69,6 +70,7 @@ RUN wget https://github.com/facebookresearch/faiss/archive/v1.10.0.tar.gz -O fai
     cd ../.. && rm -f faiss-1.10.0.tar.gz && rm -rf faiss-1.10.0  && \
     cp ${install_path}/lib64/libfaiss.so /usr/local/lib64
 
+
 RUN wget https://github.com/linux-test-project/lcov/releases/download/v2.0/lcov-2.0.tar.gz  && \
     tar -xzf lcov-2.0.tar.gz && \
     cd lcov-2.0 && make install  && \
@@ -97,9 +99,10 @@ ENV GLOG_v=2 \
 
 RUN mkdir -p ${MX_INDEX_MODELPATH}
 
+ARG VERSION=26.0.0
 RUN ARCH=$(uname -m | sed 's/x86_64/x86_64/; s/aarch64/aarch64/') && \
-    wget https://mindcluster.obs.cn-north-4.myhuaweicloud.com/IndexSDK/daily/version/26.0.0/20260408.1/Ascend-mindxsdk-mxindex_26.0.0_linux-${ARCH}.run && \
-    bash Ascend-mindxsdk-mxindex*_linux-${ARCH}.run --install --platform=${PLATFORM} && \
+    wget https://gitcode.com/Ascend/IndexSDK/releases/download/v${VERSION}/Ascend-mindxsdk-mxindex_${VERSION}_linux-${ARCH}.run && \
+    bash Ascend-mindxsdk-mxindex_${VERSION}_linux-${ARCH}.run --install --platform=${PLATFORM} && \
     cd ${ASCEND_BASE}/mxIndex/ops && ./custom_opp_${ARCH}.run
 
 RUN sed -i '$a\source /usr/local/Ascend/ascend-toolkit/set_env.sh' ~/.bashrc && \
