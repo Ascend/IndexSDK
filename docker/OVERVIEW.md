@@ -37,6 +37,9 @@ Tags follow this pattern:
 | `26.0.0-910b-ubuntu22.04-py3.11`    | [Dockerfile](./9.0.0-beta-910b-ubuntu22.04-py3.11/Dockerfile.910b.ubuntu) | toolkit + Index SDK |
 | `26.0.0-310p-ubuntu22.04-py3.11`    | [Dockerfile](./9.0.0-beta-310p-ubuntu22.04-py3.11/Dockerfile.310p.ubuntu)      | toolkit + Index SDK |
 | `26.0.0-a3-ubuntu22.04-py3.11` | [Dockerfile](./9.0.0-beta-a3-ubuntu22.04-py3.11/Dockerfile.a3.ubuntu)         | toolkit + Index SDK |
+| `26.0.0-910b-openeuler24.03-py3.11`    | [Dockerfile](./9.0.0-beta-910b-openeuler24.03-py3.11/Dockerfile.910b.openeuler) | toolkit + Index SDK |
+| `26.0.0-310p-openeuler24.03-py3.11`    | [Dockerfile](./9.0.0-beta-310p-openeuler24.03-py3.11/Dockerfile.310p.openeuler)      | toolkit + Index SDK |
+| `26.0.0-a3-openeuler24.03-py3.11` | [Dockerfile](./9.0.0-beta-a3-openeuler24.03-py3.11/Dockerfile.a3.openeuler)         | toolkit + Index SDK |
 
 ---
 
