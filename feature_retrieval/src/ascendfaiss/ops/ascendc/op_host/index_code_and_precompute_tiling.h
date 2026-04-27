@@ -37,6 +37,7 @@ BEGIN_TILING_DATA_DEF(IndexCodeAndPrecomputeTilingData)
     TILING_DATA_FIELD_DEF(int32_t, tileLengthStage2); // vector 单元每次循环处理的向量数量
     TILING_DATA_FIELD_DEF(int32_t, vecNumLength);     // 向量数量
     TILING_DATA_FIELD_DEF(int32_t, dimLength);        // dim大小
+    TILING_DATA_FIELD_DEF(int32_t, metricType);       // metric type: L2(0), IP(1)
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(IndexCodeAndPrecompute, IndexCodeAndPrecomputeTilingData)

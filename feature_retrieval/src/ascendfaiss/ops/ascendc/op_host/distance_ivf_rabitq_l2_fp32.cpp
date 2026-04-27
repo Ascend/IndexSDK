@@ -24,6 +24,8 @@
 
 
 namespace {
+static const int32_t METRIC_L2 = 0;
+static const int32_t METRIC_INNER_PRODUCT = 1;
 static const int32_t QUERYLUT = 1;
 static const int32_t BASE = 6;
 static const int32_t BASE_N = 128;
@@ -37,7 +39,8 @@ namespace optiling {
 
 static void SetLutAndCodeTilingInfo(gert::TilingContext *context, DistanceIVFRabitqL2FP32TilingData &tiling, int32_t ubSize)
 {
-    int32_t lutLength = context->GetInputShape(0)->GetStorageShape().GetDim(1) / 8;
+    int32_t dimLength = tiling.get_dimLength();
+    int32_t lutLength = dimLength / 8;
     int32_t lutDimLength = context->GetInputShape(QUERYLUT)->GetStorageShape().GetDim(1);  // 一般为固定值256
 
     int32_t lutTileNum = 0;
@@ -46,8 +49,6 @@ static void SetLutAndCodeTilingInfo(gert::TilingContext *context, DistanceIVFRab
 
     int32_t lutTotalSize = lutDimLength * lutLength * FLOAT32_BYTES;
     int32_t remianSize = (ubSize * 9 / 10) - lutTotalSize;
-
-    int32_t dimLength = tiling.get_dimLength();
     
     // idx_calc_que 存放gather偏移，占用内存 dimLength / 8 * INT32_BYTES
     // codes_in_que、codes_half_que、codes_int32_que 存放 code_tile_length 行量化编码，每行占用内存 dimLength / 8 * INT8_BYTES、dimLength / 8 * HALF_BYTES、dimLength / 8 * INT32_BYTES
@@ -97,6 +98,13 @@ static ge::graphStatus TilingFunc(gert::TilingContext *context)
 {
     DistanceIVFRabitqL2FP32TilingData tiling;
     ASCENDC_RETURN_IF_NOT(context != nullptr, ge::GRAPH_FAILED);
+
+    int metricType = *(context->GetAttrs()->GetAttrPointer<int>(0));
+    if (metricType != METRIC_L2 && metricType != METRIC_INNER_PRODUCT) {
+        return ge::GRAPH_FAILED;
+    }
+    tiling.set_metricType(metricType);
+
     const auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     uint64_t ubSize = 0;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
@@ -164,8 +172,8 @@ static ge::graphStatus InferDataType(gert::InferDataTypeContext *context)
 }
 
 /* input:
- *      query: 1 * d
- *      querylut: 1 * d / 4 * 16
+ *      queryl2: batch
+ *      querylut: batch * d / 4 * 16
  *      centroidslut: nlist * d / 4 * 16
  *      centroidsid: corenum
  *      base: ni * d/8
@@ -175,8 +183,7 @@ static ge::graphStatus InferDataType(gert::InferDataTypeContext *context)
  *      indexl1: ni
  *      indexesoffset: corenum
  * output:
- *      result: ||query - index||^2 - ||query - centroid||^2 = indexl2 - indexl1 * <query - centroid,
-*               indexcode> -> ni * corenum
+ *      result: ||o - q||^2 = ||o - c||^2 + ||q - c||^2 - 2 <q - c, o - c> =  -> ni (IP: -0.5 * (||o - q||^2 - ||q||^2 - ||o||^2))
  *      max_result: 分块排序
  *      flag:
 */
@@ -185,7 +192,7 @@ class DistanceIVFRabitqL2FP32 : public OpDef {
 public:
     explicit DistanceIVFRabitqL2FP32(const char *name) : OpDef(name)
     {
-        this->Input("query")
+        this->Input("queryl2")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT})
             .Format({ge::FORMAT_ND})
@@ -267,6 +274,7 @@ public:
             .Format({ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND});
 
+        this->Attr("metric_type").AttrType(REQUIRED).Int();
         this->SetInferShape(ge::InferShape);
         this->SetInferDataType(ge::InferDataType);
 

@@ -33,7 +33,7 @@ constexpr uint8_t IVF_RABITQ_OPTIMIZE_BATCH_THRES = 48;
 
 class IndexIVFRaBitQ : public IndexIVF {
 public:
-    IndexIVFRaBitQ(int numList, int dim, int nprobes, int64_t resourceSize = -1);
+    IndexIVFRaBitQ(int numList, int dim, int nprobes, const std::string& metricType, int64_t resourceSize = -1);
 
     ~IndexIVFRaBitQ();
 
@@ -116,11 +116,13 @@ protected:
                                      AscendTensor<float, DIMS_1> &l2Result,
                                      AscendTensor<float, DIMS_1> &l1Result,
                                      aclrtStream stream);
-    APP_ERROR resetQueryRotateOp();
-    void runQueryRotateOp(int batch, AscendTensor<float, DIMS_2> &queries,
-                          AscendTensor<float, DIMS_2> &matrix,
-                          AscendTensor<float, DIMS_2> &rotateQueries,
-                          aclrtStream stream);
+    APP_ERROR resetQueryRotateL2Op();
+    void runQueryRotateL2Op(int batch, AscendTensor<float, DIMS_2> &queries,
+                            AscendTensor<int32_t, DIMS_1> &vectorSize,
+                            AscendTensor<float, DIMS_2> &matrix,
+                            AscendTensor<float, DIMS_2> &rotateQueries,
+                            AscendTensor<float, DIMS_1> &queryl2,
+                            aclrtStream stream);
     APP_ERROR resetQueryLUTOp();
     void runQueryLUTOp(int batch, AscendTensor<float, DIMS_2> &queries,
                        AscendTensor<float, DIMS_2> &matrix,
@@ -139,6 +141,7 @@ protected:
     void runL1DistOp();
     APP_ERROR searchImplL1(AscendTensor<float, DIMS_2> &queries,
                            AscendTensor<float, DIMS_2> &rotateQueries,
+                           AscendTensor<float, DIMS_1> &queryL2,
                            AscendTensor<float, DIMS_2> &queriesLut,
                            AscendTensor<int64_t, DIMS_2> &l1TopNprobeIndicesHost,
                            AscendTensor<float, DIMS_2> &l1TopNprobeDistsHost);
@@ -150,6 +153,7 @@ protected:
     APP_ERROR resetL2DistOp();
     void resizeDistResult(size_t iterNum, size_t coreNum, size_t ivfRabitqBlockSize);
     APP_ERROR searchImplL2(AscendTensor<float, DIMS_2> &queries,
+                           AscendTensor<float, DIMS_1> &queryL2,
                            AscendTensor<float, DIMS_2> &queriesLut,
                            AscendTensor<int64_t, DIMS_2> &l1TopNprobeIndicesHost,
                            AscendTensor<float, DIMS_2> &l1TopNprobeDistsHost,
@@ -157,7 +161,7 @@ protected:
     APP_ERROR searchWithBatch(int n, const float* x, int k, float* distances, idx_t* labels, const float* srcIndexes);
     void refine(int n, const float* x, int k, float* distances, idx_t* labels,
                 float* topkdist, idx_t* topklabel, const float* srcIndexes);
-    void runL2DistOp(AscendTensor<float, DIMS_2> &subQuery,
+    void runL2DistOp(AscendTensor<float, DIMS_1> &queryL2Vec,
                      AscendTensor<float, DIMS_2> &subQuerylut,
                      AscendTensor<float, DIMS_2, size_t> &centroidslut,
                      AscendTensor<uint32_t, DIMS_1, size_t> &subQueryid,
@@ -214,7 +218,7 @@ protected:
                                    AscendTensor<int64_t, DIMS_2> &l1TopNprobeIndicesHost,
                                    AscendTensor<float, DIMS_2> &l1TopNprobeDistsHost);
     void callL2DistanceOp(size_t batch, size_t totalBlockNum, size_t coreNum, size_t vcMaxLen,
-                          AscendTensor<float, DIMS_2> &queryVec,
+                          AscendTensor<float, DIMS_1> &queryL2Vec,
                           AscendTensor<float, DIMS_2> &queryLutVec,
                           AscendTensor<float, DIMS_2, size_t> &centroidsLutVec,
                           AscendTensor<uint32_t, DIMS_2, size_t> &queryid,
@@ -242,6 +246,7 @@ protected:
     size_t removeIds(const ascend::IDSelector& sel);
 
 protected:
+    MetricType metric;  // metric type
     std::unique_ptr<DeviceVector<float>> originCentroidsOnDevice;        // 原始聚类中心
     std::unique_ptr<DeviceVector<float>> LUTMatrixOnDevice;        // LUT 计算常值矩阵
     std::unique_ptr<DeviceVector<float>> CentroidLUTOnDevice;      // 聚类中心 LUT
@@ -255,7 +260,7 @@ protected:
     std::map<int, std::unique_ptr<AscendOperator>> ivfRaBitQL2DistOps;
     std::vector<std::vector<std::unique_ptr<DeviceVector<uint8_t>>>> baseFp32;
     std::vector<size_t> listVecNum;
-    std::map<int, std::unique_ptr<::ascend::AscendOperator>> queryRotateOps;
+    std::map<int, std::unique_ptr<::ascend::AscendOperator>> queryRotateL2Ops;
     std::map<int, std::unique_ptr<::ascend::AscendOperator>> queryLUTOps;
     std::map<int, std::unique_ptr<::ascend::AscendOperator>> topkFp32;
     std::map<int, std::unique_ptr<AscendOperator>> topkL2Fp32;

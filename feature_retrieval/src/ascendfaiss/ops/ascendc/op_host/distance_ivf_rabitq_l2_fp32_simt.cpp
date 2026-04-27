@@ -21,6 +21,8 @@
 #include "tiling/tiling_api.h"
 
 namespace {
+static const int32_t METRIC_L2 = 0;
+static const int32_t METRIC_INNER_PRODUCT = 1;
 static const int32_t QUERYLUT = 1;
 static const int32_t BASE = 6;
 static const int32_t BASE_N = 128;
@@ -42,7 +44,8 @@ static void SetLutAndCodeTilingInfo(gert::TilingContext *context, DistanceIVFRab
     if (!context->GetInputTensor(QUERYLUT)) {
         return;
     }
-    int32_t lutLength = context->GetInputShape(0)->GetStorageShape().GetDim(1) / 8;
+    int32_t dimLength = tiling.get_dimLength();
+    int32_t lutLength = dimLength / 8;
     int32_t lutDimLength = context->GetInputShape(QUERYLUT)->GetStorageShape().GetDim(1);  // 一般为固定值256
 
     int32_t lutTotalSize = lutDimLength * lutLength * FLOAT32_BYTES;
@@ -77,9 +80,6 @@ static void SetLutAndCodeTilingInfo(gert::TilingContext *context, DistanceIVFRab
 static void SetDistTilingInfo(gert::TilingContext *context, DistanceIVFRabitqL2FP32SimtTilingData &tiling,
                               int32_t ubSize)
 {
-    int32_t codesLength = context->GetInputShape(BASE)->GetStorageShape().GetDim(0);  // indexcode数量
-    int32_t dimLength = context->GetInputShape(BASE)->GetStorageShape().GetDim(1);  // indexcode维度 存储类型为int8
-
     uint64_t remainingSize = (ubSize * 9 / 10);
     // 64 为 minResult 需要的空间，4个1分别表示 sumResult, L1, L2, distResult 占用的空间
     int32_t dist_tile_length = remainingSize / ((64 + 1 + 1 + 1 + 1) * FLOAT32_BYTES) / 16 * 16;
@@ -91,6 +91,13 @@ static ge::graphStatus TilingFunc(gert::TilingContext *context)
 {
     DistanceIVFRabitqL2FP32SimtTilingData tiling;
     ASCENDC_RETURN_IF_NOT(context != nullptr, ge::GRAPH_FAILED);
+
+    int metricType = *(context->GetAttrs()->GetAttrPointer<int>(0));
+    if (metricType != METRIC_L2 && metricType != METRIC_INNER_PRODUCT) {
+        return ge::GRAPH_FAILED;
+    }
+    tiling.set_metricType(metricType);
+
     const auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     int32_t aiCubeNum = ascendcPlatform.GetCoreNumAic();
     uint64_t ubSize = 0;
@@ -106,7 +113,7 @@ static ge::graphStatus TilingFunc(gert::TilingContext *context)
         return ge::GRAPH_FAILED;
     }
     int32_t dimLength = context->GetInputShape(BASE)->GetStorageShape().GetDim(1);  // indexcode维度 存储类型为int8
-    tiling.set_dimLength(dimLength);
+    tiling.set_dimLength(dimLength * 8);
     SetLutAndCodeTilingInfo(context, tiling, ubSize);
     SetDistTilingInfo(context, tiling, ubSize);
 
@@ -172,8 +179,8 @@ static ge::graphStatus InferDataType(gert::InferDataTypeContext *context)
 }
 
 /* input:
- *      query: 1 * d
- *      querylut: 1 * d / 4 * 16
+ *      queryl2: batch
+ *      querylut: batch * d / 4 * 16
  *      centroidslut: nlist * d / 4 * 16
  *      centroidsid: corenum
  *      base: ni * d/8
@@ -183,8 +190,7 @@ static ge::graphStatus InferDataType(gert::InferDataTypeContext *context)
  *      indexl1: ni
  *      indexesoffset: corenum
  * output:
- *      result: ||query - index||^2 - ||query - centroid||^2 = indexl2 - indexl1 * <query - centroid,
- *              indexcode> -> ni * corenum
+ *      ||o - q||^2 = ||o - c||^2 + ||q - c||^2 - 2 <q - c, o - c> =  -> ni (IP: -0.5 * (||o - q||^2 - ||q||^2 - ||o||^2))
  *      max_result: 分块排序
  *      flag:
 */
@@ -193,7 +199,7 @@ class DistanceIVFRabitqL2FP32Simt : public OpDef {
 public:
     explicit DistanceIVFRabitqL2FP32Simt(const char *name) : OpDef(name)
     {
-        this->Input("query")
+        this->Input("queryl2")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT})
             .Format({ge::FORMAT_ND})
@@ -275,6 +281,7 @@ public:
             .Format({ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND});
 
+        this->Attr("metric_type").AttrType(REQUIRED).Int();
         this->SetInferShape(ge::InferShape);
         this->SetInferDataType(ge::InferDataType);
 

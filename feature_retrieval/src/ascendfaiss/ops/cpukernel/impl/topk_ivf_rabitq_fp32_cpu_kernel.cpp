@@ -22,6 +22,7 @@
 #include <iostream>
 #include <algorithm>
 #include <string>
+#include <limits>
 
 #include "cpu_kernel.h"
 #include "cpu_kernel_utils.h"
@@ -229,9 +230,9 @@ void TopkIvfRabitqfP32CpuKernel::InitTopkHeap(Outputs &outputs) const
     int64_t *outlabels = static_cast<int64_t *>(outputs.outlabels->GetData());
     std::fill_n(outlabels, nq_ * k_, 0xffffffffffffffff); // 0xffffffffffffffff为无效label
     if (asc_ != 0) {
-        std::fill_n(outdists, nq_ * k_, 0x7f7fffff); // 小端排序模式初始化为0x7f7fffff，即最大值
+        std::fill_n(outdists, nq_ * k_, std::numeric_limits<float>::max()); // 小端排序模式初始化为最大值
     } else {
-        std::fill_n(outdists, nq_ * k_, 0.0001); // 大端排序模式下初始化为0.0001
+        std::fill_n(outdists, nq_ * k_, std::numeric_limits<float>::lowest()); // 大端排序模式初始化为最小值
     }
 }
 

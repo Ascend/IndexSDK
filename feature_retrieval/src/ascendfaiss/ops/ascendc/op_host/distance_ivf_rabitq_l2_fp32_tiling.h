@@ -44,6 +44,8 @@ BEGIN_TILING_DATA_DEF(DistanceIVFRabitqL2FP32TilingData)
 
     TILING_DATA_FIELD_DEF(int32_t, codeBlockLength); // 每个块的长度
 
+    TILING_DATA_FIELD_DEF(int32_t, metricType); // metric type: L2(0), IP(1)
+
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(DistanceIVFRabitqL2FP32, DistanceIVFRabitqL2FP32TilingData)

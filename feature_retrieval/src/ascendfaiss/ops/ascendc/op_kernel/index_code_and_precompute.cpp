@@ -64,6 +64,8 @@ namespace kernels {
             this->dimLength = tiling_.dimLength;    // 向量维度
             this->maskNum = this->dimLength / this->mask;
 
+            this->metric = tiling_.metricType;
+
             // 根据core_id判断block负责的向量区间
             if (core_id < formerCoreNum) {
                 this->vecLength = formerCoreLength;    // 当前core负责的向量数量
@@ -347,6 +349,11 @@ namespace kernels {
             PipeBarrier<PIPE_V>();
             Muls(l1ResultLocal, l1ResultLocal, para_dim, copyLength);
 
+            if (this->metric == 1) { // L2: ||indexes - centroid||^2; IP: ||indexes - centroid||^2 - ||indexes||^2
+                PipeBarrier<PIPE_V>();
+                Sub(l2ResultLocal, l2ResultLocal, indexesl2Local, copyLength);
+            }
+
             int32_t eventIDVToMTE3 = static_cast<int32_t>(GetTPipePtr()->FetchEventID(AscendC::HardEvent::V_MTE3));
             AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(eventIDVToMTE3);
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(eventIDVToMTE3);
@@ -403,6 +410,8 @@ namespace kernels {
         int32_t tileNum;          // vector 单元循环次数
         int32_t tileLength;       // vector 单元每次循环处理的向量数量
         int32_t lastTileLength;   // vector 单元最后一次循环处理的向量数量
+
+        int32_t metric;     // metric type: L2(0), IP(1)
 
         int32_t tileLengthStage1;
         int32_t tileLengthStage2;

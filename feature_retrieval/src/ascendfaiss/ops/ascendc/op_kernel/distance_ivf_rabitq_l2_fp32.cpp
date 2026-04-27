@@ -16,12 +16,18 @@
  * -------------------------------------------------------------------------
  */
 
+#include <limits>
 #include "kernel_operator.h"
 #include "kernel_tiling/kernel_tiling.h"
 
 using namespace AscendC;
 
 namespace kernels {
+constexpr float IVFRABITQ_MAX_FLOAT = std::numeric_limits<float>::max();
+constexpr float IVFRABITQ_MIN_FLOAT = std::numeric_limits<float>::lowest();
+constexpr int32_t METRIC_L2 = 0;
+constexpr int32_t METRIC_INNER_PRODUCT = 1;
+
 template <typename T>
 class DistanceIVFRabitqL2FP32 {
 public:
@@ -33,7 +39,7 @@ public:
     {
         pipe_ = pipe_in;
     };
-    __aicore__ inline void Init(GM_ADDR query, GM_ADDR querylut, GM_ADDR centroidslut, GM_ADDR queryid,
+    __aicore__ inline void Init(GM_ADDR queryl2, GM_ADDR querylut, GM_ADDR centroidslut, GM_ADDR queryid,
                                 GM_ADDR centroidsid, GM_ADDR centroidsl2, GM_ADDR base, GM_ADDR offset,
                                 GM_ADDR actual_size, GM_ADDR indexl2, GM_ADDR indexl1, GM_ADDR indexl2offset,
                                 GM_ADDR indexl1offset, GM_ADDR result, GM_ADDR min_result, GM_ADDR flag,
@@ -50,11 +56,21 @@ public:
         this->lutTileLength = tiling_.lutTileLength;          // 每次处理多少lut
         this->lastLutTileLength = tiling_.lastLutTileLength;  // 最后一次处理多少lut
 
+        this->metric = tiling_.metricType;
+        if (this->metric == METRIC_L2) {
+            this->reduceCmpInitValue = IVFRABITQ_MAX_FLOAT;
+        } else {
+            this->reduceCmpInitValue = IVFRABITQ_MIN_FLOAT;
+        }
+
         this->maskNum = this->dimLength / this->mask;
         this->multiplier = static_cast<T>(2) / sqrt(static_cast<T>(this->dimLength));
 
         queryid_gm_.SetGlobalBuffer((__gm__ uint32_t *)queryid);
         uint32_t cur_queryid = queryid_gm_.GetValue(this->blockIdx);  // 获取当前coreid对应的查询id
+        queryl2_gm_.SetGlobalBuffer((__gm__ T *)queryl2);
+        cur_queryl2 = queryl2_gm_.GetValue(cur_queryid);  // 根据查询id获取当前core对应的查询的l2模长
+        cur_queryl2 = cur_queryl2 * (-1);
         querylut_gm_.SetGlobalBuffer((__gm__ T *)querylut + this->lutLength * this->lutDimLength * cur_queryid,
                                      this->lutLength * this->lutDimLength);  // 根据查询id获取当前core需要的查询lut
 
@@ -278,7 +294,7 @@ private:
     __aicore__ inline void DistCompute()
     {
         LocalTensor<T> minResultLocal = min_result_que.AllocTensor<T>();
-        Duplicate(minResultLocal, (T)(0x7f7fffff), this->distTileLength * this->mask);
+        Duplicate(minResultLocal, this->reduceCmpInitValue, this->distTileLength * this->mask);
         this->minNum = 0;
         for (int32_t i = 0; i < this->distTileNum; i++) {
             int32_t copyLength = (i == this->distTileNum - 1) ? this->lastDistTileLength : this->distTileLength;
@@ -321,6 +337,7 @@ private:
         LocalTensor<T> ipResLocal = in_mat_res_que.DeQue<T>();
         LocalTensor<T> indexL1Local = in_indexl1_que.DeQue<T>();
 
+        // dist l2: ||o - q||^2 = ||o - c||^2 + ||q - c||^2 - 2 <q - c, o - c>
         Muls(ipResLocal, ipResLocal, this->multiplier, copyLength);
         PipeBarrier<PIPE_V>();
         Adds(ipResLocal, ipResLocal, this->sumQuery, copyLength);
@@ -333,6 +350,13 @@ private:
         PipeBarrier<PIPE_V>();
         Adds(distResultLocal, distResultLocal, cur_centroidsl2, copyLength);
         PipeBarrier<PIPE_V>();
+        if (this->metric == METRIC_INNER_PRODUCT) { // dist ip: - 2 <q, o> = ||o - q||^2 - ||q||^2 - ||o||^2
+            PipeBarrier<PIPE_V>();
+            Adds(distResultLocal, distResultLocal, this->cur_queryl2, copyLength);
+            PipeBarrier<PIPE_V>();
+            Muls(distResultLocal, distResultLocal, static_cast<float>(-0.5), copyLength);
+            PipeBarrier<PIPE_V>();
+        }
 
         int copyNum = copyLength / this->mask;
         int lastCodesLength = copyLength % this->mask;
@@ -366,7 +390,11 @@ private:
                 int32_t len = minLength - i;
                 if (len > 255)
                     len = 255;
-                WholeReduceMin(minResultLocal[i * 2], minResultLocal[i * this->mask], this->mask, len, 1, 1, 8);
+                if (this->metric == METRIC_L2) {
+                    WholeReduceMin(minResultLocal[i * 2], minResultLocal[i * this->mask], this->mask, len, 1, 1, 8);
+                } else {
+                    WholeReduceMax(minResultLocal[i * 2], minResultLocal[i * this->mask], this->mask, len, 1, 1, 8);
+                }
             }
             min_result_que.EnQue(minResultLocal);
             PipeBarrier<PIPE_V>();
@@ -382,13 +410,17 @@ private:
                 int32_t len = minLength - i;
                 if (len > 255)
                     len = 255;
-                WholeReduceMin(minResultLocal[i * 2], minResultLocal[i * this->mask], this->mask, len, 1, 1, 8);
+                if (this->metric == METRIC_L2) {
+                    WholeReduceMin(minResultLocal[i * 2], minResultLocal[i * this->mask], this->mask, len, 1, 1, 8);
+                } else {
+                    WholeReduceMax(minResultLocal[i * 2], minResultLocal[i * this->mask], this->mask, len, 1, 1, 8);
+                }
             }
             min_result_que.EnQue(minResultLocal);
             PipeBarrier<PIPE_V>();
             CopyOutMin(progress, minLength);
             PipeBarrier<PIPE_ALL>();
-            Duplicate(minResultLocal, (T)(0x7f7fffff), this->distTileLength * this->mask);
+            Duplicate(minResultLocal, this->reduceCmpInitValue, this->distTileLength * this->mask);
             PipeBarrier<PIPE_V>();
         }
     }
@@ -420,6 +452,7 @@ private:
     TQue<QuePosition::VECIN, 1> in_mat_res_que, in_indexl1_que, in_indexl2_que;
     TQue<QuePosition::VECOUT, 1> dist_result_que, min_result_que;
 
+    GlobalTensor<T> queryl2_gm_;
     GlobalTensor<T> querylut_gm_;
     GlobalTensor<T> cur_centroidslut_gm_;
     GlobalTensor<uint32_t> queryid_gm_;
@@ -460,11 +493,15 @@ private:
     int32_t codeBlockLength;
     int32_t minNum;
 
+    int32_t metric;
+
     int32_t mask = 64;
     int32_t maskNum;
     float32_t oneFloat = 1.0;
     float32_t zeroFloat = 0.0;
+    float32_t reduceCmpInitValue = 0.0;
     T cur_centroidsl2;
+    T cur_queryl2;
     T multiplier = 0.0;
     T sumQuery = 0.0;
 };
@@ -472,7 +509,7 @@ private:
 }
 
 extern "C" __global__ __aicore__ void distance_ivf_rabitq_l2_fp32(
-    GM_ADDR query, GM_ADDR querylut, GM_ADDR centroidslut, GM_ADDR queryid, GM_ADDR centroidsid, GM_ADDR centroidsl2,
+    GM_ADDR queryl2, GM_ADDR querylut, GM_ADDR centroidslut, GM_ADDR queryid, GM_ADDR centroidsid, GM_ADDR centroidsl2,
     GM_ADDR base, GM_ADDR offset, GM_ADDR actual_size, GM_ADDR indexl2, GM_ADDR indexl1, GM_ADDR indexl2offset,
     GM_ADDR indexl1offset, GM_ADDR result, GM_ADDR min_result, GM_ADDR flag, GM_ADDR workspace, GM_ADDR tiling)
 {
@@ -480,7 +517,7 @@ extern "C" __global__ __aicore__ void distance_ivf_rabitq_l2_fp32(
     GM_ADDR usrWorkspace = GetUserWorkspace(workspace);
     TPipe pipe;
     kernels::DistanceIVFRabitqL2FP32<float32_t> op(&pipe);
-    op.Init(query, querylut, centroidslut, queryid, centroidsid, centroidsl2, base, offset, actual_size, indexl2,
+    op.Init(queryl2, querylut, centroidslut, queryid, centroidsid, centroidsl2, base, offset, actual_size, indexl2,
             indexl1, indexl2offset, indexl1offset, result, min_result, flag, usrWorkspace, &tiling_data);
     op.Process();
 }
