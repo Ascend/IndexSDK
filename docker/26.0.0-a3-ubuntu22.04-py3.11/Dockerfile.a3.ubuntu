@@ -1,28 +1,25 @@
-FROM swr.cn-south-1.myhuaweicloud.com/ascendhub/cann:9.0.0-beta.2-310p-openeuler24.03-py3.11
-
+ARG CANN_VERSION=9.0.0-beta.1
+FROM swr.cn-south-1.myhuaweicloud.com/ascendhub/cann:${CANN_VERSION}-a3-ubuntu22.04-py3.11
 WORKDIR /tmp
 
-ARG PLATFORM=310P
+ARG PLATFORM=A3
+# 系统包 + pip3
+RUN cp -a /etc/apt/sources.list /etc/apt/sources.list.bak && \
+    sed -i "s@http://.*archive.ubuntu.com@https://mirrors.huaweicloud.com@g" /etc/apt/sources.list && \
+    sed -i "s@http://.*security.ubuntu.com@https://mirrors.huaweicloud.com@g" /etc/apt/sources.list
 RUN export DEBIAN_FRONTEND=noninteractive && \
     export TZ=Asia/Shanghai && \
-    for repo in /etc/yum.repos.d/*.repo; do \
-        cp $repo ${repo}.bak; \
-        sed -i 's|http://repo.openeuler.org|https://repo.huaweicloud.com/openeuler|g' $repo; \
-        sed -i 's|https://repo.openeuler.org|https://repo.huaweicloud.com/openeuler|g' $repo; \
-        sed -i '/^metalink=/ s/^/#/' $repo; \
-        sed -i '/^mirrorlist=/ s/^/#/' $repo; \
-    done && \
-    yum update -y && \
-    yum install -y ca-certificates wget vim dos2unix net-tools openssh-clients lsof sshpass \
-        curl gcc gcc-c++ make pkg-config unzip autoconf git patch \
-        blas lapack gfortran openmpi openmpi-devel libxml2 \
-        pciutils lapack-devel blas-devel libffi-devel openssl-devel \
-        zlib-devel xz-devel gmp-devel \
-        perl-Capture-Tiny perl-DateTime perl-TimeDate \
-        python3-pip && \
-    yum clean all && \
-    rm -rf /var/cache/yum
-
+    apt update && \
+    apt install --no-install-recommends ca-certificates -y && \
+    apt install --no-install-recommends wget vim dos2unix net-tools ssh lsof sshpass -y && \
+    apt install --no-install-recommends curl gcc g++ make pkg-config unzip autoconf git patch -y && \
+    apt install --no-install-recommends libblas3 liblapack3 gfortran openmpi-bin libopenmpi-dev libxml2 -y && \
+    apt install --no-install-recommends pciutils liblapack-dev libblas-dev libffi-dev libssl-dev -y && \
+    apt install --no-install-recommends zlib1g-dev xz-utils libgmpxx4ldbl -y && \
+    apt install --no-install-recommends libcapture-tiny-perl libdatetime-perl libtimedate-perl -y && \
+    apt install python3-pip -y && \
+    apt clean && rm -rf /var/lib/apt/lists/*
+# 配置Pip
 RUN mkdir ~/.pip && touch ~/.pip/pip.conf && \
     echo "[global]" > ~/.pip/pip.conf && \
     echo "trusted-host=mirrors.aliyun.com" >> ~/.pip/pip.conf && \
@@ -42,6 +39,12 @@ RUN pip3 install -U pip && \
     pip3 install psutil && \
     pip3 install faiss-cpu==1.13.2 && \
     rm -rf /root/.cache/pip
+
+RUN export DEBIAN_FRONTEND=noninteractive && \
+    export TZ=Asia/Shanghai && \
+    apt update && \
+    apt install --no-install-recommends software-properties-common -y && \
+    apt install --no-install-recommends build-essential -y
 
 # 安装cmake
 RUN wget https://github.com/Kitware/CMake/releases/download/v3.24.0/cmake-3.24.0.tar.gz && \
@@ -67,7 +70,7 @@ RUN wget https://github.com/facebookresearch/faiss/archive/v1.10.0.tar.gz -O fai
     cmake -B build . -DFAISS_ENABLE_GPU=OFF -DFAISS_ENABLE_PYTHON=OFF -DBUILD_TESTING=OFF -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${install_path} && \
     cd build && make -j && make install && \
     cd ../.. && rm -f faiss-1.10.0.tar.gz && rm -rf faiss-1.10.0  && \
-    cp ${install_path}/lib64/libfaiss.so /usr/local/lib64
+    cp ${install_path}/lib/libfaiss.so /usr/local/lib
 
 RUN wget https://github.com/linux-test-project/lcov/releases/download/v2.0/lcov-2.0.tar.gz  && \
     tar -xzf lcov-2.0.tar.gz && \
@@ -88,26 +91,28 @@ ARG ASCEND_BASE=/usr/local/Ascend
 ARG TOOLKIT_PATH=$ASCEND_BASE/ascend-toolkit/latest
 
 ENV GLOG_v=2 \
+    LD_LIBRARY_PATH=${ASCEND_BASE}/mxIndex/host/lib:$TOOLKIT_PATH/runtime/lib64:$LD_LIBRARY_PATH \
+    TBE_IMPL_PATH=$TOOLKIT_PATH/opp/op_impl/built-in/ai_core/tbe \
+    PATH=$TOOLKIT_PATH/atc/ccec_compiler/bin:$TOOLKIT_PATH/atc/bin:$PATH \
     ASCEND_OPP_PATH=$TOOLKIT_PATH/opp \
     ASCEND_AICPU_PATH=$TOOLKIT_PATH \
-    PYTHONPATH=$TBE_IMPL_PATH:/usr/local/python3.11.15/lib/python3.11/site-packages/:$PYTHONPATH \
+    PYTHONPATH=$TBE_IMPL_PATH:$PYTHONPATH \
     ASCEND_HOME=${ASCEND_BASE} \
-    MX_INDEX_MODELPATH=/home/Ascend/modelpath \
-    LD_LIBRARY_PATH=${ASCEND_BASE}/mxIndex/host/lib:$LD_LIBRARY_PATH
+    MX_INDEX_MODELPATH=/home/Ascend/modelpath
 
 RUN mkdir -p ${MX_INDEX_MODELPATH}
 
+ARG VERSION=26.0.0
 RUN ARCH=$(uname -m | sed 's/x86_64/x86_64/; s/aarch64/aarch64/') && \
-    wget https://mindcluster.obs.cn-north-4.myhuaweicloud.com/IndexSDK/daily/version/26.0.0/20260408.1/Ascend-mindxsdk-mxindex_26.0.0_linux-${ARCH}.run && \
-    bash Ascend-mindxsdk-mxindex*_linux-${ARCH}.run --install --platform=${PLATFORM} && \
+    wget https://gitcode.com/Ascend/IndexSDK/releases/download/v${VERSION}/Ascend-mindxsdk-mxindex_${VERSION}_linux-${ARCH}.run && \
+    bash Ascend-mindxsdk-mxindex_${VERSION}_linux-${ARCH}.run --install --platform=${PLATFORM} && \
     cd ${ASCEND_BASE}/mxIndex/ops && ./custom_opp_${ARCH}.run
 
 RUN sed -i '$a\source /usr/local/Ascend/ascend-toolkit/set_env.sh' ~/.bashrc && \
-    sed -i '$a\export LD_LIBRARY_PATH=/usr/local/faiss/lib64:$LD_LIBRARY_PATH' ~/.bashrc && \
+    sed -i '$a\export LD_LIBRARY_PATH=/usr/local/faiss/lib:$LD_LIBRARY_PATH' ~/.bashrc && \
     sed -i '$a\export LD_LIBRARY_PATH=/opt/OpenBLAS/lib:$LD_LIBRARY_PATH' ~/.bashrc && \
     sed -i '$a\export LD_LIBRARY_PATH=/usr/local/gtest/lib:$LD_LIBRARY_PATH' ~/.bashrc && \
     sed -i '$a\export LD_LIBRARY_PATH=/usr/local/Ascend/driver/lib64/driver:$LD_LIBRARY_PATH' ~/.bashrc
-
 
 RUN pip3 install numpy==1.26.4
 RUN rm -rf ./*

@@ -1,7 +1,9 @@
-FROM swr.cn-south-1.myhuaweicloud.com/ascendhub/cann:9.0.0-beta.1-a3-ubuntu22.04-py3.11
+ARG CANN_VERSION=9.0.0-beta.1
+FROM swr.cn-south-1.myhuaweicloud.com/ascendhub/cann:${CANN_VERSION}-310p-ubuntu22.04-py3.11
+
 WORKDIR /tmp
 
-ARG PLATFORM=A3
+ARG PLATFORM=310P
 # 系统包 + pip3
 RUN cp -a /etc/apt/sources.list /etc/apt/sources.list.bak && \
     sed -i "s@http://.*archive.ubuntu.com@https://mirrors.huaweicloud.com@g" /etc/apt/sources.list && \
@@ -79,7 +81,7 @@ RUN wget https://github.com/linux-test-project/lcov/releases/download/v2.0/lcov-
 RUN wget https://github.com/google/googletest/archive/refs/tags/release-1.11.0.tar.gz  && \
     cp release-1.11.0.tar.gz /tmp/googletest-release-1.11.0.tar.gz && \
     tar xf release-1.11.0.tar.gz && cd googletest-release-1.11.0 && \
-    cmake -DBUILD_SHARED_LIBS=ON -DCMAKE_INSTALL_PREFIX=/usr/local/gtest . && make -j && make install && \
+    cmake -DBUILD_SHARED_LIBS=ON -DCMAKE_INSTALL_PREFIX=/usr/local/gtest . && make -j12 && make install && \
     cd .. && rm -rf release-1.11.0.tar.gz googletest-release-1.11.0
 
 # 清理临时目录
@@ -101,9 +103,10 @@ ENV GLOG_v=2 \
 
 RUN mkdir -p ${MX_INDEX_MODELPATH}
 
+ARG VERSION=26.0.0
 RUN ARCH=$(uname -m | sed 's/x86_64/x86_64/; s/aarch64/aarch64/') && \
-    wget https://mindcluster.obs.cn-north-4.myhuaweicloud.com/IndexSDK/daily/version/26.0.0/20260408.1/Ascend-mindxsdk-mxindex_26.0.0_linux-${ARCH}.run && \
-    bash Ascend-mindxsdk-mxindex*_linux-${ARCH}.run --install --platform=${PLATFORM} && \
+    wget https://gitcode.com/Ascend/IndexSDK/releases/download/v${VERSION}/Ascend-mindxsdk-mxindex_${VERSION}_linux-${ARCH}.run && \
+    bash Ascend-mindxsdk-mxindex_${VERSION}_linux-${ARCH}.run --install --platform=${PLATFORM} && \
     cd ${ASCEND_BASE}/mxIndex/ops && ./custom_opp_${ARCH}.run
 
 RUN sed -i '$a\source /usr/local/Ascend/ascend-toolkit/set_env.sh' ~/.bashrc && \
