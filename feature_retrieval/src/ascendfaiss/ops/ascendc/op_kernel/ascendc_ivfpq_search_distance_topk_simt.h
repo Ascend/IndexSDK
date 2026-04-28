@@ -16,8 +16,8 @@
  * -------------------------------------------------------------------------
  */
 
-#ifndef ASCENDC_IVFPQ_SEARCH_DISTANCE_TOPK_SMALL_H
-#define ASCENDC_IVFPQ_SEARCH_DISTANCE_TOPK_SMALL_H
+#ifndef ASCENDC_IVFPQ_SEARCH_DISTANCE_TOPK_SIMT_H
+#define ASCENDC_IVFPQ_SEARCH_DISTANCE_TOPK_SIMT_H
 #include <limits>
 
 #include "kernel_operator.h"
@@ -26,8 +26,17 @@ using namespace AscendC;
 
 namespace IndexOps {
 
+constexpr uint32_t IVFPQ_FLAG_ALIGN = 16;
+constexpr uint32_t IVFPQ_THREAD_NUM = 1024;
+constexpr uint8_t IVFPQ_UNROLL_FACTOR = 4;
+constexpr uint32_t IVFPQ_CODE_BLOCK_SIZE = 262144;
+constexpr uint32_t IVFPQ_BLOCK_MAX_SIZE = 16384;
+
+constexpr float IVFPQ_MAX_FLOAT = std::numeric_limits<float>::max();
+constexpr float IVFPQ_MIN_FLOAT = -std::numeric_limits<float>::max();
+
 template <uint8_t NumSubQuantizers>
-__aicore__ inline float SimtSearchTableSumSmallV1(__ubuf__ float *queryPQ, __gm__ uint8_t *codeBase,
+__aicore__ inline float SimtSearchTableSumSimtV1(__ubuf__ float *queryPQ, __gm__ uint8_t *codeBase,
                                                   int64_t curBlockIndex, uint32_t taskIdx, uint32_t ksub)
 {
     uint8_t codeBookIndices[IVFPQ_UNROLL_FACTOR];
@@ -58,7 +67,7 @@ __aicore__ inline float SimtSearchTableSumSmallV1(__ubuf__ float *queryPQ, __gm_
 }
 
 template <int NumSubQuantizers>
-__simt_vf__ __aicore__ LAUNCH_BOUND(IVFPQ_THREAD_NUM) inline void SimtSearchComputeSmallV1(
+__simt_vf__ __aicore__ LAUNCH_BOUND(IVFPQ_THREAD_NUM) inline void SimtSearchComputeSimtV1(
     __ubuf__ float *queryPQ, __gm__ uint8_t *codeBase, __ubuf__ float *distance, __gm__ int64_t *codeSize,
     __gm__ int64_t *codeOffset, uint32_t ksub, uint32_t codeBlockNum, uint32_t perCoreInnerBlockDealSize,
     float distResultInitValue, uint32_t innerBlockindex, uint32_t blockIndex, uint32_t usedAivNum)
@@ -80,13 +89,13 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(IVFPQ_THREAD_NUM) inline void SimtSearchComp
     for (uint32_t taskIdx = curBlockThreadIdx + startTaskId; taskIdx < endtaskId; taskIdx += threadCount) {
         uint32_t dstIndex = taskIdx - startTaskId;
         distance[dstIndex] =
-            SimtSearchTableSumSmallV1<NumSubQuantizers>(queryPQ, codeBase, curBlockIndex, taskIdx, ksub);
+            SimtSearchTableSumSimtV1<NumSubQuantizers>(queryPQ, codeBase, curBlockIndex, taskIdx, ksub);
     }
 
     AscendC::Simt::ThreadBarrier();
 }
 
-__simt_vf__ __aicore__ LAUNCH_BOUND(512) inline void SimtSearchGatherSmallV1(__ubuf__ int32_t *topkMergeEndDisIndex,
+__simt_vf__ __aicore__ LAUNCH_BOUND(512) inline void SimtSearchGatherSimtV1(__ubuf__ int32_t *topkMergeEndDisIndex,
                                                                              __gm__ int64_t *labelOffsetGm,
                                                                              __gm__ uint64_t *labelBaseGm,
                                                                              __gm__ uint64_t *topkMergeEndLabel,
@@ -106,25 +115,24 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(512) inline void SimtSearchGatherSmallV1(__u
     AscendC::Simt::ThreadBarrier();
 }
 
-class AscendcIvfpqSearchDistanceTopKSmall {
+class AscendcIvfpqSearchDistanceTopKSimt {
 public:
-    __aicore__ inline AscendcIvfpqSearchDistanceTopKSmall(){};
-    __aicore__ inline ~AscendcIvfpqSearchDistanceTopKSmall(){};
+    __aicore__ inline AscendcIvfpqSearchDistanceTopKSimt(){};
+    __aicore__ inline ~AscendcIvfpqSearchDistanceTopKSimt(){};
     __aicore__ inline void Init(GM_ADDR queryPQ, GM_ADDR codeBase, GM_ADDR codeOffset, GM_ADDR codeSize, GM_ADDR topk,
                                 GM_ADDR labelBase, GM_ADDR labelOffset, GM_ADDR distResult, GM_ADDR topkIndex,
                                 GM_ADDR topkValue, GM_ADDR topkLabelFinal, GM_ADDR topkValueFinal, GM_ADDR flag,
                                 GM_ADDR workspace,
-                                const AscendcIvfpqSearchDistanceTopKTilingData *__restrict tilingData, TPipe *tPipe);
+                                const AscendcIvfpqSearchDistanceTopKSimtTilingData *__restrict tilingData, TPipe *tPipe);
     __aicore__ inline void Process();
     __aicore__ inline void ProcessMerge();
 
 private:
-    __aicore__ inline void ParseTilingData(const AscendcIvfpqSearchDistanceTopKTilingData *__restrict tilingData);
+    __aicore__ inline void ParseTilingData(const AscendcIvfpqSearchDistanceTopKSimtTilingData *__restrict tilingData);
     __aicore__ inline void InitReduceUbTensor();
     __aicore__ inline void WholeBlockTopK(LocalTensor<float> dist_local_value, LocalTensor<int32_t> dist_local_index,
                                           LocalTensor<float> src_local_value, LocalTensor<int32_t> src_local_index,
-                                          LocalTensor<uint8_t> tmp_local_whole, LocalTensor<uint8_t> tmp_local_single,
-                                          int innerBlockindex);
+                                          LocalTensor<uint8_t> tmp_local, int innerBlockindex);
     __aicore__ inline void SingleBlockTopKAndIndexAlign(LocalTensor<float> dst_local_value,
                                                         LocalTensor<int32_t> dst_local_index,
                                                         LocalTensor<float> distResultUb, LocalTensor<uint8_t> tmp_local,
@@ -160,8 +168,6 @@ private:
     AscendC::TBuf<AscendC::TPosition::VECCALC> top_k_result_value_buf;
     AscendC::TBuf<AscendC::TPosition::VECCALC> top_k_result_index_buf;
 
-    AscendC::TBuf<AscendC::TPosition::VECCALC> top_k_tmp_whole_buf;
-    AscendC::TBuf<AscendC::TPosition::VECCALC> top_k_tmp_single_buf;
     AscendC::TBuf<AscendC::TPosition::VECCALC> top_k_result_value_buf_whole;
     AscendC::TBuf<AscendC::TPosition::VECCALC> top_k_result_index_buf_whole;
 
@@ -184,21 +190,17 @@ private:
     int64_t blockIdx = 0;
     uint32_t aivNum = 0;
     uint32_t usedAivNum = 0;
-    uint32_t headAivNum = 0;
 
     uint32_t reduceMode = 0;
     uint32_t subSpaceNum = 0;
     uint32_t ksub = 0;
     uint32_t codeBaseSize = 0;
-    uint32_t codeBlockSize = 0;
     uint32_t codeBlockNum = 0;
     float distResultInitValue = 0;
     uint32_t perCoreInnerBlockDealSize = 0;
 
     uint32_t min_size = 0;
     uint32_t single_core_total_block = 0;
-    uint32_t min_size_whole = 0;
-    uint32_t min_size_single = 0;
 
     TopkTiling topkTilingData;
     TopkTiling topkTilingDataWhole;
@@ -227,11 +229,11 @@ private:
     uint32_t batch = 0;
 };
 
-__aicore__ inline void AscendcIvfpqSearchDistanceTopKSmall::Init(
+__aicore__ inline void AscendcIvfpqSearchDistanceTopKSimt::Init(
     GM_ADDR queryPQ, GM_ADDR codeBase, GM_ADDR codeOffset, GM_ADDR codeSize, GM_ADDR topk, GM_ADDR labelBase,
     GM_ADDR labelOffset, GM_ADDR distResult, GM_ADDR topkIndex, GM_ADDR topkValue, GM_ADDR topkLabelFinal,
     GM_ADDR topkValueFinal, GM_ADDR flag, GM_ADDR workspace,
-    const AscendcIvfpqSearchDistanceTopKTilingData *__restrict tilingData, TPipe *tPipe)
+    const AscendcIvfpqSearchDistanceTopKSimtTilingData *__restrict tilingData, TPipe *tPipe)
 {
     blockIdx = GetBlockIdx();
     if (tPipe == nullptr || tilingData == nullptr) {
@@ -257,19 +259,9 @@ __aicore__ inline void AscendcIvfpqSearchDistanceTopKSmall::Init(
     InitReduceUbTensor();
 }
 
-__aicore__ inline void AscendcIvfpqSearchDistanceTopKSmall::ParseTilingData(
-    const AscendcIvfpqSearchDistanceTopKTilingData *__restrict tilingData)
+__aicore__ inline void AscendcIvfpqSearchDistanceTopKSimt::ParseTilingData(
+    const AscendcIvfpqSearchDistanceTopKSimtTilingData *__restrict tilingData)
 {
-    this->codeBlockSize = 0;
-    for (int i = 0; i < tilingData->batch * tilingData->codeBlockNum; i++) {
-        int64_t codeBlockSizeTmp = codeSizeGm.GetValue(i);
-        if (this->codeBlockSize < codeBlockSizeTmp) {
-            this->codeBlockSize = codeBlockSizeTmp;
-        }
-    }
-
-    this->codeBlockSize =
-        (this->codeBlockSize + IVFPQ_BLOCK_MAX_SIZE - 1) / IVFPQ_BLOCK_MAX_SIZE * IVFPQ_BLOCK_MAX_SIZE;
     this->usedAivNum = tilingData->usedAivNum;
 
     this->reduceMode = tilingData->reduceMode;
@@ -289,8 +281,6 @@ __aicore__ inline void AscendcIvfpqSearchDistanceTopKSmall::ParseTilingData(
 
     this->min_size = tilingData->minSize;
 
-    this->min_size_whole = tilingData->minSizeWhole;
-    this->min_size_single = tilingData->minSizeSingle;
     this->single_core_total_block = tilingData->singleCoretotalBlock;
 
     this->topkTilingData = tilingData->topkTilingData;
@@ -316,7 +306,7 @@ __aicore__ inline void AscendcIvfpqSearchDistanceTopKSmall::ParseTilingData(
     this->batch = tilingData->batch;
 }
 
-__aicore__ inline void AscendcIvfpqSearchDistanceTopKSmall::InitReduceUbTensor()
+__aicore__ inline void AscendcIvfpqSearchDistanceTopKSimt::InitReduceUbTensor()
 {
     pipe.InitBuffer(top_k_result_value_buf, top_k_result_value_buf_num * sizeof(float));
     pipe.InitBuffer(top_k_result_index_buf, top_k_result_value_buf_num * sizeof(int32_t));
@@ -330,11 +320,9 @@ __aicore__ inline void AscendcIvfpqSearchDistanceTopKSmall::InitReduceUbTensor()
     pipe.InitBuffer(flag_buf, IVFPQ_FLAG_ALIGN * sizeof(uint16_t));
 
     pipe.InitBuffer(top_k_tmp_buf, this->min_size * sizeof(uint8_t));
-    pipe.InitBuffer(top_k_tmp_whole_buf, this->min_size_whole * sizeof(uint8_t));
-    pipe.InitBuffer(top_k_tmp_single_buf, this->min_size_single * sizeof(uint8_t));
 }
 
-__aicore__ inline void AscendcIvfpqSearchDistanceTopKSmall::SingleBlockTopKAndIndexAlign(
+__aicore__ inline void AscendcIvfpqSearchDistanceTopKSimt::SingleBlockTopKAndIndexAlign(
     LocalTensor<float> dst_local_value, LocalTensor<int32_t> dst_local_index, LocalTensor<float> distResultUb,
     LocalTensor<uint8_t> tmp_local, int innerBlockindex)
 {
@@ -361,10 +349,9 @@ __aicore__ inline void AscendcIvfpqSearchDistanceTopKSmall::SingleBlockTopKAndIn
     AscendC::PipeBarrier<PIPE_V>();
 }
 
-__aicore__ inline void AscendcIvfpqSearchDistanceTopKSmall::WholeBlockTopK(
+__aicore__ inline void AscendcIvfpqSearchDistanceTopKSimt::WholeBlockTopK(
     LocalTensor<float> dist_local_value, LocalTensor<int32_t> dist_local_index, LocalTensor<float> src_local_value,
-    LocalTensor<int32_t> src_local_index, LocalTensor<uint8_t> tmp_local_whole, LocalTensor<uint8_t> tmp_local_single,
-    int innerBlockindex)
+    LocalTensor<int32_t> src_local_index, LocalTensor<uint8_t> tmp_local, int innerBlockindex)
 {
     static constexpr TopKConfig topkConfigSort{TopKAlgo::RADIX_SELECT, TopKOrder::UNSET, false};
     if (innerBlockindex > 0) {
@@ -377,7 +364,7 @@ __aicore__ inline void AscendcIvfpqSearchDistanceTopKSmall::WholeBlockTopK(
 
         AscendC::TopK<float, true, false, false, AscendC::TopKMode::TOPK_NORMAL, topkConfigSort>(
             dist_local_value, dist_local_index, src_local_value, src_local_index, src_local_finish_whole,
-            tmp_local_whole, topk, this->topkTilingDataWhole, topKInfoWhole, this->isLargest);
+            tmp_local, topk, this->topkTilingDataWhole, topKInfoWhole, this->isLargest);
     } else {
         // 只对比当前轮次
         TopKInfo topKInfoWhole;
@@ -388,33 +375,33 @@ __aicore__ inline void AscendcIvfpqSearchDistanceTopKSmall::WholeBlockTopK(
 
         AscendC::TopK<float, true, false, false, AscendC::TopKMode::TOPK_NORMAL, topkConfigSort>(
             dist_local_value, dist_local_index, src_local_value, src_local_index, src_local_finish_whole,
-            tmp_local_single, topk, this->topkTilingDataSingle, topKInfoWhole, this->isLargest);
+            tmp_local, topk, this->topkTilingDataSingle, topKInfoWhole, this->isLargest);
     }
     AscendC::PipeBarrier<PIPE_ALL>();
 }
 
 __aicore__ inline void
-AscendcIvfpqSearchDistanceTopKSmall::DistCompute(__ubuf__ float *queryPQUb, __gm__ uint8_t *codeBase,
+AscendcIvfpqSearchDistanceTopKSimt::DistCompute(__ubuf__ float *queryPQUb, __gm__ uint8_t *codeBase,
                                                  __gm__ int64_t *codeSize, __gm__ int64_t *codeOffset,
                                                  __ubuf__ float *distResultUbPtr, int innerBlockindex, int blockIndex)
 {
     if (this->subSpaceNum == 2) {
-        Simt::VF_CALL<SimtSearchComputeSmallV1<2>>(Simt::Dim3{IVFPQ_THREAD_NUM, 1, 1}, queryPQUb, codeBase,
+        Simt::VF_CALL<SimtSearchComputeSimtV1<2>>(Simt::Dim3{IVFPQ_THREAD_NUM, 1, 1}, queryPQUb, codeBase,
                                                    distResultUbPtr, codeSize, codeOffset, this->ksub,
                                                    this->codeBlockNum, this->perCoreInnerBlockDealSize,
                                                    this->distResultInitValue, innerBlockindex, blockIndex, usedAivNum);
     } else if (this->subSpaceNum == 4) {
-        Simt::VF_CALL<SimtSearchComputeSmallV1<4>>(Simt::Dim3{IVFPQ_THREAD_NUM, 1, 1}, queryPQUb, codeBase,
+        Simt::VF_CALL<SimtSearchComputeSimtV1<4>>(Simt::Dim3{IVFPQ_THREAD_NUM, 1, 1}, queryPQUb, codeBase,
                                                    distResultUbPtr, codeSize, codeOffset, this->ksub,
                                                    this->codeBlockNum, this->perCoreInnerBlockDealSize,
                                                    this->distResultInitValue, innerBlockindex, blockIndex, usedAivNum);
     } else if (this->subSpaceNum == 8) {
-        Simt::VF_CALL<SimtSearchComputeSmallV1<8>>(Simt::Dim3{IVFPQ_THREAD_NUM, 1, 1}, queryPQUb, codeBase,
+        Simt::VF_CALL<SimtSearchComputeSimtV1<8>>(Simt::Dim3{IVFPQ_THREAD_NUM, 1, 1}, queryPQUb, codeBase,
                                                    distResultUbPtr, codeSize, codeOffset, this->ksub,
                                                    this->codeBlockNum, this->perCoreInnerBlockDealSize,
                                                    this->distResultInitValue, innerBlockindex, blockIndex, usedAivNum);
     } else if (this->subSpaceNum == 16) {
-        Simt::VF_CALL<SimtSearchComputeSmallV1<16>>(Simt::Dim3{IVFPQ_THREAD_NUM, 1, 1}, queryPQUb, codeBase,
+        Simt::VF_CALL<SimtSearchComputeSimtV1<16>>(Simt::Dim3{IVFPQ_THREAD_NUM, 1, 1}, queryPQUb, codeBase,
                                                     distResultUbPtr, codeSize, codeOffset, this->ksub,
                                                     this->codeBlockNum, this->perCoreInnerBlockDealSize,
                                                     this->distResultInitValue, innerBlockindex, blockIndex, usedAivNum);
@@ -422,20 +409,18 @@ AscendcIvfpqSearchDistanceTopKSmall::DistCompute(__ubuf__ float *queryPQUb, __gm
     AscendC::PipeBarrier<PIPE_ALL>();
 }
 
-__aicore__ inline void AscendcIvfpqSearchDistanceTopKSmall::Process()
+__aicore__ inline void AscendcIvfpqSearchDistanceTopKSimt::Process()
 {
     uint32_t perCoreBlockNum = (codeBlockNum + usedAivNum - 1) / usedAivNum;
-    uint32_t perCoreInnerBlockLoopNum =
-        (codeBlockSize + this->perCoreInnerBlockDealSize - 1) / this->perCoreInnerBlockDealSize;
-
+    // block大小按照perCoreInnerBlockDealSize进行切分后的个数
+    uint32_t perCoreInnerBlockLoopNum = 0;
+    // 用于存放单轮topk结果的ub空间，实际长度是（16384/4096）* （topk + 1）
     LocalTensor<float> dst_local_value = top_k_result_value_buf.Get<float>();                 // TopK结果值
     LocalTensor<int32_t> dst_local_index = top_k_result_index_buf.Get<int32_t>();             // TopK结果索引
     LocalTensor<float> dst_local_value_whole = top_k_result_value_buf_whole.Get<float>();     // TopK结果值
     LocalTensor<int32_t> dst_local_index_whole = top_k_result_index_buf_whole.Get<int32_t>(); // TopK结果索引
 
     LocalTensor<uint8_t> tmp_local = top_k_tmp_buf.Get<uint8_t>();
-    LocalTensor<uint8_t> tmp_local_single = top_k_tmp_single_buf.Get<uint8_t>();
-    LocalTensor<uint8_t> tmp_local_whole = top_k_tmp_whole_buf.Get<uint8_t>();
 
     for (int batchIndex = 0; batchIndex < batch; batchIndex++) {
         LocalTensor<float> queryPQEnqueUb = queryPQUbQueue.AllocTensor<float>();
@@ -450,7 +435,13 @@ __aicore__ inline void AscendcIvfpqSearchDistanceTopKSmall::Process()
 
         for (int blockIndex = 0; blockIndex < perCoreBlockNum; blockIndex++) {
             uint32_t blockOffsetNum = blockIdx + blockIndex * usedAivNum;
+            if (blockOffsetNum >= codeBlockNum) {
+                break;
+            }
             int64_t codeBlockSizeTmp = codeSizeGm.GetValue(batchIndex * codeBlockNum + blockOffsetNum);
+            perCoreInnerBlockLoopNum = (codeBlockSizeTmp + this->perCoreInnerBlockDealSize - 1) / this->perCoreInnerBlockDealSize;
+            // 有效行数不为0，此时需要进行距离计算，以及block内topk排序
+            // 有效行数为0，此时只需要赋初始值，保证不影响后续block间topk排序
             if (codeBlockSizeTmp != 0) {
                 for (int innerBlockindex = 0; innerBlockindex < perCoreInnerBlockLoopNum; innerBlockindex++) {
                     LocalTensor<float> distResultUb = distResultQueue.AllocTensor<float>();
@@ -461,8 +452,9 @@ __aicore__ inline void AscendcIvfpqSearchDistanceTopKSmall::Process()
                                 blockIndex);
                     SingleBlockTopKAndIndexAlign(dst_local_value, dst_local_index, distResultUb, tmp_local,
                                                  innerBlockindex);
+                    // 对topk结果进行进一步排序
                     WholeBlockTopK(dst_local_value_whole, dst_local_index_whole, dst_local_value, dst_local_index,
-                                   tmp_local_whole, tmp_local_single, innerBlockindex);
+                                   tmp_local, innerBlockindex);
 
                     AscendC::DataCopy(dst_local_value[top_k_result_value_single_num], dst_local_value_whole,
                                       topk);
@@ -497,7 +489,7 @@ __aicore__ inline void AscendcIvfpqSearchDistanceTopKSmall::Process()
     AscendC::SyncAll();
 }
 
-__aicore__ inline void AscendcIvfpqSearchDistanceTopKSmall::ProcessMerge()
+__aicore__ inline void AscendcIvfpqSearchDistanceTopKSimt::ProcessMerge()
 {
     static constexpr TopKConfig topkConfig{TopKAlgo::RADIX_SELECT, TopKOrder::UNSET, false};
     static constexpr TopKConfig topkConfigSort{TopKAlgo::RADIX_SELECT, TopKOrder::UNSET, true};
@@ -605,7 +597,7 @@ __aicore__ inline void AscendcIvfpqSearchDistanceTopKSmall::ProcessMerge()
 
         __ubuf__ int32_t *top_k_merge_end_dst_index_buf_local_addr =
             (__ubuf__ int32_t *)top_k_merge_end_dst_index_buf_local.GetPhyAddr();
-        Simt::VF_CALL<SimtSearchGatherSmallV1>(Simt::Dim3{512, 1, 1}, top_k_merge_end_dst_index_buf_local_addr,
+        Simt::VF_CALL<SimtSearchGatherSimtV1>(Simt::Dim3{512, 1, 1}, top_k_merge_end_dst_index_buf_local_addr,
                                                labelOffsetGmAddr, labelBaseGmAddr, topkLabelFinalGmAddr, topk);
         AscendC::PipeBarrier<PIPE_V>();
         AscendC::DataCopy(topkValueFinalGm[batchIndex * topk], top_k_merge_end_dst_value_buf_local, topk);
