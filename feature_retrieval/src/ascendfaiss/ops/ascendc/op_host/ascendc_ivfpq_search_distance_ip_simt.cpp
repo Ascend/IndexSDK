@@ -16,7 +16,7 @@
  * -------------------------------------------------------------------------
  */
 
-#include "ascendc_ivfpq_search_distance_tiling.h"
+#include "ascendc_ivfpq_search_distance_simt_tiling.h"
 #include "register/op_def_registry.h"
 #include "tiling/platform/platform_ascendc.h"
 
@@ -31,18 +31,8 @@ namespace optiling {
 static ge::graphStatus TilingFunc(gert::TilingContext *context)
 {
     IvfpqTiling ivfpqTiling;
-    AscendcIvfpqSearchDistanceTopKTilingData tilingData;
-
-    const char *reduceModeStr = context->GetAttrs()->GetAttrPointer<char>(0);
-    ReduceMode reduceMode;
-    if (strcmp(reduceModeStr, "L2") == 0) {
-        reduceMode = ReduceMode::L2;
-    } else if (strcmp(reduceModeStr, "IP") == 0) {
-        reduceMode = ReduceMode::IP;
-    } else {
-        return ge::GRAPH_FAILED;
-    }
-    return ivfpqTiling.ProcessTiling(context, tilingData, reduceMode);
+    AscendcIvfpqSearchDistanceTopKSimtTilingData tilingData;
+    return ivfpqTiling.ProcessTiling(context, tilingData, ReduceMode::IP);
 }
 } // namespace optiling
 
@@ -87,9 +77,9 @@ static ge::graphStatus InferDataType(gert::InferDataTypeContext *context)
 } // namespace ge
 
 namespace ops {
-class AscendcIvfpqSearchDistance : public OpDef {
+class AscendcIvfpqSearchDistanceIPSimt : public OpDef {
 public:
-    explicit AscendcIvfpqSearchDistance(const char *name) : OpDef(name)
+    explicit AscendcIvfpqSearchDistanceIPSimt(const char *name) : OpDef(name)
     {
         this->Input("queryPQ")
             .ParamType(REQUIRED)
@@ -157,7 +147,6 @@ public:
             .Format({ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND});
 
-        this->Attr("mode").AttrType(OPTIONAL).String("L2");
         this->SetInferShape(ge::InferShape).SetInferDataType(ge::InferDataType);
 
         this->AICore().SetTiling(optiling::TilingFunc);
@@ -165,5 +154,5 @@ public:
     }
 };
 
-OP_ADD(AscendcIvfpqSearchDistance);
+OP_ADD(AscendcIvfpqSearchDistanceIPSimt);
 } // namespace ops

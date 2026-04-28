@@ -1064,7 +1064,7 @@ APP_ERROR IndexIVFPQ::resetL3DistOp()
     auto l3DistOpReset = [&](std::unique_ptr<AscendOperator> &op, int batch) {
         AscendOpDesc desc;
         if (faiss::ascend::SocUtils::GetInstance().IsAscendA5()) {
-            desc.setOpName("AscendcIvfpqSearchDistanceL2");
+            desc.setOpName("AscendcIvfpqSearchDistanceL2Simt");
         } else {
             desc.setOpName("AscendcIvfpqSearchDistanceSimdL2");
         }

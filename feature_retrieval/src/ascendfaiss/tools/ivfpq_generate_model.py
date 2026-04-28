@@ -88,12 +88,12 @@ def generate_subspace_distance_json(m, dim, ksub, file_path):
     utils.generate_op_config(subspace_distance_obj, file_path)
 
 
-def generate_search_distance_l2_json(m, ksub, blockNum, blockSize, topK, file_path):
+def generate_search_distance_l2_simt_json(m, ksub, blockNum, blockSize, topK, file_path):
     # write dist_compute_flat_mins json
     search_distance_obj = []
     search_batch_sizes = (64, 32, 16, 8, 4, 2, 1)
     for batch in search_batch_sizes:
-        generator = OpJsonGenerator("AscendcIvfpqSearchDistanceL2")
+        generator = OpJsonGenerator("AscendcIvfpqSearchDistanceL2Simt")
         generator.add_input("ND", [batch, m, ksub], "float32")
         generator.add_input("ND", [m], "uint8")
         generator.add_input("ND", [batch, blockNum], "int64")
@@ -174,9 +174,9 @@ def generate_ivfpq_offline_model():
         generate_search_distance_simd_l2_json(m, ksub, blockNum, _BlockSize, topk, file_path_)
         utils.atc_model(op_name_, soc_version)
     else:
-        op_name_ = f"ascendc_ivfpq_search_distance_op_pid{process_id}"
+        op_name_ = f"ascendc_ivfpq_search_distance_simt_op_pid{process_id}"
         file_path_ = os.path.join(config_path, f"{op_name_}.json")
-        generate_search_distance_l2_json(m, ksub, blockNum, _BlockSize, topk, file_path_)
+        generate_search_distance_l2_simt_json(m, ksub, blockNum, _BlockSize, topk, file_path_)
         utils.atc_model(op_name_, soc_version)
 
 
