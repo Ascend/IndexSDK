@@ -104,12 +104,24 @@ APP_ERROR IndexIVFRaBitQ::reset()
     baseFp32.clear();
     IndexL1OnDevice.clear();
     IndexL2OnDevice.clear();
-    centroidsOnDevice->clear();
-    OrthogonalMatrixOnDevice->clear();
-    LUTMatrixOnDevice->clear();
-    CentroidLUTOnDevice->clear();
-    CentroidL2OnDevice->clear();
-    distResultOnDevice->clear();
+    if (centroidsOnDevice != nullptr) {
+        centroidsOnDevice->clear();
+    }
+    if (OrthogonalMatrixOnDevice != nullptr) {
+        OrthogonalMatrixOnDevice->clear();
+    }
+    if (LUTMatrixOnDevice != nullptr) {
+        LUTMatrixOnDevice->clear();
+    }
+    if (CentroidLUTOnDevice != nullptr) {
+        CentroidLUTOnDevice->clear();
+    }
+    if (CentroidL2OnDevice != nullptr) {
+        CentroidL2OnDevice->clear();
+    }
+    if (distResultOnDevice != nullptr) {
+        distResultOnDevice->clear();
+    }
     return APP_ERR_OK;
 }
 
