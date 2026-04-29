@@ -27,6 +27,8 @@
 namespace faiss {
 namespace ascend {
 
+constexpr size_t MAX_TRAINNUM = 7000000;
+
 // Default dim in case of nullptr index
 const size_t DEFAULT_DIM = 128;
 // Default nlist in case of nullptr index
@@ -447,7 +449,7 @@ void AscendIndexIVFRaBitQImpl::train(idx_t n, const float *x, bool clearNpuData)
         return;
     }
 
-    size_t trainNum = std::min(static_cast<size_t>(n), static_cast<size_t>(nlist) * 256);
+    size_t trainNum = std::min({static_cast<size_t>(n), static_cast<size_t>(nlist) * 256, MAX_TRAINNUM});
     const float* trainData = x;
     std::vector<float> trainVector;
     
