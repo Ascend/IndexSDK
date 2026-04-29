@@ -38,7 +38,7 @@ namespace faiss {
 namespace ascend {
 namespace {
 const int64_t CLUSTERING_MAX_MEM = 0x100000000; // 0x100000000 mean 4096MB
-const idx_t CLUSTERING_MAX_N = 32768 * 256 + 1;
+const idx_t CLUSTERING_MAX_N = 7000001;
 const int MAX_CPU_AVAILABLE = 20;
 const int NUM_BUCK_PER_BATCH = 64;
 const int SUBCENTER_NUM = 64;
