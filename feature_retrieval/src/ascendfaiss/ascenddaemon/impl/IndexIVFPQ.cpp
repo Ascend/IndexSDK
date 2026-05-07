@@ -118,7 +118,10 @@ uint64_t IndexIVFPQ::getActualRngSeed(const int seed)
 
 size_t IndexIVFPQ::getPQVecCapacity(size_t vecNum, size_t size, int M) const
 {
-    size_t minCapacity = 512 * static_cast<size_t>(KB);
+    const size_t totalMinBudget = 512UL * 1024 * 1024;
+    size_t minCapacity = std::min(static_cast<size_t>(512 * KB),
+                                  totalMinBudget / static_cast<size_t>(numLists));
+    minCapacity = std::max(minCapacity, static_cast<size_t>(4 * KB));
 
     int vecAlign = M / CUBE_ALIGN;
     size_t divisor = vecNum / static_cast<size_t>(CUBE_ALIGN);
