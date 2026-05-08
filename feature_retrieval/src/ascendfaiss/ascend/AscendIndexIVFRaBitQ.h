@@ -28,25 +28,26 @@ namespace ascend {
 
 struct AscendIndexIVFRaBitQConfig : public AscendIndexIVFConfig {
     inline AscendIndexIVFRaBitQConfig() : AscendIndexIVFConfig({ 0 }, IVF_DEFAULT_MEM), useRandomOrthogonalMatrix(true),
-                                          needRefine(false), matrixSeed(12345), refineAlpha(2) {}
+                                          needRefine(false), matrixSeed(12345), samplingSeed(1234), refineAlpha(2) {}
     
     explicit inline AscendIndexIVFRaBitQConfig(std::initializer_list<int> devices,
                                                int64_t resourceSize = IVF_DEFAULT_MEM)
         : AscendIndexIVFConfig(devices, resourceSize), useRandomOrthogonalMatrix(true),
-          needRefine(false), matrixSeed(12345), refineAlpha(2) {}
+          needRefine(false), matrixSeed(12345), samplingSeed(1234), refineAlpha(2) {}
     
     explicit inline AscendIndexIVFRaBitQConfig(std::vector<int> devices, int64_t resourceSize = IVF_DEFAULT_MEM)
         : AscendIndexIVFConfig(devices, resourceSize), useRandomOrthogonalMatrix(true),
-          needRefine(false), matrixSeed(12345), refineAlpha(2) {}
+          needRefine(false), matrixSeed(12345), samplingSeed(1234), refineAlpha(2) {}
 
     explicit inline AscendIndexIVFRaBitQConfig(std::vector<int> devices, bool useRandomOrthogonalMatrix_,
-                                               bool needRefine_, int matrixSeed_, float alpha_,
+                                               bool needRefine_, int matrixSeed_, int samplingSeed_, float alpha_,
                                                int64_t resourceSize = IVF_DEFAULT_MEM)
         : AscendIndexIVFConfig(devices, resourceSize), useRandomOrthogonalMatrix(useRandomOrthogonalMatrix_),
-          needRefine(needRefine_), matrixSeed(matrixSeed_), refineAlpha(alpha_) {}
+          needRefine(needRefine_), matrixSeed(matrixSeed_), samplingSeed(samplingSeed_), refineAlpha(alpha_) {}
     bool useRandomOrthogonalMatrix;
     bool needRefine;
     int matrixSeed;
+    int samplingSeed;
     float refineAlpha;
 };
 
