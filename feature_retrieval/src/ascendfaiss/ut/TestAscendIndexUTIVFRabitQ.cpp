@@ -99,6 +99,24 @@ TEST(TestAscendIndexIVFRaBitQ, ConstructInvalidDim)
     EXPECT_TRUE(msg.length() > 0);
 }
 
+TEST(TestAscendIndexIVFRaBitQ, ConstructWithCustomSamplingSeed)
+{
+    int dim = 128;
+    int nlist = 1024;
+
+    std::string msg = "";
+    faiss::MetricType type = faiss::METRIC_L2;
+    faiss::ascend::AscendIndexIVFRaBitQConfig conf({ 0 }, true, false, 12345, 5678, 2.0f);
+    try {
+        faiss::ascend::AscendIndexIVFRaBitQ index(dim, type, nlist, conf);
+        msg = "";
+    } catch(std::exception &e) {
+        msg = e.what();
+        std::cout << "Exception in ConstructWithCustomSamplingSeed test: " << msg << std::endl;
+    }
+    EXPECT_EQ(msg, "");
+}
+
 TEST(TestAscendIndexIVFRaBitQ, ALL)
 {
     int dim = 128;

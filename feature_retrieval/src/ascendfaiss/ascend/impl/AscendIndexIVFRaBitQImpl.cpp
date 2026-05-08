@@ -449,7 +449,7 @@ void AscendIndexIVFRaBitQImpl::train(idx_t n, const float *x, bool clearNpuData)
         return;
     }
 
-    size_t trainNum = std::min({static_cast<size_t>(n), static_cast<size_t>(nlist) * 256, MAX_TRAINNUM});
+    size_t trainNum = std::min(static_cast<size_t>(n), static_cast<size_t>(nlist) * 256);
     const float* trainData = x;
     std::vector<float> trainVector;
     
@@ -460,8 +460,7 @@ void AscendIndexIVFRaBitQImpl::train(idx_t n, const float *x, bool clearNpuData)
         for (size_t i = 0; i < static_cast<size_t>(n); ++i) {
             indices[i] = i;
         }
-        std::random_device rd;
-        std::mt19937 gen(rd());
+        std::mt19937 gen(ivfrabitqConfig.samplingSeed);
         std::shuffle(indices.begin(), indices.end(), gen);
         for (size_t i = 0; i < trainNum; ++i) {
             size_t srcIdx = indices[i];
