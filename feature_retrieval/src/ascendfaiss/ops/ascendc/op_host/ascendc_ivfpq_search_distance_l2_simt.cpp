@@ -1,7 +1,7 @@
 /*
  * -------------------------------------------------------------------------
  * This file is part of the IndexSDK project.
- * Copyright (c) 2025 Huawei Technologies Co.,Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co.,Ltd.
  *
  * IndexSDK is licensed under Mulan PSL v2.
  * You can use this software according to the terms and conditions of the Mulan PSL v2.
@@ -16,7 +16,7 @@
  * -------------------------------------------------------------------------
  */
 
-#include "ascendc_ivfpq_search_distance_tiling.h"
+#include "ascendc_ivfpq_search_distance_simt_tiling.h"
 #include "register/op_def_registry.h"
 #include "tiling/platform/platform_ascendc.h"
 
@@ -30,7 +30,7 @@ namespace optiling {
 static ge::graphStatus TilingFunc(gert::TilingContext *context)
 {
     IvfpqTiling ivfpqTiling;
-    AscendcIvfpqSearchDistanceTopKTilingData tilingData;
+    AscendcIvfpqSearchDistanceTopKSimtTilingData tilingData;
     return ivfpqTiling.ProcessTiling(context, tilingData, ReduceMode::L2);
 }
 } // namespace optiling
@@ -76,9 +76,9 @@ static ge::graphStatus InferDataType(gert::InferDataTypeContext *context)
 } // namespace ge
 
 namespace ops {
-class AscendcIvfpqSearchDistanceL2 : public OpDef {
+class AscendcIvfpqSearchDistanceL2Simt : public OpDef {
 public:
-    explicit AscendcIvfpqSearchDistanceL2(const char *name) : OpDef(name)
+    explicit AscendcIvfpqSearchDistanceL2Simt(const char *name) : OpDef(name)
     {
         this->Input("queryPQ")
             .ParamType(REQUIRED)
@@ -149,9 +149,9 @@ public:
         this->SetInferShape(ge::InferShape).SetInferDataType(ge::InferDataType);
 
         this->AICore().SetTiling(optiling::TilingFunc);
-        this->AICore().AddConfig("ascend910b").AddConfig("ascend910_93").AddConfig("ascend950");
+        this->AICore().AddConfig("ascend950");
     }
 };
 
-OP_ADD(AscendcIvfpqSearchDistanceL2);
+OP_ADD(AscendcIvfpqSearchDistanceL2Simt);
 } // namespace ops
