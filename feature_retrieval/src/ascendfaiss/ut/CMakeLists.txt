@@ -249,6 +249,7 @@ SET(TEST_SRC_FILES TestAscendIndexUTBinaryFlat.cpp
                    TestAscendIndexUTFlatAT.cpp
                    TestAscendIndexUTILFlat.cpp
                    TestAscendIndexUTInt8.cpp
+                   TestAscendIndexUTIVFPQ.cpp
                    TestAscendIndexUTIVFSQ.cpp
                    TestAscendIndexUTIVFSQT.cpp
                    TestAscendIndexUTSQ.cpp

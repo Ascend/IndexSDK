@@ -177,6 +177,7 @@ def get_soc_version_from_npu_type(npu_type):
         "910_9382": "Ascend910_9382",
         "910_9372": "Ascend910_9372",
         "910_9362": "Ascend910_9362",
+        "Ascend950PR": "Ascend950PR_957c",
     }
     str_keys = [str(key) for key in npu_type_soc_version_dict.keys()]
     if npu_type not in npu_type_soc_version_dict.keys():
@@ -198,6 +199,7 @@ def get_core_num_by_npu_type(core_num, npu_type):
         "910_9382": 48,
         "910_9372": 40,
         "910_9362": 40,
+        "Ascend950PR": 56,
     }
     if "--cores" in sys.argv:
         if core_num not in npu_type_core_num_dict.values():

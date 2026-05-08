@@ -118,7 +118,10 @@ uint64_t IndexIVFPQ::getActualRngSeed(const int seed)
 
 size_t IndexIVFPQ::getPQVecCapacity(size_t vecNum, size_t size, int M) const
 {
-    size_t minCapacity = 512 * static_cast<size_t>(KB);
+    const size_t totalMinBudget = 512UL * 1024 * 1024;
+    size_t minCapacity = std::min(static_cast<size_t>(512 * KB),
+                                  totalMinBudget / static_cast<size_t>(numLists));
+    minCapacity = std::max(minCapacity, static_cast<size_t>(4 * KB));
 
     int vecAlign = M / CUBE_ALIGN;
     size_t divisor = vecNum / static_cast<size_t>(CUBE_ALIGN);
@@ -941,7 +944,7 @@ APP_ERROR IndexIVFPQ::resetL1TopkOp()
     auto topkCompOpReset = [&](std::unique_ptr<AscendOperator> &op, int64_t batch) {
         AscendOpDesc desc("TopkFlatFp32");
         std::vector<int64_t> shape0 { 1, batch, numLists };
-        std::vector<int64_t> shape1 { 1, batch,  std::min(numLists / IVF_PQ_BURST_LEN * 2, MIN_EXTREME_SIZE) };
+        std::vector<int64_t> shape1 { 1, batch, numLists / IVF_PQ_BURST_LEN * 2 };
         std::vector<int64_t> shape2 { 1, CORE_NUM, SIZE_ALIGN };
         std::vector<int64_t> shape3 { 1, CORE_NUM, FLAG_SIZE };
         std::vector<int64_t> shape4 { aicpu::TOPK_FLAT_ATTR_IDX_COUNT };
@@ -985,7 +988,7 @@ void IndexIVFPQ::runL1TopkOp(AscendTensor<float, DIMS_2> &dists,
     ASCEND_THROW_IF_NOT(op);
     AscendTensor<float, DIMS_3> distsTopk(dists.data(), {1, batch, numLists});
     AscendTensor<float, DIMS_3> vmdistsTopk(vmdists.data(),
-                                            {1, batch, std::min(numLists / IVF_PQ_BURST_LEN * 2, MIN_EXTREME_SIZE)});
+                                            {1, batch, numLists / IVF_PQ_BURST_LEN * 2});
     AscendTensor<uint32_t, DIMS_3> sizesTopk(sizes.data(), {1, CORE_NUM, SIZE_ALIGN});
     AscendTensor<uint16_t, DIMS_3> flagsTopk(flags.data(), {1, CORE_NUM, FLAG_SIZE});
     std::shared_ptr<std::vector<const aclDataBuffer *>> topkOpInput(
@@ -1063,7 +1066,10 @@ APP_ERROR IndexIVFPQ::resetL2DistOp()
 APP_ERROR IndexIVFPQ::resetL3DistOp()
 {
     auto l3DistOpReset = [&](std::unique_ptr<AscendOperator> &op, int batch) {
-        AscendOpDesc desc("AscendcIvfpqSearchDistanceL2");
+        const char *opName = faiss::ascend::SocUtils::GetInstance().IsAscendA5()
+            ? "AscendcIvfpqSearchDistanceL2Simt"
+            : "AscendcIvfpqSearchDistanceL2";
+        AscendOpDesc desc(opName);
         std::vector<int64_t> queryPQShape({ batch, M, ksub });
         std::vector<int64_t> codeBaseShape({ M });
         std::vector<int64_t> codeOffsetShape({ batch, blockNum });
@@ -1417,7 +1423,7 @@ APP_ERROR IndexIVFPQ::searchImplL1(AscendTensor<float, DIMS_2> &queries,
 
     int n = queries.getSize(0);
     AscendTensor<float, DIMS_2> dists(mem, {n, numLists}, stream);
-    int minDistSize = std::min(numLists / IVF_PQ_BURST_LEN * 2, MIN_EXTREME_SIZE);
+    int minDistSize = numLists / IVF_PQ_BURST_LEN * 2;
     AscendTensor<float, DIMS_2> vmdists(mem, {n, minDistSize}, stream);
     AscendTensor<uint32_t, DIMS_2> opSize(mem, {CORE_NUM, SIZE_ALIGN}, stream);
     opSize[0][0] = numLists;

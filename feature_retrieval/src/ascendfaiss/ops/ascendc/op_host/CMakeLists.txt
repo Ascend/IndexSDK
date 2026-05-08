@@ -22,6 +22,9 @@ set(ops_srcs
     ${CMAKE_CURRENT_LIST_DIR}/ascendc_dist_int8_flat_l2.cpp
     ${CMAKE_CURRENT_LIST_DIR}/distance_flat_l2_mins_at_fp32.cpp
     ${CMAKE_CURRENT_LIST_DIR}/distance_ivf_flat_ip_fp32.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/ascendc_ivfpq_search_distance_simt.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/ascendc_ivfpq_search_distance_ip_simt.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/ascendc_ivfpq_search_distance_l2_simt.cpp
     ${CMAKE_CURRENT_LIST_DIR}/ascendc_ivfpq_search_distance_l2.cpp
     ${CMAKE_CURRENT_LIST_DIR}/ascendc_ivfpq_subspace_distance.cpp
 )
