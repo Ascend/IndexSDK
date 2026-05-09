@@ -2,6 +2,7 @@
 CMAKE_MINIMUM_REQUIRED(VERSION 3.13)
 PROJECT(feature_retrieval)
 SET(CMAKE_CXX_STANDARD 17)
+SET(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # Compiling options
 ADD_COMPILE_OPTIONS(-fPIE -fstack-protector-all -fPIC -Wall -O3 -Wfloat-equal -fno-common -Wextra)
