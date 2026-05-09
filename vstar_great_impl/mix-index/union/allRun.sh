@@ -15,7 +15,7 @@
 # See the Mulan PSL v2 for more details.
 # -------------------------------------------------------------------------
 
-echo "Builing ascendsearch ..."
+echo "Building ascendsearch ..."
 
 cd ../ivfsp_impl/Retrieval_Common/src
 ! [[ -h ascendsearch ]] && ln -s . ascendsearch

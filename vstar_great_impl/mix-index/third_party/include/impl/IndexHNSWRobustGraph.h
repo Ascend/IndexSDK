@@ -24,6 +24,7 @@
 #include <map>
 
 #include <faiss/IndexFlat.h>
+#include <faiss/impl/VisitedTable.h>
 #include <faiss/VectorTransform.h>
 
 #include "impl/HNSWRobustGraph.h"
@@ -168,4 +169,4 @@ void ThreadFunc(const HNSWGraph &innerGraph, idx_t *idxi, float *simi, faiss::Di
                 faiss::DistanceComputer *preciseComputer, idx_t k, faiss::VisitedTable &vt);
 }  // namespace ascendsearch
 
-#endif
+#endif  // GFEATURERETRIEVAL_INDEX_HNSW_GRAPH_H

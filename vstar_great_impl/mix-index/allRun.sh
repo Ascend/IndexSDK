@@ -15,7 +15,7 @@
 # See the Mulan PSL v2 for more details.
 # -------------------------------------------------------------------------
 
-echo "Builing indexGreat ..."
+echo "Building indexGreat ..."
 cd ./beta
 if [ -d "./build" ]; then
     rm -rf ./build
