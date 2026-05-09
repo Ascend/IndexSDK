@@ -792,7 +792,11 @@ void IndexIVFFlat::releaseUnusageSpace(int listId, size_t oldTotal, size_t remov
     size_t oldVecSize = utils::divUp(oldTotal, static_cast<size_t>(blockSize));
     size_t vecSize = utils::divUp(oldTotal - remove,  static_cast<size_t>(blockSize));
 
-    for (size_t i = oldVecSize - 1; i >= vecSize; --i) {
+    if (vecSize >= oldVecSize) {
+        return;
+    }
+    for (size_t i = oldVecSize; i != vecSize;) {
+        --i;
         baseFp32[listId].at(i)->clear();
     }
 }
@@ -815,18 +819,20 @@ size_t IndexIVFFlat::removeIds(const ascend::IDSelector& sel)
         idx_t *indicesCheckerPtr = indicesVec.data();
         idx_t *indicesPtr = indicesList->data();
         bool hasMoved = false;
-        size_t j = indicesList->size() - 1;
+        long long j = static_cast<long long>(indicesList->size()) - 1;
         std::vector<size_t> delIndices;
-        for (size_t i = 0; i <= j;) {
+        for (size_t i = 0; j >= 0 && static_cast<long long>(i) <= j;) {
             if (!sel.is_member(indicesCheckerPtr[i])) {
                 i++;
                 continue;
             }
             delIndices.push_back(i);
-            auto err = aclrtMemcpy(indicesPtr + i, sizeof(idx_t),
-                                   indicesPtr + j, sizeof(idx_t), ACL_MEMCPY_DEVICE_TO_DEVICE);
-            ASCEND_THROW_IF_NOT_FMT(err == ACL_SUCCESS, "Memcpy error %d", err);
-            indicesCheckerPtr[i] = indicesCheckerPtr[j];
+            if (static_cast<long long>(i) < j) {
+                auto err = aclrtMemcpy(indicesPtr + i, sizeof(idx_t),
+                    indicesPtr + static_cast<size_t>(j), sizeof(idx_t), ACL_MEMCPY_DEVICE_TO_DEVICE);
+                ASCEND_THROW_IF_NOT_FMT(err == ACL_SUCCESS, "Memcpy error %d", err);
+                indicesCheckerPtr[i] = indicesCheckerPtr[static_cast<size_t>(j)];
+            }
             j--;
             hasMoved = true;
         }
@@ -839,7 +845,8 @@ size_t IndexIVFFlat::removeIds(const ascend::IDSelector& sel)
             releaseUnusageSpace(id, oldCnt, removeCnt);
         }
         if (hasMoved) {
-            indicesList->resize(j + 1);
+            const size_t newSize = j < 0 ? 0 : static_cast<size_t>(j) + 1;
+            indicesList->resize(newSize);
             indicesList->reclaim(false);
         }
         removeCntAll += removeCnt;

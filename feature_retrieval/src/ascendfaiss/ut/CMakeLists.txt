@@ -88,6 +88,7 @@ SET(ASCENDFAISS_SRC
     ${ASCEND_PROJECT_HOME}/ascend/AscendIndexIVFSQ.cpp
     ${ASCEND_PROJECT_HOME}/ascend/AscendIndexIVFFlat.cpp
     ${ASCEND_PROJECT_HOME}/ascend/AscendIndexIVFPQ.cpp
+    ${ASCEND_PROJECT_HOME}/ascend/AscendIndexIVFRaBitQ.cpp
     ${ASCEND_PROJECT_HOME}/ascend/AscendIndexSQ.cpp
     ${ASCEND_PROJECT_HOME}/ascend/AscendMultiIndexSearch.cpp
     ${ASCEND_PROJECT_HOME}/ascend/AscendNNInference.cpp
@@ -106,6 +107,7 @@ SET(ASCENDFAISS_SRC
     ${ASCEND_PROJECT_HOME}/ascend/impl/AscendIndexIVFSQImpl.cpp
     ${ASCEND_PROJECT_HOME}/ascend/impl/AscendIndexIVFFlatImpl.cpp
     ${ASCEND_PROJECT_HOME}/ascend/impl/AscendIndexIVFPQImpl.cpp
+    ${ASCEND_PROJECT_HOME}/ascend/impl/AscendIndexIVFRaBitQImpl.cpp
     ${ASCEND_PROJECT_HOME}/ascend/impl/AscendIndexSQImpl.cpp
     ${ASCEND_PROJECT_HOME}/ascend/impl/AscendNNInferenceImpl.cpp
     ${ASCEND_PROJECT_HOME}/ascend/custom/impl/AscendIndexFlatATImpl.cpp
@@ -126,6 +128,7 @@ SET(ASCENDFAISS_SRC
     ${ASCEND_PROJECT_HOME}/ascenddaemon/impl/IndexIVFSQ.cpp
     ${ASCEND_PROJECT_HOME}/ascenddaemon/impl/IndexIVFFlat.cpp
     ${ASCEND_PROJECT_HOME}/ascenddaemon/impl/IndexIVFPQ.cpp
+    ${ASCEND_PROJECT_HOME}/ascenddaemon/impl/IndexIVFRaBitQ.cpp
     ${ASCEND_PROJECT_HOME}/ascenddaemon/impl/Int8L2Norm.cpp
     ${ASCEND_PROJECT_HOME}/ascenddaemon/impl/IndexSQ.cpp
     ${ASCEND_PROJECT_HOME}/ascenddaemon/utils/AscendMemory.cpp

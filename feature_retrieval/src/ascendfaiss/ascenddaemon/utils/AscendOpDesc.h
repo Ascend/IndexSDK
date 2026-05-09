@@ -28,6 +28,8 @@
 namespace ascend {
 class AscendOpDesc {
 public:
+    AscendOpDesc();
+
     AscendOpDesc(std::string opName);
 
     AscendOpDesc(AscendOpDesc &&desc);
@@ -37,6 +39,8 @@ public:
     AscendOpDesc& operator=(const AscendOpDesc&) = delete;
 
     ~AscendOpDesc();
+
+    void setOpName(std::string opName);
 
     AscendOpDesc &addInputTensorDesc(aclDataType dataType, int numDims, const int64_t *dims, aclFormat format);
     AscendOpDesc &addOutputTensorDesc(aclDataType dataType, int numDims, const int64_t *dims, aclFormat format);
