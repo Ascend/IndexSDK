@@ -16,7 +16,7 @@
 # -------------------------------------------------------------------------
 
 # compile all three modes into one so
-echo "Builing 3 Modes together ..."
+echo "Building 3 Modes together ..."
 rm -rf ./build
 rm -rf ./lib
 mkdir ./build
