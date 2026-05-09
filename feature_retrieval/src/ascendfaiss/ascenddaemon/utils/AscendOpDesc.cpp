@@ -21,6 +21,11 @@
 #include "ascenddaemon/utils/AscendUtils.h"
 
 namespace ascend {
+AscendOpDesc::AscendOpDesc()
+{
+    opAttr = aclopCreateAttr();
+}
+
 AscendOpDesc::AscendOpDesc(std::string opName)
     : opType(std::move(opName))
 {
@@ -53,10 +58,15 @@ AscendOpDesc::~AscendOpDesc()
     }
 }
 
+void AscendOpDesc::setOpName(std::string opName)
+{
+    opType = std::move(opName);
+}
+
 AscendOpDesc &AscendOpDesc::addInputTensorDesc(aclDataType dataType,
-                                               int numDims,
-                                               const int64_t *dims,
-                                               aclFormat format)
+                                            int numDims,
+                                            const int64_t *dims,
+                                            aclFormat format)
 {
     inputDesc.push_back(aclCreateTensorDesc(dataType, numDims, dims, format));
     return *this;
