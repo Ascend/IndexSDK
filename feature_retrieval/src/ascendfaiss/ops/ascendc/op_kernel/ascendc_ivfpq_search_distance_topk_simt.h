@@ -36,8 +36,8 @@ constexpr float IVFPQ_MAX_FLOAT = std::numeric_limits<float>::max();
 constexpr float IVFPQ_MIN_FLOAT = -std::numeric_limits<float>::max();
 
 template <uint8_t NumSubQuantizers>
-__aicore__ inline float SimtSearchTableSumSimtV1(__ubuf__ float *queryPQ, __gm__ uint8_t *codeBase,
-                                                  int64_t curBlockIndex, uint32_t taskIdx, uint32_t ksub)
+__aicore__ __simt_callee__ inline float SimtSearchTableSumSimtV1(__ubuf__ float *queryPQ, __gm__ uint8_t *codeBase,
+                                                                 int64_t curBlockIndex, uint32_t taskIdx, uint32_t ksub)
 {
     uint8_t codeBookIndices[IVFPQ_UNROLL_FACTOR];
     float sumDist = 0;
