@@ -1,4 +1,4 @@
-ARG CANN_VERSION=9.0.0-beta.2
+ARG CANN_VERSION=9.0.0
 FROM swr.cn-south-1.myhuaweicloud.com/ascendhub/cann:${CANN_VERSION}-a3-openeuler24.03-py3.11
 
 WORKDIR /tmp
