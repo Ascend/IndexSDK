@@ -33,8 +33,8 @@ constexpr int32_t METRIC_L2 = 0;
 constexpr int32_t METRIC_INNER_PRODUCT = 1;
 
 template <uint8_t NumSubQuantizers>
-__aicore__ inline float SimtSearchTableSum(__ubuf__ float *queryLutUb, __gm__ uint8_t *codeBase, uint32_t taskIdx,
-                                           uint32_t ksub)
+__aicore__ __simt_callee__ inline float SimtSearchTableSum(__ubuf__ float *queryLutUb, __gm__ uint8_t *codeBase, uint32_t taskIdx,
+                                                           uint32_t ksub)
 {
     // queryLutUb: 16*256: queryPQDequeUb.GetPhyAddr();
     // codeBase: codeBaseGm.GetPhyAddr()
@@ -331,9 +331,9 @@ private:
         PipeBarrier<PIPE_V>();
         if (this->metric == METRIC_INNER_PRODUCT) { // dist ip: - 2 <q, o> = ||o - q||^2 - ||q||^2 - ||o||^2
             PipeBarrier<PIPE_V>();
-            Adds(distResultLocal, distResultLocal, this->cur_queryl2, copyLength);
+            Adds(distResultLocal, distResultLocal, this->cur_queryl2, computeCodesLength);
             PipeBarrier<PIPE_V>();
-            Muls(distResultLocal, distResultLocal, static_cast<float>(-0.5), copyLength);
+            Muls(distResultLocal, distResultLocal, static_cast<float>(-0.5), computeCodesLength);
             PipeBarrier<PIPE_V>();
         }
 
