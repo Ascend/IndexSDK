@@ -80,7 +80,7 @@ docker buildx build -t {your_repo}/index:latest -f Dockerfile .
 
 ```bash
 # Add required software by developer
-FROM swr.cn-south-1.myhuaweicloud.com/ascendhub/cann:9.0.0-beta.1-910b-ubuntu22.04-py3.11
+FROM swr.cn-south-1.myhuaweicloud.com/ascendhub/cann:9.0.0-910b-ubuntu22.04-py3.11
 
 RUN apt update -y && \
     apt install gcc ...
