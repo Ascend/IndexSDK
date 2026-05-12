@@ -1,10 +1,8 @@
-# API参考——属性过滤检索
+# 属性过滤检索<a name="ZH-CN_TOPIC_0000001482844454"></a>
 
-## 属性过滤检索<a name="ZH-CN_TOPIC_0000001482844454"></a>
+## AscendIndexTS<a name="ZH-CN_TOPIC_0000001507640105"></a>
 
-### AscendIndexTS<a name="ZH-CN_TOPIC_0000001507640105"></a>
-
-#### 功能介绍<a name="ZH-CN_TOPIC_0000001507879785"></a>
+### 功能介绍<a name="ZH-CN_TOPIC_0000001507879785"></a>
 
 时空库功能类接口。添加底库特征时，每条特征可以配置一个属性FeatureAttr，执行检索功能时每一批query向量可以配置一个过滤器AttrFilter，该过滤器首先对全量的底库进行筛选并与符合条件的向量进行比对。
 
@@ -14,7 +12,7 @@
 - Int8Flat（cos距离）、FP16Flat（IP距离）、Int8Flat（L2距离）：使用前需要手动生成[Mask](../user_guide.md#mask)算子并移动到对应的“modelpath”目录中。
 - 支持多线程并发调用，需要设置“MX\_INDEX\_MULTITHREAD”环境变量为1，即export MX\_INDEX\_MULTITHREAD=1，设置为其他值或者不设置，则表示不开启多线程功能。当前的特征检索内部会使用OMP做性能加速，OMP不支持与其他多线程机制混用。反复创建新线程使用OMP会导致内存持续累加，因此建议使用固定的线程来运行检索任务。
 
-#### AddFeature接口<a name="ZH-CN_TOPIC_0000001458360182"></a>
+### AddFeature接口<a name="ZH-CN_TOPIC_0000001458360182"></a>
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.01%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
@@ -57,7 +55,7 @@
 > [!NOTE]
 >AddFeature不能与AddWithExtraVal接口混用。
 
-#### AddFeatureByIndice接口<a name="ZH-CN_TOPIC_0000002411433020"></a>
+### AddFeatureByIndice接口<a name="ZH-CN_TOPIC_0000002411433020"></a>
 
 > [!NOTE]
 >
@@ -103,7 +101,7 @@
 </tbody>
 </table>
 
-#### AddWithExtraVal接口<a name="ZH-CN_TOPIC_0000001976650872"></a>
+### AddWithExtraVal接口<a name="ZH-CN_TOPIC_0000001976650872"></a>
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.03%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
@@ -144,7 +142,7 @@
 </tbody>
 </table>
 
-#### AscendIndexTS接口<a name="ZH-CN_TOPIC_0000001458200394"></a>
+### AscendIndexTS接口<a name="ZH-CN_TOPIC_0000001458200394"></a>
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
@@ -214,7 +212,7 @@
 </tbody>
 </table>
 
-#### \~AscendIndexTS接口<a name="ZH-CN_TOPIC_0000001507760865"></a>
+### \~AscendIndexTS接口<a name="ZH-CN_TOPIC_0000001507760865"></a>
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
@@ -250,7 +248,7 @@
 </tbody>
 </table>
 
-#### DeleteFeatureByLabel接口<a name="ZH-CN_TOPIC_0000001458200398"></a>
+### DeleteFeatureByLabel接口<a name="ZH-CN_TOPIC_0000001458200398"></a>
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.03%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
@@ -287,7 +285,7 @@
 </tbody>
 </table>
 
-#### DeleteFeatureByToken接口<a id="ZH-CN_TOPIC_0000001458680018"></a>
+### DeleteFeatureByToken接口<a id="ZH-CN_TOPIC_0000001458680018"></a>
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.03%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
@@ -324,7 +322,7 @@
 </tbody>
 </table>
 
-#### FastDeleteFeatureByIndice接口<a name="ZH-CN_TOPIC_0000002445152089"></a>
+### FastDeleteFeatureByIndice接口<a name="ZH-CN_TOPIC_0000002445152089"></a>
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.03%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
@@ -361,7 +359,7 @@
 </tbody>
 </table>
 
-#### FastDeleteFeatureByRange接口<a name="ZH-CN_TOPIC_0000002445960745"></a>
+### FastDeleteFeatureByRange接口<a name="ZH-CN_TOPIC_0000002445960745"></a>
 
 <a name="table18950829154115"></a>
 <table><tbody><tr id="row12950172911415"><th class="firstcol" valign="top" width="20.03%" id="mcps1.1.3.1.1"><p id="p1950162910415"><a name="p1950162910415"></a><a name="p1950162910415"></a>API定义</p>
@@ -398,7 +396,7 @@
 </tbody>
 </table>
 
-#### GetBaseByRange接口<a name="ZH-CN_TOPIC_0000001818301380"></a>
+### GetBaseByRange接口<a name="ZH-CN_TOPIC_0000001818301380"></a>
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="19.919999999999998%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
@@ -437,7 +435,7 @@
 </tbody>
 </table>
 
-#### GetBaseByRangeWithExtraVal接口<a name="ZH-CN_TOPIC_0000001976495686"></a>
+### GetBaseByRangeWithExtraVal接口<a name="ZH-CN_TOPIC_0000001976495686"></a>
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="19.919999999999998%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
@@ -477,7 +475,7 @@
 </tbody>
 </table>
 
-#### GetBaseMask接口<a name="ZH-CN_TOPIC_0000002445112157"></a>
+### GetBaseMask接口<a name="ZH-CN_TOPIC_0000002445112157"></a>
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.03%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
@@ -513,7 +511,7 @@
 </tbody>
 </table>
 
-#### GetCustomAttrByBlockId接口<a name="ZH-CN_TOPIC_0000001736682593"></a>
+### GetCustomAttrByBlockId接口<a name="ZH-CN_TOPIC_0000001736682593"></a>
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.03%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
@@ -550,7 +548,7 @@
 </tbody>
 </table>
 
-#### GetExtraValAttrByLabel接口<a name="ZH-CN_TOPIC_0000001976655414"></a>
+### GetExtraValAttrByLabel接口<a name="ZH-CN_TOPIC_0000001976655414"></a>
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.03%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
@@ -587,7 +585,7 @@
 </tbody>
 </table>
 
-#### GetFeatureAttrByLabel接口<a name="ZH-CN_TOPIC_0000001594544301"></a>
+### GetFeatureAttrByLabel接口<a name="ZH-CN_TOPIC_0000001594544301"></a>
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.03%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
@@ -624,7 +622,7 @@
 </tbody>
 </table>
 
-#### GetFeatureByIndice接口<a name="ZH-CN_TOPIC_0000002411592888"></a>
+### GetFeatureByIndice接口<a name="ZH-CN_TOPIC_0000002411592888"></a>
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.01%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
@@ -664,7 +662,7 @@
 </tbody>
 </table>
 
-#### GetFeatureByLabel接口<a name="ZH-CN_TOPIC_0000001507879789"></a>
+### GetFeatureByLabel接口<a name="ZH-CN_TOPIC_0000001507879789"></a>
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.03%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
@@ -701,7 +699,7 @@
 </tbody>
 </table>
 
-#### GetFeatureNum接口<a name="ZH-CN_TOPIC_0000001544946953"></a>
+### GetFeatureNum接口<a name="ZH-CN_TOPIC_0000001544946953"></a>
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.03%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
@@ -737,7 +735,7 @@
 </tbody>
 </table>
 
-#### Init接口<a id="ZH-CN_TOPIC_0000001458680014"></a>
+### Init接口<a id="ZH-CN_TOPIC_0000001458680014"></a>
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.03%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
@@ -782,7 +780,7 @@
 </tbody>
 </table>
 
-#### InitWithExtraVal接口<a id="ZH-CN_TOPIC_0000002013206217"></a>
+### InitWithExtraVal接口<a id="ZH-CN_TOPIC_0000002013206217"></a>
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.03%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
@@ -828,7 +826,7 @@
 </tbody>
 </table>
 
-#### InitWithQuantify接口<a name="ZH-CN_TOPIC_0000002458673509"></a>
+### InitWithQuantify接口<a name="ZH-CN_TOPIC_0000002458673509"></a>
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.03%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
@@ -871,7 +869,7 @@
 </tbody>
 </table>
 
-#### operator = 接口<a name="ZH-CN_TOPIC_0000001507959881"></a>
+### operator = 接口<a name="ZH-CN_TOPIC_0000001507959881"></a>
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
@@ -907,7 +905,7 @@
 </tbody>
 </table>
 
-#### Search接口<a name="ZH-CN_TOPIC_0000001507640109"></a>
+### Search接口<a name="ZH-CN_TOPIC_0000001507640109"></a>
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.03%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
@@ -950,7 +948,7 @@
 </tbody>
 </table>
 
-#### SearchWithExtraMask接口<a name="ZH-CN_TOPIC_0000001494506850"></a>
+### SearchWithExtraMask接口<a name="ZH-CN_TOPIC_0000001494506850"></a>
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.03%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
@@ -996,7 +994,7 @@
 </tbody>
 </table>
 
-#### SearchWithExtraMask带额外相似度接口<a name="ZH-CN_TOPIC_0000002373091106"></a>
+### SearchWithExtraMask带额外相似度接口<a name="ZH-CN_TOPIC_0000002373091106"></a>
 
 <a name="table197013362381"></a>
 <table><tbody><tr id="row597023693810"><th class="firstcol" valign="top" width="20.03%" id="mcps1.1.3.1.1"><p id="p199703365385"><a name="p199703365385"></a><a name="p199703365385"></a>API定义</p>
@@ -1043,7 +1041,7 @@
 </tbody>
 </table>
 
-#### SearchWithExtraVal接口<a name="ZH-CN_TOPIC_0000002013215285"></a>
+### SearchWithExtraVal接口<a name="ZH-CN_TOPIC_0000002013215285"></a>
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.03%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
@@ -1091,7 +1089,7 @@
 >
 > SearchWithExtraVal不能与Search接口混用。
 
-#### SetHeteroParam接口<a name="ZH-CN_TOPIC_0000001630850578"></a>
+### SetHeteroParam接口<a name="ZH-CN_TOPIC_0000001630850578"></a>
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.02%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
@@ -1129,7 +1127,7 @@
 </tbody>
 </table>
 
-#### SetSaveHostMemory接口<a name="ZH-CN_TOPIC_0000002106649489"></a>
+### SetSaveHostMemory接口<a name="ZH-CN_TOPIC_0000002106649489"></a>
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.1%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
@@ -1165,9 +1163,9 @@
 </tbody>
 </table>
 
-### AttrFilter<a id="ZH-CN_TOPIC_0000001458687398"></a>
+## AttrFilter<a id="ZH-CN_TOPIC_0000001458687398"></a>
 
-#### 功能介绍<a name="ZH-CN_TOPIC_0000001507967265"></a>
+### 功能介绍<a name="ZH-CN_TOPIC_0000001507967265"></a>
 
 特征属性过滤器，该结构体需要结合AscendIndexTS实例来使用，在特征检索时作为输入参数。
 
@@ -1177,15 +1175,15 @@
 
 不支持多线程并发调用，因此在多线程的场景中需要用户在使用前加锁，否则检索接口可能导致异常。并且不支持不同线程间共享一个Device。当前的特征检索内部会使用OMP做性能加速，OMP不支持与其他多线程机制混用。反复创建新线程使用OMP会导致内存持续累加，因此建议使用固定的线程来运行检索任务。
 
-#### timesEnd接口<a name="ZH-CN_TOPIC_0000001458367566"></a>
+### timesEnd接口<a name="ZH-CN_TOPIC_0000001458367566"></a>
 
 int32_t：过滤时间段的结束时间。
 
-#### timesStart接口<a name="ZH-CN_TOPIC_0000001507647493"></a>
+### timesStart接口<a name="ZH-CN_TOPIC_0000001507647493"></a>
 
 int32_t：过滤时间段的开始时间。
 
-#### tokenBitSet接口<a name="ZH-CN_TOPIC_0000001507887177"></a>
+### tokenBitSet接口<a name="ZH-CN_TOPIC_0000001507887177"></a>
 
 uint8\_t\*：特征token ID的列表，每个uint8\_t成员从低位到高位，按位记录token信息，1代表选中，0代表token未选中。
 
@@ -1194,56 +1192,56 @@ uint8\_t\*：特征token ID的列表，每个uint8\_t成员从低位到高位，
 > [!NOTE]
 >“tokenBitSet”长度应为“tokenBitSetLen”，否则可能出现越界读写错误并引起程序崩溃。
 
-#### tokenBitSetLen接口<a name="ZH-CN_TOPIC_0000001458687402"></a>
+### tokenBitSetLen接口<a name="ZH-CN_TOPIC_0000001458687402"></a>
 
 uint32_t：指定过滤器AttrFilter中tokenBitSet字段的长度。
 
-### ExtraValAttr<a id="ZH-CN_TOPIC_0000002013198657"></a>
+## ExtraValAttr<a id="ZH-CN_TOPIC_0000002013198657"></a>
 
-#### 功能介绍<a name="ZH-CN_TOPIC_0000002013039153"></a>
+### 功能介绍<a name="ZH-CN_TOPIC_0000002013039153"></a>
 
 附加属性信息，入库时和特征向量一起添加。该结构体需要结合AscendIndexTS实例来使用。
 
 不支持多线程并发调用，因此在多线程的场景中需要用户在使用前加锁，否则检索接口可能导致异常。并且不支持不同线程间共享一个Device。
 
-#### val接口<a name="ZH-CN_TOPIC_0000001976479160"></a>
+### val接口<a name="ZH-CN_TOPIC_0000001976479160"></a>
 
 int16_t：记录当前特征的附加属性信息，用二进制表示，“1”代表“是”，“0”代表“否”。
 
-### ExtraValFilter<a id="ZH-CN_TOPIC_0000002013200765"></a>
+## ExtraValFilter<a id="ZH-CN_TOPIC_0000002013200765"></a>
 
-#### 功能介绍<a name="ZH-CN_TOPIC_0000001976640904"></a>
+### 功能介绍<a name="ZH-CN_TOPIC_0000001976640904"></a>
 
 附加属性过滤器，该结构体需要结合AscendIndexTS实例来使用，在特征检索时作为输入参数。
 
 不支持多线程并发调用，因此在多线程的场景中需要用户在使用前加锁，否则检索接口可能导致异常。并且不支持不同线程间共享一个Device。
 
-#### filterVal接口<a name="ZH-CN_TOPIC_0000001976481180"></a>
+### filterVal接口<a name="ZH-CN_TOPIC_0000001976481180"></a>
 
 int16_t：待查询的附加属性，用二进制表示，“1”表示保留附加属性，“0”表示过滤附加属性。
 
-#### matchVal接口<a name="ZH-CN_TOPIC_0000002013041289"></a>
+### matchVal接口<a name="ZH-CN_TOPIC_0000002013041289"></a>
 
 int16_t：附加属性查询模式，分为模式0和模式1。
 
 - 对于模式0，匹配条件为：**ExtraValAttr::val & ExtraValFilter::filterVal == ExtraValFilter::filterVal**
 - 对于模式1，匹配条件为：**ExtraValAttr::val & ExtraValFilter::filterVal  \>  0**
 
-### FeatureAttr<a id="ZH-CN_TOPIC_0000001507967381"></a>
+## FeatureAttr<a id="ZH-CN_TOPIC_0000001507967381"></a>
 
-#### 功能介绍<a name="ZH-CN_TOPIC_0000001458367674"></a>
+### 功能介绍<a name="ZH-CN_TOPIC_0000001458367674"></a>
 
 特征属性信息，入库时和特征向量一起添加。该结构体需要结合AscendIndexTS实例来使用。
 
 不支持多线程并发调用，因此在多线程的场景中需要用户在使用前加锁，否则检索接口可能导致异常。并且不支持不同线程间共享一个Device。
 
-#### time接口<a name="ZH-CN_TOPIC_0000001507647601"></a>
+### time接口<a name="ZH-CN_TOPIC_0000001507647601"></a>
 
 int32_t：记录当前特征的时间信息，以时间戳（秒级）形式表示。
 
 > [!NOTE]
 >由于昇腾硬件限制，只能处理int32类型数据，因此用户需要保证当前时间戳不会超过int32的最大值，建议在实际操作时，将当前实际时间戳减去固定的一个历史时间戳，然后再存入。
 
-#### tokenId接口<a name="ZH-CN_TOPIC_0000001507887269"></a>
+### tokenId接口<a name="ZH-CN_TOPIC_0000001507887269"></a>
 
 uint32_t：特征token ID，一个token ID对应多个特征，一个特征对应一个token ID，需要小于用户初始化AscendIndexTS时传入的tokenNum的值。
