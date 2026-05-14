@@ -738,6 +738,97 @@ TEST(TestAscendIndexTS_Int8L2, PrecisionWithMask)
     cout << "***** end search with mask *****" << endl;
 }
 
+TEST(TestAscendIndexTS_Int8Cos, PrecisionAddFeatureByIndice)
+{
+    uint32_t dim = 512;
+    int32_t deviceId = 0;
+    idx_t ntotal = 1000000;
+    uint32_t tokenNum = 2500;
+    uint32_t queryNum = 4;
+    uint32_t k = 20;
+    std::vector<int8_t> features;
+    std::vector<int64_t> labels;
+    std::vector<FeatureAttr> attrs;
+    int extraMaskLen = (ntotal + 8 - 1) / 8;
+    std::vector<uint8_t> bitSet;
+    std::vector<AttrFilter> queryFilters;
+
+    features.resize(ntotal * dim);
+    FeatureGenerator(features);
+    labels.resize(ntotal);
+    std::iota(labels.begin(), labels.end(), 0);
+    attrs.resize(ntotal);
+    FeatureAttrGenerator(attrs);
+
+    uint32_t setLen = static_cast<uint32_t>((tokenNum + 7) / 8);
+    bitSet.resize(setLen, 0);
+    // 00001111
+    bitSet[0] = 0x1 << 0 | 0x1 << 1 | 0x1 << 2 | 0x1 << 3;
+    AttrFilter filter {};
+    filter.timesStart = 0;
+    filter.timesEnd = 3;
+    filter.tokenBitSet = bitSet.data();
+    filter.tokenBitSetLen = setLen;
+    queryFilters.resize(queryNum, filter);
+
+    cout << "***** start create ts index1 *****" << endl;
+    std::shared_ptr<faiss::ascend::AscendIndexTS> tsIndex1;
+    tsIndex1 = std::make_shared<faiss::ascend::AscendIndexTS>();
+    auto ret = tsIndex1->Init(deviceId, dim, tokenNum, faiss::ascend::AlgorithmType::FLAT_COS_INT8);
+    EXPECT_EQ(ret, 0);
+    cout << "***** end create ts index1 *****" << endl;
+    
+    int64_t size = static_cast<int64_t>(queryNum) * dim;
+    std::vector<int8_t> querys(size);
+    querys.assign(features.begin(), features.begin() + size);
+
+    cout << "***** start add with AddFeature *****" << endl;
+    idx_t addPaged = 20000;
+    for (idx_t i = 0; i < ntotal; i += addPaged) {
+        idx_t addCount = std::min(addPaged, ntotal - i);
+        ret = tsIndex1->AddFeature(addCount, features.data() + i * dim, attrs.data() + i, labels.data() + i);
+        ASSERT_EQ(ret, 0);
+    }
+    cout << "***** end add with AddFeature *****" << endl;
+
+    cout << "***** start search *****" << endl;
+    std::vector<float> distances1(static_cast<int64_t>(queryNum) * k, -1);
+    std::vector<int64_t> labelRes1(static_cast<int64_t>(queryNum) * k, 10);
+    std::vector<uint32_t> validnum1(static_cast<int64_t>(queryNum), 0);
+    tsIndex1->Search(queryNum, querys.data(), queryFilters.data(), false, k, labelRes1.data(), distances1.data(), validnum1.data());
+    cout << "***** search success *****" << endl;
+
+    cout << "***** start create ts index2 *****" << endl;
+    std::shared_ptr<faiss::ascend::AscendIndexTS> tsIndex2;
+    tsIndex2 = std::make_shared<faiss::ascend::AscendIndexTS>();
+    ret = tsIndex2->Init(deviceId, dim, tokenNum, faiss::ascend::AlgorithmType::FLAT_COS_INT8);
+    EXPECT_EQ(ret, 0);
+    cout << "***** end create ts index2 *****" << endl;
+
+    cout << "***** start add with AddFeatureByIndice *****" << endl;
+    for (idx_t i = 0; i < ntotal; i += addPaged) {
+        idx_t addCount = std::min(addPaged, ntotal - i);
+        ret = tsIndex2->AddFeatureByIndice(addCount, features.data() + i * dim, attrs.data() + i, labels.data() + i);
+        ASSERT_EQ(ret, 0);
+    }
+    cout << "***** end add with AddFeatureByIndice *****" << endl;
+
+    cout << "***** start search *****" << endl;
+    std::vector<float> distances2(static_cast<int64_t>(queryNum) * k, -1);
+    std::vector<int64_t> labelRes2(static_cast<int64_t>(queryNum) * k, 10);
+    std::vector<uint32_t> validnum2(static_cast<int64_t>(queryNum), 0);
+    tsIndex2->Search(queryNum, querys.data(), queryFilters.data(), false, k, labelRes2.data(), distances2.data(), validnum2.data());
+    cout << "***** search success *****" << endl;
+
+    for (int i = 0; i < queryNum; i++) {
+        for (int j = 0; j < k; j++) {
+            EXPECT_TRUE(labelRes1[i * k + j] == labelRes2[i * k + j]);
+            EXPECT_TRUE(distances1[i * k + j] == distances2[i * k + j]);
+        }
+    }
+    cout << "***** check Precision success *****" << endl;
+}
+
 TEST(TestAscendIndexTS_Int8Cos, Acc)
 {
     idx_t ntotal = 1000000;
