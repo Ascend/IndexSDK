@@ -1,10 +1,8 @@
-# API参考——多Index批量检索
-
-## 多Index批量检索<a name="ZH-CN_TOPIC_0000001456535132"></a>
+# 多Index批量检索<a name="ZH-CN_TOPIC_0000001456535132"></a>
 
 在检索距离（distances）值相同的情况下，相较于使用单Index检索功能，多Index批量检索使用的TopK排序算法不同，最终呈现的结果标签会存在一些差异，导致返回的TopK值的标签（label）存在差异。
 
-### Search（AscendIndex）接口<a name="ZH-CN_TOPIC_0000001456854904"></a>
+## Search（AscendIndex）接口<a name="ZH-CN_TOPIC_0000001456854904"></a>
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
@@ -49,7 +47,7 @@
 </tbody>
 </table>
 
-### Search（AscendIndexInt8）接口<a name="ZH-CN_TOPIC_0000001533044201"></a>
+## Search（AscendIndexInt8）接口<a name="ZH-CN_TOPIC_0000001533044201"></a>
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
@@ -93,7 +91,7 @@
 </tbody>
 </table>
 
-### Search（FaissIndex）接口<a name="ZH-CN_TOPIC_0000001506334841"></a>
+## Search（FaissIndex）接口<a name="ZH-CN_TOPIC_0000001506334841"></a>
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
@@ -138,7 +136,7 @@
 </tbody>
 </table>
 
-### SearchWithFilter（FaissIndex单filter）接口<a name="ZH-CN_TOPIC_0000001521615937"></a>
+## SearchWithFilter（FaissIndex单filter）接口<a name="ZH-CN_TOPIC_0000001521615937"></a>
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
@@ -183,7 +181,7 @@
 </tbody>
 </table>
 
-### SearchWithFilter（AscendIndex单filter）接口<a name="ZH-CN_TOPIC_0000001521894949"></a>
+## SearchWithFilter（AscendIndex单filter）接口<a name="ZH-CN_TOPIC_0000001521894949"></a>
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
@@ -228,7 +226,7 @@
 </tbody>
 </table>
 
-### SearchWithFilter（FaissIndex多filter）接口<a name="ZH-CN_TOPIC_0000001635576093"></a>
+## SearchWithFilter（FaissIndex多filter）接口<a name="ZH-CN_TOPIC_0000001635576093"></a>
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
@@ -275,7 +273,7 @@
 </tbody>
 </table>
 
-### SearchWithFilter（AscendIndex多filter）接口<a name="ZH-CN_TOPIC_0000001635815493"></a>
+## SearchWithFilter（AscendIndex多filter）接口<a name="ZH-CN_TOPIC_0000001635815493"></a>
 
 <a name="table20177631161415"></a>
 <table><tbody><tr id="row141771631111420"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.1.1"><p id="p1017733121417"><a name="p1017733121417"></a><a name="p1017733121417"></a>API定义</p>
