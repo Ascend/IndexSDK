@@ -31,7 +31,11 @@
 #include <cmath>
 
 #include <faiss/Index.h>
+#if defined(__has_include)
+#if __has_include(<faiss/impl/VisitedTable.h>)
 #include <faiss/impl/VisitedTable.h>
+#endif
+#endif
 #include <faiss/impl/AuxIndexStructures.h>
 #include <faiss/impl/FaissAssert.h>
 #include <faiss/utils/Heap.h>
