@@ -213,7 +213,7 @@ function safe_change_mode() {
 ### 脚本入参的相关处理函数
 function check_script_args() {
     # 检测脚本参数的组合关系
-    ######################  check params confilct ###################
+    ######################  check params conflict ###################
 
     if [[ "${package_arch}" != *"${arch}"* ]];then
         print "ERROR" "the package is ${package_arch} but current is ${arch}, exit."
@@ -433,9 +433,36 @@ function UnTAR()
 
 }
 
+function ms_handle_agreement() {
+    if test x"$quiet_flag" = x"y"; then
+        log "INFO" "Using quiet option implies acceptance of agreement."
+        return
+    fi
+
+    agreement_info=agreement.conf
+    safe_path "$tmp_path/${agreement_info}"
+    cat "$tmp_path/${agreement_info}" 1>&2
+
+    read -n1 -re -p "Do you accept agreement to install mxIndex?[Y/N]" answer
+    case "${answer}" in
+        Y|y)
+            log "INFO" "Accept agreement, start to install."
+            echo "Accept agreement, start to install."
+            ;;
+        *)
+            log "ERROR" "Reject agreement, quit to install."
+            echo "Reject agreement, quit to install."
+            exit 1
+            ;;
+    esac
+
+}
+
 function install_process() {
     log "INFO" "install start"
     log "INFO" "The install path is ${install_path} !"
+
+    ms_handle_agreement
 
     if [[ -e "$install_path"/mxIndex/script/uninstall.sh ]]; then
         log "ERROR" "can not install twice, you have already installed Index SDK." "y"
@@ -468,7 +495,7 @@ function install_process() {
     fi
     find * | sort > filelist.txt
     sed -i '/filelist.txt/d' filelist.txt
-    
+
     modify_file_permission "${install_path}/${package_name}"
 
     log "INFO" "Install package successfully" "y"
@@ -476,6 +503,8 @@ function install_process() {
 
 function upgrade_process() {
     log "INFO" "upgrade start"
+
+    ms_handle_agreement
 
     # check whether the old version is exist
     if [[ ! -e "$install_path"/mxIndex/script/uninstall.sh ]]; then

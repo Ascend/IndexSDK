@@ -45,6 +45,7 @@ function package_index()
 
     cp ${CUR_DIR}/conf/Index/install.sh ./ && dos2unix install.sh && chmod 550 install.sh
     cp ${CUR_DIR}/conf/Index/help.info ./ && chmod 640 help.info
+    cp ${CUR_DIR}/conf/Index/agreement.conf ./ && chmod 640 agreement.conf
 
     {
         echo "SDK mxIndex:${SDK_VERSION}"

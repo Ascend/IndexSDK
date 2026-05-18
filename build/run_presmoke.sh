@@ -113,7 +113,7 @@ cp "$RUN_PKG_PATH"/Ascend-mindxsdk-mxindex_*_linux-aarch64.run "$PRESMOKE_DIR/pk
 cd "$PRESMOKE_DIR/pkg"
 chmod +x *.run
 echo "[PRESMOKE_INFO] start installing run pkg"
-./Ascend-mindxsdk-mxindex_*_linux-aarch64.run --install --platform=310P
+./Ascend-mindxsdk-mxindex_*_linux-aarch64.run --install --platform=310P --quiet
 
 # ============== 2. generate aicpu ops ==============
 echo "[PRESMOKE_INFO] start generate aicpu ops..."
