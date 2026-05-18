@@ -19,7 +19,9 @@ set -e
 
 readonly CUR_DIR=$(dirname "$(readlink -f "$0")")
 readonly TOP_DIR=${CUR_DIR}/..
-readonly FAISS_INSTALL_PATH="/usr/local/faiss"
+readonly FAISS_ROOT="/usr/local/faiss"
+readonly FAISS_110_INSTALL_PATH="${FAISS_110_HOME:-${FAISS_ROOT}/faiss1.10.0}"
+readonly FAISS_114_INSTALL_PATH="${FAISS_114_HOME:-${FAISS_ROOT}/faiss1.14.1}"
 
 # ============== 1. install OpenBLAS ==============
 echo "[INSTALL_INFO] start installing OpenBLAS..."
@@ -42,28 +44,45 @@ fi
 # ============== 2. install faiss ==============
 echo "[INSTALL_INFO] start installing faiss..."
 
-if [ -d "/usr/local/faiss" ]; then
-    echo "[INSTALL_INFO] faiss already exist."
-else
-    cd ${TOP_DIR}
-    if [ -f "faiss-1.10.0.tar.gz" ]; then
-        echo "[INSTALL_INFO] Using local cached faiss-1.10.0.tar.gz"
-    else
-        wget https://github.com/facebookresearch/faiss/archive/v1.10.0.tar.gz -O faiss-1.10.0.tar.gz
+function install_faiss()
+{
+    local faiss_version="$1"
+    local faiss_install_path="$2"
+    local faiss_tar_file="faiss-${faiss_version}.tar.gz"
+    local faiss_src_dir="faiss-${faiss_version}"
+
+    if [ -d "${faiss_install_path}" ]; then
+        echo "[INSTALL_INFO] faiss ${faiss_version} already exist: ${faiss_install_path}"
+        return
     fi
-    tar -xf faiss-1.10.0.tar.gz && cd faiss-1.10.0/faiss
-    sed -i "149 i virtual void search_with_filter (idx_t n, const float *x, idx_t k, float *distances, idx_t *labels, const void *mask = nullptr) const {}" Index.h
-    sed -i "49 i template <typename IndexT> IndexIDMapTemplate<IndexT>::IndexIDMapTemplate (IndexT *index, std::vector<idx_t> &ids): index (index), own_fields (false) {this->is_trained = index->is_trained; this->metric_type = index->metric_type; this->verbose = index->verbose; this->d = index->d; id_map = ids;}" IndexIDMap.cpp
-    sed -i "30 i explicit IndexIDMapTemplate (IndexT *index, std::vector<idx_t> &ids); " IndexIDMap.h
-    sed -i "217 i utils/sorting.h" CMakeLists.txt
+
+    cd ${TOP_DIR}
+    if [ -f "${faiss_tar_file}" ]; then
+        echo "[INSTALL_INFO] Using local cached ${faiss_tar_file}"
+    else
+        wget "https://github.com/facebookresearch/faiss/archive/v${faiss_version}.tar.gz" -O "${faiss_tar_file}"
+    fi
+
+    rm -rf "${faiss_src_dir}"
+    tar -xf "${faiss_tar_file}" && cd "${faiss_src_dir}/faiss"
+    if [ "${faiss_version}" = "1.10.0" ]; then
+        sed -i "149 i virtual void search_with_filter (idx_t n, const float *x, idx_t k, float *distances, idx_t *labels, const void *mask = nullptr) const {}" Index.h
+        sed -i "49 i template <typename IndexT> IndexIDMapTemplate<IndexT>::IndexIDMapTemplate (IndexT *index, std::vector<idx_t> &ids): index (index), own_fields (false) {this->is_trained = index->is_trained; this->metric_type = index->metric_type; this->verbose = index->verbose; this->d = index->d; id_map = ids;}" IndexIDMap.cpp
+        sed -i "30 i explicit IndexIDMapTemplate (IndexT *index, std::vector<idx_t> &ids); " IndexIDMap.h
+        sed -i "217 i utils/sorting.h" CMakeLists.txt
+    elif [ "${faiss_version}" = "1.14.1" ]; then
+        sed -i "214 i virtual void search_with_filter (idx_t n, const float *x, idx_t k, float *distances, idx_t *labels, const void *mask = nullptr) const {}" Index.h
+        sed -i "60 i template <typename IndexT> IndexIDMapTemplate<IndexT>::IndexIDMapTemplate (IndexT *index, std::vector<idx_t> &ids): index (index), own_fields (false) {this->is_trained = index->is_trained; this->metric_type = index->metric_type; this->verbose = index->verbose; this->d = index->d; id_map = ids;}" IndexIDMap.cpp
+        sed -i "30 i explicit IndexIDMapTemplate (IndexT *index, std::vector<idx_t> &ids); " IndexIDMap.h
+    fi
     cd ..
-    cmake -B build . -DFAISS_ENABLE_GPU=OFF -DFAISS_ENABLE_PYTHON=OFF -DBUILD_TESTING=OFF -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${FAISS_INSTALL_PATH}
+    cmake -B build . -DFAISS_ENABLE_GPU=OFF -DFAISS_ENABLE_PYTHON=OFF -DBUILD_TESTING=OFF -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="${faiss_install_path}"
     cd build && make -j && make install
-    cd ../.. && rm -f faiss-1.10.0.tar.gz && rm -rf faiss-1.10.0
-fi
-if [ ! -f "/usr/local/lib/libfaiss.so" ]; then
-    cp /usr/local/faiss/lib/libfaiss.so /usr/local/lib
-fi
+    cd "${TOP_DIR}" && rm -f "${faiss_tar_file}" && rm -rf "${faiss_src_dir}"
+}
+
+install_faiss "1.10.0" "${FAISS_110_INSTALL_PATH}"
+install_faiss "1.14.1" "${FAISS_114_INSTALL_PATH}"
 
 # ============== 3. clone makeself ==============
 function install_package_deps()

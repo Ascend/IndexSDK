@@ -7,7 +7,6 @@ FILE(GLOB  ASCEND_SRC_HEADERS
      ${CMAKE_CURRENT_LIST_DIR}/../ascend/AscendIndexIVF.h
      ${CMAKE_CURRENT_LIST_DIR}/../ascend/AscendIndexIVFFlat.h
      ${CMAKE_CURRENT_LIST_DIR}/../ascend/AscendIndexIVFPQ.h
-     ${CMAKE_CURRENT_LIST_DIR}/../ascend/AscendIndexIVFRaBitQ.h
      ${CMAKE_CURRENT_LIST_DIR}/../ascend/AscendIndexIVFSQ.h
      ${CMAKE_CURRENT_LIST_DIR}/../ascend/ivfsp/AscendIndexIVFSP.h
      ${CMAKE_CURRENT_LIST_DIR}/../ascend/AscendIndexInt8.h
@@ -23,6 +22,18 @@ FILE(GLOB  ASCEND_SRC_HEADERS
      ${CMAKE_CURRENT_LIST_DIR}/../ascend/mixsearch/include/AscendIndexVStar.h
      ${CMAKE_CURRENT_LIST_DIR}/../ascend/mixsearch/include/AscendIndexMixSearchParams.h
 )
+
+IF(NOT DEFINED ENABLE_ASCEND_IVFRABITQ)
+    IF(EXISTS "${FAISS_HOME}/include/faiss/IndexIVFRaBitQ.h")
+        SET(ENABLE_ASCEND_IVFRABITQ ON)
+    ELSE()
+        SET(ENABLE_ASCEND_IVFRABITQ OFF)
+    ENDIF()
+ENDIF()
+
+IF(ENABLE_ASCEND_IVFRABITQ)
+    LIST(APPEND ASCEND_SRC_HEADERS ${CMAKE_CURRENT_LIST_DIR}/../ascend/AscendIndexIVFRaBitQ.h)
+ENDIF()
 
 FILE(GLOB ASCEND_SRC_UTILS_HEADERS
      ${CMAKE_CURRENT_LIST_DIR}/../ascend/utils/Version.h)

@@ -40,6 +40,23 @@ ADD_LINK_OPTIONS(
 SET(TARGET_LIBRARY         ascendfaiss_host)
 SET(TARGET_LIBRARY_RENAME  ascendfaiss)
 
+IF(EXISTS "${FAISS_HOME}/include/faiss/IndexIVFRaBitQ.h")
+    SET(ENABLE_ASCEND_IVFRABITQ ON)
+    MESSAGE(STATUS "Enable AscendIndexIVFRaBitQ with FAISS_HOME=${FAISS_HOME}")
+ELSE()
+    SET(ENABLE_ASCEND_IVFRABITQ OFF)
+    MESSAGE(STATUS "Disable AscendIndexIVFRaBitQ because ${FAISS_HOME}/include/faiss/IndexIVFRaBitQ.h does not exist")
+ENDIF()
+
+SET(ASCEND_IVFRABITQ_SRC "")
+IF(ENABLE_ASCEND_IVFRABITQ)
+    SET(ASCEND_IVFRABITQ_SRC
+        ${CMAKE_CURRENT_LIST_DIR}/../ascend/AscendIndexIVFRaBitQ.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/../ascend/impl/AscendIndexIVFRaBitQImpl.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/../ascenddaemon/impl/IndexIVFRaBitQ.cpp
+    )
+ENDIF()
+
 IF(HITEST)
     SET_PROPERTY(GLOBAL PROPERTY RULE_LAUNCH_COMPILE hitestwrapper)
     SET_PROPERTY(GLOBAL PROPERTY RULE_LAUNCH_LINK hitestwrapper)
@@ -90,6 +107,7 @@ SET(ASCENDFAISS_HOST_SRC
     ${IVFSP_CPP_FILES}
     ${OCK_FILEDS}
     ${MIX_SEARCH_SRC}
+    ${ASCEND_IVFRABITQ_SRC}
     ${CMAKE_CURRENT_LIST_DIR}/../ascend/AscendCloner.cpp
     ${CMAKE_CURRENT_LIST_DIR}/../ascend/AscendClonerOptions.cpp
     ${CMAKE_CURRENT_LIST_DIR}/../ascend/AscendIndex.cpp
@@ -99,7 +117,6 @@ SET(ASCENDFAISS_HOST_SRC
     ${CMAKE_CURRENT_LIST_DIR}/../ascend/AscendIndexIVF.cpp
     ${CMAKE_CURRENT_LIST_DIR}/../ascend/AscendIndexIVFFlat.cpp
     ${CMAKE_CURRENT_LIST_DIR}/../ascend/AscendIndexIVFPQ.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/../ascend/AscendIndexIVFRaBitQ.cpp
     ${CMAKE_CURRENT_LIST_DIR}/../ascend/AscendIndexIVFSQ.cpp
     ${CMAKE_CURRENT_LIST_DIR}/../ascend/AscendIndexSQ.cpp
     ${CMAKE_CURRENT_LIST_DIR}/../ascend/AscendMultiIndexSearch.cpp
@@ -115,7 +132,6 @@ SET(ASCENDFAISS_HOST_SRC
     ${CMAKE_CURRENT_LIST_DIR}/../ascend/impl/AscendIndexIVFImpl.cpp
     ${CMAKE_CURRENT_LIST_DIR}/../ascend/impl/AscendIndexIVFFlatImpl.cpp
     ${CMAKE_CURRENT_LIST_DIR}/../ascend/impl/AscendIndexIVFPQImpl.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/../ascend/impl/AscendIndexIVFRaBitQImpl.cpp
     ${CMAKE_CURRENT_LIST_DIR}/../ascend/impl/AscendIndexIVFSQImpl.cpp
     ${CMAKE_CURRENT_LIST_DIR}/../ascend/impl/AscendIndexSQImpl.cpp
     ${CMAKE_CURRENT_LIST_DIR}/../ascend/impl/AscendNNInferenceImpl.cpp
@@ -140,7 +156,6 @@ SET(ASCENDFAISS_HOST_SRC
     ${CMAKE_CURRENT_LIST_DIR}/../ascenddaemon/impl/IndexIVF.cpp
     ${CMAKE_CURRENT_LIST_DIR}/../ascenddaemon/impl/IndexIVFFlat.cpp
     ${CMAKE_CURRENT_LIST_DIR}/../ascenddaemon/impl/IndexIVFPQ.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/../ascenddaemon/impl/IndexIVFRaBitQ.cpp
     ${CMAKE_CURRENT_LIST_DIR}/../ascenddaemon/impl/IndexIVFSQ.cpp
     ${CMAKE_CURRENT_LIST_DIR}/../ascenddaemon/impl/Int8L2Norm.cpp
     ${CMAKE_CURRENT_LIST_DIR}/../ascenddaemon/impl/IndexSQ.cpp

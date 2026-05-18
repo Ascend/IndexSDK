@@ -77,7 +77,23 @@ ADD_DEFINITIONS(
     -DHOSTCPU
 )
 
+IF(EXISTS "${FAISS_HOME}/include/faiss/IndexIVFRaBitQ.h")
+    SET(ENABLE_ASCEND_IVFRABITQ ON)
+ELSE()
+    SET(ENABLE_ASCEND_IVFRABITQ OFF)
+ENDIF()
+
+SET(ASCEND_IVFRABITQ_SRC "")
+IF(ENABLE_ASCEND_IVFRABITQ)
+    SET(ASCEND_IVFRABITQ_SRC
+        ${ASCEND_PROJECT_HOME}/ascend/AscendIndexIVFRaBitQ.cpp
+        ${ASCEND_PROJECT_HOME}/ascend/impl/AscendIndexIVFRaBitQImpl.cpp
+        ${ASCEND_PROJECT_HOME}/ascenddaemon/impl/IndexIVFRaBitQ.cpp
+    )
+ENDIF()
+
 SET(ASCENDFAISS_SRC
+    ${ASCEND_IVFRABITQ_SRC}
     ${ASCEND_PROJECT_HOME}/ascend/AscendCloner.cpp
     ${ASCEND_PROJECT_HOME}/ascend/AscendClonerOptions.cpp
     ${ASCEND_PROJECT_HOME}/ascend/AscendIndex.cpp
@@ -88,7 +104,6 @@ SET(ASCENDFAISS_SRC
     ${ASCEND_PROJECT_HOME}/ascend/AscendIndexIVFSQ.cpp
     ${ASCEND_PROJECT_HOME}/ascend/AscendIndexIVFFlat.cpp
     ${ASCEND_PROJECT_HOME}/ascend/AscendIndexIVFPQ.cpp
-    ${ASCEND_PROJECT_HOME}/ascend/AscendIndexIVFRaBitQ.cpp
     ${ASCEND_PROJECT_HOME}/ascend/AscendIndexSQ.cpp
     ${ASCEND_PROJECT_HOME}/ascend/AscendMultiIndexSearch.cpp
     ${ASCEND_PROJECT_HOME}/ascend/AscendNNInference.cpp
@@ -107,7 +122,6 @@ SET(ASCENDFAISS_SRC
     ${ASCEND_PROJECT_HOME}/ascend/impl/AscendIndexIVFSQImpl.cpp
     ${ASCEND_PROJECT_HOME}/ascend/impl/AscendIndexIVFFlatImpl.cpp
     ${ASCEND_PROJECT_HOME}/ascend/impl/AscendIndexIVFPQImpl.cpp
-    ${ASCEND_PROJECT_HOME}/ascend/impl/AscendIndexIVFRaBitQImpl.cpp
     ${ASCEND_PROJECT_HOME}/ascend/impl/AscendIndexSQImpl.cpp
     ${ASCEND_PROJECT_HOME}/ascend/impl/AscendNNInferenceImpl.cpp
     ${ASCEND_PROJECT_HOME}/ascend/custom/impl/AscendIndexFlatATImpl.cpp
@@ -128,7 +142,6 @@ SET(ASCENDFAISS_SRC
     ${ASCEND_PROJECT_HOME}/ascenddaemon/impl/IndexIVFSQ.cpp
     ${ASCEND_PROJECT_HOME}/ascenddaemon/impl/IndexIVFFlat.cpp
     ${ASCEND_PROJECT_HOME}/ascenddaemon/impl/IndexIVFPQ.cpp
-    ${ASCEND_PROJECT_HOME}/ascenddaemon/impl/IndexIVFRaBitQ.cpp
     ${ASCEND_PROJECT_HOME}/ascenddaemon/impl/Int8L2Norm.cpp
     ${ASCEND_PROJECT_HOME}/ascenddaemon/impl/IndexSQ.cpp
     ${ASCEND_PROJECT_HOME}/ascenddaemon/utils/AscendMemory.cpp

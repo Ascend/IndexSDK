@@ -17,6 +17,9 @@
 
 echo "Building ascendsearch ..."
 
+FAISS_HOME=${FAISS_HOME:-/usr/local/faiss/faiss1.10.0}
+echo "Using FAISS_HOME=${FAISS_HOME}"
+
 cd ../ivfsp_impl/Retrieval_Common/src
 ! [[ -h ascendsearch ]] && ln -s . ascendsearch
 cd ../../ascendfaiss
@@ -29,7 +32,7 @@ rm -rf ./build
 rm -rf ./lib
 mkdir ./build
 cd ./build
-cmake -DCMAKE_CXX_COMPILER=g++ -DCMAKE_C_COMPILER=gcc -DACL_ONLINE_MODE=FALSE -DFAISS_HOME=/usr/local/faiss ..
+cmake -DCMAKE_CXX_COMPILER=g++ -DCMAKE_C_COMPILER=gcc -DACL_ONLINE_MODE=FALSE -DFAISS_HOME="${FAISS_HOME}" ..
 make -j
 sed -i "1iset(CMAKE_INSTALL_PREFIX $Retrieval_PATH)" cmake_install.cmake
 make install

@@ -27,6 +27,7 @@ readonly PROJECT_SRC_PATH="${PROJECT_ROOT_FOLDER}"/src/ascendfaiss
 readonly ASCEND_SEARCH_HOME="${PROJECT_ROOT_FOLDER}"/secondparty/ascendsearch
 readonly DISK_SEARCH_HOME="${PROJECT_ROOT_FOLDER}"/secondparty/disksearch
 readonly OCK_HOME="${PROJECT_ROOT_FOLDER}"/secondparty
+readonly BUILD_FAISS_HOME="${FAISS_HOME:-/usr/local/faiss/faiss1.10.0}"
 readonly VERSION=$(sed -n 's/^version:[[:space:]]*//p' "${PROJECT_ROOT_FOLDER}"/../../ci/config/config.ini)
 readonly ARCH="$(uname -m)"
 OP_PROTO_TARGET_OUT_DIR="${PROJECT_SRC_PATH}/ops/build/makepkg/packages/vendors/mxIndex/op_proto/"
@@ -301,7 +302,8 @@ build_install()
         -DPROTOBUF_AARCH64_HOME="${PROJECT_ROOT_FOLDER}"/../opensource/opensource/temp/protobuf_aarch64 \
         -DBUILD_OPS=OFF -DCMAKE_INSTALL_PREFIX="${PROJECT_ZIP_PATH}"/feature_retrieval \
         -DBUILD_ASCEND_SEARCH="${is_build_ascend_search}" -DASCEND_SEARCH_HOME="${DEFAULT_IVFSP_HOME_WITH_NPU_TYPE}/.." \
-        -DBUILD_OCK="${build_ock}" -DOCK_HOME="${OCK_HOME}"
+        -DBUILD_OCK="${build_ock}" -DOCK_HOME="${OCK_HOME}" \
+        -DFAISS_HOME="${BUILD_FAISS_HOME}"
 
     if [ "${enable_hitest}" = "hitest" ];then
         export PATH=$PATH:/opt/hitest/linux_avatar_arm_64:/opt/hitest/linux_avatar_x86_64

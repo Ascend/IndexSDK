@@ -24,7 +24,15 @@
 #include <map>
 
 #include <faiss/IndexFlat.h>
+#if defined(__has_include)
+#if __has_include(<faiss/impl/VisitedTable.h>)
 #include <faiss/impl/VisitedTable.h>
+#else
+#include <faiss/impl/AuxIndexStructures.h>
+#endif
+#else
+#include <faiss/impl/AuxIndexStructures.h>
+#endif
 #include <faiss/VectorTransform.h>
 
 #include "impl/HNSWRobustGraph.h"
