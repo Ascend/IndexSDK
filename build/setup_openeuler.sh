@@ -49,8 +49,15 @@ echo "[INFO] Start deploying for ${PLATFORM} on ${ARCH}..."
 
 # ============== 1. 安装系统依赖 ==============
 echo "[INFO] Installing system dependencies..."
-apt-get update
-apt-get install -y wget gfortran openmpi-bin libopenmpi-dev
+for repo in /etc/yum.repos.d/*.repo; do
+    cp $repo ${repo}.bak;
+    sed -i 's|http://repo.openeuler.org|https://repo.huaweicloud.com/openeuler|g' $repo;
+    sed -i 's|https://repo.openeuler.org|https://repo.huaweicloud.com/openeuler|g' $repo;
+    sed -i '/^metalink=/ s/^/#/' $repo;
+    sed -i '/^mirrorlist=/ s/^/#/' $repo;
+done
+yum update -y
+yum install -y wget gfortran openmpi openmpi-devel
 
 python3 -m pip install --upgrade pip
 pip3 install numpy==1.26.4 tqdm scikit-learn torch_npu torch attrs cloudpickle decorator jinja2 ml-dtypes psutil scipy tornado absl-py sympy pyyaml \
@@ -144,7 +151,7 @@ cmake -B build . -DFAISS_ENABLE_GPU=OFF -DFAISS_ENABLE_PYTHON=OFF -DBUILD_TESTIN
 cd build && make -j$(nproc) && make install
 cd ../.. && rm -rf faiss-1.10.0
 
-echo "export LD_LIBRARY_PATH=${FAISS_INSTALL_PATH}/lib:\$LD_LIBRARY_PATH" >> /etc/profile
+echo "export LD_LIBRARY_PATH=${FAISS_INSTALL_PATH}/lib64:\$LD_LIBRARY_PATH" >> /etc/profile
 
 # ============== 4. 安装 IndexSDK ==============
 echo "[INFO] Start installing IndexSDK..."
