@@ -1,0 +1,120 @@
+ARG CANN_VERSION=9.0.0
+FROM swr.cn-south-1.myhuaweicloud.com/ascendhub/cann:${CANN_VERSION}-950-ubuntu22.04-py3.11
+
+WORKDIR /tmp
+
+ARG PLATFORM=A5
+# 系统包 + pip3
+RUN cp -a /etc/apt/sources.list /etc/apt/sources.list.bak && \
+    sed -i "s@http://.*archive.ubuntu.com@https://mirrors.huaweicloud.com@g" /etc/apt/sources.list && \
+    sed -i "s@http://.*security.ubuntu.com@https://mirrors.huaweicloud.com@g" /etc/apt/sources.list
+RUN export DEBIAN_FRONTEND=noninteractive && \
+    export TZ=Asia/Shanghai && \
+    apt update && \
+    apt install --no-install-recommends ca-certificates -y && \
+    apt install --no-install-recommends wget vim dos2unix net-tools ssh lsof -y && \
+    apt install --no-install-recommends curl gcc g++ make pkg-config unzip autoconf git patch -y && \
+    apt install --no-install-recommends libblas3 liblapack3 gfortran openmpi-bin libopenmpi-dev libxml2 -y && \
+    apt install --no-install-recommends pciutils liblapack-dev libblas-dev libffi-dev libssl-dev -y && \
+    apt install --no-install-recommends zlib1g-dev xz-utils libgmpxx4ldbl -y && \
+    apt install --no-install-recommends libcapture-tiny-perl libdatetime-perl libtimedate-perl -y && \
+    apt install python3-pip -y && \
+    apt clean && rm -rf /var/lib/apt/lists/*
+# 配置Pip
+RUN mkdir ~/.pip && touch ~/.pip/pip.conf && \
+    echo "[global]" > ~/.pip/pip.conf && \
+    echo "trusted-host=mirrors.aliyun.com" >> ~/.pip/pip.conf && \
+    echo "index-url=https://mirrors.aliyun.com/pypi/simple" >> ~/.pip/pip.conf && \
+    echo "timeout=200" >> ~/.pip/pip.conf
+# python包
+RUN pip3 install -U pip && \
+    pip3 install decorator && \
+    pip3 install sympy==1.4 && \
+    pip3 install cffi==1.15.1 && \
+    pip3 install pyyaml && \
+    pip3 install pathlib2 && \
+    pip3 install protobuf && \
+    pip3 install scipy && \
+    pip3 install requests && \
+    pip3 install attrs && \
+    pip3 install psutil && \
+    pip3 install faiss-cpu==1.13.2 && \
+    rm -rf /root/.cache/pip
+
+RUN export DEBIAN_FRONTEND=noninteractive && \
+    export TZ=Asia/Shanghai && \
+    apt update && \
+    apt install --no-install-recommends software-properties-common -y && \
+    apt install --no-install-recommends build-essential -y
+
+# 安装cmake
+RUN wget https://github.com/Kitware/CMake/releases/download/v3.24.0/cmake-3.24.0.tar.gz && \
+    tar xf cmake-3.24.0.tar.gz && cd cmake-3.24.0 && ./configure --prefix=/usr && \
+    make -j12 && make -j12 install && cd .. && rm -rf cmake-3.24.0*
+
+RUN wget https://github.com/xianyi/OpenBLAS/archive/v0.3.10.tar.gz -O OpenBLAS-0.3.10.tar.gz && \
+    tar -xf OpenBLAS-0.3.10.tar.gz && \
+    cd OpenBLAS-0.3.10 && \
+    make FC=gfortran USE_OPENMP=1 -j12 && \
+    make install && \
+    ln -s /opt/OpenBLAS/lib/libopenblas.so /usr/lib/libopenblas.so && \
+    cd .. && rm -f OpenBLAS-0.3.10.tar.gz && rm -rf OpenBLAS-0.3.10
+
+ARG install_path=/usr/local/faiss
+RUN wget https://github.com/facebookresearch/faiss/archive/v1.10.0.tar.gz -O faiss-1.10.0.tar.gz  && \
+    tar -xf faiss-1.10.0.tar.gz && cd faiss-1.10.0/faiss && \
+    sed -i "149 i virtual void search_with_filter (idx_t n, const float *x, idx_t k, float *distances, idx_t *labels, const void *mask = nullptr) const {}" Index.h && \
+    sed -i "49 i template <typename IndexT> IndexIDMapTemplate<IndexT>::IndexIDMapTemplate (IndexT *index, std::vector<idx_t> &ids): index (index), own_fields (false) {this->is_trained = index->is_trained; this->metric_type = index->metric_type; this->verbose = index->verbose; this->d = index->d; id_map = ids;}" IndexIDMap.cpp && \
+    sed -i "30 i explicit IndexIDMapTemplate (IndexT *index, std::vector<idx_t> &ids); " IndexIDMap.h &&\
+    sed -i "217 i utils/sorting.h" CMakeLists.txt &&\
+    cd .. && \
+    cmake -B build . -DFAISS_ENABLE_GPU=OFF -DFAISS_ENABLE_PYTHON=OFF -DBUILD_TESTING=OFF -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${install_path} && \
+    cd build && make -j && make install && \
+    cd ../.. && rm -f faiss-1.10.0.tar.gz && rm -rf faiss-1.10.0  && \
+    cp ${install_path}/lib/libfaiss.so /usr/local/lib
+
+RUN wget https://github.com/linux-test-project/lcov/releases/download/v2.0/lcov-2.0.tar.gz  && \
+    tar -xzf lcov-2.0.tar.gz && \
+    cd lcov-2.0 && make install  && \
+    cd .. && rm -rf lcov-2.0.tar.gz lcov-2.0
+
+RUN wget https://github.com/google/googletest/archive/refs/tags/release-1.11.0.tar.gz  && \
+    cp release-1.11.0.tar.gz /tmp/googletest-release-1.11.0.tar.gz && \
+    tar xf release-1.11.0.tar.gz && cd googletest-release-1.11.0 && \
+    cmake -DBUILD_SHARED_LIBS=ON -DCMAKE_INSTALL_PREFIX=/usr/local/gtest . && make -j && make install && \
+    cd .. && rm -rf release-1.11.0.tar.gz googletest-release-1.11.0
+
+# 清理临时目录
+RUN rm -rf ./*
+
+WORKDIR /tmp
+ARG ASCEND_BASE=/usr/local/Ascend
+ARG TOOLKIT_PATH=$ASCEND_BASE/ascend-toolkit/latest
+
+ENV GLOG_v=2 \
+    LD_LIBRARY_PATH=${ASCEND_BASE}/mxIndex/host/lib:$TOOLKIT_PATH/runtime/lib64:$LD_LIBRARY_PATH \
+    TBE_IMPL_PATH=$TOOLKIT_PATH/opp/op_impl/built-in/ai_core/tbe \
+    PATH=$TOOLKIT_PATH/atc/ccec_compiler/bin:$TOOLKIT_PATH/atc/bin:$PATH \
+    ASCEND_OPP_PATH=$TOOLKIT_PATH/opp \
+    ASCEND_AICPU_PATH=$TOOLKIT_PATH \
+    PYTHONPATH=$TBE_IMPL_PATH:$PYTHONPATH \
+    ASCEND_HOME=${ASCEND_BASE} \
+    MX_INDEX_MODELPATH=/home/Ascend/modelpath
+
+RUN mkdir -p ${MX_INDEX_MODELPATH}
+
+ARG VERSION=26.0.0
+RUN ARCH=$(uname -m | sed 's/x86_64/x86_64/; s/aarch64/aarch64/') && \
+    wget https://gitcode.com/Ascend/IndexSDK/releases/download/v${VERSION}/Ascend-mindxsdk-mxindex_${VERSION}_linux-${ARCH}.run && \
+    bash Ascend-mindxsdk-mxindex_${VERSION}_linux-${ARCH}.run --install --platform=${PLATFORM} && \
+    cd ${ASCEND_BASE}/mxIndex/ops && ./custom_opp_${ARCH}.run
+
+RUN sed -i '$a\source /usr/local/Ascend/ascend-toolkit/set_env.sh' ~/.bashrc && \
+    sed -i '$a\export LD_LIBRARY_PATH=/usr/local/faiss/lib:$LD_LIBRARY_PATH' ~/.bashrc && \
+    sed -i '$a\export LD_LIBRARY_PATH=/opt/OpenBLAS/lib:$LD_LIBRARY_PATH' ~/.bashrc && \
+    sed -i '$a\export LD_LIBRARY_PATH=/usr/local/gtest/lib:$LD_LIBRARY_PATH' ~/.bashrc && \
+    sed -i '$a\export LD_LIBRARY_PATH=/usr/local/Ascend/driver/lib64/driver:$LD_LIBRARY_PATH' ~/.bashrc
+
+RUN pip3 install numpy==1.26.4
+RUN rm -rf ./*
+WORKDIR /root
