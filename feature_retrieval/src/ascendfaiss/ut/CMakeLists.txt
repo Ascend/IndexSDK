@@ -48,13 +48,13 @@ MESSAGE("${BLUE}-- faiss home director : ${FAISS_HOME} ${END}")
 MESSAGE("${BLUE}-- protobuf home director : ${PROTOBUF_HOME} ${END}")
 
 ADD_COMPILE_OPTIONS(
-    -Wall 
-    -fno-strict-aliasing 
+    -Wall
+    -fno-strict-aliasing
     -Wreturn-type
-    -D_FORTIFY_SOURCE=2 
-    -frename-registers 
-    -fpeel-loops 
-    -fopenmp 
+    -D_FORTIFY_SOURCE=2
+    -frename-registers
+    -fpeel-loops
+    -fopenmp
     -O0
     -g
     -fno-access-control # 加入这个编译选项 可以完美访问私有成员 单独测试私有函数
@@ -227,7 +227,7 @@ SET(ASCENDFAISS_LIBRARY_PATH
 )
 
 SET(ASCENDFAISS_LIBRARY
-    openblas 
+    openblas
     faiss
     ascendcl
     acl_op_compiler
@@ -249,6 +249,7 @@ SET(TEST_SRC_FILES TestAscendIndexUTBinaryFlat.cpp
                    TestAscendIndexUTFlatAT.cpp
                    TestAscendIndexUTILFlat.cpp
                    TestAscendIndexUTInt8.cpp
+                   TestAscendIndexUTIVFPQ.cpp
                    TestAscendIndexUTIVFSQ.cpp
                    TestAscendIndexUTIVFSQT.cpp
                    TestAscendIndexUTSQ.cpp
@@ -258,19 +259,19 @@ ADD_EXECUTABLE(${TARGET_OUT}  ${TEST_SRC_FILES})
 
 target_include_directories(${TARGET_OUT} PRIVATE ${ASCENDFAISS_INCLUDE})
 
-target_link_options(${TARGET_OUT} PRIVATE 
+target_link_options(${TARGET_OUT} PRIVATE
     -Wl,--disable-new-dtags
 )
 
-target_link_directories(${TARGET_OUT} PRIVATE 
+target_link_directories(${TARGET_OUT} PRIVATE
     ${ASCENDFAISS_LIBRARY_PATH}
 )
 
 TARGET_LINK_LIBRARIES(${TARGET_OUT} PRIVATE
     ascendfaiss
-    gmock_main 
-    gmock 
-    gtest  
+    gmock_main
+    gmock
+    gtest
     ${ASCENDFAISS_LIBRARY}
 )
 
@@ -283,7 +284,7 @@ IF(${ASAN_OPTION} STREQUAL "on")
     )
 ENDIF()
 
-SET_TARGET_PROPERTIES(${TARGET_OUT} PROPERTIES INSTALL_RPATH 
+SET_TARGET_PROPERTIES(${TARGET_OUT} PROPERTIES INSTALL_RPATH
     "${GTEST_HOME}/lib;${CMAKE_INSTALL_PREFIX}/lib"
 )
 
