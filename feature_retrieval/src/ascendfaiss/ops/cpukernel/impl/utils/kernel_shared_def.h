@@ -16,12 +16,13 @@
  * -------------------------------------------------------------------------
  */
 
-
 #ifndef AICPU_KERNEL_SHARED_DEF_H
 #define AICPU_KERNEL_SHARED_DEF_H
 
-namespace aicpu {
-enum TopkFlatAttrIdx : int32_t {
+namespace aicpu
+{
+enum TopkFlatAttrIdx : int32_t
+{
     TOPK_FLAT_ATTR_ASC_IDX = 0,
     TOPK_FLAT_ATTR_K_IDX,
     TOPK_FLAT_ATTR_BURST_LEN_IDX,
@@ -34,7 +35,8 @@ enum TopkFlatAttrIdx : int32_t {
     TOPK_FLAT_ATTR_IDX_COUNT,
 };
 
-enum TopkMultisearchAttrIdx : int32_t {
+enum TopkMultisearchAttrIdx : int32_t
+{
     TOPK_MULTISEARCH_ATTR_ASC_IDX = 0,
     TOPK_MULTISEARCH_ATTR_K_IDX,
     TOPK_MULTISEARCH_ATTR_BURST_LEN_IDX,
@@ -45,7 +47,8 @@ enum TopkMultisearchAttrIdx : int32_t {
     TOPK_MULTISEARCH_ATTR_IDX_COUNT,
 };
 
-enum TopkIvfAttrIdx : int32_t {
+enum TopkIvfAttrIdx : int32_t
+{
     TOPK_IVF_ATTR_ASC_IDX = 0,
     TOPK_IVF_ATTR_K_IDX,
     TOPK_IVF_ATTR_BURST_LEN_IDX,
@@ -55,7 +58,19 @@ enum TopkIvfAttrIdx : int32_t {
     TOPK_IVF_ATTR_IDX_COUNT,
 };
 
-enum TopkIvfpqL3AttrIdx : int32_t {
+enum TopkIvfRabitqAttrIdx : int32_t
+{
+    TOPK_IVF_RABITQ_ATTR_ASC_IDX = 0,
+    TOPK_IVF_RABITQ_ATTR_K_IDX,
+    TOPK_IVF_RABITQ_ATTR_BURST_LEN_IDX,
+    TOPK_IVF_RABITQ_ATTR_BLOCK_NUM_IDX,
+    TOPK_IVF_RABITQ_ATTR_QUERY_NUM_IDX,
+    TOPK_IVF_RABITQ_ATTR_CORE_NUM_IDX,
+    TOPK_IVF_RABITQ_ATTR_IDX_COUNT,
+};
+
+enum TopkIvfpqL3AttrIdx : int32_t
+{
     TOPK_IVFPQ_L3_ATTR_ASC_IDX = 0,
     TOPK_IVFPQ_L3_ATTR_K_IDX,
     TOPK_IVFPQ_L3_ATTR_BLOCK_NUM_IDX,
@@ -63,7 +78,8 @@ enum TopkIvfpqL3AttrIdx : int32_t {
     TOPK_IVFPQ_L3_ATTR_IDX_COUNT,
 };
 
-enum TopkIvfFuzzyAttrIdx : int32_t {
+enum TopkIvfFuzzyAttrIdx : int32_t
+{
     TOPK_IVF_FUZZY_ATTR_ASC_IDX = 0,
     TOPK_IVF_FUZZY_ATTR_K_IDX,
     TOPK_IVF_FUZZY_ATTR_BURST_LEN_IDX,
@@ -76,7 +92,8 @@ enum TopkIvfFuzzyAttrIdx : int32_t {
     TOPK_IVF_FUZZY_ATTR_IDX_COUNT,
 };
 
-enum TopkIvfsqtL1AttrIdx : int32_t {
+enum TopkIvfsqtL1AttrIdx : int32_t
+{
     TOPK_IVFSQT_L1_ATTR_ASC_IDX = 0,
     TOPK_IVFSQT_L1_ATTR_K_IDX,
     TOPK_IVFSQT_L1_ATTR_BURST_LEN_IDX,
@@ -86,7 +103,8 @@ enum TopkIvfsqtL1AttrIdx : int32_t {
     TOPK_IVFSQT_L1_ATTR_IDX_COUNT,
 };
 
-enum TopkIvfsqtL2AttrIdx : int32_t {
+enum TopkIvfsqtL2AttrIdx : int32_t
+{
     TOPK_IVFSQT_L2_ATTR_K_IDX,
     TOPK_IVFSQT_L2_ATTR_SUBCENTER_NUM_IDX,
     TOPK_IVFSQT_L2_ATTR_L3_SEG_NUM_IDX,
@@ -97,29 +115,34 @@ enum TopkIvfsqtL2AttrIdx : int32_t {
     TOPK_IVFSQT_L2_ATTR_IDX_COUNT,
 };
 
-enum TransdataShapedAttrIdx : int32_t {
+enum TransdataShapedAttrIdx : int32_t
+{
     TRANSDATA_SHAPED_ATTR_NTOTAL_IDX = 0,
     TRANSDATA_SHAPED_ATTR_IDX_COUNT,
 };
 
-enum TransdataRawAttrIdx : int32_t {
+enum TransdataRawAttrIdx : int32_t
+{
     TRANSDATA_RAW_ATTR_OFFSET_IDX = 0,
     TRANSDATA_RAW_ATTR_IDX_COUNT,
 };
 
-enum CodesQuantifyAttrIdx : int32_t {
+enum CodesQuantifyAttrIdx : int32_t
+{
     CODES_QUANTIFY_ATTR_QMAX_IDX = 0,
     CODES_QUANTIFY_ATTR_QMIN_IDX = 1,
     CODES_QUANTIFY_ATTR_IDX_COUNT,
 };
 
-enum TakeCareOfVoidClusterAttrIdx : int32_t {
+enum TakeCareOfVoidClusterAttrIdx : int32_t
+{
     TAKE_CARE_OF_VOID_CLUSTER_K_IDX = 0,
     TAKE_CARE_OF_VOID_CLUSTER_N_IDX = 1,
     TAKE_CARE_OF_VOID_CLUSTER_IDX_COUNT,
 };
 
-enum RomovedataShapedAttrIdx : int32_t {
+enum RomovedataShapedAttrIdx : int32_t
+{
     REMOVEDATA_SHAPED_ATTR_DATA_TYPE = 0,
     REMOVEDATA_SHAPED_ATTR_ZREGION_HEIGHT = 1,
     REMOVEDATA_SHAPED_ATTR_CUBE_ALIGN = 2,
@@ -127,24 +150,27 @@ enum RomovedataShapedAttrIdx : int32_t {
     REMOVEDATA_SHAPED_ATTR_IDX_COUNT,
 };
 
-enum RomovedataAttrIdx : int32_t {
+enum RomovedataAttrIdx : int32_t
+{
     REMOVEDATA_ATTR_DATA_TYPE = 0,
     REMOVEDATA_ATTR_COPY_NUM = 1,
     REMOVEDATA_ATTR_IDX_COUNT,
 };
 
-enum TransdataCustomAttrIdx : int32_t {
+enum TransdataCustomAttrIdx : int32_t
+{
     TRANSDATA_CUSTOM_ATTR_NTOTAL_IDX = 0,
     TRANSDATA_CUSTOM_ATTR_IDX_COUNT,
 };
 
-enum RomovedataCustomAttrIdx : int32_t {
+enum RomovedataCustomAttrIdx : int32_t
+{
     REMOVEDATA_CUSTOM_ATTR_DATA_TYPE = 0,
     REMOVEDATA_CUSTOM_ATTR_LEN = 1,
     REMOVEDATA_CUSTOM_ATTR_BLOCKSIZE = 2,
     REMOVEDATA_CUSTOM_ATTR_IDX_COUNT,
 };
 
-} // namespace aicpu
+}  // namespace aicpu
 
 #endif

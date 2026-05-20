@@ -16,26 +16,31 @@
  * -------------------------------------------------------------------------
  */
 
-
 #ifndef FEATURERETRIEVAL_SOCUTILS_H
 #define FEATURERETRIEVAL_SOCUTILS_H
 
-#include <cstring>
 #include <errno.h>
-#include <vector>
-#include <string>
 #include <stdio.h>
 #include <unistd.h>
+
+#include <cstring>
+#include <string>
+#include <vector>
+
 #include "acl/acl.h"
 #include "common/utils/LogUtils.h"
 
-namespace faiss {
-namespace ascend {
+namespace faiss
+{
+namespace ascend
+{
 
 constexpr int MAX_DEV_LENGTH = 1024;
 constexpr int MAX_DAVINCI_LENGTH = 17;
-class SocUtils {
-    enum SocType {
+class SocUtils
+{
+    enum SocType
+    {
         SOC_310 = 0,
         SOC_310P,
         SOC_910B1,
@@ -46,6 +51,7 @@ class SocUtils {
         SOC_910_9382,
         SOC_910_9372,
         SOC_910_9362,
+        SOC_950_95,
         SOC_INVALID,
     };
 
@@ -60,37 +66,45 @@ class SocUtils {
     const std::string SOCNAME910_9382 = "Ascend910_9382";
     const std::string SOCNAME910_9372 = "Ascend910_9372";
     const std::string SOCNAME910_9362 = "Ascend910_9362";
+    const std::string SOCNAME950_95 = "Ascend950PR_95";
 
-    enum CodeFormatType {
+    enum CodeFormatType
+    {
         FORMAT_TYPE_ZZ = 0,
         FORMAT_TYPE_ND,
         FORMAT_TYPE_INVALID,
     };
 
-    struct SocAttribute {
+    struct SocAttribute
+    {
         SocType socType;
         int coreNum;
         CodeFormatType codeFormType;
     };
 
-public:
+   public:
     SocUtils()
     {
         APP_LOG_DEBUG("construct SocUtils ------------- \n");
-        if (access("/dev/davinci_manager", F_OK) == 0) {
+        if (access("/dev/davinci_manager", F_OK) == 0)
+        {
             hasDev = true;
         }
-        if (!hasDev) {
+        if (!hasDev)
+        {
             deviceCount = 0;
             APP_LOG_WARNING("these is no devices on this machine,set parameter to default value\n");
             return;
         }
         auto ret = aclInit(nullptr);
         APP_LOG_INFO("aclInit return %d\n", ret);
-        if (ret == ACL_ERROR_REPEAT_INITIALIZE) {
+        if (ret == ACL_ERROR_REPEAT_INITIALIZE)
+        {
             APP_LOG_WARNING("acl has allready init by other component");
             repeatInitFlag = true;
-        } else if (ret != ACL_SUCCESS) {
+        }
+        else if (ret != ACL_SUCCESS)
+        {
             APP_LOG_ERROR("Failed to init acl, ret:%d\n", ret);
             return;
         }
@@ -100,46 +114,39 @@ public:
     ~SocUtils()
     {
         APP_LOG_DEBUG("destroy ~SocUtils ------------- \n");
-        if (!hasDev) {
+        if (!hasDev)
+        {
             return;
         }
         Finalize();
     }
 
-public:
+   public:
     static SocUtils &GetInstance()
     {
         static SocUtils socUtils;
         return socUtils;
     }
 
-    int GetCoreNum() const
-    {
-        return socAttr.coreNum;
-    }
+    int GetCoreNum() const { return socAttr.coreNum; }
 
-    bool IsAscend310P() const
-    {
-        return socAttr.socType == SOC_310P;
-    }
+    bool IsAscend310P() const { return socAttr.socType == SOC_310P; }
 
-    bool IsAscend310() const
-    {
-        return socAttr.socType == SOC_310;
-    }
+    bool IsAscend310() const { return socAttr.socType == SOC_310; }
 
     bool IsAscend910B() const
     {
-        return (socAttr.socType == SOC_910B1) || (socAttr.socType == SOC_910B2) ||
-            (socAttr.socType == SOC_910B3) || (socAttr.socType == SOC_910B4) ||
-            IsAscendA3(); // 这里是表示A3和A2的device结构一样，底库保存格式一样
+        return (socAttr.socType == SOC_910B1) || (socAttr.socType == SOC_910B2) || (socAttr.socType == SOC_910B3) ||
+               (socAttr.socType == SOC_910B4) || IsAscendA3();  // 这里是表示A3和A2的device结构一样，底库保存格式一样
     }
 
     bool IsAscendA3() const
     {
         return (socAttr.socType == SOC_910_9392) || (socAttr.socType == SOC_910_9382) ||
-            (socAttr.socType == SOC_910_9372) || (socAttr.socType == SOC_910_9362);
+               (socAttr.socType == SOC_910_9372) || (socAttr.socType == SOC_910_9362);
     }
+
+    bool IsAscendA5() const { return socAttr.socType == SOC_950_95; }
 
     int GetExtremeListSize() const
     {
@@ -177,46 +184,41 @@ public:
         return IsAscend310() ? 8 : 16;
     }
 
-    uint32_t GetDeviceCount() const
-    {
-        return deviceCount;
-    }
+    uint32_t GetDeviceCount() const { return deviceCount; }
 
-    bool IsRunningInHost() const
-    {
-        return (runMode == ACL_HOST);
-    }
+    bool IsRunningInHost() const { return (runMode == ACL_HOST); }
 
-    CodeFormatType GetCodeFormatType() const
-    {
-        return socAttr.codeFormType;
-    }
+    CodeFormatType GetCodeFormatType() const { return socAttr.codeFormType; }
 
-    bool IsZZCodeFormat() const
-    {
-        return socAttr.codeFormType == CodeFormatType::FORMAT_TYPE_ZZ;
-    }
+    bool IsZZCodeFormat() const { return socAttr.codeFormType == CodeFormatType::FORMAT_TYPE_ZZ; }
 
-    bool ParseA3Data(const std::string &name)
+    bool ParseA2Data(const std::string &name)
     {
-        if (name.find(SOCNAME910_9392) == 0) {
-            socAttr.socType = SOC_910_9392;
-            socAttr.coreNum = 48; // Ascend910_9392 has 48 aiv
+        if (name.find(SOCNAME910B4) == 0)
+        {
+            socAttr.socType = SOC_910B4;
+            socAttr.coreNum = 40;  // Ascend910B4 has 40 aiv
             socAttr.codeFormType = FORMAT_TYPE_ND;
             return true;
-        } else if (name.find(SOCNAME910_9382) == 0) {
-            socAttr.socType = SOC_910_9382;
-            socAttr.coreNum = 48; // Ascend910_9382 has 48 aiv
+        }
+        else if (name.find(SOCNAME910B3) == 0)
+        {
+            socAttr.socType = SOC_910B3;
+            socAttr.coreNum = 40;  // Ascend910B3 has 40 aiv
             socAttr.codeFormType = FORMAT_TYPE_ND;
             return true;
-        } else if (name.find(SOCNAME910_9372) == 0) {
-            socAttr.socType = SOC_910_9372;
-            socAttr.coreNum = 40; // Ascend910_9372 has 40 aiv
+        }
+        else if (name.find(SOCNAME910B2) == 0)
+        {
+            socAttr.socType = SOC_910B2;
+            socAttr.coreNum = 48;  // Ascend910B2 has 48 aiv
             socAttr.codeFormType = FORMAT_TYPE_ND;
             return true;
-        } else if (name.find(SOCNAME910_9362) == 0) {
-            socAttr.socType = SOC_910_9362;
-            socAttr.coreNum = 40; // Ascend910_9362 has 40 aiv
+        }
+        else if (name.find(SOCNAME910B1) == 0)
+        {
+            socAttr.socType = SOC_910B1;
+            socAttr.coreNum = 48;  // Ascend910B1 has 48 aiv
             socAttr.codeFormType = FORMAT_TYPE_ND;
             return true;
         }
@@ -224,64 +226,114 @@ public:
         return false;
     }
 
-    SocUtils(const SocUtils&) = delete;
-    SocUtils& operator=(const SocUtils&) = delete;
+    bool ParseA3Data(const std::string &name)
+    {
+        if (name.find(SOCNAME910_9392) == 0)
+        {
+            socAttr.socType = SOC_910_9392;
+            socAttr.coreNum = 48;  // Ascend910_9392 has 48 aiv
+            socAttr.codeFormType = FORMAT_TYPE_ND;
+            return true;
+        }
+        else if (name.find(SOCNAME910_9382) == 0)
+        {
+            socAttr.socType = SOC_910_9382;
+            socAttr.coreNum = 48;  // Ascend910_9382 has 48 aiv
+            socAttr.codeFormType = FORMAT_TYPE_ND;
+            return true;
+        }
+        else if (name.find(SOCNAME910_9372) == 0)
+        {
+            socAttr.socType = SOC_910_9372;
+            socAttr.coreNum = 40;  // Ascend910_9372 has 40 aiv
+            socAttr.codeFormType = FORMAT_TYPE_ND;
+            return true;
+        }
+        else if (name.find(SOCNAME910_9362) == 0)
+        {
+            socAttr.socType = SOC_910_9362;
+            socAttr.coreNum = 40;  // Ascend910_9362 has 40 aiv
+            socAttr.codeFormType = FORMAT_TYPE_ND;
+            return true;
+        }
 
-private:
+        return false;
+    }
+
+    bool ParseA5Data(const std::string &name)
+    {
+        if (name.find(SOCNAME950_95) == 0)
+        {
+            socAttr.socType = SOC_950_95;
+            socAttr.coreNum = 56;  // Ascend950 has 56 aiv
+            socAttr.codeFormType = FORMAT_TYPE_ND;
+            return true;
+        }
+
+        return false;
+    }
+
+    SocUtils(const SocUtils &) = delete;
+    SocUtils &operator=(const SocUtils &) = delete;
+
+   private:
     void Init()
     {
         // init soc type
         auto socName = aclrtGetSocName();
-        if (socName == nullptr) {
-            APP_LOG_ERROR("aclrtGetSocName() return nullptr. please check your environment "
+        if (socName == nullptr)
+        {
+            APP_LOG_ERROR(
+                "aclrtGetSocName() return nullptr. please check your environment "
                 "variables and compilation options to make sure you use the correct ACL library.");
             return;
         }
         const std::string name(socName);
         APP_LOG_DEBUG("get socname:%s", socName);
-        if (name.find(SOCNAME710) == 0 || name.find(SOCNAME310P) == 0) {
+        if (name.find(SOCNAME710) == 0 || name.find(SOCNAME310P) == 0)
+        {
             socAttr.socType = SOC_310P;
-            socAttr.coreNum = 8; // Ascend310P has 8 aicore
+            socAttr.coreNum = 8;  // Ascend310P has 8 aicore
             socAttr.codeFormType = FORMAT_TYPE_ZZ;
-        } else if (name.find(SOCNAME310) == 0) {
+        }
+        else if (name.find(SOCNAME310) == 0)
+        {
             socAttr.socType = SOC_310;
-            socAttr.coreNum = 2; // Ascend310 has 2 aicore
+            socAttr.coreNum = 2;  // Ascend310 has 2 aicore
             socAttr.codeFormType = FORMAT_TYPE_ZZ;
-        } else if (name.find(SOCNAME910B4) == 0) {
-            socAttr.socType = SOC_910B4;
-            socAttr.coreNum = 40; // Ascend910B4 has 40 aiv
-            socAttr.codeFormType = FORMAT_TYPE_ND;
-        } else if (name.find(SOCNAME910B3) == 0) {
-            socAttr.socType = SOC_910B3;
-            socAttr.coreNum = 40; // Ascend910B3 has 40 aiv
-            socAttr.codeFormType = FORMAT_TYPE_ND;
-        } else if (name.find(SOCNAME910B2) == 0) {
-            socAttr.socType = SOC_910B2;
-            socAttr.coreNum = 48; // Ascend910B2 has 48 aiv
-            socAttr.codeFormType = FORMAT_TYPE_ND;
-        } else if (name.find(SOCNAME910B1) == 0) {
-            socAttr.socType = SOC_910B1;
-            socAttr.coreNum = 48; // Ascend910B2 has 48 aiv
-            socAttr.codeFormType = FORMAT_TYPE_ND;
-        } else if (ParseA3Data(name)) {
+        }
+        else if (ParseA2Data(name))
+        {
+            APP_LOG_INFO("find socname A2");
+        }
+        else if (ParseA3Data(name))
+        {
             APP_LOG_INFO("find socname A3");
-        } else {
+        }
+        else if (ParseA5Data(name))
+        {
+            APP_LOG_INFO("find socname A5");
+        }
+        else
+        {
             APP_LOG_ERROR("soc error. please check.");
         }
 
         // init device count
         auto ret = aclrtGetDeviceCount(&deviceCount);
-        if (ret != ACL_SUCCESS) {
+        if (ret != ACL_SUCCESS)
+        {
             APP_LOG_ERROR("Fail to get device count ret: %d", ret);
         }
 
         ret = aclrtGetRunMode(&runMode);
-        if (ret != ACL_SUCCESS) {
+        if (ret != ACL_SUCCESS)
+        {
             APP_LOG_ERROR("Fail to get run mode ret: %d", ret);
         }
 
-        APP_LOG_INFO("Finish initing SocUtils, soc type: %u, core num: %d, device count %u",
-            socAttr.socType, socAttr.coreNum, deviceCount);
+        APP_LOG_INFO("Finish initing SocUtils, soc type: %u, core num: %d, device count %u", socAttr.socType,
+                     socAttr.coreNum, deviceCount);
     }
 
     void Finalize()
@@ -291,33 +343,40 @@ private:
         const size_t envLen = 1;
         char *finalizeEnv = std::getenv("MX_INDEX_FINALIZE");
         bool validEnv = ((finalizeEnv != nullptr) && (std::strlen(finalizeEnv) == envLen) &&
-            ((finalizeEnv[0] == setOff) || (finalizeEnv[0] == setOn)));
-        if (!validEnv) {
-            if (repeatInitFlag) {
+                         ((finalizeEnv[0] == setOff) || (finalizeEnv[0] == setOn)));
+        if (!validEnv)
+        {
+            if (repeatInitFlag)
+            {
                 APP_LOG_DEBUG("do not aclFinalize ------------- \n");
-            } else {
+            }
+            else
+            {
                 APP_LOG_DEBUG("exec aclFinalize ------------- \n");
                 (void)aclFinalize();
             }
             return;
         }
         APP_LOG_DEBUG("set env -------------%s \n", finalizeEnv);
-        if (finalizeEnv[0] == setOff) {
+        if (finalizeEnv[0] == setOff)
+        {
             APP_LOG_DEBUG("set env, not exec aclFinalize ------------- \n");
-        } else {
+        }
+        else
+        {
             APP_LOG_DEBUG("set env, exec aclFinalize ------------- \n");
             (void)aclFinalize();
         }
     }
 
-private:
-    SocAttribute socAttr {SOC_INVALID, 0, FORMAT_TYPE_INVALID};
+   private:
+    SocAttribute socAttr{SOC_INVALID, 0, FORMAT_TYPE_INVALID};
     uint32_t deviceCount;
     bool hasDev = false;
-    aclrtRunMode runMode { ACL_HOST };
+    aclrtRunMode runMode{ACL_HOST};
     bool repeatInitFlag = false;
 };
-}
-}
+}  // namespace ascend
+}  // namespace faiss
 
-#endif // FEATURERETRIEVAL_SOCUTILS_H
+#endif  // FEATURERETRIEVAL_SOCUTILS_H

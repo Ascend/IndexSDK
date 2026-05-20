@@ -23,6 +23,12 @@ readonly MAKESELF_SCRIPT=${TOP_DIR}/makeself/makeself.sh
 readonly MAKESELF_HEADER=${TOP_DIR}/makeself/makeself-header.sh
 readonly Gcc4_PATH="/opt/rh/devtoolset-7/root/usr/bin"
 readonly Gcc7_PATH="/opt/rh/devtoolset-index/root/usr/bin"
+readonly FAISS_110_HOME="${FAISS_110_HOME:-/usr/local/faiss/faiss1.10.0}"
+readonly FAISS_114_HOME="${FAISS_114_HOME:-/usr/local/faiss/faiss1.14.1}"
+readonly DEFAULT_FAISS_ABI="${DEFAULT_FAISS_ABI:-faiss1.10}"
+readonly MULTI_FAISS_PACKAGE="${MULTI_FAISS_PACKAGE:-ON}"
+readonly FAISS_VARIANT_WORK_DIR="${TOP_DIR}/build/faiss_variants"
+readonly FAISS_COMBINED_OUTPUT_DIR="${TOP_DIR}/build/faiss_combined_output"
 
 cd "${TOP_DIR}"
 find ./ -name "*.sh" -exec dos2unix {} \;
@@ -40,6 +46,9 @@ function set_env()
 function build_Retrieval()
 {
     local gcc_type="$1"
+    local faiss_home="${2:-${FAISS_110_HOME}}"
+    export FAISS_HOME="${faiss_home}"
+    echo "build Retrieval with FAISS_HOME=${FAISS_HOME}"
     cd "${TOP_DIR}" && cp -rf "vstar_great_impl/mix-index/publish_union.sh" ./
     chmod +x publish_union.sh
     ./publish_union.sh "${TOP_DIR}/vstar_great_impl" "${gcc_type}"
@@ -60,6 +69,9 @@ function build_vsa()
 function build_feature_retrieval()
 {
     local gcc_type="$1"
+    local faiss_home="${2:-${FAISS_110_HOME}}"
+    export FAISS_HOME="${faiss_home}"
+    echo "build feature_retrieval with FAISS_HOME=${FAISS_HOME}"
     if [ ! -d "${TOP_DIR}/feature_retrieval/src/ascendfaiss/ops/cmake/util/makeself" ]; then
         mkdir -p "${TOP_DIR}/feature_retrieval/src/ascendfaiss/ops/cmake/util/makeself"
     fi
@@ -73,6 +85,174 @@ function build_feature_retrieval()
 
     cd "${TOP_DIR}/feature_retrieval/build" && bash build.sh "${gcc_type}"
     echo "build feature_retrieval success"
+}
+
+function validate_default_faiss_abi()
+{
+    if [ "${DEFAULT_FAISS_ABI}" != "faiss1.10" ] && [ "${DEFAULT_FAISS_ABI}" != "faiss1.14" ]; then
+        echo "[ERROR] DEFAULT_FAISS_ABI only supports faiss1.10 or faiss1.14, current: ${DEFAULT_FAISS_ABI}"
+        exit 1
+    fi
+}
+
+function copy_faiss_variant_files()
+{
+    local src_pkg="$1"
+    local dst_pkg="$2"
+    local variant="$3"
+
+    mkdir -p "${dst_pkg}/host/lib/${variant}"
+    mkdir -p "${dst_pkg}/include/${variant}"
+
+    for so_file in libascendfaiss.so libascendsearch.so; do
+        if [ -e "${src_pkg}/host/lib/${so_file}" ]; then
+            cp -P "${src_pkg}/host/lib/${so_file}" "${dst_pkg}/host/lib/${variant}/"
+        else
+            echo "[ERROR] ${src_pkg}/host/lib/${so_file} does not exist."
+            exit 1
+        fi
+    done
+
+    if [ -d "${src_pkg}/include/faiss" ]; then
+        cp -a "${src_pkg}/include/faiss" "${dst_pkg}/include/${variant}/"
+    else
+        echo "[ERROR] ${src_pkg}/include/faiss does not exist."
+        exit 1
+    fi
+}
+
+function activate_default_faiss_variant_in_pkg()
+{
+    local pkg_dir="$1"
+    local variant="${DEFAULT_FAISS_ABI}"
+
+    if [ ! -d "${pkg_dir}/include/${variant}/faiss" ]; then
+        echo "[ERROR] ${pkg_dir}/include/${variant}/faiss does not exist."
+        exit 1
+    fi
+
+    rm -rf "${pkg_dir}/include/faiss" "${pkg_dir}/include/ascend"
+    ln -s "${variant}/faiss" "${pkg_dir}/include/faiss"
+    ln -s "faiss/ascend" "${pkg_dir}/include/ascend"
+
+    for so_file in libascendfaiss.so libascendsearch.so; do
+        if [ ! -f "${pkg_dir}/host/lib/${variant}/${so_file}" ]; then
+            echo "[ERROR] ${pkg_dir}/host/lib/${variant}/${so_file} does not exist."
+            exit 1
+        fi
+        rm -f "${pkg_dir}/host/lib/${so_file}"
+        ln -s "${variant}/${so_file}" "${pkg_dir}/host/lib/${so_file}"
+    done
+
+    cat > "${pkg_dir}/faiss_versions.info" << EOF
+default:${variant}
+faiss1.10:${FAISS_110_HOME}
+faiss1.14:${FAISS_114_HOME}
+EOF
+}
+
+function combine_faiss_variant_package()
+{
+    local faiss110_tar="$1"
+    local faiss114_tar="$2"
+    local out_tar="$3"
+    local combine_root="$4"
+    local package_stem
+    package_stem=$(basename "${out_tar}" .tar.gz)
+    local combine_dir="${combine_root}/${package_stem}"
+    local faiss110_dir="${combine_dir}/faiss1.10"
+    local faiss114_dir="${combine_dir}/faiss1.14"
+    local out_dir="${combine_dir}/out"
+
+    rm -rf "${combine_dir}"
+    mkdir -p "${faiss110_dir}" "${faiss114_dir}" "${out_dir}"
+    tar -xzf "${faiss110_tar}" -C "${faiss110_dir}"
+    tar -xzf "${faiss114_tar}" -C "${faiss114_dir}"
+    cp -a "${faiss110_dir}/feature_retrieval" "${out_dir}/"
+
+    local dst_pkg="${out_dir}/feature_retrieval"
+    copy_faiss_variant_files "${faiss110_dir}/feature_retrieval" "${dst_pkg}" "faiss1.10"
+    copy_faiss_variant_files "${faiss114_dir}/feature_retrieval" "${dst_pkg}" "faiss1.14"
+    activate_default_faiss_variant_in_pkg "${dst_pkg}"
+
+    mkdir -p "$(dirname "${out_tar}")"
+    (
+        cd "${out_dir}"
+        tar -zcf "${out_tar}" feature_retrieval
+    )
+}
+
+function combine_faiss_variant_packages()
+{
+    local gcc_type="$1"
+    local work_dir="${FAISS_VARIANT_WORK_DIR}/${gcc_type}"
+    local combine_root="${work_dir}/combined_work"
+
+    mkdir -p "${FAISS_COMBINED_OUTPUT_DIR}"
+    for faiss110_tar in "${work_dir}/faiss1.10"/*.tar.gz; do
+        if [ ! -f "${faiss110_tar}" ]; then
+            echo "[ERROR] no faiss1.10 feature_retrieval package found in ${work_dir}/faiss1.10"
+            exit 1
+        fi
+        local tar_name
+        tar_name=$(basename "${faiss110_tar}")
+        local faiss114_tar="${work_dir}/faiss1.14/${tar_name}"
+        if [ ! -f "${faiss114_tar}" ]; then
+            echo "[ERROR] matching faiss1.14 feature_retrieval package does not exist: ${faiss114_tar}"
+            exit 1
+        fi
+        combine_faiss_variant_package "${faiss110_tar}" "${faiss114_tar}" "${FAISS_COMBINED_OUTPUT_DIR}/${tar_name}" "${combine_root}"
+    done
+}
+
+function build_feature_retrieval_multi_faiss()
+{
+    local gcc_type="$1"
+    local work_dir="${FAISS_VARIANT_WORK_DIR}/${gcc_type}"
+    local variant_configs=("faiss1.10:${FAISS_110_HOME}" "faiss1.14:${FAISS_114_HOME}")
+
+    rm -rf "${work_dir}"
+    mkdir -p "${work_dir}/faiss1.10" "${work_dir}/faiss1.14"
+
+    for variant_config in "${variant_configs[@]}"; do
+        local variant="${variant_config%%:*}"
+        local faiss_home="${variant_config#*:}"
+
+        if [ ! -d "${faiss_home}" ]; then
+            echo "[ERROR] ${variant} FAISS_HOME does not exist: ${faiss_home}"
+            exit 1
+        fi
+
+        echo "build ${gcc_type} package variant ${variant} with FAISS_HOME=${faiss_home}"
+        rm -rf "${TOP_DIR}/build/output"
+        rm -rf "${TOP_DIR}/feature_retrieval/output"
+        rm -rf "${TOP_DIR}/feature_retrieval/secondparty"
+
+        build_Retrieval "${gcc_type}" "${faiss_home}"
+        build_feature_retrieval "${gcc_type}" "${faiss_home}"
+
+        if ! compgen -G "${TOP_DIR}/feature_retrieval/output/*.tar.gz" > /dev/null; then
+            echo "[ERROR] no feature_retrieval package generated for ${variant}"
+            exit 1
+        fi
+        mv "${TOP_DIR}/feature_retrieval/output"/*.tar.gz "${work_dir}/${variant}/"
+    done
+
+    combine_faiss_variant_packages "${gcc_type}"
+}
+
+function build_release_for_gcc()
+{
+    local gcc_type="$1"
+
+    if [ "${MULTI_FAISS_PACKAGE}" = "ON" ]; then
+        build_vsa
+        build_feature_retrieval_multi_faiss "${gcc_type}"
+    else
+        build_Retrieval "${gcc_type}" "${FAISS_110_HOME}"
+        build_vsa
+        build_feature_retrieval "${gcc_type}" "${FAISS_110_HOME}"
+    fi
 }
 
 function run_ut()
@@ -91,6 +271,8 @@ function clean()
     cd "${TOP_DIR}/vsa_hpp/3rdparty/hcps" && chmod +x build.sh && ./build.sh -t clean
     cd "${TOP_DIR}/vsa_hpp/3rdparty/hcps/3rdparty/memory_bridge" && chmod +x build.sh && ./build.sh -t clean
     rm -rf "${TOP_DIR}/build/output"
+    rm -rf "${FAISS_VARIANT_WORK_DIR}"
+    rm -rf "${FAISS_COMBINED_OUTPUT_DIR}"
     rm -rf "${TOP_DIR}/feature_retrieval/output"
     rm -rf "${TOP_DIR}/feature_retrieval"/build_gcc*
     rm -rf "${TOP_DIR}/feature_retrieval/secondparty"
@@ -99,33 +281,33 @@ function clean()
 
 function package()
 {
+    if compgen -G "${FAISS_COMBINED_OUTPUT_DIR}/*.tar.gz" > /dev/null; then
+        rm -rf "${TOP_DIR}/feature_retrieval/output"
+        mkdir -p "${TOP_DIR}/feature_retrieval/output"
+        cp -f "${FAISS_COMBINED_OUTPUT_DIR}"/*.tar.gz "${TOP_DIR}/feature_retrieval/output/"
+    fi
     bash "${CUR_DIR}/package.sh"
 }
 
 function main()
 {
+    validate_default_faiss_abi
     clean
     if [ -d "${Gcc4_PATH}" ]; then
         echo "build with Gcc4 in ${Gcc4_PATH}..."
         export GCC_HOME=/opt/rh/devtoolset-7/root/usr
         set_env
-        build_Retrieval Gcc4
-        build_vsa
-        build_feature_retrieval Gcc4
+        build_release_for_gcc Gcc4
     fi
     if [ -d "${Gcc7_PATH}" ]; then
         echo "build with Gcc7 in ${Gcc7_PATH}..."
         export GCC_HOME=/opt/rh/devtoolset-index/root/usr
         set_env
-        build_Retrieval Gcc7
-        build_vsa
-        build_feature_retrieval Gcc7
+        build_release_for_gcc Gcc7
     fi
     if [ ! -d "${Gcc4_PATH}" ] && [ ! -d "${Gcc7_PATH}" ]; then
         echo "build with system default Gcc..."
-        build_Retrieval Gcc7
-        build_vsa
-        build_feature_retrieval Gcc7
+        build_release_for_gcc Gcc7
     fi
     package
 }

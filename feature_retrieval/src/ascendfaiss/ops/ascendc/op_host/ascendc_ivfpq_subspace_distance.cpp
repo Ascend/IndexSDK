@@ -18,20 +18,22 @@
 
 #include "ascendc_ivfpq_subspace_distance_tiling.h"
 #include "register/op_def_registry.h"
-#include "tiling/tiling_api.h"
 #include "tiling/platform/platform_ascendc.h"
+#include "tiling/tiling_api.h"
 
-namespace {
-    constexpr uint32_t N_BLOCK_BASE_SIZE = 128;
-    constexpr uint32_t ONE = 1;
-    constexpr uint32_t BATCH_MIN = 1;
-    constexpr uint32_t BATCH_MAX = 256;
-    constexpr uint32_t KSUB_DEFAULT = 256;
-}
+namespace
+{
+constexpr uint32_t N_BLOCK_BASE_SIZE = 128;
+constexpr uint32_t ONE = 1;
+constexpr uint32_t BATCH_MIN = 1;
+constexpr uint32_t BATCH_MAX = 256;
+constexpr uint32_t KSUB_DEFAULT = 256;
+}  // namespace
 
 using namespace matmul_tiling;
 
-namespace optiling {
+namespace optiling
+{
 
 ge::graphStatus IvfpqSubspaceTiling::GetNpuInfo()
 {
@@ -45,11 +47,12 @@ ge::graphStatus IvfpqSubspaceTiling::GetNpuInfo()
 ge::graphStatus IvfpqSubspaceTiling::ProcessInput()
 {
     // InTensor
-    auto queryShape = context_->GetInputShape(0)->GetStorageShape(); // 第0个输入 query
+    auto queryShape = context_->GetInputShape(0)->GetStorageShape();  // 第0个输入 query
     auto queryDimNum = queryShape.GetDimNum();
-    auto codeBookShape = context_->GetInputShape(1)->GetStorageShape(); // 第1个输入 codeBook
+    auto codeBookShape = context_->GetInputShape(1)->GetStorageShape();  // 第1个输入 codeBook
     auto codeBookDimNum = codeBookShape.GetDimNum();
-    if (queryDimNum != 2U || codeBookDimNum != 3U) {
+    if (queryDimNum != 2U || codeBookDimNum != 3U)
+    {
         return ge::GRAPH_FAILED;
     }
 
@@ -59,7 +62,8 @@ ge::graphStatus IvfpqSubspaceTiling::ProcessInput()
     kSub_ = static_cast<uint32_t>(codeBookShape.GetDim(1));
     dSub_ = static_cast<uint32_t>(codeBookShape.GetDim(2));
 
-    if (batch_ < BATCH_MIN || batch_ > BATCH_MAX || kSub_ != KSUB_DEFAULT) {
+    if (batch_ < BATCH_MIN || batch_ > BATCH_MAX || kSub_ != KSUB_DEFAULT)
+    {
         return ge::GRAPH_FAILED;
     }
 
@@ -87,7 +91,8 @@ ge::graphStatus IvfpqSubspaceTiling::CubeTiling()
     cubeTiling.SetOrgShape(batch_, nBlockTile_, dim_, dSub_);
     cubeTiling.SetBufferSpace(-1, -1, -1);
     int ret = cubeTiling.GetTiling(tilingData_->cubeTiling);
-    if (ret == -1) {
+    if (ret == -1)
+    {
         return ge::GRAPH_FAILED;
     }
 
@@ -122,14 +127,15 @@ ge::graphStatus IvfpqSubspaceTiling::SetExtraConfig()
     tilingData_->SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
     context_->GetRawTilingData()->SetDataSize(tilingData_->GetDataSize());
 
-    size_t *currentWorkspace = context_->GetWorkspaceSizes(1);
-    if (currentWorkspace == nullptr) {
+    size_t* currentWorkspace = context_->GetWorkspaceSizes(1);
+    if (currentWorkspace == nullptr)
+    {
         return ge::GRAPH_FAILED;
     }
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->GetPlatformInfo());
     workSpaceSize_ = ascendcPlatform.GetLibApiWorkSpaceSize();
 
-    uint32_t userSize = batch_ * nBlockTile_ * totalTaskNum_ * sizeof(float); // M * N * totalTaskNum * dataTypeSize
+    uint32_t userSize = batch_ * nBlockTile_ * totalTaskNum_ * sizeof(float);  // M * N * totalTaskNum * dataTypeSize
     currentWorkspace[0] = workSpaceSize_ + userSize;
     return ge::GRAPH_SUCCESS;
 }
@@ -139,12 +145,10 @@ ge::graphStatus IvfpqSubspaceTiling::ProcessTiling(gert::TilingContext* context,
 {
     context_ = context;
     tilingData_ = &tilingData;
-    if (GetNpuInfo() != ge::GRAPH_SUCCESS ||
-        ProcessInput() != ge::GRAPH_SUCCESS ||
-        Split() != ge::GRAPH_SUCCESS ||
-        CubeTiling() != ge::GRAPH_SUCCESS ||
-        FillTilingData() != ge::GRAPH_SUCCESS ||
-        SetExtraConfig() != ge::GRAPH_SUCCESS) {
+    if (GetNpuInfo() != ge::GRAPH_SUCCESS || ProcessInput() != ge::GRAPH_SUCCESS || Split() != ge::GRAPH_SUCCESS ||
+        CubeTiling() != ge::GRAPH_SUCCESS || FillTilingData() != ge::GRAPH_SUCCESS ||
+        SetExtraConfig() != ge::GRAPH_SUCCESS)
+    {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -155,14 +159,16 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     IvfpqSubspaceTiling ivfpqSubTiling;
     AscendcIvfpqSubspaceDistanceTilingData tilingData;
     auto ret = ivfpqSubTiling.ProcessTiling(context, tilingData);
-    if (ret != ge::GRAPH_SUCCESS) {
+    if (ret != ge::GRAPH_SUCCESS)
+    {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
 }
-}
+}  // namespace optiling
 
-namespace ge {
+namespace ge
+{
 static ge::graphStatus InferShape(gert::InferShapeContext* context)
 {
     const gert::Shape* queryShape = context->GetInputShape(0);
@@ -178,18 +184,19 @@ static ge::graphStatus InferShape(gert::InferShapeContext* context)
     return GRAPH_SUCCESS;
 }
 
-static ge::graphStatus InferDataType(gert::InferDataTypeContext *context)
+static ge::graphStatus InferDataType(gert::InferDataTypeContext* context)
 {
     const auto inputDataType = context->GetInputDataType(0);
     context->SetOutputDataType(0, inputDataType);
     return ge::GRAPH_SUCCESS;
 }
-}
+}  // namespace ge
 
-
-namespace ops {
-class AscendcIvfpqSubspaceDistance : public OpDef {
-public:
+namespace ops
+{
+class AscendcIvfpqSubspaceDistance : public OpDef
+{
+   public:
     explicit AscendcIvfpqSubspaceDistance(const char* name) : OpDef(name)
     {
         this->Input("query")
@@ -208,12 +215,12 @@ public:
             .Format({ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND});
         this->SetInferShape(ge::InferShape).SetInferDataType(ge::InferDataType);
-        this->AICore()
-            .SetTiling(optiling::TilingFunc);
+        this->AICore().SetTiling(optiling::TilingFunc);
         this->AICore().AddConfig("ascend910b");
         this->AICore().AddConfig("ascend910_93");
+        this->AICore().AddConfig("ascend950");
     }
 };
 
 OP_ADD(AscendcIvfpqSubspaceDistance);
-}
+}  // namespace ops

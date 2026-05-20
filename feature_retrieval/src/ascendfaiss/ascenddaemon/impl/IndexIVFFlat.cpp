@@ -849,7 +849,7 @@ size_t IndexIVFFlat::removeIds(const ascend::IDSelector &sel)
         idx_t *indicesCheckerPtr = indicesVec.data();
         idx_t *indicesPtr = indicesList->data();
         bool hasMoved = false;
-        size_t j = indicesList->size() - 1;
+        long long j = static_cast<long long>(indicesList->size()) - 1;
         std::vector<size_t> delIndices;
         for (size_t i = 0; i <= j;)
         {

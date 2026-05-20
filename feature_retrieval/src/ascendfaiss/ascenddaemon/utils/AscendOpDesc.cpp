@@ -16,16 +16,15 @@
  * -------------------------------------------------------------------------
  */
 
-
 #include "ascenddaemon/utils/AscendOpDesc.h"
+
 #include "ascenddaemon/utils/AscendUtils.h"
 
-namespace ascend {
-AscendOpDesc::AscendOpDesc(std::string opName)
-    : opType(std::move(opName))
+namespace ascend
 {
-    opAttr = aclopCreateAttr();
-}
+AscendOpDesc::AscendOpDesc() { opAttr = aclopCreateAttr(); }
+
+AscendOpDesc::AscendOpDesc(std::string opName) : opType(std::move(opName)) { opAttr = aclopCreateAttr(); }
 
 AscendOpDesc::AscendOpDesc(AscendOpDesc &&desc)
 {
@@ -39,32 +38,32 @@ AscendOpDesc::AscendOpDesc(AscendOpDesc &&desc)
 
 AscendOpDesc::~AscendOpDesc()
 {
-    for (auto desc : inputDesc) {
+    for (auto desc : inputDesc)
+    {
         aclDestroyTensorDesc(desc);
     }
 
-    for (auto desc : outputDesc) {
+    for (auto desc : outputDesc)
+    {
         aclDestroyTensorDesc(desc);
     }
 
-    if (opAttr) {
+    if (opAttr)
+    {
         aclopDestroyAttr(opAttr);
         opAttr = nullptr;
     }
 }
 
-AscendOpDesc &AscendOpDesc::addInputTensorDesc(aclDataType dataType,
-                                               int numDims,
-                                               const int64_t *dims,
-                                               aclFormat format)
+void AscendOpDesc::setOpName(std::string opName) { opType = std::move(opName); }
+
+AscendOpDesc &AscendOpDesc::addInputTensorDesc(aclDataType dataType, int numDims, const int64_t *dims, aclFormat format)
 {
     inputDesc.push_back(aclCreateTensorDesc(dataType, numDims, dims, format));
     return *this;
 }
 
-AscendOpDesc &AscendOpDesc::addOutputTensorDesc(aclDataType dataType,
-                                                int numDims,
-                                                const int64_t *dims,
+AscendOpDesc &AscendOpDesc::addOutputTensorDesc(aclDataType dataType, int numDims, const int64_t *dims,
                                                 aclFormat format)
 {
     outputDesc.push_back(aclCreateTensorDesc(dataType, numDims, dims, format));

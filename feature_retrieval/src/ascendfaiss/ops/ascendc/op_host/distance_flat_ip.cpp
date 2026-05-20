@@ -16,28 +16,30 @@
  * -------------------------------------------------------------------------
  */
 
-
+#include "distance_flat_ip_tiling.h"
+#include "op_host_common.h"
 #include "register/op_def_registry.h"
 #include "tiling/tiling_api.h"
 
-#include "op_host_common.h"
-#include "distance_flat_ip_tiling.h"
-
-namespace optiling {
+namespace optiling
+{
 using namespace matmul_tiling;
 
-static ge::graphStatus TilingSetInputShapeInfo(gert::TilingContext* context, DistanceFlatIPTilingData &tiling)
+static ge::graphStatus TilingSetInputShapeInfo(gert::TilingContext *context, DistanceFlatIPTilingData &tiling)
 {
-    if (context == nullptr) {
+    if (context == nullptr)
+    {
         return ge::GRAPH_FAILED;
     }
     // 输入的第0个是query
-    if (context->GetInputTensor(0) == nullptr) {
+    if (context->GetInputTensor(0) == nullptr)
+    {
         return ge::GRAPH_FAILED;
     }
     const gert::Shape &queriesShape = context->GetInputTensor(0)->GetStorageShape();
     // 输入的第2个是code
-    if (context->GetInputTensor(2) == nullptr) {
+    if (context->GetInputTensor(2) == nullptr)
+    {
         return ge::GRAPH_FAILED;
     }
     const gert::Shape &shapedShape = context->GetInputTensor(2)->GetStorageShape();
@@ -52,7 +54,8 @@ static ge::graphStatus TilingSetInputShapeInfo(gert::TilingContext* context, Dis
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     // vector core个数
     uint32_t vecCoreNum = ascendcPlatform.GetCoreNumAiv();
-    if (vecCoreNum == 0) {
+    if (vecCoreNum == 0)
+    {
         return ge::GRAPH_FAILED;
     }
 
@@ -64,7 +67,7 @@ static ge::graphStatus TilingSetInputShapeInfo(gert::TilingContext* context, Dis
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus TilingSetCubeTiling(gert::TilingContext* context, DistanceFlatIPTilingData &tiling)
+static ge::graphStatus TilingSetCubeTiling(gert::TilingContext *context, DistanceFlatIPTilingData &tiling)
 {
     tiling.cubeTilingData.set_usedCoreNum(1);
 
@@ -76,7 +79,7 @@ static ge::graphStatus TilingSetCubeTiling(gert::TilingContext* context, Distanc
     // 2、query优先，当前FlatIP最大的batch size为128
     // 3、codeNumEachLoop需要按照512对齐，因为burstLen=64，codeNumEachLoop=512时，正好一个有8个burst，占用32B大小，满足一次DataCopy的最小长度。
     // 因此设计queryNumEachLoop=128，codeNumEachLoop=512。同时实测query优先对性能更好。
-    
+
     // 限制和对齐queryNumEachLoop
     uint32_t dim = tiling.get_dim();
     uint32_t queryNum = tiling.get_queryNum();
@@ -94,32 +97,37 @@ static ge::graphStatus TilingSetCubeTiling(gert::TilingContext* context, Distanc
     cubeTiling.SetBufferSpace(-1, -1, -1);
 
     int64_t ret = cubeTiling.GetTiling(tiling.cubeTilingData);
-    if (ret == -1) {
+    if (ret == -1)
+    {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus TilingFunc(gert::TilingContext* context)
+static ge::graphStatus TilingFunc(gert::TilingContext *context)
 {
-    if (context == nullptr || context->GetRawTilingData() == nullptr) {
+    if (context == nullptr || context->GetRawTilingData() == nullptr)
+    {
         return ge::GRAPH_FAILED;
     }
-    
+
     DistanceFlatIPTilingData tiling;
     auto ret = TilingSetInputShapeInfo(context, tiling);
-    if (ret != ge::GRAPH_SUCCESS) {
+    if (ret != ge::GRAPH_SUCCESS)
+    {
         return ge::GRAPH_FAILED;
     }
 
     ret = TilingSetCubeTiling(context, tiling);
-    if (ret != ge::GRAPH_SUCCESS) {
+    if (ret != ge::GRAPH_SUCCESS)
+    {
         return ge::GRAPH_FAILED;
     }
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     uint32_t cubeCoreNum = ascendcPlatform.GetCoreNumAic();
-    if (cubeCoreNum == 0) {
+    if (cubeCoreNum == 0)
+    {
         return ge::GRAPH_FAILED;
     }
     // 设置使用的cube core的个数
@@ -134,44 +142,49 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     const size_t userWorkspaceSize = 0;
     const uint32_t sysWorkspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
     size_t *currentWorkspace = context->GetWorkspaceSizes(1);
-    if (currentWorkspace == nullptr) {
+    if (currentWorkspace == nullptr)
+    {
         return ge::GRAPH_FAILED;
     }
     currentWorkspace[0] = userWorkspaceSize + sysWorkspaceSize;
 
     return ge::GRAPH_SUCCESS;
 }
-}
+}  // namespace optiling
 
-namespace ge {
+namespace ge
+{
 static graphStatus InferShape(gert::InferShapeContext *context)
 {
-    if (context == nullptr) {
+    if (context == nullptr)
+    {
         return GRAPH_FAILED;
     }
 
-    std::vector<size_t> inputDimShape {2, 2, 4, 2};  // 2: queries, 2: mask, 4: shaped, 2: actualSize;
-    std::vector<size_t> outputDimShape {2, 2, 2};  // 2: dist, 2: maxDist, 2: flag;
+    std::vector<size_t> inputDimShape{2, 2, 4, 2};  // 2: queries, 2: mask, 4: shaped, 2: actualSize;
+    std::vector<size_t> outputDimShape{2, 2, 2};    // 2: dist, 2: maxDist, 2: flag;
     return ShapeCheck(context, inputDimShape, outputDimShape);
 }
 
 static graphStatus InferDataType(gert::InferDataTypeContext *context)
 {
-    if (context == nullptr) {
+    if (context == nullptr)
+    {
         return GRAPH_FAILED;
     }
 
-    std::vector<DataType> inputDataType {DT_FLOAT16, DT_UINT8, DT_FLOAT16, DT_UINT32};
-    std::vector<DataType> outputDataType {DT_FLOAT16, DT_FLOAT16, DT_UINT16};
+    std::vector<DataType> inputDataType{DT_FLOAT16, DT_UINT8, DT_FLOAT16, DT_UINT32};
+    std::vector<DataType> outputDataType{DT_FLOAT16, DT_FLOAT16, DT_UINT16};
     return DataTypeCheck(context, inputDataType, outputDataType);
 }
-}
+}  // namespace ge
 
-
-namespace ops {
-class DistanceFlatIP : public OpDef {
-public:
-    explicit DistanceFlatIP(const char* name) : OpDef(name)
+namespace ops
+{
+class DistanceFlatIP : public OpDef
+{
+   public:
+    explicit DistanceFlatIP(const char *name) : OpDef(name)
     {
         this->Input("queries")
             .ParamType(REQUIRED)
@@ -210,16 +223,13 @@ public:
             .Format({ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND});
 
-        this->SetInferShape(ge::InferShape)
-            .SetInferDataType(ge::InferDataType);
+        this->SetInferShape(ge::InferShape).SetInferDataType(ge::InferDataType);
 
-        this->AICore()
-            .SetTiling(optiling::TilingFunc);
+        this->AICore().SetTiling(optiling::TilingFunc);
 
-        this->AICore().AddConfig("ascend910b")
-            .AddConfig("ascend910_93");
+        this->AICore().AddConfig("ascend910b").AddConfig("ascend910_93").AddConfig("ascend950");
     }
 };
 
 OP_ADD(DistanceFlatIP);
-}
+}  // namespace ops

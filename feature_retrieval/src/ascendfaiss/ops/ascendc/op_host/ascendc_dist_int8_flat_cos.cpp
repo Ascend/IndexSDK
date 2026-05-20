@@ -16,33 +16,35 @@
  * -------------------------------------------------------------------------
  */
 
-
 #include "ascendc_dist_int8_flat_cos_tiling.h"
+#include "op_host_common.h"
 #include "register/op_def_registry.h"
 #include "tiling/tiling_api.h"
-#include "op_host_common.h"
 
 using namespace matmul_tiling;
 using namespace Utils;
 
-namespace optiling {
+namespace optiling
+{
 static ge::graphStatus TilingFillParam(AscendcDistInt8FlatCosTilingData &tiling, gert::TilingContext *context)
 {
     // 算子固定第0个tensor为查询向量，第2个tensor为底库向量
-    if ((context->GetInputTensor(0) == nullptr) || (context->GetInputTensor(2) == nullptr)) {
+    if ((context->GetInputTensor(0) == nullptr) || (context->GetInputTensor(2) == nullptr))
+    {
         return ge::GRAPH_FAILED;
     }
-    const gert::Shape &queryShape = context->GetInputTensor(0)->GetStorageShape(); // 算子固定第0个tensor为查询向量
-    const gert::Shape &shapedShape = context->GetInputTensor(2)->GetStorageShape(); // 算子固定第2个tensor为底库向量
+    const gert::Shape &queryShape = context->GetInputTensor(0)->GetStorageShape();  // 算子固定第0个tensor为查询向量
+    const gert::Shape &shapedShape = context->GetInputTensor(2)->GetStorageShape();  // 算子固定第2个tensor为底库向量
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     context->SetBlockDim(ascendcPlatform.GetCoreNumAic());
 
-    uint32_t queryNum = static_cast<uint32_t>(queryShape[0]); // 查询向量为[queryNum, dim]，queryNum取第0维
-    uint32_t dim = static_cast<uint32_t>(queryShape[1]); // 查询向量为[queryNum, dim]，dim取第1维
+    uint32_t queryNum = static_cast<uint32_t>(queryShape[0]);  // 查询向量为[queryNum, dim]，queryNum取第0维
+    uint32_t dim = static_cast<uint32_t>(queryShape[1]);       // 查询向量为[queryNum, dim]，dim取第1维
     // 底库向量为[blockSize/16, dim/32, 16, 32] 因此blockSize为第0维和第2维的乘积
     uint32_t baseBlockSize = static_cast<uint32_t>(shapedShape[0]) * static_cast<uint32_t>(shapedShape[2]);
     uint32_t vecCoreNum = ascendcPlatform.GetCoreNumAiv();
-    if (vecCoreNum == 0) {
+    if (vecCoreNum == 0)
+    {
         return ge::GRAPH_FAILED;
     }
 
@@ -65,7 +67,7 @@ static ge::graphStatus TilingFillCubeTiling(AscendcDistInt8FlatCosTilingData &ti
     uint32_t queryNumAlign16 = RoundUp(queryNum, CUBE_ALIGN);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     MatmulApiTiling cubeTiling(ascendcPlatform);
-    tiling.cubeTilingData.set_usedCoreNum(1); // 算子内部已经按核tiling，因此这里只需1个核
+    tiling.cubeTilingData.set_usedCoreNum(1);  // 算子内部已经按核tiling，因此这里只需1个核
     cubeTiling.SetAType(TPosition::TSCM, CubeFormat::NZ, matmul_tiling::DataType::DT_INT8);
     cubeTiling.SetBType(TPosition::GM, CubeFormat::ND, matmul_tiling::DataType::DT_INT8);
     cubeTiling.SetCType(TPosition::GM, CubeFormat::ND, matmul_tiling::DataType::DT_FLOAT16);
@@ -74,7 +76,8 @@ static ge::graphStatus TilingFillCubeTiling(AscendcDistInt8FlatCosTilingData &ti
     cubeTiling.SetBufferSpace(-1, -1, -1);
     cubeTiling.SetDequantType(DequantType::SCALAR);
     int ret = cubeTiling.GetTiling(tiling.cubeTilingData);
-    if (ret == -1) {
+    if (ret == -1)
+    {
         return ge::GRAPH_FAILED;
     }
 
@@ -83,22 +86,26 @@ static ge::graphStatus TilingFillCubeTiling(AscendcDistInt8FlatCosTilingData &ti
 
 static ge::graphStatus TilingFunc(gert::TilingContext *context)
 {
-    if (context == nullptr) {
+    if (context == nullptr)
+    {
         return ge::GRAPH_FAILED;
     }
 
     AscendcDistInt8FlatCosTilingData tiling;
     auto ret = TilingFillParam(tiling, context);
-    if (ret != ge::GRAPH_SUCCESS) {
+    if (ret != ge::GRAPH_SUCCESS)
+    {
         return ge::GRAPH_FAILED;
     }
 
     ret = TilingFillCubeTiling(tiling, context);
-    if (ret != ge::GRAPH_SUCCESS) {
+    if (ret != ge::GRAPH_SUCCESS)
+    {
         return ge::GRAPH_FAILED;
     }
 
-    if (context->GetRawTilingData() == nullptr) {
+    if (context->GetRawTilingData() == nullptr)
+    {
         return ge::GRAPH_FAILED;
     }
     tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
@@ -111,31 +118,29 @@ static ge::graphStatus TilingFunc(gert::TilingContext *context)
     uint32_t queryNumAlign16 = RoundUp(queryNum, CUBE_ALIGN);
     const size_t userWorkspaceSize = queryNumAlign16 * onceComputeBaseNum * sizeof(uint16_t) * vecCoreNum;
     const uint32_t sysWorkspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
-    size_t *currentWorkspace = context->GetWorkspaceSizes(1); // 按照算子样例代码设置为1
-    if (currentWorkspace == nullptr) {
+    size_t *currentWorkspace = context->GetWorkspaceSizes(1);  // 按照算子样例代码设置为1
+    if (currentWorkspace == nullptr)
+    {
         return ge::GRAPH_FAILED;
     }
     currentWorkspace[0] = userWorkspaceSize + sysWorkspaceSize;
     return ge::GRAPH_SUCCESS;
 }
-}
+}  // namespace optiling
 
-namespace ge {
-static ge::graphStatus InferShape(gert::InferShapeContext *)
+namespace ge
 {
-    return GRAPH_SUCCESS;
-}
+static ge::graphStatus InferShape(gert::InferShapeContext *) { return GRAPH_SUCCESS; }
 
-static graphStatus InferDataType(gert::InferDataTypeContext *)
+static graphStatus InferDataType(gert::InferDataTypeContext *) { return GRAPH_SUCCESS; }
+}  // namespace ge
+
+namespace ops
 {
-    return GRAPH_SUCCESS;
-}
-}
-
-namespace ops {
-class AscendcDistInt8FlatCos : public OpDef {
-public:
-    explicit AscendcDistInt8FlatCos(const char* name) : OpDef(name)
+class AscendcDistInt8FlatCos : public OpDef
+{
+   public:
+    explicit AscendcDistInt8FlatCos(const char *name) : OpDef(name)
     {
         this->Input("query")
             .ParamType(REQUIRED)
@@ -196,8 +201,9 @@ public:
         this->AICore().SetTiling(optiling::TilingFunc);
 
         this->AICore().AddConfig("ascend910b");
+        this->AICore().AddConfig("ascend950");
     }
 };
 
 OP_ADD(AscendcDistInt8FlatCos);
-}
+}  // namespace ops

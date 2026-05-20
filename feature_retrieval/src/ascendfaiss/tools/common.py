@@ -17,13 +17,13 @@ MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 See the Mulan PSL v2 for more details.
 -------------------------------------------------------------------------
 """
+
 import os
 import sys
 import stat
 import json
 import subprocess
 from multiprocessing import Pool
-import common as utils
 
 
 def set_env():
@@ -33,7 +33,7 @@ def set_env():
 
     if os.environ.get('MAX_COMPILE_CORE_NUMBER') != '1':
         os.environ['MAX_COMPILE_CORE_NUMBER'] = '1'
-        
+
     if os.environ.get('ASCEND_HOME') is None:
         os.environ['ASCEND_HOME'] = '/usr/local/Ascend'
 
@@ -42,22 +42,28 @@ def set_env():
 
     ascend_toolkit_path = os.path.join(os.environ['ASCEND_HOME'], os.environ['ASCEND_VERSION'])
     if not os.path.exists(os.path.join(ascend_toolkit_path, "bin/atc")):
-        err_msg = "Please set right ASCEND_HOME, now ASCEND_HOME={os.environ['ASCEND_VERSION']}.\n" \
-                  "Usage: export ASCEND_HOME=${driver/ascend-toolkit_install_path}\n" \
-                  "export ASCEND_VERSION=ascend-toolkit/latest"
-        raise Exception(err_msg)
+        err_msg = (
+            f"Please set right ASCEND_HOME, now ASCEND_HOME={os.environ['ASCEND_VERSION']}.\n"
+            "Usage: export ASCEND_HOME=${driver/ascend-toolkit_install_path}\n"
+            "export ASCEND_VERSION=ascend-toolkit/latest"
+        )
+        raise RuntimeError(err_msg)
 
     os.environ['PATH'] = os.path.join(
-        os.environ.get('PATH', ''), os.pathsep, 'usr/local/python3.7.5/bin',
-        os.pathsep, os.path.join(ascend_toolkit_path, 'bin')[1:])
+        os.environ.get('PATH', ''),
+        os.pathsep,
+        'usr/local/python3.7.5/bin',
+        os.pathsep,
+        os.path.join(ascend_toolkit_path, 'bin')[1:],
+    )
 
     os.environ['LD_LIBRARY_PATH'] = os.path.join(
-        os.environ.get('LD_LIBRARY_PATH', ''),
-        os.pathsep, os.path.join(ascend_toolkit_path, 'lib64')[1:])
+        os.environ.get('LD_LIBRARY_PATH', ''), os.pathsep, os.path.join(ascend_toolkit_path, 'lib64')[1:]
+    )
     os.environ['PYTHONPATH'] = os.path.join(
-        os.environ.get('PYTHONPATH', ''),
-        os.pathsep, os.path.join(ascend_toolkit_path, 'python/site-packages')[1:])
-    
+        os.environ.get('PYTHONPATH', ''), os.pathsep, os.path.join(ascend_toolkit_path, 'python/site-packages')[1:]
+    )
+
     os.environ['ASCEND_OPP_PATH'] = os.path.join(ascend_toolkit_path, 'opp')
 
 
@@ -65,13 +71,19 @@ def atc_model(json_file, soc_version="Ascend310"):
     # generate aicore operator model
     ascend_toolkit_path = os.path.join(os.environ['ASCEND_HOME'], os.environ['ASCEND_VERSION'])
     atc_path = os.path.join(ascend_toolkit_path, 'bin/atc')
-    return_code = subprocess.call([
-        atc_path, '--singleop=./config/%s.json' % json_file,
-        '--soc_version=%s' % soc_version, '--output=op_models', '--log=error'
-    ], shell=False)
+    return_code = subprocess.call(
+        [
+            atc_path,
+            '--singleop=./config/%s.json' % json_file,
+            '--soc_version=%s' % soc_version,
+            '--output=op_models',
+            '--log=error',
+        ],
+        shell=False,
+    )
 
     if return_code:
-        raise Exception("Failed to generate op models.")
+        raise RuntimeError("Failed to generate op models.")
 
 
 def generate_op_config(dist_compute_obj, file_path):
@@ -126,25 +138,32 @@ class OpJsonGenerator:
         self.op_name = op_name
         self.input_desc = []
         self.output_desc = []
+        self.attr = []
 
     def add_input(self, data_format: str, data_shape: list, data_type: str):
         self.input_desc.append({"format": data_format, "shape": data_shape, "type": data_type})
-    
+
     def add_dynamic_input(self, data_format: str, data_shape: list, shape_range: list, data_type: str):
-        self.input_desc.append({"format": data_format, "shape": data_shape,
-                               "shape_range": shape_range, "type": data_type})
-    
+        self.input_desc.append(
+            {"format": data_format, "shape": data_shape, "shape_range": shape_range, "type": data_type}
+        )
+
     def add_output(self, data_format: str, data_shape: list, data_type: str):
         self.output_desc.append({"format": data_format, "shape": data_shape, "type": data_type})
-    
+
     def add_dynamic_output(self, data_format: str, data_shape: list, shape_range: list, data_type: str):
-        self.output_desc.append({"format": data_format, "shape": data_shape,
-                                "shape_range": shape_range, "type": data_type})
+        self.output_desc.append(
+            {"format": data_format, "shape": data_shape, "shape_range": shape_range, "type": data_type}
+        )
+
+    def add_attr(self, data_name: str, data_param_type: str, data_type: str, data_value):
+        self.attr.append({"name": data_name, "param_type": data_param_type, "type": data_type, "value": data_value})
 
     def generate_obj(self):
         obj = {"op": self.op_name}
         obj['input_desc'] = self.input_desc
         obj['output_desc'] = self.output_desc
+        obj['attr'] = self.attr
         return obj
 
 
@@ -177,9 +196,10 @@ def get_soc_version_from_npu_type(npu_type):
         "910_9382": "Ascend910_9382",
         "910_9372": "Ascend910_9372",
         "910_9362": "Ascend910_9362",
+        "Ascend950PR": "Ascend950PR_957c",
     }
-    str_keys = [str(key) for key in npu_type_soc_version_dict.keys()]
-    if npu_type not in npu_type_soc_version_dict.keys():
+    str_keys = [str(key) for key in npu_type_soc_version_dict]
+    if npu_type not in npu_type_soc_version_dict:
         raise RuntimeError("input invalid npu_type, only support %s" % str_keys)
 
     return npu_type_soc_version_dict[npu_type]
@@ -198,14 +218,15 @@ def get_core_num_by_npu_type(core_num, npu_type):
         "910_9382": 48,
         "910_9372": 40,
         "910_9362": 40,
+        "Ascend950PR": 56,
     }
     if "--cores" in sys.argv:
         if core_num not in npu_type_core_num_dict.values():
             raise RuntimeError("invalid core_num: %d" % core_num)
         return core_num
 
-    str_keys = [str(key) for key in npu_type_core_num_dict.keys()]
-    if npu_type not in npu_type_core_num_dict.keys():
+    str_keys = [str(key) for key in npu_type_core_num_dict]
+    if npu_type not in npu_type_core_num_dict:
         raise RuntimeError("input invalid npu_type, only support %s" % str_keys)
 
     return npu_type_core_num_dict[npu_type]
@@ -214,11 +235,11 @@ def get_core_num_by_npu_type(core_num, npu_type):
 def run_generate_model_task(args, map_args):
     if args.pool_size:
         check_pool_size(args.pool_size)
-        pool = Pool(args.pool_size)
-        pool.starmap(utils.atc_model, map_args)
+        with Pool(args.pool_size) as pool:
+            pool.starmap(atc_model, map_args)
     else:
         for arg in map_args:
-            utils.atc_model(arg[0], arg[1])
+            atc_model(arg[0], arg[1])
 
 
 def check_param_range(param, valid_params, param_name):

@@ -16,21 +16,30 @@
  * -------------------------------------------------------------------------
  */
 
-
 #ifndef GFEATURERETRIEVAL_INDEX_HNSW_GRAPH_H
 #define GFEATURERETRIEVAL_INDEX_HNSW_GRAPH_H
 
-#include <vector>
-#include <map>
-
 #include <faiss/IndexFlat.h>
+
+#include <map>
+#include <vector>
+#if defined(__has_include)
+#if __has_include(<faiss/impl/VisitedTable.h>)
+#include <faiss/impl/VisitedTable.h>
+#else
+#include <faiss/impl/AuxIndexStructures.h>
+#endif
+#else
+#include <faiss/impl/AuxIndexStructures.h>
+#endif
 #include <faiss/VectorTransform.h>
 
 #include "impl/HNSWRobustGraph.h"
 #include "utils/ThreadPool.h"
 using idx_t = int64_t;
 
-namespace ascendsearch {
+namespace ascendsearch
+{
 struct IndexHNSWGraph;
 
 const int DEFAULT_OUT_DEG = 32;
@@ -38,7 +47,7 @@ const int DEFAULT_WINDOW_SIZE = 8;
 const int GLOBAL_DOUBLE = 2;
 const int MAX_THREAD_NUM = 260;
 const std::vector<int> validDim = {128, 256, 512, 1024};
-const int N_TOTAL_MAX = 1e8; // 1亿
+const int N_TOTAL_MAX = 1e8;  // 1亿
 const int EF_SEARCH_MAX = 200;
 const int EF_CONSTRUCTION_MIN = 200;
 const int EF_CONSTRUCTION_MAX = 400;
@@ -47,7 +56,8 @@ const int R_MAX = 100;
 const int DEFAULT_INDEX_PQ_BITS = 8;
 const int HNSW_MAX_LEVEL = 20;
 
-struct HNSWGraphSearchWithFilterParams {
+struct HNSWGraphSearchWithFilterParams
+{
     int64_t nq;
     const float *xq;
     int *filterPtr;
@@ -72,7 +82,8 @@ struct HNSWGraphSearchWithFilterParams {
 };
 /* * The HNSW index is a normal random-access index with a HNSW
  * link structure built on top */
-struct IndexHNSWGraph : faiss::Index {
+struct IndexHNSWGraph : faiss::Index
+{
     HNSWGraph innerGraph;  // /> the link structure
     int orderType = 0;
 
@@ -92,19 +103,20 @@ struct IndexHNSWGraph : faiss::Index {
 
     // / entry point for Search
     void search(int64_t nq, const float *xq, int64_t topK, float *distances, int64_t *labels,
-                const faiss::SearchParameters* params = nullptr) const override;
+                const faiss::SearchParameters *params = nullptr) const override;
 
     void reset() override;
 
     void SearchWithFilter(HNSWGraphSearchWithFilterParams params, float *distances, int64_t *labels) const;
 
-private:
+   private:
     void AddGraphVertices(size_t n0, size_t n, const float *x, bool presetLevels = false);
     void InitMaxLevel(size_t n0, size_t n, const float *x, bool presetLevels, int &maxLevel);
     size_t GetPeriodHint(size_t flops) const;
 };
 
-struct HNSWGraphPQHybridSearchWithMaskParams {
+struct HNSWGraphPQHybridSearchWithMaskParams
+{
     idx_t n;
     const float *query;
     idx_t topK;
@@ -124,12 +136,14 @@ struct HNSWGraphPQHybridSearchWithMaskParams {
 /* * Flat index topped with with a HNSW structure to access elements
  *  more efficiently.
  */
-struct IndexHNSWGraphFlat : IndexHNSWGraph {
+struct IndexHNSWGraphFlat : IndexHNSWGraph
+{
     IndexHNSWGraphFlat();
     IndexHNSWGraphFlat(int d, int M, faiss::MetricType metric = faiss::METRIC_L2);
 };
 
-struct IndexHNSWGraphPQHybrid : IndexHNSWGraphFlat {
+struct IndexHNSWGraphPQHybrid : IndexHNSWGraphFlat
+{
     std::unique_ptr<faiss::Index> p_storage;  // /> high precision storage
 
     std::unique_ptr<faiss::VectorTransform> vecTrans;  // /> optimized Product Quantization CVPR2013
@@ -144,7 +158,7 @@ struct IndexHNSWGraphPQHybrid : IndexHNSWGraphFlat {
     void train(idx_t n, const float *x) override;
 
     void search(idx_t n, const float *x, idx_t k, float *distances, idx_t *labels,
-                const faiss::SearchParameters* params = nullptr) const override;
+                const faiss::SearchParameters *params = nullptr) const override;
 
     void SearchWithMask(HNSWGraphPQHybridSearchWithMaskParams params, float *distances, idx_t *labels) const;
 
@@ -158,9 +172,9 @@ struct IndexHNSWGraphPQHybrid : IndexHNSWGraphFlat {
 
     void SetIdMap(const std::map<int64_t, int64_t> &idMap);
 
-    const std::map<int64_t, int64_t>& GetIdMap() const;
+    const std::map<int64_t, int64_t> &GetIdMap() const;
 
-private:
+   private:
     std::map<int64_t, int64_t> idMap;
     std::vector<std::shared_ptr<faiss::VisitedTable>> vts;
 };
@@ -168,4 +182,4 @@ void ThreadFunc(const HNSWGraph &innerGraph, idx_t *idxi, float *simi, faiss::Di
                 faiss::DistanceComputer *preciseComputer, idx_t k, faiss::VisitedTable &vt);
 }  // namespace ascendsearch
 
-#endif
+#endif  // GFEATURERETRIEVAL_INDEX_HNSW_GRAPH_H
