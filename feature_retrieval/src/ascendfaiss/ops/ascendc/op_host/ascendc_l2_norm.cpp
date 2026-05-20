@@ -16,40 +16,43 @@
  * -------------------------------------------------------------------------
  */
 
-
 #include "ascendc_l2_norm_tiling.h"
+#include "op_host_common.h"
 #include "register/op_def_registry.h"
 #include "tiling/tiling_api.h"
-#include "op_host_common.h"
 
 using namespace matmul_tiling;
 using namespace Utils;
 
-namespace optiling {
-
-static ge::graphStatus TilingFunc(gert::TilingContext* context)
+namespace optiling
 {
-    if (context == nullptr) {
+
+static ge::graphStatus TilingFunc(gert::TilingContext *context)
+{
+    if (context == nullptr)
+    {
         return ge::GRAPH_FAILED;
     }
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     context->SetBlockDim(ascendcPlatform.GetCoreNumAic());
 
-    if (context->GetInputTensor(0) == nullptr) {
+    if (context->GetInputTensor(0) == nullptr)
+    {
         return ge::GRAPH_FAILED;
     }
-    const gert::Shape &queryShape = context->GetInputTensor(0)->GetStorageShape(); // 算子固定第0个tensor为查询向量
-    uint32_t dim = static_cast<uint32_t>(queryShape[1]); // 查询向量为[queryNum, dim]，dim取第1维
+    const gert::Shape &queryShape = context->GetInputTensor(0)->GetStorageShape();  // 算子固定第0个tensor为查询向量
+    uint32_t dim = static_cast<uint32_t>(queryShape[1]);  // 查询向量为[queryNum, dim]，dim取第1维
     uint32_t vecCoreNum = ascendcPlatform.GetCoreNumAiv();
-    if (vecCoreNum == 0) {
+    if (vecCoreNum == 0)
+    {
         return ge::GRAPH_FAILED;
     }
     AscendcL2NormTilingData tiling;
     tiling.set_dim(dim);
     tiling.set_vecCoreNum(vecCoreNum);
-    tiling.cubeTilingData.set_usedCoreNum(1); // 算子内部已经按核tiling，因此这里只需1个核
-    const uint32_t cubeOnceNum = 128; // 128是为了和TIK算子保持输入一致：transfer矩阵为128维
+    tiling.cubeTilingData.set_usedCoreNum(1);  // 算子内部已经按核tiling，因此这里只需1个核
+    const uint32_t cubeOnceNum = 128;          // 128是为了和TIK算子保持输入一致：transfer矩阵为128维
     MatmulApiTiling cubeTiling(ascendcPlatform);
     // 算子内部使用的是TSCM，但是这里GM换成TSCM时CANN有bug，因此使用GM
     cubeTiling.SetAType(TPosition::GM, CubeFormat::NZ, matmul_tiling::DataType::DT_INT8);
@@ -60,11 +63,13 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     cubeTiling.SetBufferSpace(-1, -1, -1);
     cubeTiling.SetDequantType(DequantType::SCALAR);
     int ret = cubeTiling.GetTiling(tiling.cubeTilingData);
-    if (ret == -1) {
+    if (ret == -1)
+    {
         return ge::GRAPH_FAILED;
     }
 
-    if (context->GetRawTilingData() == nullptr) {
+    if (context->GetRawTilingData() == nullptr)
+    {
         return ge::GRAPH_FAILED;
     }
     tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
@@ -72,32 +77,29 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
 
     const size_t userWorkspaceSize = 0;
     const uint32_t sysWorkspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
-    size_t *currentWorkspace = context->GetWorkspaceSizes(1); // 按照算子样例代码设置为1
-    if (currentWorkspace == nullptr) {
+    size_t *currentWorkspace = context->GetWorkspaceSizes(1);  // 按照算子样例代码设置为1
+    if (currentWorkspace == nullptr)
+    {
         return ge::GRAPH_FAILED;
     }
     currentWorkspace[0] = userWorkspaceSize + sysWorkspaceSize;
     return ge::GRAPH_SUCCESS;
 }
-}
+}  // namespace optiling
 
-
-namespace ge {
-static ge::graphStatus InferShape(gert::InferShapeContext *)
+namespace ge
 {
-    return GRAPH_SUCCESS;
-}
+static ge::graphStatus InferShape(gert::InferShapeContext *) { return GRAPH_SUCCESS; }
 
-static graphStatus InferDataType(gert::InferDataTypeContext *)
+static graphStatus InferDataType(gert::InferDataTypeContext *) { return GRAPH_SUCCESS; }
+}  // namespace ge
+
+namespace ops
 {
-    return GRAPH_SUCCESS;
-}
-}
-
-namespace ops {
-class AscendcL2Norm : public OpDef {
-public:
-    explicit AscendcL2Norm(const char* name) : OpDef(name)
+class AscendcL2Norm : public OpDef
+{
+   public:
+    explicit AscendcL2Norm(const char *name) : OpDef(name)
     {
         this->Input("feature")
             .ParamType(REQUIRED)
@@ -123,14 +125,14 @@ public:
             .Format({ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND});
 
-        this->SetInferShape(ge::InferShape)
-            .SetInferDataType(ge::InferDataType);
+        this->SetInferShape(ge::InferShape).SetInferDataType(ge::InferDataType);
 
         this->AICore().SetTiling(optiling::TilingFunc);
 
         this->AICore().AddConfig("ascend910b");
+        this->AICore().AddConfig("ascend950");
     }
 };
 
 OP_ADD(AscendcL2Norm);
-}
+}  // namespace ops

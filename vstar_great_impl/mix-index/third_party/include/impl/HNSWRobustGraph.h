@@ -16,25 +16,29 @@
  * -------------------------------------------------------------------------
  */
 
-
 #ifndef GFEATURERETRIEVAL_HNSW_GRAPH_H
 #define GFEATURERETRIEVAL_HNSW_GRAPH_H
 
+#include <faiss/Index.h>
+#include <omp.h>
+
+#include <bitset>
+#include <cmath>
 #include <queue>
+#include <random>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
-#include <random>
-#include <omp.h>
-#include <bitset>
-#include <unordered_map>
-
-#include <cmath>
-
-#include <faiss/Index.h>
+#if defined(__has_include)
+#if __has_include(<faiss/impl/VisitedTable.h>)
+#include <faiss/impl/VisitedTable.h>
+#endif
+#endif
 #include <faiss/impl/AuxIndexStructures.h>
 #include <faiss/impl/FaissAssert.h>
 #include <faiss/utils/Heap.h>
 #include <faiss/utils/random.h>
+
 #include "utils/FastBitMap.h"
 
 #ifdef DEBUG
@@ -43,41 +47,42 @@
 #define ASSERT(f) ((void)0)
 #endif
 constexpr size_t DISTANCE_BATCH_SIZE = 128;
-namespace ascendsearch {
+namespace ascendsearch
+{
 
-    constexpr float EPSILON = 1e-6; // 浮点比较门槛
+constexpr float EPSILON = 1e-6;  // 浮点比较门槛
 
-    inline bool FloatEqual(float a, float b)
-    {
-        return fabs(a - b) < EPSILON;
-    }
+inline bool FloatEqual(float a, float b) { return fabs(a - b) < EPSILON; }
 
-
-    struct Candidate {
+struct Candidate
+{
     int64_t id;
     float dist;
     bool isChecked;
     Candidate() = default;
-    Candidate(int64_t _id, float _dist, bool _isChecked) : id(_id), dist(_dist), isChecked(_isChecked)
-    {
-    }
+    Candidate(int64_t _id, float _dist, bool _isChecked) : id(_id), dist(_dist), isChecked(_isChecked) {}
     bool operator<(const Candidate &b) const
     {
-        if (!FloatEqual(this->dist, b.dist)) {
+        if (!FloatEqual(this->dist, b.dist))
+        {
             return this->dist < b.dist;
-        } else {
+        }
+        else
+        {
             return this->id < b.id;
         }
     }
 };
 
-using maxCmp = faiss::CMax<float, int64_t >;
-using cmp = faiss::CMax<float, int >;
-struct HNSWGraph {
+using maxCmp = faiss::CMax<float, int64_t>;
+using cmp = faiss::CMax<float, int>;
+struct HNSWGraph
+{
     using Node = std::pair<float, int>;
 
     /* * Heap structure that allows fast */
-    struct MinimaxHeap {
+    struct MinimaxHeap
+    {
         int n;
         int k;
         int nvalid;
@@ -85,13 +90,9 @@ struct HNSWGraph {
         std::vector<int> ids;
         std::vector<float> dis;
 
-        MinimaxHeap()
-        {
-        }
+        MinimaxHeap() {}
 
-        explicit MinimaxHeap(int n) : n(n), k(0), nvalid(0), ids(n), dis(n)
-        {
-        }
+        explicit MinimaxHeap(int n) : n(n), k(0), nvalid(0), ids(n), dis(n) {}
 
         void Push(int i, float v);
 
@@ -107,32 +108,24 @@ struct HNSWGraph {
     };
 
     // / to sort pairs of (id, distance) from nearest to fathest or the reverse
-    struct NodeDistCloser {
+    struct NodeDistCloser
+    {
         float d;
         int id;
 
-        NodeDistCloser(float d, int id) : d(d), id(id)
-        {
-        }
+        NodeDistCloser(float d, int id) : d(d), id(id) {}
 
-        bool operator<(const NodeDistCloser &obj1) const
-        {
-            return d < obj1.d;
-        }
+        bool operator<(const NodeDistCloser &obj1) const { return d < obj1.d; }
     };
 
-    struct NodeDistFarther {
+    struct NodeDistFarther
+    {
         float d;
         int id;
 
-        NodeDistFarther(float d, int id) : d(d), id(id)
-        {
-        }
+        NodeDistFarther(float d, int id) : d(d), id(id) {}
 
-        bool operator<(const NodeDistFarther &obj1) const
-        {
-            return d > obj1.d;
-        }
+        bool operator<(const NodeDistFarther &obj1) const { return d > obj1.d; }
     };
 
     // / debug
@@ -225,9 +218,9 @@ struct HNSWGraph {
                              faiss::VisitedTable &vt, int level, MinimaxHeap &candidatesResort, int nres_in = 0) const;
 
     int SearchFromCandidatesWithStore(faiss::DistanceComputer &qdis, int k, int64_t *I, float *D,
-                                      MinimaxHeap &candidates,
-                                      faiss::VisitedTable &vt, int level, MinimaxHeap &candidatesResort,
-                                      std::unordered_map<int, float> &map, int nres_in = 0) const;
+                                      MinimaxHeap &candidates, faiss::VisitedTable &vt, int level,
+                                      MinimaxHeap &candidatesResort, std::unordered_map<int, float> &map,
+                                      int nres_in = 0) const;
 
     int SearchFromCandidatesWithFilter(faiss::DistanceComputer &qdis, int k, graph::FastBitMap &filterMask,
                                        uint32_t *scalaAttrOnCpu, int64_t *I, float *D, MinimaxHeap &candidates,
@@ -269,13 +262,12 @@ struct HNSWGraph {
                                    uint32_t *scalaAttrOnCpu, int64_t *labels, float *dists,
                                    faiss::VisitedTable &vt) const;
 
-    void HybridSearch(faiss::DistanceComputer &fastComputer, faiss::DistanceComputer &preciseComputer,
-                      int k, int64_t *I, float *D,
-                      faiss::VisitedTable &vt) const;
+    void HybridSearch(faiss::DistanceComputer &fastComputer, faiss::DistanceComputer &preciseComputer, int k,
+                      int64_t *I, float *D, faiss::VisitedTable &vt) const;
 
     void HybridSearchWithMask(faiss::DistanceComputer &fastComputer, faiss::DistanceComputer &preciseComputer, int k,
-                              uint8_t *mask,
-                              size_t cpuIdx, size_t nbOffset, int64_t *I, float *D, faiss::VisitedTable &vt) const;
+                              uint8_t *mask, size_t cpuIdx, size_t nbOffset, int64_t *I, float *D,
+                              faiss::VisitedTable &vt) const;
 
     void SearchSingleQueryParallel(faiss::DistanceComputer &qdis, int k, int64_t *labels, float *dists,
                                    std::bitset<50000000> &vt) const;
@@ -292,12 +284,12 @@ struct HNSWGraph {
                                       int k, int64_t *I, float *D, faiss::VisitedTable &vt) const;
 
     void HybridSearchWithoutUpperBeamWithMask(faiss::DistanceComputer &fastComputer,
-                                              faiss::DistanceComputer &preciseComputer, int k,
-                                              uint8_t *mask, size_t cpuIdx, size_t nbOffset, int64_t *I, float *D,
+                                              faiss::DistanceComputer &preciseComputer, int k, uint8_t *mask,
+                                              size_t cpuIdx, size_t nbOffset, int64_t *I, float *D,
                                               faiss::VisitedTable &vt) const;
 
-    void HybridSearchFine(MinimaxHeap &candidatesResort, int ef, faiss::DistanceComputer &preciseComputer,
-                          int k, int64_t *I, float *D) const;
+    void HybridSearchFine(MinimaxHeap &candidatesResort, int ef, faiss::DistanceComputer &preciseComputer, int k,
+                          int64_t *I, float *D) const;
 
     void Reset();
 

@@ -34,6 +34,7 @@ MIN_LEN_OF_PATH=0
 log_init_flag=n
 package_name=""
 package_arch=""
+faiss_version="faiss1.10"
 
 current_uid=$(id -u)
 readonly current_uid
@@ -295,6 +296,31 @@ package_content() {
     package_arch=$(echo "$arch_content" | cut -d ":" -f 2)
 }
 
+function normalize_faiss_version() {
+    case "$1" in
+        1.10|1.10.0|faiss1.10|faiss1.10.0|110)
+            echo "faiss1.10"
+            ;;
+        1.14|1.14.1|faiss1.14|faiss1.14.1|114)
+            echo "faiss1.14"
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+function is_script_arg() {
+    case "$1" in
+        --version|--check|--install|--install-path=*|--upgrade|--platform=*|--quiet|--faiss-version=*)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
 # 解析脚本自身的参数
 function parse_script_args() {
     log "INFO" "start to run"
@@ -302,17 +328,9 @@ function parse_script_args() {
     if [[ ${#all_para_len} -gt 1024 ]]; then
         error_exit "The total length of the parameter is too long"
     fi
-    local num=0
-    while true; do
-        if [[ "$1" == "" ]]; then
-            break
-        fi
-        if [[ "${1: 0: 2}" == "--" ]]; then
-            num=$((num + 1))
-        fi
-        if [[ $num -gt 2 ]]; then
-            break
-        fi
+
+    while [ "x$1" != "x" ]; do
+        is_script_arg "$1" && break
         shift 1
     done
 
@@ -346,9 +364,16 @@ function parse_script_args() {
             upgrade_flag=y
             shift
             ;;
+        --faiss-version=*)
+            faiss_version=$(normalize_faiss_version "$(echo "$1" | cut -d"=" -f2)") || {
+                print "ERROR" "Unsupported faiss version: $1"
+                exit 1
+            }
+            shift
+            ;;
         --platform=*)
             ascend_type=$(echo "$1" | cut -d"=" -f2)
-            if [[ $ascend_type != 310 && $ascend_type != 310P && $ascend_type != 910B && $ascend_type != A3 ]]; then
+            if [[ "$ascend_type" != "310" && "$ascend_type" != "310P" && "$ascend_type" != "910B" && "$ascend_type" != "A3" && "$ascend_type" != "A5" ]]; then
                 echo "not support ascend platform"
                 log "ERROR" "not support ascend platform"
                 exit 1
@@ -389,6 +414,7 @@ function modify_file_permission()
     find "$path/" -type f -name *.a -exec chmod 440 {} +
 
     find "$path/" -type f -name version.info -exec chmod 440 {} +
+    find "$path/" -type f -name faiss_versions.info -exec chmod 440 {} +
     find "$path/" -type f -name filelist.txt -exec chmod 440 {} +
 
     find "$path/" -type f -name *.py -exec chmod 550 {} +
@@ -416,6 +442,8 @@ function UnTAR()
             tar_package_name="*gcc4.8.5*910B.tar.gz"
         elif [ "$ascend_type" = "A3" ]; then
             tar_package_name="*gcc4.8.5*910B.tar.gz"
+        elif [ "$ascend_type" = "A5" ]; then
+            tar_package_name="*gcc4.8.5*910B.tar.gz"
         fi
     else
         if [ "$ascend_type" == "310" ]; then
@@ -425,6 +453,8 @@ function UnTAR()
         elif [ "$ascend_type" = "910B" ]; then
             tar_package_name="*gcc7.3.0*910B.tar.gz"
         elif [ "$ascend_type" = "A3" ]; then
+            tar_package_name="*gcc7.3.0*910B.tar.gz"
+        elif [ "$ascend_type" = "A5" ]; then
             tar_package_name="*gcc7.3.0*910B.tar.gz"
         fi
     fi
@@ -455,7 +485,44 @@ function ms_handle_agreement() {
             exit 1
             ;;
     esac
+}
 
+function configure_faiss_variant()
+{
+    local package_dir="$1"
+    local include_dir="${package_dir}/include"
+    local lib_dir="${package_dir}/host/lib"
+
+    if [ ! -d "${include_dir}/faiss1.10" ] && [ ! -d "${include_dir}/faiss1.14" ] && \
+        [ ! -d "${lib_dir}/faiss1.10" ] && [ ! -d "${lib_dir}/faiss1.14" ]; then
+        log "INFO" "No multi-faiss layout found, skip faiss variant selection"
+        return 0
+    fi
+
+    if [ ! -d "${include_dir}/${faiss_version}/faiss" ]; then
+        log "ERROR" "Faiss header variant does not exist: ${include_dir}/${faiss_version}/faiss" "y"
+        exit 1
+    fi
+
+    if [ ! -d "${lib_dir}/${faiss_version}" ]; then
+        log "ERROR" "Faiss library variant does not exist: ${lib_dir}/${faiss_version}" "y"
+        exit 1
+    fi
+
+    rm -rf "${include_dir}/faiss" "${include_dir}/ascend"
+    ln -s "${faiss_version}/faiss" "${include_dir}/faiss"
+    ln -s "faiss/ascend" "${include_dir}/ascend"
+
+    for so_file in libascendfaiss.so libascendsearch.so; do
+        if [ ! -f "${lib_dir}/${faiss_version}/${so_file}" ]; then
+            log "ERROR" "Faiss library variant file does not exist: ${lib_dir}/${faiss_version}/${so_file}" "y"
+            exit 1
+        fi
+        rm -f "${lib_dir}/${so_file}"
+        ln -s "${faiss_version}/${so_file}" "${lib_dir}/${so_file}"
+    done
+
+    log "INFO" "Selected faiss ABI variant: ${faiss_version}" "y"
 }
 
 function install_process() {
@@ -489,6 +556,7 @@ function install_process() {
     ln -s "${package_name}" "mxIndex"
     cd "${install_path}/${package_name}"
     ! [[ -h lib ]] && ln -sf host/lib lib
+    configure_faiss_variant "${install_path}/${package_name}"
 
     if [ -f filelist.txt ]; then
         rm -f filelist.txt

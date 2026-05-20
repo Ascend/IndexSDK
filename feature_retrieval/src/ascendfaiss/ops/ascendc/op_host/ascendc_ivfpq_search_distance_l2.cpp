@@ -20,12 +20,14 @@
 #include "register/op_def_registry.h"
 #include "tiling/platform/platform_ascendc.h"
 
-namespace {
+namespace
+{
 constexpr uint32_t IVFPQ_ONE = 1;
 constexpr uint32_t IVFPQ_CODE_BLOCK_SIZE = 16384 * 16;
 constexpr uint32_t IVFPQ_NUM_32 = 32;
-} // namespace
-namespace optiling {
+}  // namespace
+namespace optiling
+{
 
 static ge::graphStatus TilingFunc(gert::TilingContext *context)
 {
@@ -33,9 +35,10 @@ static ge::graphStatus TilingFunc(gert::TilingContext *context)
     AscendcIvfpqSearchDistanceTopKTilingData tilingData;
     return ivfpqTiling.ProcessTiling(context, tilingData, ReduceMode::L2);
 }
-} // namespace optiling
+}  // namespace optiling
 
-namespace ge {
+namespace ge
+{
 static ge::graphStatus InferShape(gert::InferShapeContext *context)
 {
     const gert::Shape *queryPQShape = context->GetInputShape(0);
@@ -73,11 +76,13 @@ static ge::graphStatus InferDataType(gert::InferDataTypeContext *context)
     context->SetOutputDataType(0, inputDataType);
     return ge::GRAPH_SUCCESS;
 }
-} // namespace ge
+}  // namespace ge
 
-namespace ops {
-class AscendcIvfpqSearchDistanceL2 : public OpDef {
-public:
+namespace ops
+{
+class AscendcIvfpqSearchDistanceL2 : public OpDef
+{
+   public:
     explicit AscendcIvfpqSearchDistanceL2(const char *name) : OpDef(name)
     {
         this->Input("queryPQ")
@@ -149,9 +154,9 @@ public:
         this->SetInferShape(ge::InferShape).SetInferDataType(ge::InferDataType);
 
         this->AICore().SetTiling(optiling::TilingFunc);
-        this->AICore().AddConfig("ascend910b").AddConfig("ascend910_93");
+        this->AICore().AddConfig("ascend910b").AddConfig("ascend910_93").AddConfig("ascend950");
     }
 };
 
 OP_ADD(AscendcIvfpqSearchDistanceL2);
-} // namespace ops
+}  // namespace ops

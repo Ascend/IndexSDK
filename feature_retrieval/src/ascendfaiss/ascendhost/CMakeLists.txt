@@ -40,6 +40,23 @@ ADD_LINK_OPTIONS(
 SET(TARGET_LIBRARY         ascendfaiss_host)
 SET(TARGET_LIBRARY_RENAME  ascendfaiss)
 
+IF(EXISTS "${FAISS_HOME}/include/faiss/IndexIVFRaBitQ.h")
+    SET(ENABLE_ASCEND_IVFRABITQ ON)
+    MESSAGE(STATUS "Enable AscendIndexIVFRaBitQ with FAISS_HOME=${FAISS_HOME}")
+ELSE()
+    SET(ENABLE_ASCEND_IVFRABITQ OFF)
+    MESSAGE(STATUS "Disable AscendIndexIVFRaBitQ because ${FAISS_HOME}/include/faiss/IndexIVFRaBitQ.h does not exist")
+ENDIF()
+
+SET(ASCEND_IVFRABITQ_SRC "")
+IF(ENABLE_ASCEND_IVFRABITQ)
+    SET(ASCEND_IVFRABITQ_SRC
+        ${CMAKE_CURRENT_LIST_DIR}/../ascend/AscendIndexIVFRaBitQ.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/../ascend/impl/AscendIndexIVFRaBitQImpl.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/../ascenddaemon/impl/IndexIVFRaBitQ.cpp
+    )
+ENDIF()
+
 IF(HITEST)
     SET_PROPERTY(GLOBAL PROPERTY RULE_LAUNCH_COMPILE hitestwrapper)
     SET_PROPERTY(GLOBAL PROPERTY RULE_LAUNCH_LINK hitestwrapper)
@@ -55,14 +72,14 @@ IF(BUILD_ASCEND_SEARCH)
     set(MIX_SEARCH_INC_DIR
         "${ASCEND_SEARCH_HOME}/mix-index/include/Great_include"
         "${ASCEND_SEARCH_HOME}/mix-index/include/Vstar_include")
-    set(MIX_SEARCH_SRC 
+    set(MIX_SEARCH_SRC
         ${CMAKE_CURRENT_LIST_DIR}/../ascend/mixsearch/great/IndexGreatAdaptor.cpp
         ${CMAKE_CURRENT_LIST_DIR}/../ascend/mixsearch/vstar/IndexVStarAdapter.cpp)
 ELSE()
     set(ASCEND_SEARCH_HOME_LIB_DIR "")
     set(IVFSP_HOME_INC_DIR "")
     set(IVFSP_CPP_FILES "")
-    set(MIX_SEARCH_SRC 
+    set(MIX_SEARCH_SRC
         ${CMAKE_CURRENT_LIST_DIR}/../ascend/mixsearch/great/IndexGreatStub.cpp
         ${CMAKE_CURRENT_LIST_DIR}/../ascend/mixsearch/vstar/IndexVStarAdapterStub.cpp)
 ENDIF()
@@ -90,6 +107,7 @@ SET(ASCENDFAISS_HOST_SRC
     ${IVFSP_CPP_FILES}
     ${OCK_FILEDS}
     ${MIX_SEARCH_SRC}
+    ${ASCEND_IVFRABITQ_SRC}
     ${CMAKE_CURRENT_LIST_DIR}/../ascend/AscendCloner.cpp
     ${CMAKE_CURRENT_LIST_DIR}/../ascend/AscendClonerOptions.cpp
     ${CMAKE_CURRENT_LIST_DIR}/../ascend/AscendIndex.cpp

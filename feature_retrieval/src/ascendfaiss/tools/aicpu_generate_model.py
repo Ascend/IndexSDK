@@ -17,6 +17,7 @@ MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 See the Mulan PSL v2 for more details.
 -------------------------------------------------------------------------
 """
+
 import argparse
 import os
 import common as utils
@@ -27,12 +28,17 @@ def arg_parse():
     """
     Parse arguements to the operator model
     """
-    parser = argparse.ArgumentParser(
-        description='generate linear_transform operator model')
+    parser = argparse.ArgumentParser(description='generate linear_transform operator model')
     utils.op_common_parse(parser, "--cores", 'core_num', 2, int, "Core number")
     utils.op_common_parse(parser, "-p", 'process_id', 0, int, "Number of process_id")
-    utils.op_common_parse(parser, "-t", 'npu_type', "310", str,
-        "NPU type, 310 / 310P / 910B1 / 910B2 / 910B3 / 910B4 / 910_{NPU Name}. 310 by default")
+    utils.op_common_parse(
+        parser,
+        "-t",
+        'npu_type',
+        "310",
+        str,
+        "NPU type, 310 / 310P / 910B1 / 910B2 / 910B3 / 910B4 / 910_{NPU Name}. 310 by default",
+    )
     return parser.parse_args()
 
 
@@ -123,6 +129,21 @@ def generate_topk_ivf_fp32_obj():
     generator.add_dynamic_output("ND", [-1, -1], [[1, -1], [1, -1]], "float")
     generator.add_dynamic_output("ND", [-1, -1], [[1, -1], [1, -1]], "uint64")
     return generator.generate_obj()
+
+
+def generate_topk_ivf_rabitq_fp32_obj():
+    generator = OpJsonGenerator("TopkIvfRabitqFp32")
+    generator.add_dynamic_input("ND", [-1, -1], [[1, -1], [1, -1]], "float")
+    generator.add_dynamic_input("ND", [-1, -1], [[1, -1], [1, -1]], "float")
+    generator.add_dynamic_input("ND", [-1, -1], [[1, -1], [1, -1]], "int64")
+    generator.add_dynamic_input("ND", [-1, -1], [[1, -1], [1, -1]], "uint32")
+    generator.add_dynamic_input("ND", [-1], [[1, -1]], "int64")
+    generator.add_dynamic_input("ND", [-1, -1], [[1, -1], [1, -1]], "uint16")
+    generator.add_dynamic_input("ND", [-1], [[1, -1]], "int64")
+    generator.add_dynamic_output("ND", [-1, -1], [[1, -1], [1, -1]], "float")
+    generator.add_dynamic_output("ND", [-1, -1], [[1, -1], [1, -1]], "uint64")
+    return generator.generate_obj()
+
 
 def generate_topk_ivfpq_l3_obj():
     generator = OpJsonGenerator("TopkIvfpqL3")
@@ -256,7 +277,7 @@ def generate_transdata_raw_uint8_obj():
     generator.add_dynamic_input("ND", [-1], [[1, -1]], "int64")
     generator.add_dynamic_output("ND", [-1, -1], [[1, -1], [1, -1]], "uint8")
     return generator.generate_obj()
-    
+
 
 def generate_km_update_centroids_obj():
     generator = OpJsonGenerator("KmUpdateCentroids")
@@ -348,6 +369,7 @@ def generate_aicpu_offline_model():
     ops_list.append(generate_topk_multisearch_obj())
     ops_list.append(generate_topk_ivf_obj())
     ops_list.append(generate_topk_ivf_fp32_obj())
+    ops_list.append(generate_topk_ivf_rabitq_fp32_obj())
     ops_list.append(generate_topk_ivfpq_l3_obj())
     ops_list.append(generate_vec_l2sqr_obj())
     ops_list.append(generate_vec_l2sqr_flat_at_obj())
@@ -374,6 +396,7 @@ def generate_aicpu_offline_model():
 
     utils.generate_op_config(ops_list, file_path)
     utils.atc_model(file_prefix, soc_version)
+
 
 if __name__ == '__main__':
     generate_aicpu_offline_model()

@@ -77,7 +77,23 @@ ADD_DEFINITIONS(
     -DHOSTCPU
 )
 
+IF(EXISTS "${FAISS_HOME}/include/faiss/IndexIVFRaBitQ.h")
+    SET(ENABLE_ASCEND_IVFRABITQ ON)
+ELSE()
+    SET(ENABLE_ASCEND_IVFRABITQ OFF)
+ENDIF()
+
+SET(ASCEND_IVFRABITQ_SRC "")
+IF(ENABLE_ASCEND_IVFRABITQ)
+    SET(ASCEND_IVFRABITQ_SRC
+        ${ASCEND_PROJECT_HOME}/ascend/AscendIndexIVFRaBitQ.cpp
+        ${ASCEND_PROJECT_HOME}/ascend/impl/AscendIndexIVFRaBitQImpl.cpp
+        ${ASCEND_PROJECT_HOME}/ascenddaemon/impl/IndexIVFRaBitQ.cpp
+    )
+ENDIF()
+
 SET(ASCENDFAISS_SRC
+    ${ASCEND_IVFRABITQ_SRC}
     ${ASCEND_PROJECT_HOME}/ascend/AscendCloner.cpp
     ${ASCEND_PROJECT_HOME}/ascend/AscendClonerOptions.cpp
     ${ASCEND_PROJECT_HOME}/ascend/AscendIndex.cpp

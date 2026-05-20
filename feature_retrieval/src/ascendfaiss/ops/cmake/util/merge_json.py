@@ -17,6 +17,7 @@ MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 See the Mulan PSL v2 for more details.
 -------------------------------------------------------------------------
 """
+
 import json
 import logging
 import os
@@ -35,13 +36,13 @@ def insert_op_info(src_file, dst_file):
         logging.error("%s not exist.", dst_file)
         return
 
-    with open(src_file, 'r') as load_f:
+    with open(src_file, 'r', encoding='utf-8') as load_f:
         insert_operator = json.load(load_f)
 
     all_operators = {}
     if os.path.exists(dst_file):
         if os.path.getsize(dst_file) != 0:
-            with open(dst_file, 'r') as load_f:
+            with open(dst_file, 'r', encoding='utf-8') as load_f:
                 all_operators = json.load(load_f)
 
     for k in insert_operator.keys():
@@ -56,13 +57,14 @@ def insert_op_info(src_file, dst_file):
 
     logging.info("insert %s to %s success", src_file, dst_file)
 
+
 if __name__ == '__main__':
     if len(sys.argv) != 3:
         logging.error(sys.argv)
         logging.error('argv error, ascendc_json_dir tbe_json_dir')
         sys.exit(2)
 
-    npu_types = ['ascend310', 'ascend310p', 'ascend910b', 'ascend910_93']
+    npu_types = ['ascend310', 'ascend310p', 'ascend910b', 'ascend910_93', 'ascend950']
     for npu_type in npu_types:
         file_name = "aic-{}-ops-info.json".format(npu_type)
         ascendc_json_file = os.path.join(sys.argv[1], npu_type, file_name)

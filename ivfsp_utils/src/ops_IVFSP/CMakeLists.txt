@@ -13,7 +13,7 @@ IF (NOT DEFINED DRIVER_HOME)
 ENDIF()
 
 INCLUDE(${CMAKE_CURRENT_LIST_DIR}/cmake/config.cmake)
-
+include_directories("$ENV{ASCEND_HOME_PATH}/include")
 ADD_SUBDIRECTORY(cpukernel)
 ADD_SUBDIRECTORY(op_proto)
 ADD_SUBDIRECTORY(tbe)

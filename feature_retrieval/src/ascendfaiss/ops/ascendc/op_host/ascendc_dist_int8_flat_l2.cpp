@@ -16,35 +16,37 @@
  * -------------------------------------------------------------------------
  */
 
-
 #include "ascendc_dist_int8_flat_l2_tiling.h"
+#include "op_host_common.h"
 #include "register/op_def_registry.h"
 #include "tiling/tiling_api.h"
-#include "op_host_common.h"
 
 using namespace matmul_tiling;
 
-namespace {
-    constexpr uint32_t QUERY_MAX_SIZE = 48;
-    constexpr uint32_t CODE_MAX_SIZE = 256;
-    constexpr uint32_t MIN_BATCH = 64;
-}
+namespace
+{
+constexpr uint32_t QUERY_MAX_SIZE = 48;
+constexpr uint32_t CODE_MAX_SIZE = 256;
+constexpr uint32_t MIN_BATCH = 64;
+}  // namespace
 
-namespace optiling {
+namespace optiling
+{
 using namespace matmul_tiling;
 using namespace Utils;
 
-static ge::graphStatus TilingSetInputShapeInfo(gert::TilingContext* context, AscendcDistInt8FlatL2TilingData &tiling)
+static ge::graphStatus TilingSetInputShapeInfo(gert::TilingContext *context, AscendcDistInt8FlatL2TilingData &tiling)
 {
     // 算子输入第0个tensor为查询向量query，第2个tensor为底库向量
-    if ((context->GetInputShape(0) == nullptr) || (context->GetInputShape(2) == nullptr)) {
+    if ((context->GetInputShape(0) == nullptr) || (context->GetInputShape(2) == nullptr))
+    {
         return ge::GRAPH_FAILED;
     }
 
     // 算子输入第0个tensor为查询向量query,tensor维度为(querySize, dim)
     auto queryShape = context->GetInputShape(0)->GetStorageShape();
     uint32_t querySize = static_cast<uint32_t>(queryShape.GetDim(0));  // 第0维取querySize
-    uint32_t dim = static_cast<uint32_t>(queryShape.GetDim(1));  // 第1维取querySize
+    uint32_t dim = static_cast<uint32_t>(queryShape.GetDim(1));        // 第1维取querySize
 
     // 算子输入第2个tensor为底库向量,tensor维度为(codeBlockSize / 16, dim / 32, 16, 32)
     auto codeShape = context->GetInputShape(2)->GetStorageShape();
@@ -58,7 +60,8 @@ static ge::graphStatus TilingSetInputShapeInfo(gert::TilingContext* context, Asc
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     auto aicNum = ascendcPlatform.GetCoreNumAic();
     auto aivNum = ascendcPlatform.GetCoreNumAiv();
-    if (aicNum == 0 || aivNum == 0) {
+    if (aicNum == 0 || aivNum == 0)
+    {
         return ge::GRAPH_FAILED;
     }
 
@@ -68,7 +71,7 @@ static ge::graphStatus TilingSetInputShapeInfo(gert::TilingContext* context, Asc
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus TilingSetCubeTiling(gert::TilingContext* context, AscendcDistInt8FlatL2TilingData &tiling)
+static ge::graphStatus TilingSetCubeTiling(gert::TilingContext *context, AscendcDistInt8FlatL2TilingData &tiling)
 {
     uint32_t querySize = tiling.get_querySize();
     uint32_t querySizeEachLoop = Min(QUERY_MAX_SIZE, querySize);
@@ -88,7 +91,8 @@ static ge::graphStatus TilingSetCubeTiling(gert::TilingContext* context, Ascendc
     cubeTilingSquare.SetOrgShape(querySizeEachLoop, querySizeEachLoop, dim);
     cubeTilingSquare.SetBufferSpace(-1, -1, -1);
     int ret = cubeTilingSquare.GetTiling(tiling.cubeTilingSquare);
-    if (ret == -1) {
+    if (ret == -1)
+    {
         return ge::GRAPH_FAILED;
     }
 
@@ -101,32 +105,37 @@ static ge::graphStatus TilingSetCubeTiling(gert::TilingContext* context, Ascendc
     cubeTilingIp.SetOrgShape(querySizeEachLoop, codeSizeEachLoop, dim);
     cubeTilingIp.SetBufferSpace(-1, -1, -1);
     ret = cubeTilingIp.GetTiling(tiling.cubeTilingIp);
-    if (ret == -1) {
+    if (ret == -1)
+    {
         return ge::GRAPH_FAILED;
     }
 
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus TilingFunc(gert::TilingContext* context)
+static ge::graphStatus TilingFunc(gert::TilingContext *context)
 {
-    if (context == nullptr) {
+    if (context == nullptr)
+    {
         return ge::GRAPH_FAILED;
     }
 
     AscendcDistInt8FlatL2TilingData tiling;
 
     auto ret = TilingSetInputShapeInfo(context, tiling);
-    if (ret != ge::GRAPH_SUCCESS) {
+    if (ret != ge::GRAPH_SUCCESS)
+    {
         return ge::GRAPH_FAILED;
     }
 
     ret = TilingSetCubeTiling(context, tiling);
-    if (ret != ge::GRAPH_SUCCESS) {
+    if (ret != ge::GRAPH_SUCCESS)
+    {
         return ge::GRAPH_FAILED;
     }
 
-    if (context->GetRawTilingData() == nullptr) {
+    if (context->GetRawTilingData() == nullptr)
+    {
         return ge::GRAPH_FAILED;
     }
 
@@ -139,31 +148,29 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     const uint32_t sysWorkspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
     size_t *currentWorkspace = context->GetWorkspaceSizes(1);
-    if (currentWorkspace == nullptr) {
+    if (currentWorkspace == nullptr)
+    {
         return ge::GRAPH_FAILED;
     }
     currentWorkspace[0] = userWorkspaceSize + sysWorkspaceSize;
 
     return ge::GRAPH_SUCCESS;
 }
-}
+}  // namespace optiling
 
-namespace ge {
-static ge::graphStatus InferShape(gert::InferShapeContext *)
+namespace ge
 {
-    return GRAPH_SUCCESS;
-}
+static ge::graphStatus InferShape(gert::InferShapeContext *) { return GRAPH_SUCCESS; }
 
-static graphStatus InferDataType(gert::InferDataTypeContext *)
+static graphStatus InferDataType(gert::InferDataTypeContext *) { return GRAPH_SUCCESS; }
+}  // namespace ge
+
+namespace ops
 {
-    return GRAPH_SUCCESS;
-}
-}
-
-namespace ops {
-class AscendcDistInt8FlatL2 : public OpDef {
-public:
-    explicit AscendcDistInt8FlatL2(const char* name) : OpDef(name)
+class AscendcDistInt8FlatL2 : public OpDef
+{
+   public:
+    explicit AscendcDistInt8FlatL2(const char *name) : OpDef(name)
     {
         this->Input("query")
             .ParamType(REQUIRED)
@@ -213,14 +220,14 @@ public:
             .Format({ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND});
 
-        this->SetInferShape(ge::InferShape)
-            .SetInferDataType(ge::InferDataType);
+        this->SetInferShape(ge::InferShape).SetInferDataType(ge::InferDataType);
 
         this->AICore().SetTiling(optiling::TilingFunc);
 
         this->AICore().AddConfig("ascend910b");
+        this->AICore().AddConfig("ascend950");
     }
 };
 
 OP_ADD(AscendcDistInt8FlatL2);
-}
+}  // namespace ops

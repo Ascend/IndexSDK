@@ -16,7 +16,6 @@
  * -------------------------------------------------------------------------
  */
 
-
 #ifndef ASCEND_OP_DESC_INCLUDED
 #define ASCEND_OP_DESC_INCLUDED
 
@@ -25,18 +24,24 @@
 
 #include "acl/acl.h"
 
-namespace ascend {
-class AscendOpDesc {
-public:
+namespace ascend
+{
+class AscendOpDesc
+{
+   public:
+    AscendOpDesc();
+
     AscendOpDesc(std::string opName);
 
     AscendOpDesc(AscendOpDesc &&desc);
 
-    AscendOpDesc(const AscendOpDesc&) = delete;
+    AscendOpDesc(const AscendOpDesc &) = delete;
 
-    AscendOpDesc& operator=(const AscendOpDesc&) = delete;
+    AscendOpDesc &operator=(const AscendOpDesc &) = delete;
 
     ~AscendOpDesc();
+
+    void setOpName(std::string opName);
 
     AscendOpDesc &addInputTensorDesc(aclDataType dataType, int numDims, const int64_t *dims, aclFormat format);
     AscendOpDesc &addOutputTensorDesc(aclDataType dataType, int numDims, const int64_t *dims, aclFormat format);
