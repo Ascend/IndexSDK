@@ -33,14 +33,14 @@ Tag 遵循以下格式：
 
 | Tag                                | Dockerfile                                                   | 镜像内容        |
 | ---------------------------------- | ------------------------------------------------------------ | --------------- |
-| `26.0.0-910b-ubuntu22.04-py3.11`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/26.0.0-910b-ubuntu22.04-py3.11/Dockerfile.910b.ubuntu) | toolkit + Index SDK |
-| `26.0.0-310p-ubuntu22.04-py3.11`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/26.0.0-310p-ubuntu22.04-py3.11/Dockerfile.310p.ubuntu)      | toolkit + Index SDK |
-| `26.0.0-a3-ubuntu22.04-py3.11`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/26.0.0-a3-ubuntu22.04-py3.11/Dockerfile.a3.ubuntu)         | toolkit + Index SDK |
-| `26.0.0-950-ubuntu22.04-py3.11`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/26.0.0-950-ubuntu22.04-py3.11/Dockerfile.950.ubuntu)         | toolkit + Index SDK |
-| `26.0.0-910-openeuler24.04-py3.11`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/26.0.0-910-openeuler24.04-py3.11/Dockerfile.910.openeuler) | toolkit + Index SDK |
-| `26.0.0-310p-openeuler24.04-py3.11`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/26.0.0-310p-openeuler24.04-py3.11/Dockerfile.310p.openeuler)      | toolkit + Index SDK |
-| `26.0.0-a3-openeuler24.04-py3.11`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/26.0.0-a3-openeuler24.04-py3.11/Dockerfile.a3.openeuler)         | toolkit + Index SDK |
-| `26.0.0-950-openeuler24.04-py3.11`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/26.0.0-950-openeuler24.04-py3.11/Dockerfile.950.openeuler)         | toolkit + Index SDK |
+| `26.0.0-910b-ubuntu22.04-py3.11`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/Dockerfile.910b.ubuntu) | toolkit + Index SDK |
+| `26.0.0-310p-ubuntu22.04-py3.11`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/Dockerfile.310p.ubuntu)      | toolkit + Index SDK |
+| `26.0.0-a3-ubuntu22.04-py3.11`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/Dockerfile.a3.ubuntu)         | toolkit + Index SDK |
+| `26.0.0-950-ubuntu22.04-py3.11`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/Dockerfile.950.ubuntu)         | toolkit + Index SDK |
+| `26.0.0-910-openeuler24.04-py3.11`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/Dockerfile.910.openeuler) | toolkit + Index SDK |
+| `26.0.0-310p-openeuler24.04-py3.11`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/Dockerfile.310p.openeuler)      | toolkit + Index SDK |
+| `26.0.0-a3-openeuler24.04-py3.11`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/Dockerfile.a3.openeuler)         | toolkit + Index SDK |
+| `26.0.0-950-openeuler24.04-py3.11`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/Dockerfile.950.openeuler)         | toolkit + Index SDK |
 
 ## 3.快速开始
 
@@ -142,7 +142,7 @@ docker build -t {your_repo}/index:latest -f Dockerfile .
 | Atlas 950  | A5                              | ARM64 / x86_64 |
 | Atlas 910  | Atlas 800I A2                   | ARM64 / x86_64 |
 | Atlas A3   | Atlas 800I A3                   | ARM64 / x86_64 |
-| Atlas 800 | Atlas 300I Pro、Atlas 300V Pro  | ARM64 / x86_64 |
+| Atlas 300I Pro | Atlas 300I Pro、Atlas 300V Pro  | ARM64 / x86_64 |
 
 ---
 
