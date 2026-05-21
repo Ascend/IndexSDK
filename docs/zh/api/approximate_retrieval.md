@@ -6353,13 +6353,13 @@ AscendIndexIVFFlat利用IVF进行加速，是二级近似检索算法。当前�
 </tbody>
 </table>
 
-### AscendIndexIVFPQ<a name="ZH-CN_TOPIC_0000002478095516"></a>
+## AscendIndexIVFPQ<a name="ZH-CN_TOPIC_0000002478095516"></a>
 
-#### 功能介绍<a name="ZH-CN_TOPIC_0000002510095475"></a>
+### 功能介绍<a name="ZH-CN_TOPIC_0000002510095475"></a>
 
 AscendIndexIVFPQ利用IVF进行加速，是二级近似检索算法。当前仅支持L2距离，且出于性能考量，仅支持检索320以内的topk。
 
-#### AscendIndexIVFPQ接口<a name="ZH-CN_TOPIC_0000002509975505"></a>
+### AscendIndexIVFPQ接口<a name="ZH-CN_TOPIC_0000002509975505"></a>
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
@@ -6434,7 +6434,7 @@ AscendIndexIVFPQ利用IVF进行加速，是二级近似检索算法。当前仅�
 </tbody>
 </table>
 
-#### \~AscendIndexIVFPQ接口<a name="ZH-CN_TOPIC_0000002477935546"></a>
+### \~AscendIndexIVFPQ接口<a name="ZH-CN_TOPIC_0000002477935546"></a>
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
@@ -6470,7 +6470,7 @@ AscendIndexIVFPQ利用IVF进行加速，是二级近似检索算法。当前仅�
 </tbody>
 </table>
 
-#### operate = 接口<a name="ZH-CN_TOPIC_0000002484264062"></a>
+### operate = 接口<a name="ZH-CN_TOPIC_0000002484264062"></a>
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
@@ -6506,7 +6506,7 @@ AscendIndexIVFPQ利用IVF进行加速，是二级近似检索算法。当前仅�
 </tbody>
 </table>
 
-#### train接口<a name="ZH-CN_TOPIC_0000002478095518"></a>
+### train接口<a name="ZH-CN_TOPIC_0000002478095518"></a>
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.07%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
@@ -6543,7 +6543,7 @@ AscendIndexIVFPQ利用IVF进行加速，是二级近似检索算法。当前仅�
 </tbody>
 </table>
 
-#### remove_ids接口<a name="ZH-CN_TOPIC_0000002478095518"></a>
+### remove_ids接口<a name="ZH-CN_TOPIC_0000002478095518"></a>
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.07%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
@@ -6580,7 +6580,7 @@ AscendIndexIVFPQ利用IVF进行加速，是二级近似检索算法。当前仅�
 </tbody>
 </table>
 
-#### copyFrom接口<a name="ZH-CN_TOPIC_0000002478095518"></a>
+### copyFrom接口<a name="ZH-CN_TOPIC_0000002478095518"></a>
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.07%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
@@ -6616,7 +6616,7 @@ AscendIndexIVFPQ利用IVF进行加速，是二级近似检索算法。当前仅�
 </tbody>
 </table>
 
-#### copyTo接口<a name="ZH-CN_TOPIC_0000002478095518"></a>
+### copyTo接口<a name="ZH-CN_TOPIC_0000002478095518"></a>
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.07%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
@@ -6652,7 +6652,7 @@ AscendIndexIVFPQ利用IVF进行加速，是二级近似检索算法。当前仅�
 </tbody>
 </table>
 
-#### update接口<a name="ZH-CN_TOPIC_0000002478095518"></a>
+### update接口<a name="ZH-CN_TOPIC_0000002478095518"></a>
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.07%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
@@ -6685,6 +6685,536 @@ AscendIndexIVFPQ利用IVF进行加速，是二级近似检索算法。当前仅�
 <tr id="row22159193815"><th class="firstcol" valign="top" width="20.07%" id="mcps1.1.3.6.1"><p id="p423590386"><a name="p423590386"></a><a name="p423590386"></a>约束说明</p>
 </th>
 <td class="cellrowborder" valign="top" width="79.93%" headers="mcps1.1.3.6.1 "><a name="ul777123515576"></a><a name="ul777123515576"></a><ul id="ul777123515576"><li>此处<span class="parmname" id="parmname125783489316"><a name="parmname125783489316"></a><a name="parmname125783489316"></a>“n”</span>的取值范围：0 &lt; n &lt; 1e9。</li><li>此处指针<span class="parmname" id="parmname95481642105713"><a name="parmname95481642105713"></a><a name="parmname95481642105713"></a>“x”</span>需要为非空指针，且长度应该为n，大小为<strong id="b10897319132513"><a name="b10897319132513"></a><a name="b10897319132513"></a>dims * n</strong>，否则可能出现越界读写错误并引起程序崩溃。</li><li>此处指针<span class="parmname" id="parmname95481642105713"><a name="parmname95481642105713"></a><a name="parmname95481642105713"></a>“ids”</span>需要为非空指针，且长度应该为<strong id="b10897319132513"><a name="b10897319132513"></a><a name="b10897319132513"></a>n</strong>，否则可能出现越界读写错误并引起程序崩溃。</li></ul>
+</td>
+</tr>
+</tbody>
+</table>
+
+## AscendIndexIVFRaBitQ<a name="ZH-CN_TOPIC_0000002513157720"></a>
+
+### 功能介绍<a name="ZH-CN_TOPIC_0000002544797635"></a>
+
+AscendIndexIVFRaBitQ利用IVF进行加速，是二级近似检索算法。当前支持L2距离计算。
+
+### AscendIndexIVFRaBitQ接口<a name="ZH-CN_TOPIC_0000002513317654"></a>
+
+<a name="table7235918388"></a>
+<table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.1.1 "><p id="p1857144175420"><a name="p1857144175420"></a><a name="p1857144175420"></a>AscendIndexIVFRaBitQ(int dims, faiss::MetricType metric, int nlist, AscendIndexIVFRaBitQConfig config)</p>
+</td>
+</tr>
+<tr id="row421759103816"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.2.1"><p id="p1212599383"><a name="p1212599383"></a><a name="p1212599383"></a>功能描述</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.2.1 "><p id="p131714208358"><a name="p131714208358"></a><a name="p131714208358"></a>AscendIndexIVFRaBitQ的构造函数，创建Ascend上的检索Index。</p>
+</td>
+</tr>
+<tr id="row122155911383"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.3.1"><p id="p112195910383"><a name="p112195910383"></a><a name="p112195910383"></a>输入</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.3.1 "><p id="p185955304554"><a name="p185955304554"></a><a name="p185955304554"></a><strong id="b1580317419509"><a name="b1580317419509"></a><a name="b1580317419509"></a>int dims</strong>：底库检索向量的维度。</p>
+<p id="p9902601825"><a name="p9902601825"></a><a name="p9902601825"></a><strong id="b19494101811220"><a name="b19494101811220"></a><a name="b19494101811220"></a>faiss::MetricType metric</strong>：距离类型，支持faiss::METRIC_L2和faiss::METRIC_IP。</p>
+<p id="p15757141212318"><a name="p15757141212318"></a><a name="p15757141212318"></a><strong id="b1966283819616"><a name="b1966283819616"></a><a name="b1966283819616"></a>int nlist</strong>：IVF分桶数。</p>
+<p id="p54901733102914"><a name="p54901733102914"></a><a name="p54901733102914"></a><strong id="b1191265511617"><a name="b1191265511617"></a><a name="b1191265511617"></a>AscendIndexIVFRaBitQConfig config</strong>：Device侧资源配置。</p>
+</td>
+</tr>
+<tr id="row5219599386"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.4.1"><p id="p17235973820"><a name="p17235973820"></a><a name="p17235973820"></a>输出</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.4.1 "><p id="p973225082318"><a name="p973225082318"></a><a name="p973225082318"></a>无</p>
+</td>
+</tr>
+<tr id="row102185913388"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.5.1"><p id="p182459113812"><a name="p182459113812"></a><a name="p182459113812"></a>返回值</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.5.1 "><p id="p132314362521"><a name="p132314362521"></a><a name="p132314362521"></a>无</p>
+</td>
+</tr>
+<tr id="row22159193815"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.6.1"><p id="p423590386"><a name="p423590386"></a><a name="p423590386"></a>约束说明</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.6.1 "><a name="ul79274019592"></a><a name="ul79274019592"></a><ul id="ul79274019592"><li>dims目前仅支持128。</li><li>nlist ∈ {1024, 2048, 4096, 8192, 16384, 32768}。</li></ul>
+</td>
+</tr>
+</tbody>
+</table>
+
+<a name="table663150151113"></a>
+<table><tbody><tr id="row176440181111"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.1.1"><p id="p064509114"><a name="p064509114"></a><a name="p064509114"></a>API定义</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.1.1 "><p id="p14739204217152"><a name="p14739204217152"></a><a name="p14739204217152"></a>AscendIndexIVFRaBitQ& operator=(const AscendIndexIVFRaBitQ&) = delete;</p>
+</td>
+</tr>
+<tr id="row186417021110"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.2.1"><p id="p664405110"><a name="p664405110"></a><a name="p664405110"></a>功能描述</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.2.1 "><p id="p76470121111"><a name="p76470121111"></a><a name="p76470121111"></a>声明此index拷贝构造函数为空，即不可拷贝类型。</p>
+</td>
+</tr>
+<tr id="row964505113"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.3.1"><p id="p2642019118"><a name="p2642019118"></a><a name="p2642019118"></a>输入</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.3.1 "><p id="p867213174418"><a name="p867213174418"></a><a name="p867213174418"></a><strong id="b3738139972"><a name="b3738139972"></a><a name="b3738139972"></a>const AscendIndexIVFRaBitQ&</strong>：常量AscendIndexIVFRaBitQ。</p>
+</td>
+</tr>
+<tr id="row8641601111"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.4.1"><p id="p13648019116"><a name="p13648019116"></a><a name="p13648019116"></a>输出</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.4.1 "><p id="p06420013110"><a name="p06420013110"></a><a name="p06420013110"></a>无</p>
+</td>
+</tr>
+<tr id="row1641608114"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.5.1"><p id="p96418010111"><a name="p96418010111"></a><a name="p96418010111"></a>返回值</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.5.1 "><p id="p1264107115"><a name="p1264107115"></a><a name="p1264107115"></a>无</p>
+</td>
+</tr>
+<tr id="row176420181110"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.6.1"><p id="p126412017119"><a name="p126412017119"></a><a name="p126412017119"></a>约束说明</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.6.1 "><p id="p16647010117"><a name="p16647010117"></a><a name="p16647010117"></a>无</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+### \~AscendIndexIVFRaBitQ接口<a name="ZH-CN_TOPIC_0000002544837623"></a>
+
+<a name="table7235918388"></a>
+<table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.1.1 "><p id="p19588544116"><a name="p19588544116"></a><a name="p19588544116"></a>~AscendIndexIVFRaBitQ()</p>
+</td>
+</tr>
+<tr id="row421759103816"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.2.1"><p id="p1212599383"><a name="p1212599383"></a><a name="p1212599383"></a>功能描述</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.2.1 "><p id="p131714208358"><a name="p131714208358"></a><a name="p131714208358"></a>AscendIndexIVFRaBitQ的析构函数，销毁AscendIndexIVFRaBitQ对象，释放资源。</p>
+</td>
+</tr>
+<tr id="row122155911383"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.3.1"><p id="p112195910383"><a name="p112195910383"></a><a name="p112195910383"></a>输入</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.3.1 "><p id="p1220621175115"><a name="p1220621175115"></a><a name="p1220621175115"></a>无</p>
+</td>
+</tr>
+<tr id="row5219599386"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.4.1"><p id="p17235973820"><a name="p17235973820"></a><a name="p17235973820"></a>输出</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.4.1 "><p id="p973225082318"><a name="p973225082318"></a><a name="p973225082318"></a>无</p>
+</td>
+</tr>
+<tr id="row102185913388"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.5.1"><p id="p182459113812"><a name="p182459113812"></a><a name="p182459113812"></a>返回值</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.5.1 "><p id="p132314362521"><a name="p132314362521"></a><a name="p132314362521"></a>无</p>
+</td>
+</tr>
+<tr id="row22159193815"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.6.1"><p id="p423590386"><a name="p423590386"></a><a name="p423590386"></a>约束说明</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.6.1 "><p id="p182559163813"><a name="p182559163813"></a><a name="p182559163813"></a>无</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+### operate = 接口<a name="ZH-CN_TOPIC_0000002513157724"></a>
+
+<a name="table7235918388"></a>
+<table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.1.1 "><p id="p11970183910121"><a name="p11970183910121"></a><a name="p11970183910121"></a>AscendIndexIVFRaBitQ& operator=(const AscendIndexIVFRaBitQ&) = delete;</p>
+</td>
+</tr>
+<tr id="row421759103816"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.2.1"><p id="p1212599383"><a name="p1212599383"></a><a name="p1212599383"></a>功能描述</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.2.1 "><p id="p131714208358"><a name="p131714208358"></a><a name="p131714208358"></a>声明此Index赋值构造函数为空，即不可拷贝类型。</p>
+</td>
+</tr>
+<tr id="row122155911383"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.3.1"><p id="p112195910383"><a name="p112195910383"></a><a name="p112195910383"></a>输入</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.3.1 "><p id="p867213174418"><a name="p867213174418"></a><a name="p867213174418"></a><strong id="b142971612074"><a name="b142971612074"></a><a name="b142971612074"></a>const AscendIndexIVFRaBitQ&</strong>：常量AscendIndexIVFRaBitQ。</p>
+</td>
+</tr>
+<tr id="row5219599386"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.4.1"><p id="p17235973820"><a name="p17235973820"></a><a name="p17235973820"></a>输出</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.4.1 "><p id="p973225082318"><a name="p973225082318"></a><a name="p973225082318"></a>无</p>
+</td>
+</tr>
+<tr id="row102185913388"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.5.1"><p id="p182459113812"><a name="p182459113812"></a><a name="p182459113812"></a>返回值</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.5.1 "><p id="p132314362521"><a name="p132314362521"></a><a name="p132314362521"></a>无</p>
+</td>
+</tr>
+<tr id="row22159193815"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.6.1"><p id="p423590386"><a name="p423590386"></a><a name="p423590386"></a>约束说明</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.6.1 "><p id="p182559163813"><a name="p182559163813"></a><a name="p182559163813"></a>无</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+### train接口<a name="ZH-CN_TOPIC_0000002544797639"></a>
+
+<a name="table7235918388"></a>
+<table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.07%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.93%" headers="mcps1.1.3.1.1 "><p id="p07451129133118"><a name="p07451129133118"></a><a name="p07451129133118"></a>void train(idx_t n, const float *x) override;</p>
+</td>
+</tr>
+<tr id="row421759103816"><th class="firstcol" valign="top" width="20.07%" id="mcps1.1.3.2.1"><p id="p1212599383"><a name="p1212599383"></a><a name="p1212599383"></a>功能描述</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.93%" headers="mcps1.1.3.2.1 "><p id="p131714208358"><a name="p131714208358"></a><a name="p131714208358"></a>对AscendIndexIVFRaBitQ执行训练，继承AscendIndex中的相关接口并提供具体实现。</p>
+</td>
+</tr>
+<tr id="row122155911383"><th class="firstcol" valign="top" width="20.07%" id="mcps1.1.3.3.1"><p id="p112195910383"><a name="p112195910383"></a><a name="p112195910383"></a>输入</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.93%" headers="mcps1.1.3.3.1 "><p id="p1464472124510"><a name="p1464472124510"></a><a name="p1464472124510"></a><strong id="b351832435710"><a name="b351832435710"></a><a name="b351832435710"></a>idx_t n</strong>：训练集中特征向量的条数。</p>
+<p id="p426592383"><a name="p426592383"></a><a name="p426592383"></a><strong id="b17199113075712"><a name="b17199113075712"></a><a name="b17199113075712"></a>const float *x</strong>：特征向量数据。</p>
+</td>
+</tr>
+<tr id="row5219599386"><th class="firstcol" valign="top" width="20.07%" id="mcps1.1.3.4.1"><p id="p17235973820"><a name="p17235973820"></a><a name="p17235973820"></a>输出</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.93%" headers="mcps1.1.3.4.1 "><p id="p6295973819"><a name="p6295973819"></a><a name="p6295973819"></a>无</p>
+</td>
+</tr>
+<tr id="row102185913388"><th class="firstcol" valign="top" width="20.07%" id="mcps1.1.3.5.1"><p id="p182459113812"><a name="p182459113812"></a><a name="p182459113812"></a>返回值</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.93%" headers="mcps1.1.3.5.1 "><p id="p22145914388"><a name="p22145914388"></a><a name="p22145914388"></a>无</p>
+</td>
+</tr>
+<tr id="row22159193815"><th class="firstcol" valign="top" width="20.07%" id="mcps1.1.3.6.1"><p id="p423590386"><a name="p423590386"></a><a name="p423590386"></a>约束说明</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.93%" headers="mcps1.1.3.6.1 "><a name="ul777123515576"></a><a name="ul777123515576"></a><ul id="ul777123515576"><li>训练采用k-means进行聚类，训练集比较小可能会影响查询精度。</li><li>此处<span class="parmname" id="parmname125783489316"><a name="parmname125783489316"></a><a name="parmname125783489316"></a>“n”</span>的取值范围：0 &lt; n &lt; 1e9。</li><li>此处指针<span class="parmname" id="parmname95481642105713"><a name="parmname95481642105713"></a><a name="parmname95481642105713"></a>“x”</span>需要为非空指针，且长度应该为dims * <strong id="b10897319132513"><a name="b10897319132513"></a><a name="b10897319132513"></a>n</strong>，否则可能出现越界读写错误并引起程序崩溃。</li><li><span class="parmname" id="parmname13911501094"><a name="parmname13911501094"></a><a name="parmname13911501094"></a>“useKmeansPP”</span>参数设置为<span class="parmvalue" id="parmvalue10995953394"><a name="parmvalue10995953394"></a><a name="parmvalue10995953394"></a>“true”</span>代表启用NPU聚类，否则采用CPU聚类。准度问题参考<a href="../faq.md#浮点数计算精度问题">浮点数计算精度问题</a>。</li></ul>
+</td>
+</tr>
+</tbody>
+</table>
+
+### remove\_ids接口<a name="ZH-CN_TOPIC_0000002513157728"></a>
+
+<a name="table7235918388"></a>
+<table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.07%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.93%" headers="mcps1.1.3.1.1 "><p id="p159810144013"><a name="p159810144013"></a><a name="p159810144013"></a>void remove_ids(size_t n, const idx_t* ids);</p>
+</td>
+</tr>
+<tr id="row421759103816"><th class="firstcol" valign="top" width="20.07%" id="mcps1.1.3.2.1"><p id="p1212599383"><a name="p1212599383"></a><a name="p1212599383"></a>功能描述</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.93%" headers="mcps1.1.3.2.1 "><p id="p131714208358"><a name="p131714208358"></a><a name="p131714208358"></a>对提供的索引序号对应在AscendIndexIVFRaBitQ中的已训练向量进行删除，调用AscendIndexIVFRaBitQImpl中的相关接口实现。</p>
+</td>
+</tr>
+<tr id="row122155911383"><th class="firstcol" valign="top" width="20.07%" id="mcps1.1.3.3.1"><p id="p112195910383"><a name="p112195910383"></a><a name="p112195910383"></a>输入</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.93%" headers="mcps1.1.3.3.1 "><p id="p1464472124510"><a name="p1464472124510"></a><a name="p1464472124510"></a><strong id="b351832435710"><a name="b351832435710"></a><a name="b351832435710"></a>size_t n</strong>：准备删除的 集中特征向量的条数。</p>
+<p id="p426592383"><a name="p426592383"></a><a name="p426592383"></a><strong id="b17199113075712"><a name="b17199113075712"></a><a name="b17199113075712"></a>const idx_t *ids</strong>：准备删除的特征向量ID。</p>
+</td>
+</tr>
+<tr id="row5219599386"><th class="firstcol" valign="top" width="20.07%" id="mcps1.1.3.4.1"><p id="p17235973820"><a name="p17235973820"></a><a name="p17235973820"></a>输出</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.93%" headers="mcps1.1.3.4.1 "><p id="p6295973819"><a name="p6295973819"></a><a name="p6295973819"></a>无</p>
+</td>
+</tr>
+<tr id="row102185913388"><th class="firstcol" valign="top" width="20.07%" id="mcps1.1.3.5.1"><p id="p182459113812"><a name="p182459113812"></a><a name="p182459113812"></a>返回值</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.93%" headers="mcps1.1.3.5.1 "><p id="p22145914388"><a name="p22145914388"></a><a name="p22145914388"></a>无</p>
+</td>
+</tr>
+<tr id="row22159193815"><th class="firstcol" valign="top" width="20.07%" id="mcps1.1.3.6.1"><p id="p423590386"><a name="p423590386"></a><a name="p423590386"></a>约束说明</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.93%" headers="mcps1.1.3.6.1 "><a name="ul777123515576"></a><a name="ul777123515576"></a><ul id="ul777123515576"><li>此处<span class="parmname" id="parmname125783489316"><a name="parmname125783489316"></a><a name="parmname125783489316"></a>“n”</span>的取值范围：0 &lt; n &lt; 1e9。</li><li>此处指针<span class="parmname" id="parmname95481642105713"><a name="parmname95481642105713"></a><a name="parmname95481642105713"></a>“ids”</span>需要为非空指针，且长度应该为<strong id="b10897319132513"><a name="b10897319132513"></a><a name="b10897319132513"></a>n</strong>，否则可能出现越界读写错误并引起程序崩溃。</li></ul>
+</td>
+</tr>
+</tbody>
+</table>
+
+### copyFrom接口<a name="ZH-CN_TOPIC_0000002557609263"></a>
+
+<a name="table7235918388"></a>
+<table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.07%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.93%" headers="mcps1.1.3.1.1 "><p id="p1644393118420"><a name="p1644393118420"></a><a name="p1644393118420"></a>void copyFrom(const faiss::IndexIVFRaBitQ *index)</p>
+</td>
+</tr>
+<tr id="row421759103816"><th class="firstcol" valign="top" width="20.07%" id="mcps1.1.3.2.1"><p id="p1212599383"><a name="p1212599383"></a><a name="p1212599383"></a>功能描述</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.93%" headers="mcps1.1.3.2.1 "><p id="p131714208358"><a name="p131714208358"></a><a name="p131714208358"></a>提供一个cpu侧IndexIVFRaBitQ索引，从训练好的索引中加载数据到device侧供后续检索，调用AscendIndexIVFRaBitQImpl中的相关接口实现。</p>
+</td>
+</tr>
+<tr id="row122155911383"><th class="firstcol" valign="top" width="20.07%" id="mcps1.1.3.3.1"><p id="p112195910383"><a name="p112195910383"></a><a name="p112195910383"></a>输入</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.93%" headers="mcps1.1.3.3.1 "><p id="p1464472124510"><a name="p1464472124510"></a><a name="p1464472124510"></a><strong id="b17199113075712"><a name="b17199113075712"></a><a name="b17199113075712"></a>const faiss::IndexIVFRaBitQ *index</strong>：训练好的cpu侧IndexIVFRaBitQ索引。</p>
+</td>
+</tr>
+<tr id="row5219599386"><th class="firstcol" valign="top" width="20.07%" id="mcps1.1.3.4.1"><p id="p17235973820"><a name="p17235973820"></a><a name="p17235973820"></a>输出</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.93%" headers="mcps1.1.3.4.1 "><p id="p6295973819"><a name="p6295973819"></a><a name="p6295973819"></a>无</p>
+</td>
+</tr>
+<tr id="row102185913388"><th class="firstcol" valign="top" width="20.07%" id="mcps1.1.3.5.1"><p id="p182459113812"><a name="p182459113812"></a><a name="p182459113812"></a>返回值</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.93%" headers="mcps1.1.3.5.1 "><p id="p22145914388"><a name="p22145914388"></a><a name="p22145914388"></a>无</p>
+</td>
+</tr>
+<tr id="row22159193815"><th class="firstcol" valign="top" width="20.07%" id="mcps1.1.3.6.1"><p id="p423590386"><a name="p423590386"></a><a name="p423590386"></a>约束说明</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.93%" headers="mcps1.1.3.6.1 "><a name="ul777123515576"></a><a name="ul777123515576"></a><ul id="ul777123515576"><li>此处指针<span class="parmname" id="parmname95481642105713"><a name="parmname95481642105713"></a><a name="parmname95481642105713"></a>“index”</span>需要为非空指针，且应为已训练好的IndexIVFRaBitQ索引。</li><li>调用此接口读取数据前应按照正常流程配置AscendIndexIVFRaBitQConfig并创建AscendIndexIVFRaBitQ对象。</li></ul>
+</td>
+</tr>
+</tbody>
+</table>
+
+### copyTo接口<a name="ZH-CN_TOPIC_0000002557689209"></a>
+
+<a name="table7235918388"></a>
+<table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.07%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.93%" headers="mcps1.1.3.1.1 "><p id="p1644393118420"><a name="p1644393118420"></a><a name="p1644393118420"></a>void copyTo(faiss::IndexIVFRaBitQ *index) const</p>
+</td>
+</tr>
+<tr id="row421759103816"><th class="firstcol" valign="top" width="20.07%" id="mcps1.1.3.2.1"><p id="p1212599383"><a name="p1212599383"></a><a name="p1212599383"></a>功能描述</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.93%" headers="mcps1.1.3.2.1 "><p id="p131714208358"><a name="p131714208358"></a><a name="p131714208358"></a>提供一个cpu侧IndexIVFRaBitQ索引，将device侧已训练好的数据下载到cpu索引中以持久化，调用AscendIndexIVFRaBitQImpl中的相关接口实现。</p>
+</td>
+</tr>
+<tr id="row122155911383"><th class="firstcol" valign="top" width="20.07%" id="mcps1.1.3.3.1"><p id="p112195910383"><a name="p112195910383"></a><a name="p112195910383"></a>输入</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.93%" headers="mcps1.1.3.3.1 "><p id="p1464472124510"><a name="p1464472124510"></a><a name="p1464472124510"></a><strong id="b17199113075712"><a name="b17199113075712"></a><a name="b17199113075712"></a>const faiss::IndexIVFRaBitQ *index</strong>：训练好的cpu侧IndexIVFRaBitQ索引。</p>
+</td>
+</tr>
+<tr id="row5219599386"><th class="firstcol" valign="top" width="20.07%" id="mcps1.1.3.4.1"><p id="p17235973820"><a name="p17235973820"></a><a name="p17235973820"></a>输出</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.93%" headers="mcps1.1.3.4.1 "><p id="p6295973819"><a name="p6295973819"></a><a name="p6295973819"></a>无</p>
+</td>
+</tr>
+<tr id="row102185913388"><th class="firstcol" valign="top" width="20.07%" id="mcps1.1.3.5.1"><p id="p182459113812"><a name="p182459113812"></a><a name="p182459113812"></a>返回值</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.93%" headers="mcps1.1.3.5.1 "><p id="p22145914388"><a name="p22145914388"></a><a name="p22145914388"></a>无</p>
+</td>
+</tr>
+<tr id="row22159193815"><th class="firstcol" valign="top" width="20.07%" id="mcps1.1.3.6.1"><p id="p423590386"><a name="p423590386"></a><a name="p423590386"></a>约束说明</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.93%" headers="mcps1.1.3.6.1 "><a name="ul777123515576"></a><a name="ul777123515576"></a><ul id="ul777123515576"><li>此处指针<span class="parmname" id="parmname95481642105713"><a name="parmname95481642105713"></a><a name="parmname95481642105713"></a>“index”</span>需要为非空指针。</li><li>调用此接口持久化数据前应按照正常流程创建AscendIndexIVFRaBitQ对象并训练入库。</li></ul>
+</td>
+</tr>
+</tbody>
+</table>
+
+### update接口<a name="ZH-CN_TOPIC_0000002566242121"></a>
+
+<a name="table962730101715"></a>
+<table><tbody><tr id="row12622305178"><th class="firstcol" valign="top" width="20.07%" id="mcps1.1.3.1.1"><p id="p8621330141716"><a name="p8621330141716"></a><a name="p8621330141716"></a>API定义</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.93%" headers="mcps1.1.3.1.1 "><p id="p8222411311"><a name="p8222411311"></a><a name="p8222411311"></a>std::vector&lt;idx_t&gt; update(idx_t n, float* x, idx_t* ids)</p>
+</td>
+</tr>
+<tr id="row14621830121715"><th class="firstcol" valign="top" width="20.07%" id="mcps1.1.3.2.1"><p id="p186218309171"><a name="p186218309171"></a><a name="p186218309171"></a>功能描述</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.93%" headers="mcps1.1.3.2.1 "><p id="p662143019176"><a name="p662143019176"></a><a name="p662143019176"></a>将AscendIndexIVFRaBitQ底库中ids对应的向量批量更新为x，对于不存在于底库的id不做更新处理，并返回不存在的id列表</p>
+</td>
+</tr>
+<tr id="row8629301176"><th class="firstcol" valign="top" width="20.07%" id="mcps1.1.3.3.1"><p id="p1062113010175"><a name="p1062113010175"></a><a name="p1062113010175"></a>输入</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.93%" headers="mcps1.1.3.3.1 "><p id="p1962530201714"><a name="p1962530201714"></a><a name="p1962530201714"></a><strong id="b351832435710"><a name="b351832435710"></a><a name="b351832435710"></a>idx_t n</strong>：准备更新的集中特征向量的条数。</p>
+<p id="p42931353121010"><a name="p42931353121010"></a><a name="p42931353121010"></a><strong id="b87001153171012"><a name="b87001153171012"></a><a name="b87001153171012"></a>idx_t *x</strong>：准备更新的特征向量列表。</p>
+<p id="p426592383"><a name="p426592383"></a><a name="p426592383"></a><strong id="b156263017171"><a name="b156263017171"></a><a name="b156263017171"></a>idx_t *ids</strong>：准备更新的特征向量ID列表。</p>
+</td>
+</tr>
+<tr id="row18621130141716"><th class="firstcol" valign="top" width="20.07%" id="mcps1.1.3.4.1"><p id="p1762530161715"><a name="p1762530161715"></a><a name="p1762530161715"></a>输出</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.93%" headers="mcps1.1.3.4.1 "><p id="p1462183015175"><a name="p1462183015175"></a><a name="p1462183015175"></a>无</p>
+</td>
+</tr>
+<tr id="row1262133017174"><th class="firstcol" valign="top" width="20.07%" id="mcps1.1.3.5.1"><p id="p06283010176"><a name="p06283010176"></a><a name="p06283010176"></a>返回值</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.93%" headers="mcps1.1.3.5.1 "><p id="p462730171716"><a name="p462730171716"></a><a name="p462730171716"></a><strong id="b354121016121"><a name="b354121016121"></a><a name="b354121016121"></a>std::vector&lt;idx_t&gt; noExistIds</strong>：返回不存在的向量ID列表。</p>
+</td>
+</tr>
+<tr id="row062530101714"><th class="firstcol" valign="top" width="20.07%" id="mcps1.1.3.6.1"><p id="p1562173041715"><a name="p1562173041715"></a><a name="p1562173041715"></a>约束说明</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.93%" headers="mcps1.1.3.6.1 "><a name="ul1662173016177"></a><a name="ul1662173016177"></a><ul id="ul1662173016177"><li>此处<span class="parmname" id="parmname125783489316"><a name="parmname125783489316"></a><a name="parmname125783489316"></a>“n”</span>的取值范围：0 &lt; n &lt; 1e9。</li><li>此处指针<span class="parmname" id="parmname46281339132614"><a name="parmname46281339132614"></a><a name="parmname46281339132614"></a>“x”</span>需要为非空指针，且长度应该为<strong id="b8628133912262"><a name="b8628133912262"></a><a name="b8628133912262"></a>n</strong>，大小为<strong id="b476941102713"><a name="b476941102713"></a><a name="b476941102713"></a>n*dim，</strong>否则可能出现越界读写错误并引起程序崩溃。</li><li>此处指针<span class="parmname" id="parmname17629304175"><a name="parmname17629304175"></a><a name="parmname17629304175"></a>“ids”</span>需要为非空指针，且长度应该为<strong id="b10897319132513"><a name="b10897319132513"></a><a name="b10897319132513"></a>n</strong>，否则可能出现越界读写错误并引起程序崩溃。</li></ul>
+</td>
+</tr>
+</tbody>
+</table>
+
+## AscendIndexIVFRaBitQConfig<a name="ZH-CN_TOPIC_0000002544944511"></a>
+
+AscendIndexIVFRaBitQ需要使用对应的AscendIndexIVFRaBitQConfig执行对应资源的初始化。
+
+### 成员介绍<a name="section4211138173219"></a>
+
+<a name="table388535175015"></a>
+<table><thead align="left"><tr id="row11881435135015"><th class="cellrowborder" valign="top" width="33.33333333333333%" id="mcps1.1.4.1.1"><p id="p688635145015"><a name="p688635145015"></a><a name="p688635145015"></a>成员</p>
+</th>
+<th class="cellrowborder" valign="top" width="33.33333333333333%" id="mcps1.1.4.1.2"><p id="p208815352501"><a name="p208815352501"></a><a name="p208815352501"></a>类型</p>
+</th>
+<th class="cellrowborder" valign="top" width="33.33333333333333%" id="mcps1.1.4.1.3"><p id="p5891535145012"><a name="p5891535145012"></a><a name="p5891535145012"></a>说明</p>
+</th>
+</tr>
+</thead>
+<tbody><tr id="row2890354502"><td class="cellrowborder" valign="top" width="33.33333333333333%" headers="mcps1.1.4.1.1 "><p id="p1561239193314"><a name="p1561239193314"></a><a name="p1561239193314"></a>useRandomOrthogonalMatrix</p>
+</td>
+<td class="cellrowborder" valign="top" width="33.33333333333333%" headers="mcps1.1.4.1.2 "><p id="p1589135125017"><a name="p1589135125017"></a><a name="p1589135125017"></a>bool</p>
+</td>
+<td class="cellrowborder" valign="top" width="33.33333333333333%" headers="mcps1.1.4.1.3 "><p id="p1789103575010"><a name="p1789103575010"></a><a name="p1789103575010"></a>是否使用随机正交矩阵，默认为true。</p>
+</td>
+</tr>
+<tr id="row78912359503"><td class="cellrowborder" valign="top" width="33.33333333333333%" headers="mcps1.1.4.1.1 "><p id="p10523201623317"><a name="p10523201623317"></a><a name="p10523201623317"></a>needRefine</p>
+</td>
+<td class="cellrowborder" valign="top" width="33.33333333333333%" headers="mcps1.1.4.1.2 "><p id="p18993510505"><a name="p18993510505"></a><a name="p18993510505"></a>bool</p>
+</td>
+<td class="cellrowborder" valign="top" width="33.33333333333333%" headers="mcps1.1.4.1.3 "><p id="p689113555010"><a name="p689113555010"></a><a name="p689113555010"></a>是否需要精排，默认为false。</p>
+</td>
+</tr>
+<tr id="row188933513506"><td class="cellrowborder" valign="top" width="33.33333333333333%" headers="mcps1.1.4.1.1 "><p id="p9321123113316"><a name="p9321123113316"></a><a name="p9321123113316"></a>matrixSeed</p>
+</td>
+<td class="cellrowborder" valign="top" width="33.33333333333333%" headers="mcps1.1.4.1.2 "><p id="p98919354505"><a name="p98919354505"></a><a name="p98919354505"></a>int</p>
+</td>
+<td class="cellrowborder" valign="top" width="33.33333333333333%" headers="mcps1.1.4.1.3 "><p id="p2089235135016"><a name="p2089235135016"></a><a name="p2089235135016"></a>生成随机正交矩阵的随机种子，默认为12345。</p>
+</td>
+</tr>
+<tr id="row192882773310"><td class="cellrowborder" valign="top" width="33.33333333333333%" headers="mcps1.1.4.1.1 "><p id="p8877163119331"><a name="p8877163119331"></a><a name="p8877163119331"></a>refineAlpha</p>
+</td>
+<td class="cellrowborder" valign="top" width="33.33333333333333%" headers="mcps1.1.4.1.2 "><p id="p12928122719330"><a name="p12928122719330"></a><a name="p12928122719330"></a>float</p>
+</td>
+<td class="cellrowborder" valign="top" width="33.33333333333333%" headers="mcps1.1.4.1.3 "><p id="p3928142753311"><a name="p3928142753311"></a><a name="p3928142753311"></a>精排相关参数，检索时原本需要检索前k个，需要精排则检索前k * refineAlpha个，再从中取topk。</p>
+<p id="p169972614290"><a name="p169972614290"></a><a name="p169972614290"></a>该值默认为2，设置得越大，召回率越高，检索效率越低。</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+### AscendIndexIVFRaBitQConfig<a name="section6579185362314"></a>
+
+>**说明：**
+>AscendIndexIVFRaBitQConfig继承于[AscendIndexIVFConfig](./approximate_retrieval.md#ascendindexivfconfig)。
+
+<a name="table7235918388"></a>
+<table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.1.1 "><p id="p172966052218"><a name="p172966052218"></a><a name="p172966052218"></a>inline AscendIndexIVFRaBitQConfig();</p>
+</td>
+</tr>
+<tr id="row421759103816"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.2.1"><p id="p1212599383"><a name="p1212599383"></a><a name="p1212599383"></a>功能描述</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.2.1 "><p id="p13114316114718"><a name="p13114316114718"></a><a name="p13114316114718"></a>默认构造函数，默认devices为{0}，使用第0个<span id="ph79732210444"><a name="ph79732210444"></a><a name="ph79732210444"></a>昇腾AI处理器</span>进行计算，默认resource为128MB。</p>
+</td>
+</tr>
+<tr id="row122155911383"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.3.1"><p id="p112195910383"><a name="p112195910383"></a><a name="p112195910383"></a>输入</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.3.1 "><p id="p1869835152319"><a name="p1869835152319"></a><a name="p1869835152319"></a>无</p>
+</td>
+</tr>
+<tr id="row5219599386"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.4.1"><p id="p17235973820"><a name="p17235973820"></a><a name="p17235973820"></a>输出</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.4.1 "><p id="p973225082318"><a name="p973225082318"></a><a name="p973225082318"></a>无</p>
+</td>
+</tr>
+<tr id="row102185913388"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.5.1"><p id="p182459113812"><a name="p182459113812"></a><a name="p182459113812"></a>返回值</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.5.1 "><p id="p132314362521"><a name="p132314362521"></a><a name="p132314362521"></a>无</p>
+</td>
+</tr>
+<tr id="row22159193815"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.6.1"><p id="p423590386"><a name="p423590386"></a><a name="p423590386"></a>约束说明</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.6.1 "><p id="p182559163813"><a name="p182559163813"></a><a name="p182559163813"></a>无</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+<a name="table3725347611"></a>
+<table><tbody><tr id="row137251141265"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.1.1"><p id="p1372544561"><a name="p1372544561"></a><a name="p1372544561"></a>API定义</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.1.1 "><p id="p4706533988"><a name="p4706533988"></a><a name="p4706533988"></a>inline AscendIndexIVFRaBitQConfig(std::initializer_list&lt;int&gt; devices, int64_t resourceSize = IVF_DEFAULT_MEM);</p>
+</td>
+</tr>
+<tr id="row0725941369"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.2.1"><p id="p87251143611"><a name="p87251143611"></a><a name="p87251143611"></a>功能描述</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.2.1 "><p id="p099917815338"><a name="p099917815338"></a><a name="p099917815338"></a>AscendIndexIVFRaBitQConfig的构造函数，生成AscendIndexIVFRaBitQConfig，此时根据<span class="parmname" id="parmname18510024575"><a name="parmname18510024575"></a><a name="parmname18510024575"></a>“devices”</span>中配置的值设置Device侧<span id="ph1099958133314"><a name="ph1099958133314"></a><a name="ph1099958133314"></a>昇腾AI处理器</span>资源，配置资源池大小并执行默认初始化。</p>
+</td>
+</tr>
+<tr id="row872516411614"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.3.1"><p id="p157251441762"><a name="p157251441762"></a><a name="p157251441762"></a>输入</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.3.1 "><p id="p1172515411612"><a name="p1172515411612"></a><a name="p1172515411612"></a><strong id="b74801235171213"><a name="b74801235171213"></a><a name="b74801235171213"></a>std::initializer_list&lt;int&gt; devices</strong>：Device侧设备ID。</p>
+<p id="p999908173313"><a name="p999908173313"></a><a name="p999908173313"></a><strong id="b851894117126"><a name="b851894117126"></a><a name="b851894117126"></a>int64_t resourceSize</strong>：设备侧预置的内存池大小，单位为Byte，计算过程中存储中间结果的内存空间，用于避免计算过程中动态申请内存造成性能波动。默认参数为头文件中的<span class="parmname" id="parmname15799101092219"><a name="parmname15799101092219"></a><a name="parmname15799101092219"></a>“IVF_DEFAULT_MEM”</span>。该参数通过底库大小和search的batch数共同确定，在底库大于或等于1000万且batch数大于或等于16时建议设置1024MB。</p>
+</td>
+</tr>
+<tr id="row13725184068"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.4.1"><p id="p0725844620"><a name="p0725844620"></a><a name="p0725844620"></a>输出</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.4.1 "><p id="p37251747615"><a name="p37251747615"></a><a name="p37251747615"></a>无</p>
+</td>
+</tr>
+<tr id="row19725104260"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.5.1"><p id="p9725446613"><a name="p9725446613"></a><a name="p9725446613"></a>返回值</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.5.1 "><p id="p77251043619"><a name="p77251043619"></a><a name="p77251043619"></a>无</p>
+</td>
+</tr>
+<tr id="row7725641869"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.6.1"><p id="p272634161"><a name="p272634161"></a><a name="p272634161"></a>约束说明</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.6.1 "><a name="ul5591115071213"></a><a name="ul5591115071213"></a><ul id="ul5591115071213"><li><span class="parmname" id="parmname14872125571216"><a name="parmname14872125571216"></a><a name="parmname14872125571216"></a>“devices”</span>需要为合法有效不重复的设备ID，最大数量为64。</li><li><span class="parmname" id="parmname15293195861219"><a name="parmname15293195861219"></a><a name="parmname15293195861219"></a>“resourceSize”</span>配置的值不超过4 * 1024MB（4 * 1024 * 1024 * 1024字节），当设置为<span class="parmvalue" id="parmvalue51241072364"><a name="parmvalue51241072364"></a><a name="parmvalue51241072364"></a>“-1”</span>时，Device侧<span id="ph8157732103"><a name="ph8157732103"></a><a name="ph8157732103"></a>昇腾AI处理器</span>资源配置为默认值128MB。</li></ul>
+</td>
+</tr>
+</tbody>
+</table>
+
+<a name="table745471811619"></a>
+<table><tbody><tr id="row445418187618"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.1.1"><p id="p145417181561"><a name="p145417181561"></a><a name="p145417181561"></a>API定义</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.1.1 "><p id="p172151146898"><a name="p172151146898"></a><a name="p172151146898"></a>inline AscendIndexIVFRaBitQConfig(std::vector&lt;int&gt; devices, int64_t resourceSize = IVF_DEFAULT_MEM);</p>
+</td>
+</tr>
+<tr id="row845519181169"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.2.1"><p id="p164551418362"><a name="p164551418362"></a><a name="p164551418362"></a>功能描述</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.2.1 "><p id="p1445513182614"><a name="p1445513182614"></a><a name="p1445513182614"></a>AscendIndexIVFRaBitQConfig的构造函数，生成AscendIndexIVFRaBitQConfig，此时根据<span class="parmname" id="parmname15821822101518"><a name="parmname15821822101518"></a><a name="parmname15821822101518"></a>“devices”</span>中配置的值设置Device侧<span id="ph663911476576"><a name="ph663911476576"></a><a name="ph663911476576"></a>昇腾AI处理器</span>资源，配置资源池大小并执行默认初始化。</p>
+</td>
+</tr>
+<tr id="row845512181667"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.3.1"><p id="p14551718264"><a name="p14551718264"></a><a name="p14551718264"></a>输入</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.3.1 "><p id="p1945571813613"><a name="p1945571813613"></a><a name="p1945571813613"></a><strong id="b9403131414155"><a name="b9403131414155"></a><a name="b9403131414155"></a>std::vector&lt;int&gt; devices</strong>：Device侧设备ID。</p>
+<p id="p11455318966"><a name="p11455318966"></a><a name="p11455318966"></a><strong id="b132471122150"><a name="b132471122150"></a><a name="b132471122150"></a>int resourceSize</strong>：设备侧预置的内存池大小，单位为Byte，计算过程中存储中间结果的内存空间，用于避免计算过程中动态申请内存造成性能波动。默认参数为头文件中的<span class="parmname" id="parmname20104122922215"><a name="parmname20104122922215"></a><a name="parmname20104122922215"></a>“IVF_DEFAULT_MEM”</span>。该参数通过底库大小和search的batch数共同确定，在底库大于或等于1000万且batch数大于或等于16时建议设置1024MB。</p>
+</td>
+</tr>
+<tr id="row12455718267"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.4.1"><p id="p645513184613"><a name="p645513184613"></a><a name="p645513184613"></a>输出</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.4.1 "><p id="p1545511816618"><a name="p1545511816618"></a><a name="p1545511816618"></a>无</p>
+</td>
+</tr>
+<tr id="row11455318162"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.5.1"><p id="p845511186617"><a name="p845511186617"></a><a name="p845511186617"></a>返回值</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.5.1 "><p id="p104556181962"><a name="p104556181962"></a><a name="p104556181962"></a>无</p>
+</td>
+</tr>
+<tr id="row17455118361"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.6.1"><p id="p64551618167"><a name="p64551618167"></a><a name="p64551618167"></a>约束说明</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.6.1 "><a name="ul9168241111516"></a><a name="ul9168241111516"></a><ul id="ul9168241111516"><li><span class="parmname" id="parmname975454381516"><a name="parmname975454381516"></a><a name="parmname975454381516"></a>“devices”</span>需要为合法有效不重复的设备ID，最大数量为64。</li><li><span class="parmname" id="parmname8790174512156"><a name="parmname8790174512156"></a><a name="parmname8790174512156"></a>“resourceSize”</span>配置的值不超过4 * 1024MB（4 * 1024 * 1024 * 1024字节），当设置为<span class="parmvalue" id="parmvalue8480143663618"><a name="parmvalue8480143663618"></a><a name="parmvalue8480143663618"></a>“-1”</span>时，Device侧<span id="ph245516181062"><a name="ph245516181062"></a><a name="ph245516181062"></a>昇腾AI处理器</span>资源配置为默认值128MB。</li></ul>
+</td>
+</tr>
+</tbody>
+</table>
+
+<a name="table1037111614358"></a>
+<table><tbody><tr id="row837916103513"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.1.1"><p id="p237101615359"><a name="p237101615359"></a><a name="p237101615359"></a>API定义</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.1.1 "><p id="p1237151683519"><a name="p1237151683519"></a><a name="p1237151683519"></a>inline AscendIndexIVFRaBitQConfig(std::vector&lt;int&gt; devices, bool useRandomOrthogonalMatrix_, bool needRefine_, int matrixSeed_, float alpha_, int64_t resourceSize = IVF_DEFAULT_MEM);</p>
+</td>
+</tr>
+<tr id="row173761693511"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.2.1"><p id="p19379164358"><a name="p19379164358"></a><a name="p19379164358"></a>功能描述</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.2.1 "><p id="p14374169350"><a name="p14374169350"></a><a name="p14374169350"></a>AscendIndexIVFRaBitQConfig的构造函数，生成AscendIndexIVFRaBitQConfig，此时根据输入参数执行初始化。</p>
+</td>
+</tr>
+<tr id="row163791683511"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.3.1"><p id="p14371816183518"><a name="p14371816183518"></a><a name="p14371816183518"></a>输入</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.3.1 "><p id="p837151615356"><a name="p837151615356"></a><a name="p837151615356"></a><strong id="b163741683510"><a name="b163741683510"></a><a name="b163741683510"></a>std::vector&lt;int&gt; devices</strong>：Device侧设备ID。</p>
+<p id="p173258481363"><a name="p173258481363"></a><a name="p173258481363"></a><strong id="b87628480367"><a name="b87628480367"></a><a name="b87628480367"></a>bool useRandomOrthogonalMatrix_</strong>：是否使用随机正交矩阵。</p>
+<p id="p131691249163620"><a name="p131691249163620"></a><a name="p131691249163620"></a><strong id="b9570114914362"><a name="b9570114914362"></a><a name="b9570114914362"></a>bool needRefine_</strong>：是否需要精排。</p>
+<p id="p1692910498362"><a name="p1692910498362"></a><a name="p1692910498362"></a><strong id="b227917501366"><a name="b227917501366"></a><a name="b227917501366"></a>int matrixSeed_</strong>：生成随机正交矩阵的随机种子。</p>
+<p id="p655111502366"><a name="p655111502366"></a><a name="p655111502366"></a><strong id="b208741450183610"><a name="b208741450183610"></a><a name="b208741450183610"></a>float alpha_</strong>：精排相关参数。</p>
+<p id="p1237101653516"><a name="p1237101653516"></a><a name="p1237101653516"></a><strong id="b153781620352"><a name="b153781620352"></a><a name="b153781620352"></a>int resourceSize</strong>：设备侧预置的内存池大小，单位为Byte，计算过程中存储中间结果的内存空间，用于避免计算过程中动态申请内存造成性能波动。默认参数为头文件中的<span class="parmname" id="parmname19371816113519"><a name="parmname19371816113519"></a><a name="parmname19371816113519"></a>“IVF_DEFAULT_MEM”</span>。该参数通过底库大小和search的batch数共同确定，在底库大于或等于1000万且batch数大于或等于16时建议设置1024MB。</p>
+</td>
+</tr>
+<tr id="row3379162354"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.4.1"><p id="p03711623518"><a name="p03711623518"></a><a name="p03711623518"></a>输出</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.4.1 "><p id="p2037121633519"><a name="p2037121633519"></a><a name="p2037121633519"></a>无</p>
+</td>
+</tr>
+<tr id="row1237716203511"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.5.1"><p id="p20371816183513"><a name="p20371816183513"></a><a name="p20371816183513"></a>返回值</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.5.1 "><p id="p8371316133513"><a name="p8371316133513"></a><a name="p8371316133513"></a>无</p>
+</td>
+</tr>
+<tr id="row193701643510"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.6.1"><p id="p10371816193518"><a name="p10371816193518"></a><a name="p10371816193518"></a>约束说明</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.6.1 "><a name="ul193714166355"></a><a name="ul193714166355"></a><ul id="ul193714166355"><li><span class="parmname" id="parmname83781610351"><a name="parmname83781610351"></a><a name="parmname83781610351"></a>“devices”</span>需要为合法有效不重复的设备ID，最大数量为64。</li><li><span class="parmname" id="parmname7372016103511"><a name="parmname7372016103511"></a><a name="parmname7372016103511"></a>“resourceSize”</span>配置的值不超过4 * 1024MB（4 * 1024 * 1024 * 1024字节），当设置为<span class="parmvalue" id="parmvalue1037716153513"><a name="parmvalue1037716153513"></a><a name="parmvalue1037716153513"></a>“-1”</span>时，Device侧<span id="ph4372160356"><a name="ph4372160356"></a><a name="ph4372160356"></a>昇腾AI处理器</span>资源配置为默认值128MB。</li></ul>
 </td>
 </tr>
 </tbody>
