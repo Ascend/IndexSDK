@@ -11,7 +11,7 @@ RUN export DEBIAN_FRONTEND=noninteractive && \
     export TZ=Asia/Shanghai && \
     apt update && \
     apt install --no-install-recommends ca-certificates -y && \
-    apt install --no-install-recommends wget vim dos2unix net-tools ssh lsof sshpass -y && \
+    apt install --no-install-recommends wget vim dos2unix net-tools ssh lsof -y && \
     apt install --no-install-recommends curl gcc g++ make pkg-config unzip autoconf git patch -y && \
     apt install --no-install-recommends libblas3 liblapack3 gfortran openmpi-bin libopenmpi-dev libxml2 -y && \
     apt install --no-install-recommends pciutils liblapack-dev libblas-dev libffi-dev libssl-dev -y && \
@@ -23,7 +23,7 @@ RUN export DEBIAN_FRONTEND=noninteractive && \
 RUN mkdir ~/.pip && touch ~/.pip/pip.conf && \
     echo "[global]" > ~/.pip/pip.conf && \
     echo "trusted-host=mirrors.aliyun.com" >> ~/.pip/pip.conf && \
-    echo "index-url=http://mirrors.aliyun.com/pypi/simple" >> ~/.pip/pip.conf && \
+    echo "index-url=https://mirrors.aliyun.com/pypi/simple" >> ~/.pip/pip.conf && \
     echo "timeout=200" >> ~/.pip/pip.conf
 # python包
 RUN pip3 install -U pip && \

@@ -14,7 +14,7 @@ RUN export DEBIAN_FRONTEND=noninteractive && \
         sed -i '/^mirrorlist=/ s/^/#/' $repo; \
     done && \
     yum update -y && \
-    yum install -y ca-certificates wget vim dos2unix net-tools openssh-clients lsof sshpass \
+    yum install -y ca-certificates wget vim dos2unix net-tools openssh-clients lsof \
         curl gcc gcc-c++ make pkg-config unzip autoconf git patch \
         blas lapack gfortran openmpi openmpi-devel libxml2 \
         pciutils lapack-devel blas-devel libffi-devel openssl-devel \
@@ -27,7 +27,7 @@ RUN export DEBIAN_FRONTEND=noninteractive && \
 RUN mkdir ~/.pip && touch ~/.pip/pip.conf && \
     echo "[global]" > ~/.pip/pip.conf && \
     echo "trusted-host=mirrors.aliyun.com" >> ~/.pip/pip.conf && \
-    echo "index-url=http://mirrors.aliyun.com/pypi/simple" >> ~/.pip/pip.conf && \
+    echo "index-url=https://mirrors.aliyun.com/pypi/simple" >> ~/.pip/pip.conf && \
     echo "timeout=200" >> ~/.pip/pip.conf
 # python包
 RUN pip3 install -U pip && \
