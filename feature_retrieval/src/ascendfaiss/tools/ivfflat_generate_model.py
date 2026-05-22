@@ -17,10 +17,9 @@ MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 See the Mulan PSL v2 for more details.
 -------------------------------------------------------------------------
 """
+
 import os
 import argparse
-import traceback
-from multiprocessing import Pool
 
 import common as utils
 from common import OpJsonGenerator
@@ -34,11 +33,10 @@ def arg_parse():
     Parse arguements to the operator model
     """
 
-    parser = argparse.ArgumentParser(
-        description="generate distance_compute_ivf_sq8 operator model")
+    parser = argparse.ArgumentParser(description="generate distance_compute_ivf_sq8 operator model")
     utils.op_common_parse(parser, "--cores", 'core_num', 40, int, "Core number, 40 by default")
     utils.op_common_parse(parser, "-d", "dim", 128, int, "Feature dimension, 128 is only support now")
-    utils.op_common_parse(parser, "-c", "coarse_centroid_num", 2048, int, "Number of coarse centroid")
+    utils.op_common_parse(parser, "-c", "coarse_centroid_num", 1024, int, "Number of coarse centroid")
     utils.op_common_parse(parser, "-p", "process_id", 0, int, "Number of process_id")
     utils.op_common_parse(parser, "-pool", "pool_size", 10, int, "Number of pool_size")
     utils.op_common_parse(parser, "-t", 'npu_type', "910B4", str, "NPU type, 910 series. 910B4 by default")
@@ -64,7 +62,7 @@ def generate_distance_flat_l2_mins_at_fp32_json(core_num, code_num, dim, file_pa
 def generate_910b_flat_ip_fp32_json(core_num, dim, file_path):
     # write dist_compute_flat_mins json
     dist_flat_ip_obj = []
-    burst_len = 16 if dim > 256 else 64
+    burst_len = 64
     generator = OpJsonGenerator("DistanceIVFFlatIpFP32")
     generator.add_input("ND", [1, dim], "float32")
     generator.add_input("ND", [_CODE_NUM, dim], "float32")
