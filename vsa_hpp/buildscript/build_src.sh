@@ -45,8 +45,8 @@ fi
 echo "cmake success."
 
 make clean
-if ! make -j 10; then
-    echo "make -j 10 failed."
+if ! make -j; then
+    echo "make -j failed."
     exit 1
 fi
 if ! make install; then

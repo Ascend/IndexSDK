@@ -28,6 +28,7 @@ readonly ASCEND_SEARCH_HOME="${PROJECT_ROOT_FOLDER}"/secondparty/ascendsearch
 readonly DISK_SEARCH_HOME="${PROJECT_ROOT_FOLDER}"/secondparty/disksearch
 readonly OCK_HOME="${PROJECT_ROOT_FOLDER}"/secondparty
 readonly BUILD_FAISS_HOME="${FAISS_HOME:-/usr/local/faiss/faiss1.10.0}"
+readonly BUILD_FEATURE_RETRIEVAL_OPS="${BUILD_FEATURE_RETRIEVAL_OPS:-ON}"
 readonly VERSION=$(sed -n 's/^version:[[:space:]]*//p' "${PROJECT_ROOT_FOLDER}"/../../ci/config/config.ini)
 readonly ARCH="$(uname -m)"
 OP_PROTO_TARGET_OUT_DIR="${PROJECT_SRC_PATH}/ops/build/makepkg/packages/vendors/mxIndex/op_proto/"
@@ -96,6 +97,14 @@ prepare_zip_src()
     cd "${PROJECT_ZIP_PATH}"/feature_retrieval
     ls -al
     ln -sf faiss/ascend include/ascend
+    if [ -n "${FAISS_PACKAGE_MODE}" ]; then
+        cat > faiss_versions.info << EOF
+mode:${FAISS_PACKAGE_MODE}
+supported:${FAISS_PACKAGE_SUPPORTED}
+default:${FAISS_PACKAGE_DEFAULT}
+${FAISS_PACKAGE_DEFAULT}:${BUILD_FAISS_HOME}
+EOF
+    fi
     cd -
     build_train
 }
@@ -104,6 +113,17 @@ make_zip_src()
 {
     cd "${PROJECT_ZIP_PATH}"
     tar -zcf "$1".tar.gz feature_retrieval
+}
+
+make_zip_src_from_stage()
+{
+    local stage_root="$1"
+    local package_name="$2"
+
+    (
+        cd "${stage_root}"
+        tar -zcf "${PROJECT_ZIP_PATH}/${package_name}.tar.gz" feature_retrieval
+    )
 }
 
 prepare_disksearch()
@@ -224,15 +244,18 @@ cp_ivfsp_opsso_with_npu_type()
         return 0
     fi
 
-    npu_device_type=$1
+    local npu_device_type="$1"
+    local ops_build_dir="${2:-${PROJECT_SRC_PATH}/ops/build}"
+    local op_proto_target_out_dir="${ops_build_dir}/makepkg/packages/vendors/mxIndex/op_proto/"
+    local aicpu_op_impl_out_dir="${ops_build_dir}/makepkg/packages/vendors/mxIndex/op_impl/cpu/aicpu_kernel/impl/"
     if [ -d "${ASCEND_SEARCH_HOME}/${npu_device_type}/IVFSP" ]; then
         # 拷贝ivfsp的aicore接口so文件、aicpu算子so文件、tik/aicpu描述文件、tik算子文件
         ivfsp_aicore_so_file="${ASCEND_SEARCH_HOME}/${npu_device_type}/IVFSP/ops/libcust_op_proto_ascendsearch.so"
         ivfsp_aicpu_so_file="${ASCEND_SEARCH_HOME}/${npu_device_type}/IVFSP/ops/libcust_aicpu_kernels_ascendsearch.so"
-        mkdir -p "${OP_PROTO_TARGET_OUT_DIR}"
-        mkdir -p "${AICPU_OP_IMPL_OUT_DIR}"
-        cp "${ivfsp_aicore_so_file}" "${OP_PROTO_TARGET_OUT_DIR}"/libcust_op_proto_ascendsearch.so
-        cp "${ivfsp_aicpu_so_file}" "${AICPU_OP_IMPL_OUT_DIR}"/libcust_aicpu_kernels_ascendsearch.so
+        mkdir -p "${op_proto_target_out_dir}"
+        mkdir -p "${aicpu_op_impl_out_dir}"
+        cp "${ivfsp_aicore_so_file}" "${op_proto_target_out_dir}"/libcust_op_proto_ascendsearch.so
+        cp "${ivfsp_aicpu_so_file}" "${aicpu_op_impl_out_dir}"/libcust_aicpu_kernels_ascendsearch.so
         return 0
     else
         return 1
@@ -259,17 +282,65 @@ clean_ivfsp_opsso_with_npu_type()
     [ -f "${AICPU_OP_IMPL_OUT_DIR}"/libcust_aicpu_kernels_ascendsearch.so ] && rm "${AICPU_OP_IMPL_OUT_DIR}"/libcust_aicpu_kernels_ascendsearch.so
 }
 
+build_ops_for_npu_type()
+{
+    local npu_device_type="$1"
+    local ops_build_dir="${PROJECT_SRC_PATH}/ops/build_${npu_device_type}"
+    local ops_src_dir="${PROJECT_SRC_PATH}/ops_src_${npu_device_type}"
+    local stage_root="${PROJECT_ZIP_PATH}/stage_${npu_device_type}"
+    local stage_pkg_dir="${stage_root}/feature_retrieval"
+
+    info "Start building ops for ${npu_device_type}..."
+    rm -rf "${ops_src_dir}" "${ops_build_dir}" "${stage_root}"
+    mkdir -p "${ops_build_dir}" "${stage_root}"
+    cp -a "${PROJECT_SRC_PATH}/ops" "${ops_src_dir}"
+    rm -rf "${ops_src_dir}"/build*
+    cp -a "${PROJECT_ZIP_PATH}/feature_retrieval" "${stage_root}/"
+    mkdir -p "${stage_pkg_dir}/ops"
+    rm -f "${stage_pkg_dir}/ops/"*.run
+
+    cp_ivfsp_opsso_with_npu_type "${npu_device_type}" "${ops_build_dir}" || true
+    cmake -S "${ops_src_dir}" -B "${ops_build_dir}" \
+        -DNPU_TYPE="${npu_device_type}" -DASCEND_SEARCH="${build_ascend_search}"
+    make -C "${ops_build_dir}" -j
+    cp "${ops_build_dir}"/*.run "${stage_pkg_dir}/ops"
+    make_zip_src_from_stage "${stage_root}" "${RELEASE_PKG_NAME}-${npu_device_type}"
+    rm -rf "${ops_src_dir}"
+    info "Finish building ops for ${npu_device_type}."
+}
+
 build_ops()
 {
-    npu_device_type=$1
-    mkdir -p "${PROJECT_ZIP_PATH}"/feature_retrieval/ops/
-    cd "${PROJECT_SRC_PATH}"/ops && rm -rf build && mkdir ./build
-    cp_ivfsp_opsso_with_npu_type ${npu_device_type} || true
-    cp_mix_ops_project ${npu_device_type}
-    cmake -B build -DNPU_TYPE=${npu_device_type} -DASCEND_SEARCH=${build_ascend_search} && cd build && make -j
-    cp *.run "${PROJECT_ZIP_PATH}"/feature_retrieval/ops
-    make_zip_src ${RELEASE_PKG_NAME}-${npu_device_type}
-    clean_ivfsp_opsso_with_npu_type "${npu_device_type}" || true
+    local pid_310
+    local pid_310p
+    local pid_910b
+    local build_failed=0
+
+    cp_mix_ops_project
+    build_ops_for_npu_type 310 &
+    pid_310=$!
+    build_ops_for_npu_type 310P &
+    pid_310p=$!
+    build_ops_for_npu_type 910B &
+    pid_910b=$!
+
+    wait "${pid_310}" || build_failed=1
+    wait "${pid_310p}" || build_failed=1
+    wait "${pid_910b}" || build_failed=1
+
+    rm -rf "${PROJECT_ZIP_PATH}"/stage_310 "${PROJECT_ZIP_PATH}"/stage_310P "${PROJECT_ZIP_PATH}"/stage_910B
+    rm -rf "${PROJECT_SRC_PATH}"/ops_src_310 "${PROJECT_SRC_PATH}"/ops_src_310P "${PROJECT_SRC_PATH}"/ops_src_910B
+    if [ "${build_failed}" -ne 0 ]; then
+        error "build ops failed."
+        exit 1
+    fi
+}
+
+package_without_ops()
+{
+    make_zip_src ${RELEASE_PKG_NAME}-310
+    make_zip_src ${RELEASE_PKG_NAME}-310P
+    make_zip_src ${RELEASE_PKG_NAME}-910B
 }
 
 install_ock()
@@ -323,10 +394,13 @@ build_install()
         install_disk_search
     fi
 
-    cp_ivfsp_ops_ini
-    build_ops 310
-    build_ops 310P
-    build_ops 910B
+    if [ "${BUILD_FEATURE_RETRIEVAL_OPS}" = "ON" ]; then
+        cp_ivfsp_ops_ini
+        build_ops
+    else
+        info "Skip ops build, package host libraries and headers only."
+        package_without_ops
+    fi
 
     rm -rf "${PROJECT_ZIP_PATH}"/feature_retrieval
 }

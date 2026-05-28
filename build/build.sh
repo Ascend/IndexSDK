@@ -26,7 +26,7 @@ readonly Gcc7_PATH="/opt/rh/devtoolset-index/root/usr/bin"
 readonly FAISS_110_HOME="${FAISS_110_HOME:-/usr/local/faiss/faiss1.10.0}"
 readonly FAISS_114_HOME="${FAISS_114_HOME:-/usr/local/faiss/faiss1.14.1}"
 readonly DEFAULT_FAISS_ABI="${DEFAULT_FAISS_ABI:-faiss1.10}"
-readonly MULTI_FAISS_PACKAGE="${MULTI_FAISS_PACKAGE:-ON}"
+readonly MULTI_FAISS_PACKAGE="${MULTI_FAISS_PACKAGE:-OFF}"
 readonly FAISS_VARIANT_WORK_DIR="${TOP_DIR}/build/faiss_variants"
 readonly FAISS_COMBINED_OUTPUT_DIR="${TOP_DIR}/build/faiss_combined_output"
 
@@ -70,7 +70,19 @@ function build_feature_retrieval()
 {
     local gcc_type="$1"
     local faiss_home="${2:-${FAISS_110_HOME}}"
+    local faiss_package_mode="${3:-}"
+    local faiss_package_supported="${4:-}"
+    local faiss_package_default="${5:-}"
+    local build_ops="${6:-ON}"
     export FAISS_HOME="${faiss_home}"
+    export BUILD_FEATURE_RETRIEVAL_OPS="${build_ops}"
+    if [ -n "${faiss_package_mode}" ]; then
+        export FAISS_PACKAGE_MODE="${faiss_package_mode}"
+        export FAISS_PACKAGE_SUPPORTED="${faiss_package_supported}"
+        export FAISS_PACKAGE_DEFAULT="${faiss_package_default}"
+    else
+        unset FAISS_PACKAGE_MODE FAISS_PACKAGE_SUPPORTED FAISS_PACKAGE_DEFAULT
+    fi
     echo "build feature_retrieval with FAISS_HOME=${FAISS_HOME}"
     if [ ! -d "${TOP_DIR}/feature_retrieval/src/ascendfaiss/ops/cmake/util/makeself" ]; then
         mkdir -p "${TOP_DIR}/feature_retrieval/src/ascendfaiss/ops/cmake/util/makeself"
@@ -92,6 +104,15 @@ function validate_default_faiss_abi()
     if [ "${DEFAULT_FAISS_ABI}" != "faiss1.10" ] && [ "${DEFAULT_FAISS_ABI}" != "faiss1.14" ]; then
         echo "[ERROR] DEFAULT_FAISS_ABI only supports faiss1.10 or faiss1.14, current: ${DEFAULT_FAISS_ABI}"
         exit 1
+    fi
+}
+
+function get_default_faiss_home()
+{
+    if [ "${DEFAULT_FAISS_ABI}" = "faiss1.14" ]; then
+        echo "${FAISS_114_HOME}"
+    else
+        echo "${FAISS_110_HOME}"
     fi
 }
 
@@ -145,6 +166,8 @@ function activate_default_faiss_variant_in_pkg()
     done
 
     cat > "${pkg_dir}/faiss_versions.info" << EOF
+mode:multi
+supported:faiss1.10,faiss1.14
 default:${variant}
 faiss1.10:${FAISS_110_HOME}
 faiss1.14:${FAISS_114_HOME}
@@ -163,12 +186,16 @@ function combine_faiss_variant_package()
     local faiss110_dir="${combine_dir}/faiss1.10"
     local faiss114_dir="${combine_dir}/faiss1.14"
     local out_dir="${combine_dir}/out"
+    local base_dir="${faiss110_dir}"
 
     rm -rf "${combine_dir}"
     mkdir -p "${faiss110_dir}" "${faiss114_dir}" "${out_dir}"
     tar -xzf "${faiss110_tar}" -C "${faiss110_dir}"
     tar -xzf "${faiss114_tar}" -C "${faiss114_dir}"
-    cp -a "${faiss110_dir}/feature_retrieval" "${out_dir}/"
+    if [ "${DEFAULT_FAISS_ABI}" = "faiss1.14" ]; then
+        base_dir="${faiss114_dir}"
+    fi
+    cp -a "${base_dir}/feature_retrieval" "${out_dir}/"
 
     local dst_pkg="${out_dir}/feature_retrieval"
     copy_faiss_variant_files "${faiss110_dir}/feature_retrieval" "${dst_pkg}" "faiss1.10"
@@ -224,12 +251,16 @@ function build_feature_retrieval_multi_faiss()
         fi
 
         echo "build ${gcc_type} package variant ${variant} with FAISS_HOME=${faiss_home}"
+        local build_ops="OFF"
+        if [ "${variant}" = "${DEFAULT_FAISS_ABI}" ]; then
+            build_ops="ON"
+        fi
         rm -rf "${TOP_DIR}/build/output"
         rm -rf "${TOP_DIR}/feature_retrieval/output"
         rm -rf "${TOP_DIR}/feature_retrieval/secondparty"
 
         build_Retrieval "${gcc_type}" "${faiss_home}"
-        build_feature_retrieval "${gcc_type}" "${faiss_home}"
+        build_feature_retrieval "${gcc_type}" "${faiss_home}" "" "" "" "${build_ops}"
 
         if ! compgen -G "${TOP_DIR}/feature_retrieval/output/*.tar.gz" > /dev/null; then
             echo "[ERROR] no feature_retrieval package generated for ${variant}"
@@ -249,9 +280,25 @@ function build_release_for_gcc()
         build_vsa
         build_feature_retrieval_multi_faiss "${gcc_type}"
     else
-        build_Retrieval "${gcc_type}" "${FAISS_110_HOME}"
-        build_vsa
-        build_feature_retrieval "${gcc_type}" "${FAISS_110_HOME}"
+        local faiss_home
+        faiss_home=$(get_default_faiss_home)
+        if [ ! -d "${faiss_home}" ]; then
+            echo "[ERROR] ${DEFAULT_FAISS_ABI} FAISS_HOME does not exist: ${faiss_home}"
+            exit 1
+        fi
+        echo "build single faiss package variant ${DEFAULT_FAISS_ABI} with FAISS_HOME=${faiss_home}"
+        build_Retrieval "${gcc_type}" "${faiss_home}" &
+        local retrieval_pid=$!
+        build_vsa &
+        local vsa_pid=$!
+        local build_failed=0
+        wait "${retrieval_pid}" || build_failed=1
+        wait "${vsa_pid}" || build_failed=1
+        if [ "${build_failed}" -ne 0 ]; then
+            echo "[ERROR] build_Retrieval or build_vsa failed."
+            exit 1
+        fi
+        build_feature_retrieval "${gcc_type}" "${faiss_home}" "single" "${DEFAULT_FAISS_ABI}" "${DEFAULT_FAISS_ABI}"
     fi
 }
 
