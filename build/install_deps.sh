@@ -22,6 +22,8 @@ readonly TOP_DIR=${CUR_DIR}/..
 readonly FAISS_ROOT="/usr/local/faiss"
 readonly FAISS_110_INSTALL_PATH="${FAISS_110_HOME:-${FAISS_ROOT}/faiss1.10.0}"
 readonly FAISS_114_INSTALL_PATH="${FAISS_114_HOME:-${FAISS_ROOT}/faiss1.14.1}"
+readonly DEFAULT_FAISS_ABI="${DEFAULT_FAISS_ABI:-faiss1.10}"
+readonly MULTI_FAISS_PACKAGE="${MULTI_FAISS_PACKAGE:-OFF}"
 
 # ============== 1. install OpenBLAS ==============
 echo "[INSTALL_INFO] start installing OpenBLAS..."
@@ -81,8 +83,23 @@ function install_faiss()
     cd "${TOP_DIR}" && rm -f "${faiss_tar_file}" && rm -rf "${faiss_src_dir}"
 }
 
-install_faiss "1.10.0" "${FAISS_110_INSTALL_PATH}"
-install_faiss "1.14.1" "${FAISS_114_INSTALL_PATH}"
+if [ "${MULTI_FAISS_PACKAGE}" = "ON" ]; then
+    install_faiss "1.10.0" "${FAISS_110_INSTALL_PATH}"
+    install_faiss "1.14.1" "${FAISS_114_INSTALL_PATH}"
+else
+    case "${DEFAULT_FAISS_ABI}" in
+        faiss1.10|1.10|1.10.0)
+            install_faiss "1.10.0" "${FAISS_110_INSTALL_PATH}"
+            ;;
+        faiss1.14|1.14|1.14.1)
+            install_faiss "1.14.1" "${FAISS_114_INSTALL_PATH}"
+            ;;
+        *)
+            echo "[INSTALL_ERROR] DEFAULT_FAISS_ABI only supports faiss1.10 or faiss1.14, current: ${DEFAULT_FAISS_ABI}"
+            exit 1
+            ;;
+    esac
+fi
 
 # ============== 3. clone makeself ==============
 function install_package_deps()

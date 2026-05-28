@@ -21,6 +21,7 @@ install_flag="n"
 version_flag="n"
 upgrade_flag="n"
 quiet_flag="n"
+faiss_version_flag="n"
 tmp_path=$(pwd)
 PACKAGE_LOG_NAME=mxIndex
 info_record_path="$HOME/log/mxIndex"
@@ -365,6 +366,7 @@ function parse_script_args() {
             shift
             ;;
         --faiss-version=*)
+            faiss_version_flag=y
             faiss_version=$(normalize_faiss_version "$(echo "$1" | cut -d"=" -f2)") || {
                 print "ERROR" "Unsupported faiss version: $1"
                 exit 1
@@ -492,10 +494,25 @@ function configure_faiss_variant()
     local package_dir="$1"
     local include_dir="${package_dir}/include"
     local lib_dir="${package_dir}/host/lib"
+    local faiss_info_file="${package_dir}/faiss_versions.info"
+    local supported_versions=""
+    local package_default_version=""
+
+    if [ -f "${faiss_info_file}" ]; then
+        supported_versions=$(awk -F: '/^supported:/ {print $2}' "${faiss_info_file}")
+        package_default_version=$(awk -F: '/^default:/ {print $2}' "${faiss_info_file}")
+        if [ -n "${package_default_version}" ] && [ "${faiss_version_flag}" != "y" ]; then
+            faiss_version="${package_default_version}"
+        fi
+        if [ -n "${supported_versions}" ] && [[ ",${supported_versions}," != *",${faiss_version},"* ]]; then
+            log "ERROR" "The package does not contain ${faiss_version}. Supported faiss version: ${supported_versions}" "y"
+            exit 1
+        fi
+    fi
 
     if [ ! -d "${include_dir}/faiss1.10" ] && [ ! -d "${include_dir}/faiss1.14" ] && \
         [ ! -d "${lib_dir}/faiss1.10" ] && [ ! -d "${lib_dir}/faiss1.14" ]; then
-        log "INFO" "No multi-faiss layout found, skip faiss variant selection"
+        log "INFO" "No multi-faiss layout found, use package faiss ABI variant: ${faiss_version}"
         return 0
     fi
 

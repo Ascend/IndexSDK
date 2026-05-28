@@ -27,7 +27,7 @@ SECUREC_SRC_PATH="${OPENSOURCE_PATH}/huawei_secure_c/src"
 echo "Build ${SECUREC_SRC_PATH}"
 SECUREC_INSTALL_PATH="${INSTALL_PATH}/securec"
 
-function compile_securec() 
+function compile_securec()
 {
     [ -d "${SECUREC_INSTALL_PATH}" ] && rm -rf "${SECUREC_INSTALL_PATH}"
     echo "${SECUREC_INSTALL_PATH}"
@@ -35,8 +35,8 @@ function compile_securec()
         mkdir -p "${SECUREC_INSTALL_PATH}"
     fi
     cd "${SECUREC_SRC_PATH}"
-    make -j 10
-    make lib -j 10 # build .a
+    make -j
+    make lib -j # build .a
     cp -rf "${OPENSOURCE_PATH}/huawei_secure_c/include" "${SECUREC_INSTALL_PATH}/"
     cp -rf "${OPENSOURCE_PATH}/huawei_secure_c/lib" "${SECUREC_INSTALL_PATH}/"
 }
