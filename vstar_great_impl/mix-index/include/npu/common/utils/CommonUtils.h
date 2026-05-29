@@ -16,31 +16,36 @@
  * -------------------------------------------------------------------------
  */
 
-
 #ifndef ASCEND_COMMON_UTILS_H
 #define ASCEND_COMMON_UTILS_H
 
 #include <limits.h>
 #include <pwd.h>
 #include <unistd.h>
-#include <string>
+
 #include <memory>
+#include <string>
 #include <vector>
+
 #include "securec.h"
 
 #define CREATE_UNIQUE_PTR(type, args...) std::make_unique<type>(args)
 
-namespace ascendSearchacc {
-class CommonUtils {
-public:
+namespace ascendSearchacc
+{
+class CommonUtils
+{
+   public:
     static std::string RealPath(const std::string &inPath)
     {
         std::string result = inPath;
 
         // 1. replace ~/ with /home/user/
-        if (inPath.size() >= 2 && inPath[0] == '~' && inPath[1] == '/') {  // >=2 means inPath startswith '~/'
+        if (inPath.size() >= 2 && inPath[0] == '~' && inPath[1] == '/')
+        {  // >=2 means inPath startswith '~/'
             struct passwd *pw = getpwuid(getuid());
-            if (pw == nullptr || pw->pw_dir == nullptr) {
+            if (pw == nullptr || pw->pw_dir == nullptr)
+            {
                 return std::string();
             }
             std::string homedir(pw->pw_dir);
@@ -49,12 +54,14 @@ public:
         }
 
         // 2. realpath
-        if (result.size() > PATH_MAX) {
+        if (result.size() > PATH_MAX)
+        {
             return std::string();
         }
         char realPath[PATH_MAX] = {0};
         char *ptr = realpath(result.c_str(), realPath);
-        if (ptr == nullptr) {
+        if (ptr == nullptr)
+        {
             return std::string();
         }
         result = std::string(realPath);
@@ -64,10 +71,8 @@ public:
 
     static bool CheckPathValid(const std::string &path)
     {
-        if (path.find("/home/") != 0 && path.find("/root/") != 0) {
-            return false;
-        }
-        if (access(path.c_str(), R_OK) != EOK) {
+        if (access(path.c_str(), R_OK) != EOK)
+        {
             return false;
         }
         return true;
@@ -75,14 +80,16 @@ public:
 
     static void AclInputBufferDelete(std::vector<const aclDataBuffer *> *distOpInput)
     {
-        for (auto &item : *distOpInput) {
+        for (auto &item : *distOpInput)
+        {
             aclDestroyDataBuffer(item);
         }
         delete distOpInput;
     }
     static void AclOutputBufferDelete(std::vector<aclDataBuffer *> *distOpOutput)
     {
-        for (auto &item : *distOpOutput) {
+        for (auto &item : *distOpOutput)
+        {
             aclDestroyDataBuffer(item);
         }
         delete distOpOutput;

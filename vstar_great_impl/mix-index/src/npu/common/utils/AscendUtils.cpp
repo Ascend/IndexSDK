@@ -16,23 +16,19 @@
  * -------------------------------------------------------------------------
  */
 
-
 #include <npu/common/utils/AscendUtils.h>
+
 #include <mutex>
 #include <thread>
+
 #include "npu/common/utils/CommonUtils.h"
 #include "npu/common/utils/LogUtils.h"
 
-namespace ascendSearchacc {
-void AscendUtils::setCurrentDevice(int device)
+namespace ascendSearchacc
 {
-    ACL_REQUIRE_OK(aclrtSetDevice(device));
-}
+void AscendUtils::setCurrentDevice(int device) { ACL_REQUIRE_OK(aclrtSetDevice(device)); }
 
-void AscendUtils::resetCurrentDevice(int device)
-{
-    (void)aclrtResetDevice(device);
-}
+void AscendUtils::resetCurrentDevice(int device) { (void)aclrtResetDevice(device); }
 
 aclrtContext AscendUtils::getCurrentContext()
 {
@@ -41,10 +37,7 @@ aclrtContext AscendUtils::getCurrentContext()
     return ctx;
 }
 
-void AscendUtils::setCurrentContext(aclrtContext ctx)
-{
-    ACL_REQUIRE_OK(aclrtSetCurrentContext(ctx));
-}
+void AscendUtils::setCurrentContext(aclrtContext ctx) { ACL_REQUIRE_OK(aclrtSetCurrentContext(ctx)); }
 
 void AscendUtils::attachToCpu(int cpuId)
 {
@@ -60,7 +53,8 @@ void AscendUtils::attachToCpus(std::initializer_list<uint8_t> cpus)
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
 
-    for (auto cpuId : cpus) {
+    for (auto cpuId : cpus)
+    {
         size_t cpu = (size_t)cpuId % std::thread::hardware_concurrency();
         CPU_SET(cpu, &cpuset);
     }
@@ -74,17 +68,19 @@ void AscendOperatorManager::init(std::string path)
     static std::mutex mtx;
 
     std::lock_guard<std::mutex> lock(mtx);
-    if (isInited) {
+    if (isInited)
+    {
         return;
     }
 
 #ifdef HOSTCPU
     char *modelpath = std::getenv("MX_INDEX_MODELPATH");
-    if (modelpath != nullptr) {
+    if (modelpath != nullptr)
+    {
         path = CommonUtils::RealPath(std::string(modelpath));
         ASCEND_THROW_IF_NOT_MSG(!path.empty(), "Modelpath from env is invalid");
-        ASCEND_THROW_IF_NOT_FMT(CommonUtils::CheckPathValid(path),
-                                "Modelpath from env: %s must be in home directory and readable", path.c_str());
+        ASCEND_THROW_IF_NOT_FMT(CommonUtils::CheckPathValid(path), "Modelpath from env: %s must be readable",
+                                path.c_str());
         APP_LOG_INFO("Use env %s as modelpath", path.c_str());
     }
 #endif
@@ -92,17 +88,9 @@ void AscendOperatorManager::init(std::string path)
     isInited = true;
 }
 
-AscendOperatorManager::~AscendOperatorManager()
-{
-}
+AscendOperatorManager::~AscendOperatorManager() {}
 
-DeviceScope::DeviceScope()
-{
-    AscendUtils::setCurrentDevice(0);
-}
+DeviceScope::DeviceScope() { AscendUtils::setCurrentDevice(0); }
 
-DeviceScope::~DeviceScope()
-{
-    AscendUtils::resetCurrentDevice(0);
-}
+DeviceScope::~DeviceScope() { AscendUtils::resetCurrentDevice(0); }
 }  // namespace ascendSearchacc

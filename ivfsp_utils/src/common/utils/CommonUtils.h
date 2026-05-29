@@ -16,79 +16,85 @@
  * -------------------------------------------------------------------------
  */
 
-
 #ifndef ASCEND_COMMON_UTILS_H
 #define ASCEND_COMMON_UTILS_H
 
-#include <climits>
 #include <pwd.h>
 #include <unistd.h>
+
+#include <climits>
 #include <string>
 #include <vector>
+
 #include "acl/acl.h"
 
-#define CREATE_UNIQUE_PTR(type, args...) \
-    std::make_unique<type>(args)
+#define CREATE_UNIQUE_PTR(type, args...) std::make_unique<type>(args)
 
-namespace ascendSearch {
-    class CommonUtils {
-    public:
-        static std::string RealPath(const std::string &inPath)
-        {
-            std::string result = inPath;
+namespace ascendSearch
+{
+class CommonUtils
+{
+   public:
+    static std::string RealPath(const std::string &inPath)
+    {
+        std::string result = inPath;
 
-            // 1. replace ~/ with /home/user/
-            if (inPath.size() >= 2 && inPath[0] == '~' && inPath[1] == '/') { // >=2 means inPath startswith '~/'
-                struct passwd *pw = getpwuid(getuid());
-                if (pw == nullptr || pw->pw_dir == nullptr) {
-                    return std::string();
-                }
-                std::string homedir(pw->pw_dir);
-                homedir.append(inPath.substr(1));
-                result = std::move(homedir);
-            }
-
-            // 2. realpath
-            if (result.size() > PATH_MAX) {
+        // 1. replace ~/ with /home/user/
+        if (inPath.size() >= 2 && inPath[0] == '~' && inPath[1] == '/')
+        {  // >=2 means inPath startswith '~/'
+            struct passwd *pw = getpwuid(getuid());
+            if (pw == nullptr || pw->pw_dir == nullptr)
+            {
                 return std::string();
             }
-            char realPath[PATH_MAX] = {0};
-            char *ptr = realpath(result.c_str(), realPath);
-            if (ptr == nullptr) {
-                return std::string();
-            }
-            result = std::string(realPath);
-
-            return result;
+            std::string homedir(pw->pw_dir);
+            homedir.append(inPath.substr(1));
+            result = std::move(homedir);
         }
 
-        static bool CheckPathValid(const std::string &path)
+        // 2. realpath
+        if (result.size() > PATH_MAX)
         {
-            if (path.find("/home/") != 0 && path.find("/root/") != 0) {
-                return false;
-            }
-            if (access(path.c_str(), R_OK) != EOK) {
-                return false;
-            }
-            return true;
+            return std::string();
         }
-
-        static void AclInputBufferDelete(std::vector<const aclDataBuffer *> *distOpInput)
+        char realPath[PATH_MAX] = {0};
+        char *ptr = realpath(result.c_str(), realPath);
+        if (ptr == nullptr)
         {
-            for (auto &item : *distOpInput) {
-                aclDestroyDataBuffer(item);
-            }
-            delete distOpInput;
+            return std::string();
         }
+        result = std::string(realPath);
 
-        static void AclOutputBufferDelete(std::vector<aclDataBuffer *> *distOpOutput)
+        return result;
+    }
+
+    static bool CheckPathValid(const std::string &path)
+    {
+        if (access(path.c_str(), R_OK) != EOK)
         {
-            for (auto &item : *distOpOutput) {
-                aclDestroyDataBuffer(item);
-            }
-            delete distOpOutput;
+            return false;
         }
-    };
-}
+        return true;
+    }
 
-#endif // ASCEND_COMMON_UTILS_H
+    static void AclInputBufferDelete(std::vector<const aclDataBuffer *> *distOpInput)
+    {
+        for (auto &item : *distOpInput)
+        {
+            aclDestroyDataBuffer(item);
+        }
+        delete distOpInput;
+    }
+
+    static void AclOutputBufferDelete(std::vector<aclDataBuffer *> *distOpOutput)
+    {
+        for (auto &item : *distOpOutput)
+        {
+            aclDestroyDataBuffer(item);
+        }
+        delete distOpOutput;
+    }
+};
+}  // namespace ascendSearch
+
+#endif  // ASCEND_COMMON_UTILS_H
