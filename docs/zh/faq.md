@@ -1,5 +1,7 @@
 # FAQ<a name="ZH-CN_TOPIC_0000001506414777"></a>
 
+本文档收录了IndexSDK的常见问题及解答。您也可以查阅 [GitCode Issues](https://gitcode.com/Ascend/IndexSDK/issues) 获取更多问题解决方案。若仍未找到答案，欢迎[新建 Issue](https://gitcode.com/Ascend/IndexSDK/issues/create/choose) 提问。
+
 ## 升级Faiss1.10.0常见问题<a name="ZH-CN_TOPIC_0000002248120594"></a>
 
 ### 编译Faiss 1.10.0时，CMake出现报错信息<a name="ZH-CN_TOPIC_0000002287047945"></a>
