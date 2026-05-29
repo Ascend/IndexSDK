@@ -5,6 +5,7 @@
 您可以通过多种方式支持本项目：
 
 - 通过[Issues](https://gitcode.com/Ascend/IndexSDK/issues)反馈问题。
+- 通过[IndexSDK新手任务池](https://gitcode.com/Ascend/IndexSDK/issues/14)参与贡献。
 - 建议或实现新功能。
 - 改进或扩展文档。
 - 审查Pull Request并协助其他贡献者。
@@ -18,7 +19,7 @@
 
 2. 将Fork到个人仓的代码克隆到本地进行代码开发
 
-   ```
+   ```bash
    git clone https://gitcode.com/<your-username>/IndexSDK.git
    ```
 
@@ -34,7 +35,7 @@
 
 5. 提交Pull Request
 
-   请参见[提交Pull Request流程](#提交Pull-Request流程)。
+   请参见[提交Pull Request流程](#提交pull-request流程)。
 
 ### 代码规范
 
@@ -45,6 +46,7 @@
 - 类名使用大驼峰命名法（如`DataManager`）
 - 函数和变量使用小写加下划线命名法（如`parse_data`）
 - 添加必要的类型注解和文档字符串
+- 更多内容请参考[昇腾社区 python 语言编程指导](https://gitcode.com/Ascend/community/blob/master/docs/contributor/Ascend-python-coding-style-guide.md)和[昇腾社区 python 语言安全编程指导](https://gitcode.com/Ascend/community/blob/master/docs/contributor/Ascend-python-secure-coding-guide.md)
 
 #### C++代码规范
 
@@ -53,6 +55,7 @@
 - 类名使用大驼峰命名法
 - 函数名使用小驼峰命名法
 - 添加必要的注释说明复杂逻辑
+- 更多内容请参考[昇腾社区 C++ 语言编程指导](https://gitcode.com/Ascend/community/blob/master/docs/contributor/Ascend-cpp-coding-style-guide.md)和[昇腾社区 C++ 语言安全编程指导](https://gitcode.com/Ascend/community/blob/master/docs/contributor/Ascend-cpp-secure-coding-guide.md)
 
 ### 代码测试
 
@@ -109,20 +112,24 @@ bash build.sh ut
    git checkout -b feature/<your-feature-name>
    ```
 
-2. **提交更改**
+2. **pre-commit检测**
+
+   为了确保代码质量和一致性，请在提交前参考[此文档](https://gitcode.com/Ascend/community/blob/master/docs/contributor/pre-commit-guide.md)在本地安装pre-commit，后续提交代码时可自动修复代码格式类问题。
+
+3. **提交更改**
 
    ```bash
    git add .
    git commit
    ```
 
-3. **推送到远程仓库**
+4. **推送到远程仓库**
 
    ```bash
    git push origin feature/<your-feature-name>
    ```
 
-4. **创建Pull Request**
+5. **创建Pull Request**
 
    在GitCode上创建Pull Request，并填写：
 
@@ -132,14 +139,14 @@ bash build.sh ut
 
    3. 开发自检项勾选
 
-5. **代码审查**
+6. **代码审查**
 
    1. 提交Pull Request后，您需要通知相关“负责人”（ Reviewers和Committers）进行内容审核。
    2. 您需要根据反馈审核意见修改代码，并重新提交更新。此流程可能涉及多轮迭代，请保持积极响应和沟通。
 
    Pull Request流程中会提示相关的“负责人”，可在Pull Request流程中指定相关“负责人”。
 
-6. **代码合并**
+7. **代码合并**
 
    Pull Request需要依次集齐如下四个标签即可完成代码合入：
 
@@ -159,6 +166,8 @@ bash build.sh ut
 
 ## 社区准则
 
+IndexSDK 隶属于昇腾（Ascend）开源社区。关于社区的整体治理架构、技术指导委员会（TSC）章程以及特别兴趣小组（SIG）的管理规范，请参阅[Ascend community 仓库整体介绍](https://gitcode.com/Ascend/community/blob/master/README.md)。
+
 ### 行为准则
 
 我们致力于为所有参与者提供一个友好、安全和包容的环境。参与本项目即表示您同意：
@@ -170,8 +179,8 @@ bash build.sh ut
 
 ### 沟通渠道
 
-- **Issues**：用于报告Bug、提出功能建议和讨论技术问题
-- **Pull Requests**：用于代码审查和讨论具体实现
+- **Issues**：用于报告Bug、提出功能建议和讨论技术问题。提交前请阅读[Issue提交指南](https://gitcode.com/Ascend/community/blob/master/docs/contributor/issue-guide.md)
+- **Pull Requests**：用于代码审查和讨论具体实现。提交前请阅读[PR提交指南](https://gitcode.com/Ascend/community/blob/master/docs/contributor/pr-guide.md)
 
 ## 许可证
 
