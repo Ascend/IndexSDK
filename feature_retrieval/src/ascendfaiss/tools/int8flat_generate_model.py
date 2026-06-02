@@ -17,10 +17,10 @@ MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 See the Mulan PSL v2 for more details.
 -------------------------------------------------------------------------
 """
+
 import os
 import sys
 import argparse
-from multiprocessing import Pool
 
 import common as utils
 from common import OpJsonGenerator
@@ -44,21 +44,26 @@ def arg_parse():
     Parse arguements to the operator model
     """
 
-    parser = argparse.ArgumentParser(
-        description="generate aicore operator model")
+    parser = argparse.ArgumentParser(description="generate aicore operator model")
 
     utils.op_common_parse(parser, "--cores", "core_num", 2, int, "Core number")
     utils.op_common_parse(parser, "-d", "dim", 512, int, "Feature dimension")
-    utils.op_common_parse(parser, "-p", "process_id", 0, int, "Number of process_id")
     utils.op_common_parse(parser, "-pool", "pool_size", 10, int, "Number of pool_size")
-    utils.op_common_parse(parser, "-t", 'npu_type', "310", str,
-                          "NPU type, 310 / 310P / 910B1 / 910B2 / 910B3 / 910B4 / 910_{NPU Name}. 310 by default")
+    utils.op_common_parse(parser, "-p", "process_id", 0, int, "Number of process_id")
+    utils.op_common_parse(
+        parser,
+        "-t",
+        'npu_type',
+        "310",
+        str,
+        "NPU type, 310 / 310P / 910B1 / 910B2 / 910B3 / 910B4 / 910_{NPU Name}. 310 by default",
+    )
     utils.op_common_parse(parser, "-code", "code_num", 262144, int, "size of code block")
     return parser.parse_args()
 
 
 def generate_distance_int8_cos_maxs_filter_json(core_num, query_num, dim, file_path, code_num_list):
-    centroids_num_each_loop = min(min((48 // min(48, query_num)) * 512, 1024), 512 * 1024 // dim)
+    centroids_num_each_loop = min(48 // min(48, query_num) * 512, 1024, 512 * 1024 // dim)
     int8_cos_maxs_obj = []
     for code_num in code_num_list:
         generator = OpJsonGenerator("DistanceInt8CosMaxsFilter")
@@ -157,8 +162,9 @@ def generate_distance_int8_cos_maxs_with_share_mask_json(core_num, query_num, di
     utils.generate_op_config(int8_cos_maxs_with_share_mask_obj, file_path)
 
 
-def generate_distance_int8_cos_maxs_with_share_mask_extra_score_json(core_num, query_num,
-                                                                     dim, file_path, code_num_list):
+def generate_distance_int8_cos_maxs_with_share_mask_extra_score_json(
+    core_num, query_num, dim, file_path, code_num_list
+):
     # write dist_int8_cos_maxs_with_mask json
     int8_cos_maxs_with_mask_obj = []
     for code_num in code_num_list:
@@ -199,24 +205,26 @@ def generate_distance_int8_l2_mins_json(core_num, query_num, dim, file_path, cod
 
 def generate_ascendc_dist_int8_flat_l2_json(core_num, search_page_sizes, dim, file_path, code_num_list):
     # write dist_compute_int8_l2_min json for 910B
-    acsendc_dist_int8_flat_l2_obj = []
+    ascendc_dist_int8_flat_l2_obj = []
     for code_num in code_num_list:
         for query_num in search_page_sizes:
             generator = OpJsonGenerator("AscendcDistInt8FlatL2")
             generator.add_input("ND", [query_num, dim], "int8")
             generator.add_input("ND", [query_num, (code_num + MASK_BIT_NUM - 1) // MASK_BIT_NUM], "uint8")
-            generator.add_input("ND", [code_num // CUBE_ALIGN, dim // INT8_CUBU_ALIGN, CUBE_ALIGN, INT8_CUBU_ALIGN],
-                                "int8")
+            generator.add_input(
+                "ND", [code_num // CUBE_ALIGN, dim // INT8_CUBU_ALIGN, CUBE_ALIGN, INT8_CUBU_ALIGN], "int8"
+            )
             generator.add_input("ND", [code_num], "int32")
             generator.add_input("ND", [core_num, ACTUAL_NUM_LEN], "uint32")
             generator.add_output("ND", [query_num, code_num], "float16")
-            generator.add_output("ND", [query_num, (code_num + BURST_LEN - 1) // BURST_LEN * BURST_RESULT_SIZE],
-                                 "float16")
+            generator.add_output(
+                "ND", [query_num, (code_num + BURST_LEN - 1) // BURST_LEN * BURST_RESULT_SIZE], "float16"
+            )
             generator.add_output("ND", [core_num, FLAG_SIZE], "uint16")
             obj = generator.generate_obj()
-            acsendc_dist_int8_flat_l2_obj.append(obj)
+            ascendc_dist_int8_flat_l2_obj.append(obj)
 
-    utils.generate_op_config(acsendc_dist_int8_flat_l2_obj, file_path)
+    utils.generate_op_config(ascendc_dist_int8_flat_l2_obj, file_path)
 
 
 def generate_distance_int8_l2_mins_with_mask_json(core_num, query_num, dim, file_path, code_num_list):
@@ -361,8 +369,9 @@ def generate_ascendc_dist_int8_flat_cos_json(core_num, search_page_sizes, dim, f
             # mask
             generator.add_input("ND", [queries_num, (code_num + MASK_BIT_NUM - 1) // MASK_BIT_NUM], "uint8")
             # base
-            generator.add_input("ND", [code_num // CUBE_ALIGN, dim // INT8_CUBU_ALIGN, CUBE_ALIGN, INT8_CUBU_ALIGN],
-                                "int8")
+            generator.add_input(
+                "ND", [code_num // CUBE_ALIGN, dim // INT8_CUBU_ALIGN, CUBE_ALIGN, INT8_CUBU_ALIGN], "int8"
+            )
             # queryNorm
             generator.add_input("ND", [(queries_num + CUBE_ALIGN - 1) // CUBE_ALIGN * CUBE_ALIGN], "float16")
             # baseNorm
@@ -372,8 +381,42 @@ def generate_ascendc_dist_int8_flat_cos_json(core_num, search_page_sizes, dim, f
             # dist
             generator.add_output("ND", [queries_num, code_num], "float16")
             # distMax
-            generator.add_output("ND", [queries_num, (code_num + BURST_LEN - 1) // BURST_LEN * BURST_RESULT_SIZE],
-                                 "float16")
+            generator.add_output(
+                "ND", [queries_num, (code_num + BURST_LEN - 1) // BURST_LEN * BURST_RESULT_SIZE], "float16"
+            )
+            # flag
+            generator.add_output("ND", [core_num, FLAG_SIZE], "uint16")
+            obj = generator.generate_obj()
+            ascendc_dist_int8_flat_cos_obj.append(obj)
+
+    utils.generate_op_config(ascendc_dist_int8_flat_cos_obj, file_path)
+
+
+def generate_ascendc_distance_int8_cos_maxs_with_mask_json(core_num, search_page_sizes, dim, file_path, code_num_list):
+    ascendc_dist_int8_flat_cos_obj = []
+    for code_num in code_num_list:
+        for queries_num in search_page_sizes:
+            generator = OpJsonGenerator("AscendcDistanceInt8CosMaxsWithMask")
+            # query
+            generator.add_input("ND", [queries_num, dim], "int8")
+            # mask
+            generator.add_input("ND", [queries_num, (code_num + MASK_BIT_NUM - 1) // MASK_BIT_NUM], "uint8")
+            # base
+            generator.add_input(
+                "ND", [code_num // CUBE_ALIGN, dim // INT8_CUBU_ALIGN, CUBE_ALIGN, INT8_CUBU_ALIGN], "int8"
+            )
+            # queryNorm
+            generator.add_input("ND", [(queries_num + CUBE_ALIGN - 1) // CUBE_ALIGN * CUBE_ALIGN], "float16")
+            # baseNorm
+            generator.add_input("ND", [code_num], "float16")
+            # actualNum
+            generator.add_input("ND", [core_num, ACTUAL_NUM_LEN], "uint32")
+            # dist
+            generator.add_output("ND", [queries_num, code_num], "float16")
+            # distMax
+            generator.add_output(
+                "ND", [queries_num, (code_num + BURST_LEN - 1) // BURST_LEN * BURST_RESULT_SIZE], "float16"
+            )
             # flag
             generator.add_output("ND", [core_num, FLAG_SIZE], "uint16")
             obj = generator.generate_obj()
@@ -389,6 +432,12 @@ def generate_910b_int8_offline_model(args, config_path, core_num, soc_version, c
     op_name_ = "ascendc_l2_norm_d{}_pid{}".format(dim, process_id)
     file_path_ = os.path.join(config_path, JSON_FILE.format(op_name_))
     generate_ascendc_l2_norm_json([NORM_CODE_NUM], dim, file_path_)
+    map_args.append((op_name_, soc_version))
+
+    search_page_sizes = (128, 112, 96, 80, 64, 48, 36, 32, 24, 18, 16, 12, 8, 6, 4, 2, 1)
+    op_name_ = "ascendc_distance_int8_cos_maxs_with_mask_d{}_pid{}".format(dim, process_id)
+    file_path_ = os.path.join(config_path, JSON_FILE.format(op_name_))
+    generate_ascendc_distance_int8_cos_maxs_with_mask_json(core_num, search_page_sizes, dim, file_path_, code_num_list)
     map_args.append((op_name_, soc_version))
 
     search_page_sizes = (128, 112, 96, 80, 64, 48, 36, 32, 24, 18, 16, 12, 8, 6, 4, 2, 1)
@@ -419,8 +468,9 @@ def append_int8_cos_maxs_extra_score_op(extra_score_op_args):
 
     op_name_ = int8_cos_maxs_with_share_mask_extra_score_op_name.format(page_size, process_id)
     file_path_ = os.path.join(config_path, JSON_FILE.format(op_name_))
-    generate_distance_int8_cos_maxs_with_share_mask_extra_score_json(core_num,
-                                                                        page_size, dim, file_path_, code_num_list)
+    generate_distance_int8_cos_maxs_with_share_mask_extra_score_json(
+        core_num, page_size, dim, file_path_, code_num_list
+    )
     map_args.append((op_name_, soc_version))
 
     op_name_ = int8_cos_maxs_with_mask_op_name.format(page_size, process_id)
@@ -520,7 +570,9 @@ def generate_int8_offline_model():
         if "-code" in sys.argv:
             code_num = args.code_num
             utils.check_param_range(code_num, valid_code_num_list, "code_num")
-            valid_code_num_list = [code_num, ]
+            valid_code_num_list = [
+                code_num,
+            ]
 
         generate_910b_int8_offline_model(args, config_path, core_num, soc_version, valid_code_num_list)
         return

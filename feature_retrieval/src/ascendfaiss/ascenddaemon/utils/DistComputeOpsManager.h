@@ -16,13 +16,13 @@
  * -------------------------------------------------------------------------
  */
 
-
 #ifndef ASCEND_DIST_COMPUTE_OPS_MANAGER_INCLUDED
 #define ASCEND_DIST_COMPUTE_OPS_MANAGER_INCLUDED
 
 #include <map>
-#include <vector>
 #include <memory>
+#include <vector>
+
 #include "ascenddaemon/utils/AscendOperator.h"
 #include "ascenddaemon/utils/AscendTensor.h"
 #include "common/ErrorCode.h"
@@ -30,8 +30,10 @@
 #include "common/utils/LogUtils.h"
 #include "common/utils/SocUtils.h"
 
-namespace ascend {
-enum class IndexTypeIdx {
+namespace ascend
+{
+enum class IndexTypeIdx
+{
     ITI_FLAT_IP = 0,
     ITI_FLAT_L2,
     ITI_INT8_COS,
@@ -83,19 +85,29 @@ enum class IndexTypeIdx {
     ITI_FLAT_IP_SHARE_MASK_EXTRA_SCORE,
     ITI_FLAT_IP_EXTRA_SCORE_AND_SCALE,
     ITI_FLAT_IP_NOSCORE_AND_SCALE,
+    ITI_ASCENDC_FLAT_IP_MASK,
+    ITI_ASCENDC_FLAT_IP_SHARE_MASK,
+    ASCENDC_ITI_INT8_COS_MASK,
+    ASCENDC_ITI_MASK_GENERATOR,
+    ASCENDC_ITI_MASK_WITH_EXTRA_GENERATOR,
     ITI_MAX
 };
 
-class OpsMngKey {
-public:
+class OpsMngKey
+{
+   public:
     explicit OpsMngKey(std::vector<int> &opsKeys) : opsKeys(opsKeys) {};
-    bool operator < (const OpsMngKey &k) const
+    bool operator<(const OpsMngKey &k) const
     {
         size_t cmpNum = std::min(this->opsKeys.size(), k.opsKeys.size());
-        for (size_t i = 0; i < cmpNum; i++) {
-            if (this->opsKeys[i] < k.opsKeys[i]) {
+        for (size_t i = 0; i < cmpNum; i++)
+        {
+            if (this->opsKeys[i] < k.opsKeys[i])
+            {
                 return true;
-            } else if (this->opsKeys[i] > k.opsKeys[i]) {
+            }
+            else if (this->opsKeys[i] > k.opsKeys[i])
+            {
                 return false;
             }
         }
@@ -104,12 +116,10 @@ public:
     std::vector<int> opsKeys;
 };
 
-class DistComputeOpsManager {
-public:
-    static DistComputeOpsManager &getInstance()
-    {
-        return *getShared();
-    }
+class DistComputeOpsManager
+{
+   public:
+    static DistComputeOpsManager &getInstance() { return *getShared(); }
 
     static std::shared_ptr<DistComputeOpsManager> &getShared();
 
@@ -119,78 +129,80 @@ public:
 
     virtual void initialize()
     {
-        for (int i = 0; i < static_cast<int>(IndexTypeIdx::ITI_MAX); ++i) {
+        for (int i = 0; i < static_cast<int>(IndexTypeIdx::ITI_MAX); ++i)
+        {
             std::map<OpsMngKey, std::unique_ptr<AscendOperator>> ops;
             distComputeOps.push_back(std::move(ops));
         }
     }
 
-    virtual void uninitialize()
-    {
-        distComputeOps.clear();
-    }
+    virtual void uninitialize() { distComputeOps.clear(); }
 
     virtual std::map<OpsMngKey, std::unique_ptr<AscendOperator>> &getDistComputeOps(IndexTypeIdx type)
     {
         return distComputeOps[(int)type];
     }
 
-    virtual APP_ERROR resetOp(const std::string &opTypeName,
-                              IndexTypeIdx indexType,
-                              OpsMngKey &opsKey,
+    virtual APP_ERROR resetOp(const std::string &opTypeName, IndexTypeIdx indexType, OpsMngKey &opsKey,
                               const std::vector<std::pair<aclDataType, std::vector<int64_t>>> &input,
                               const std::vector<std::pair<aclDataType, std::vector<int64_t>>> &output)
     {
-        if (indexType >= IndexTypeIdx::ITI_MAX) {
+        if (indexType >= IndexTypeIdx::ITI_MAX)
+        {
             APP_LOG_ERROR("invalid indexType: %d\n", static_cast<int>(indexType));
             return APP_ERR_INVALID_PARAM;
         }
-        auto& distComputeOpMap = distComputeOps[static_cast<int>(indexType)];
+        auto &distComputeOpMap = distComputeOps[static_cast<int>(indexType)];
 
         AscendOpDesc desc(opTypeName);
-        for (auto &data : input) {
+        for (auto &data : input)
+        {
             desc.addInputTensorDesc(data.first, data.second.size(), data.second.data(), ACL_FORMAT_ND);
         }
-        
-        for (auto &data : output) {
+
+        for (auto &data : output)
+        {
             desc.addOutputTensorDesc(data.first, data.second.size(), data.second.data(), ACL_FORMAT_ND);
         }
         distComputeOpMap[opsKey] = CREATE_UNIQUE_PTR(AscendOperator, desc);
         bool ret = distComputeOpMap[opsKey]->init();
-        APPERR_RETURN_IF_NOT_FMT(ret, APP_ERR_ACL_OP_LOAD_MODEL_FAILED,
-            "op init failed, index type: %d, name:%s\n", static_cast<int>(indexType), opTypeName.c_str());
+        APPERR_RETURN_IF_NOT_FMT(ret, APP_ERR_ACL_OP_LOAD_MODEL_FAILED, "op init failed, index type: %d, name:%s\n",
+                                 static_cast<int>(indexType), opTypeName.c_str());
         return APP_ERR_OK;
     }
 
-    virtual APP_ERROR runOp(IndexTypeIdx indexType,
-                            OpsMngKey &opsKey,
+    virtual APP_ERROR runOp(IndexTypeIdx indexType, OpsMngKey &opsKey,
                             const std::vector<const AscendTensorBase *> &input,
-                            const std::vector<const AscendTensorBase *> &output,
-                            aclrtStream stream)
+                            const std::vector<const AscendTensorBase *> &output, aclrtStream stream)
     {
-        if (indexType >= IndexTypeIdx::ITI_MAX) {
+        if (indexType >= IndexTypeIdx::ITI_MAX)
+        {
             APP_LOG_ERROR("invalid indexType: %d\n", static_cast<int>(indexType));
             return APP_ERR_INVALID_PARAM;
         }
         AscendOperator *distSqOp = nullptr;
-        auto& distComputeOpMap = distComputeOps[static_cast<int>(indexType)];
-        if (distComputeOpMap.find(opsKey) != distComputeOpMap.end()) {
+        auto &distComputeOpMap = distComputeOps[static_cast<int>(indexType)];
+        if (distComputeOpMap.find(opsKey) != distComputeOpMap.end())
+        {
             distSqOp = distComputeOpMap[opsKey].get();
         }
-        if (distSqOp == nullptr) {
+        if (distSqOp == nullptr)
+        {
             APP_LOG_ERROR("op not found, index type: %d\n", static_cast<int>(indexType));
             return APP_ERR_ACL_OP_NOT_FOUND;
         }
 
-        std::shared_ptr<std::vector<const aclDataBuffer *>> distSqOpInput(
-            new std::vector<const aclDataBuffer *>(), CommonUtils::AclInputBufferDelete);
-        for (auto &data : input) {
+        std::shared_ptr<std::vector<const aclDataBuffer *>> distSqOpInput(new std::vector<const aclDataBuffer *>(),
+                                                                          CommonUtils::AclInputBufferDelete);
+        for (auto &data : input)
+        {
             distSqOpInput->emplace_back(aclCreateDataBuffer(data->getVoidData(), data->getSizeInBytes()));
         }
 
-        std::shared_ptr<std::vector<aclDataBuffer *>> distSqOpOutput(
-            new std::vector<aclDataBuffer *>(), CommonUtils::AclOutputBufferDelete);
-        for (auto &data : output) {
+        std::shared_ptr<std::vector<aclDataBuffer *>> distSqOpOutput(new std::vector<aclDataBuffer *>(),
+                                                                     CommonUtils::AclOutputBufferDelete);
+        for (auto &data : output)
+        {
             distSqOpOutput->emplace_back(aclCreateDataBuffer(data->getVoidData(), data->getSizeInBytes()));
         }
 
@@ -199,8 +211,8 @@ public:
         return APP_ERR_OK;
     }
 
-private:
+   private:
     std::vector<std::map<OpsMngKey, std::unique_ptr<AscendOperator>>> distComputeOps;
 };
-}
-#endif // ASCEND_DIST_COMPUTE_OPS_MANAGER_INCLUDED
+}  // namespace ascend
+#endif  // ASCEND_DIST_COMPUTE_OPS_MANAGER_INCLUDED

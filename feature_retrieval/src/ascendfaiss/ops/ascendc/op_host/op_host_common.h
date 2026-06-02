@@ -16,50 +16,51 @@
  * -------------------------------------------------------------------------
  */
 
-
 #ifndef ASCENDC_OP_HOST_OP_HOST_COMMON_H
 #define ASCENDC_OP_HOST_OP_HOST_COMMON_H
 
-#include "register/tilingdata_base.h"
 #include "register/op_def_registry.h"
+#include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
 
-namespace Utils {
+namespace Utils
+{
 constexpr uint32_t CUBE_ALIGN = 16;
 constexpr uint32_t KB = 1024;
 
-template<typename T>
+#define ERROR_LOG(fmt, args...) fprintf(stderr, "[ERROR] " fmt "\n", ##args)
+
+template <typename T>
 constexpr auto Min(T a, T b) -> decltype(a)
 {
     return a < b ? a : b;
 }
 
-template<typename T>
+template <typename T>
 constexpr auto Max(T a, T b) -> decltype(a)
 {
     return a > b ? a : b;
 }
 
-template<typename U, typename V>
+template <typename U, typename V>
 constexpr auto DivUp(U a, V b) -> decltype(a + b)
 {
     return ((a + b - 1) / b);
 }
 
-template<typename U, typename V>
+template <typename U, typename V>
 constexpr auto RoundUp(U a, V b) -> decltype(a + b)
 {
     return DivUp(a, b) * b;
 }
-}
+}  // namespace Utils
 
-namespace ge {
-ge::graphStatus ShapeCheck(gert::InferShapeContext *context,
-                           const std::vector<size_t> &inputDimShape,
+namespace ge
+{
+ge::graphStatus ShapeCheck(gert::InferShapeContext *context, const std::vector<size_t> &inputDimShape,
                            const std::vector<size_t> &outputDimShape);
 
-ge::graphStatus DataTypeCheck(gert::InferDataTypeContext *context,
-                              const std::vector<ge::DataType> &inputDataType,
+ge::graphStatus DataTypeCheck(gert::InferDataTypeContext *context, const std::vector<ge::DataType> &inputDataType,
                               const std::vector<ge::DataType> &outputDataType);
-}
-#endif // ASCENDC_OP_HOST_OP_HOST_COMMON_H
+}  // namespace ge
+#endif  // ASCENDC_OP_HOST_OP_HOST_COMMON_H
