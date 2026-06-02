@@ -17,10 +17,9 @@ MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 See the Mulan PSL v2 for more details.
 -------------------------------------------------------------------------
 """
+
 import os
 import argparse
-import math
-from multiprocessing import Pool
 
 import common as utils
 from common import OpJsonGenerator
@@ -33,13 +32,19 @@ def arg_parse():
     """
     Parse arguements to the operator model
     """
-    parser = argparse.ArgumentParser(
-        description='generate aicore ts masks operator model')
+    parser = argparse.ArgumentParser(description='generate aicore ts masks operator model')
 
     utils.op_common_parse(parser, "-token", 'max_token_cnt', 2500, int, "Max token num, default 2500")
     utils.op_common_parse(parser, "-p", 'process_id', 0, int, "Number of process_id, default 0")
     utils.op_common_parse(parser, "-pool", 'pool_size', 16, int, "Number of pool_size, default 16")
-    utils.op_common_parse(parser, "-t", 'npu_type', "310P", str, "NPU type, only support 310P. 310P by default")
+    utils.op_common_parse(
+        parser,
+        "-t",
+        'npu_type',
+        "310P",
+        str,
+        "NPU type, 310P / 910B1 / 910B2 / 910B3 / 910B4 / 910_{NPU Name}. 310P by default",
+    )
     return parser.parse_args()
 
 
@@ -126,8 +131,11 @@ def generate_ts_batch_val_masks_json(max_token_num, batch, file_path):
 
 def generate_ts_batch_extra_masks_json(max_token_num, batch, file_path, use_base_mask: bool):
     ts_extra_batch_masks_json_obj = []
-    generator = OpJsonGenerator("DistanceBatchMaskGeneratorWithExtraAndBaseMask") if use_base_mask \
+    generator = (
+        OpJsonGenerator("DistanceBatchMaskGeneratorWithExtraAndBaseMask")
+        if use_base_mask
         else OpJsonGenerator("DistanceBatchMaskGeneratorWithExtra")
+    )
     generator.add_input("ND", [batch, 8], "int32")
     generator.add_input("ND", [batch, (max_token_num + 7) // 8 * 2], "uint8")
     generator.add_input("ND", [_BLOCK_SIZE], "int32")
@@ -142,18 +150,79 @@ def generate_ts_batch_extra_masks_json(max_token_num, batch, file_path, use_base
     utils.generate_op_config(ts_extra_batch_masks_json_obj, file_path)
 
 
+def generate_ascendc_batch_masks_json(max_token_num, batch, file_path):
+    # write ts masks op json
+    ascendc_batch_masks_json_obj = []
+    generator = OpJsonGenerator("AscendcDistanceBatchMaskGenerator")
+    generator.add_input("ND", [batch, 8], "int32")
+    generator.add_input("ND", [batch, (max_token_num + 7) // 8 * 2], "uint8")
+    generator.add_input("ND", [_BLOCK_SIZE], "int32")
+    generator.add_input("ND", [_BLOCK_SIZE], "int32")
+    generator.add_input("ND", [_BLOCK_SIZE * 2], "uint8")
+    generator.add_output("ND", [batch, (_BLOCK_SIZE + 7) // 8], "uint8")
+    ascendc_batch_masks_json_obj.append(generator.generate_obj())
+    utils.generate_op_config(ascendc_batch_masks_json_obj, file_path)
+
+
+def generate_ascendc_batch_extra_masks_json(max_token_num, batch, file_path):
+    ascendc_extra_batch_masks_json_obj = []
+    generator = OpJsonGenerator("AscendcDistanceBatchMaskGeneratorWithExtra")
+    generator.add_input("ND", [batch, 8], "int32")
+    generator.add_input("ND", [batch, (max_token_num + 7) // 8 * 2], "uint8")
+    generator.add_input("ND", [_BLOCK_SIZE], "int32")
+    generator.add_input("ND", [_BLOCK_SIZE], "int32")
+    generator.add_input("ND", [_BLOCK_SIZE * 2], "uint8")
+    generator.add_input("ND", [batch, (_BLOCK_SIZE + 7) // 8], "uint8")
+    generator.add_input("ND", [8], "int32")
+    generator.add_output("ND", [batch, (_BLOCK_SIZE + 7) // 8], "uint8")
+    ascendc_extra_batch_masks_json_obj.append(generator.generate_obj())
+    utils.generate_op_config(ascendc_extra_batch_masks_json_obj, file_path)
+
+
+def generate_ascendc_masks_offline_model(args, config_path, soc_version):
+    utils.set_env()
+    process_id = args.process_id
+    max_token_cnt = args.max_token_cnt
+
+    batch_sizes = (256, 128, 64, 48, 36, 32, 30, 24, 20, 18, 16, 12, 8, 7, 6, 5, 4, 3, 2, 1)
+
+    ascendc_batch_masks_generate_op_name = "ascendc_batch_masks_generate_op{}_batch{}_pid{}"
+    ascendc_batch_extra_masks_generate_op_name = "ascendc_batch_extra_masks_generate_op{}_batch{}_pid{}"
+
+    map_args = []
+    for batch in batch_sizes:
+        ascendc_batch_masks_generate_op_name_ = ascendc_batch_masks_generate_op_name.format(
+            max_token_cnt, batch, process_id
+        )
+        file_path = os.path.join(config_path, '{}.json'.format(ascendc_batch_masks_generate_op_name_))
+        generate_ascendc_batch_masks_json(max_token_cnt, batch, file_path)
+
+        ascendc_batch_extra_masks_generate_op_name_ = ascendc_batch_extra_masks_generate_op_name.format(
+            max_token_cnt, batch, process_id
+        )
+        extra_file_path = os.path.join(config_path, '{}.json'.format(ascendc_batch_extra_masks_generate_op_name_))
+        generate_ascendc_batch_extra_masks_json(max_token_cnt, batch, extra_file_path)
+
+        map_args.append((ascendc_batch_masks_generate_op_name_, soc_version))
+        map_args.append((ascendc_batch_extra_masks_generate_op_name_, soc_version))
+
+    utils.run_generate_model_task(args, map_args)
+
+
 def generate_ts_masks_offline_model():
     utils.set_env()
     args = arg_parse()
     process_id = args.process_id
     max_token_cnt = args.max_token_cnt
-    if args.npu_type != "310P":
-        raise RuntimeError("NPU type only support 310P now!")
     if args.max_token_cnt > _MAX_TOKEN_VALUE or args.max_token_cnt < 1:
         raise ValueError("input variable token {0}, should be in range[1, {1}]".format(max_token_cnt, _MAX_TOKEN_VALUE))
     soc_version = utils.get_soc_version_from_npu_type(args.npu_type)
     work_dir = '.'
     config_path = utils.get_config_path(work_dir)
+
+    if args.npu_type.find("910B") != -1:
+        generate_ascendc_masks_offline_model(args, config_path, soc_version)
+        return
 
     batch_sizes = (256, 128, 64, 48, 36, 32, 30, 24, 20, 18, 16, 12, 8, 7, 6, 5, 4, 3, 2, 1)
 
@@ -188,18 +257,21 @@ def generate_ts_masks_offline_model():
         file_path = os.path.join(config_path, '{}.json'.format(ts_batch_masks_generate_op_name_))
         generate_ts_batch_masks_json(max_token_cnt, batch, file_path)
 
-        ts_batch_val_masks_generate_op_name_ = ts_batch_val_masks_generate_op_name.format(max_token_cnt,
-                                                                                          batch, process_id)
+        ts_batch_val_masks_generate_op_name_ = ts_batch_val_masks_generate_op_name.format(
+            max_token_cnt, batch, process_id
+        )
         file_path = os.path.join(config_path, '{}.json'.format(ts_batch_val_masks_generate_op_name_))
         generate_ts_batch_val_masks_json(max_token_cnt, batch, file_path)
 
-        ts_batch_extra_masks_generate_op_name_ = ts_batch_extra_masks_generate_op_name.format(max_token_cnt,
-                                                                                              batch, process_id)
+        ts_batch_extra_masks_generate_op_name_ = ts_batch_extra_masks_generate_op_name.format(
+            max_token_cnt, batch, process_id
+        )
         extra_file_path = os.path.join(config_path, '{}.json'.format(ts_batch_extra_masks_generate_op_name_))
         generate_ts_batch_extra_masks_json(max_token_cnt, batch, extra_file_path, False)
 
-        ts_batch_extra_and_base_masks_generate_op_name_ = \
-            ts_batch_extra_and_base_masks_generate_op_name.format(max_token_cnt, batch, process_id)
+        ts_batch_extra_and_base_masks_generate_op_name_ = ts_batch_extra_and_base_masks_generate_op_name.format(
+            max_token_cnt, batch, process_id
+        )
         basemask_file = os.path.join(config_path, '{}.json'.format(ts_batch_extra_and_base_masks_generate_op_name_))
         generate_ts_batch_extra_masks_json(max_token_cnt, batch, basemask_file, True)
 
@@ -208,8 +280,7 @@ def generate_ts_masks_offline_model():
         map_args.append((ts_batch_extra_and_base_masks_generate_op_name_, soc_version))
         map_args.append((ts_batch_val_masks_generate_op_name_, soc_version))
 
-    utils.run_generate_model_task(args, map_args)  
-
+    utils.run_generate_model_task(args, map_args)
 
 
 if __name__ == '__main__':

@@ -17,10 +17,9 @@ MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 See the Mulan PSL v2 for more details.
 -------------------------------------------------------------------------
 """
+
 import os
 import argparse
-import traceback
-from multiprocessing import Pool
 
 import common as utils
 from common import OpJsonGenerator
@@ -50,15 +49,20 @@ def arg_parse():
     Parse arguements to the operator model
     """
 
-    parser = argparse.ArgumentParser(
-        description="generate aicore operator model")
+    parser = argparse.ArgumentParser(description="generate aicore operator model")
 
     utils.op_common_parse(parser, "--cores", "core_num", 2, int, "Core number")
     utils.op_common_parse(parser, "-d", "dim", 512, int, "Feature dimension")
     utils.op_common_parse(parser, "-p", "process_id", 0, int, "Number of process_id")
     utils.op_common_parse(parser, "-pool", "pool_size", 10, int, "Number of pool_size")
-    utils.op_common_parse(parser, "-t", 'npu_type', "310", str,
-            "NPU type, 310 / 310P / 910B1 / 910B2 / 910B3 / 910B4 / 910_{NPU Name}. 310 by default")
+    utils.op_common_parse(
+        parser,
+        "-t",
+        "npu_type",
+        "310",
+        str,
+        "NPU type, 310 / 310P / 910B1 / 910B2 / 910B3 / 910B4 / 910_{NPU Name}. 310 by default",
+    )
     return parser.parse_args()
 
 
@@ -74,7 +78,7 @@ def generate_distance_flat_l2_mins_json(core_num, search_page_sizes, dim, zregio
         generator.add_input("ND", [_CODE_NUM], "float16")
         generator.add_input("ND", [core_num, 8], "uint32")
         generator.add_output("ND", [query_num, _CODE_NUM], "float16")
-        generator.add_output("ND", [query_num, (_CODE_NUM + burst_len-1) // burst_len * 2], "float16")
+        generator.add_output("ND", [query_num, (_CODE_NUM + burst_len - 1) // burst_len * 2], "float16")
         generator.add_output("ND", [16, 16], "uint16")
         obj = generator.generate_obj()
         dist_compute_flat_mins_obj.append(obj)
@@ -92,7 +96,7 @@ def generate_distance_flat_ip_json(core_num, search_page_sizes, dim, zregion_hei
         generator.add_input("ND", [8], "uint32")
         generator.add_output("ND", [query_num * _HUGE_BASE], "float32")
         obj = generator.generate_obj()
-        
+
         dist_flat_ip_obj.append(obj)
 
     utils.generate_op_config(dist_flat_ip_obj, file_path)
@@ -134,8 +138,9 @@ def generate_distance_flat_ip_maxs_json(core_num, search_page_sizes, dim, zregio
     utils.generate_op_config(dist_flat_ip_maxs_obj, file_path)
 
 
-def generate_distance_flat_ip_maxs_with_mask_common_json(op_name, core_num, search_page_sizes, dim, zregion_height,
-                                                         shared, with_score, file_path):
+def generate_distance_flat_ip_maxs_with_mask_common_json(
+    op_name, core_num, search_page_sizes, dim, zregion_height, shared, with_score, file_path
+):
     dist_flat_ip_maxs_with_mask_obj = []
     burst_len = 64
     for queries_num in search_page_sizes:
@@ -158,8 +163,9 @@ def generate_distance_flat_ip_maxs_with_mask_common_json(op_name, core_num, sear
     utils.generate_op_config(dist_flat_ip_maxs_with_mask_obj, file_path)
 
 
-def generate_distance_flat_ip_maxs_with_mask_and_scale_json(op_name, core_num, search_page_sizes, dim, zregion_height,
-                                                            with_score, file_path):
+def generate_distance_flat_ip_maxs_with_mask_and_scale_json(
+    op_name, core_num, search_page_sizes, dim, zregion_height, with_score, file_path
+):
     dist_flat_ip_maxs_with_mask_scale_obj = []
     burst_len = 64
     for queries_num in search_page_sizes:
@@ -170,7 +176,13 @@ def generate_distance_flat_ip_maxs_with_mask_and_scale_json(op_name, core_num, s
         generator.add_input("ND", [queries_num, (_CODE_NUM + 7) // 8], "uint8")
         if with_score:
             generator.add_input("ND", [queries_num, _CODE_NUM], "float16")
-        generator.add_input("ND", [dim, ], "float16")
+        generator.add_input(
+            "ND",
+            [
+                dim,
+            ],
+            "float16",
+        )
         generator.add_output("ND", [queries_num, _CODE_NUM], "float16")
         generator.add_output("ND", [queries_num, (_CODE_NUM + burst_len - 1) // burst_len * 2], "float16")
         generator.add_output("ND", [core_num, 16], "uint16")
@@ -184,42 +196,56 @@ def generate_distance_flat_ip_maxs_with_share_mask_json(core_num, search_page_si
     op_name = "DistanceFlatIPMaxsWithMask"
     shared = True
     generate_distance_flat_ip_maxs_with_mask_common_json(
-        op_name, core_num, search_page_sizes, dim, zregion_height, shared, False, file_path)
+        op_name, core_num, search_page_sizes, dim, zregion_height, shared, False, file_path
+    )
 
 
 def generate_distance_flat_ip_maxs_with_nonshare_mask_json(core_num, search_page_sizes, dim, zregion_height, file_path):
     op_name = "DistanceFlatIPMaxsWithMask"
     shared = False
     generate_distance_flat_ip_maxs_with_mask_common_json(
-        op_name, core_num, search_page_sizes, dim, zregion_height, shared, False, file_path)
+        op_name, core_num, search_page_sizes, dim, zregion_height, shared, False, file_path
+    )
 
 
-def generate_distance_flat_ip_maxs_with_share_and_score_json(core_num, search_page_sizes, dim, zregion_height, file_path):
+def generate_distance_flat_ip_maxs_with_share_and_score_json(
+    core_num, search_page_sizes, dim, zregion_height, file_path
+):
     op_name = "DistanceFlatIPMaxsWithExtraScore"
     shared = True
     generate_distance_flat_ip_maxs_with_mask_common_json(
-        op_name, core_num, search_page_sizes, dim, zregion_height, shared, True, file_path)
+        op_name, core_num, search_page_sizes, dim, zregion_height, shared, True, file_path
+    )
 
 
-def generate_distance_flat_ip_maxs_with_nonshare_and_score_json(core_num, search_page_sizes, dim, zregion_height, file_path):
+def generate_distance_flat_ip_maxs_with_nonshare_and_score_json(
+    core_num, search_page_sizes, dim, zregion_height, file_path
+):
     op_name = "DistanceFlatIPMaxsWithExtraScore"
     shared = False
     generate_distance_flat_ip_maxs_with_mask_common_json(
-        op_name, core_num, search_page_sizes, dim, zregion_height, shared, True, file_path)
+        op_name, core_num, search_page_sizes, dim, zregion_height, shared, True, file_path
+    )
 
 
-def generate_distance_flat_ip_maxs_with_score_and_scale_json(core_num, search_page_sizes, dim, zregion_height, file_path):
+def generate_distance_flat_ip_maxs_with_score_and_scale_json(
+    core_num, search_page_sizes, dim, zregion_height, file_path
+):
     op_name = "DistanceFlatIPMaxsWithScale"
     score = True
     generate_distance_flat_ip_maxs_with_mask_and_scale_json(
-        op_name, core_num, search_page_sizes, dim, zregion_height, score, file_path)
+        op_name, core_num, search_page_sizes, dim, zregion_height, score, file_path
+    )
 
 
-def generate_distance_flat_ip_maxs_with_nonscore_and_scale_json(core_num, search_page_sizes, dim, zregion_height, file_path):
+def generate_distance_flat_ip_maxs_with_nonscore_and_scale_json(
+    core_num, search_page_sizes, dim, zregion_height, file_path
+):
     op_name = "DistanceFlatIPMaxsNoScoreWithScale"
     score = False
     generate_distance_flat_ip_maxs_with_mask_and_scale_json(
-        op_name, core_num, search_page_sizes, dim, zregion_height, score, file_path)
+        op_name, core_num, search_page_sizes, dim, zregion_height, score, file_path
+    )
 
 
 def generate_distance_flat_ip_maxs_batch_json(core_num, search_page_sizes, dim, zregion_height, file_path):
@@ -254,7 +280,7 @@ def generate_distance_flat_ip_by_idx_json(core_num, compute_distance_by_idx_batc
 
     utils.generate_op_config(distance_flat_ip_by_idx_obj, file_path)
 
-    
+
 def generate_distance_flat_ip_by_idx2_json(core_num, compute_distance_by_idx_batches, dim, zregion_height, file_path):
     # write dist_compute_flat_mins json
     distance_flat_ip_by_idx2_obj = []
@@ -270,8 +296,9 @@ def generate_distance_flat_ip_by_idx2_json(core_num, compute_distance_by_idx_bat
     utils.generate_op_config(distance_flat_ip_by_idx2_obj, file_path)
 
 
-def generate_distance_flat_ip_by_idx_with_table_json(core_num, compute_distance_by_idx_batches, dim, zregion_height,
-                                                     file_path):
+def generate_distance_flat_ip_by_idx_with_table_json(
+    core_num, compute_distance_by_idx_batches, dim, zregion_height, file_path
+):
     # write dist_compute_flat_mins json
     distance_flat_ip_by_idx_with_table_obj = []
     for queries_num in compute_distance_by_idx_batches:
@@ -310,15 +337,18 @@ def generate_flat_ip_extend_json(map_args, args, zregion_height, config_path, so
     core_num = utils.get_core_num_by_npu_type(args.core_num, args.npu_type)
     process_id = args.process_id
     dim = args.dim
- 
+
     flat_ip_max_op_name = "distance_flat_ip_maxs_op_pid{}"
     search_page_sizes = (48, 36, 32, 30, 24, 18, 16, 12, 8, 6, 4, 2, 1)
     op_name_ = flat_ip_max_op_name.format(process_id)
     file_path_ = os.path.join(config_path, '{}.json'.format(op_name_))
     generate_distance_flat_ip_maxs_json(core_num, search_page_sizes, dim, zregion_height, file_path_)
     map_args.append((op_name_, soc_version))
- 
-    search_optimize_page_sizes = (128, 64,)
+
+    search_optimize_page_sizes = (
+        128,
+        64,
+    )
     flat_ip_max_batch_op_name = "distance_flat_ip_maxs_batch_op_pid{}"
     op_name_ = flat_ip_max_batch_op_name.format(process_id)
     file_path_ = os.path.join(config_path, '{}.json'.format(op_name_))
@@ -349,15 +379,17 @@ def generate_scale_json(map_args, args, soc_version, core_num, config_path, sear
     dim = args.dim
     op_name_ = flat_ip_max_with_score_and_scale_op_name.format(process_id)
     file_path_ = os.path.join(config_path, '{}.json'.format(op_name_))
-    generate_distance_flat_ip_maxs_with_score_and_scale_json(core_num, search_page_sizes,
-        dim, zregion_height, file_path_)
+    generate_distance_flat_ip_maxs_with_score_and_scale_json(
+        core_num, search_page_sizes, dim, zregion_height, file_path_
+    )
     map_args.append((op_name_, soc_version))
 
     op_name_ = flat_ip_max_with_nonscore_and_scale_op_name.format(process_id)
     file_path_ = os.path.join(config_path, '{}.json'.format(op_name_))
-    generate_distance_flat_ip_maxs_with_nonscore_and_scale_json(core_num, search_page_sizes,
-        dim, zregion_height, file_path_)
-    map_args.append((op_name_, soc_version)) 
+    generate_distance_flat_ip_maxs_with_nonscore_and_scale_json(
+        core_num, search_page_sizes, dim, zregion_height, file_path_
+    )
+    map_args.append((op_name_, soc_version))
 
 
 def generate_normal_json(map_args, args, zregion_height, config_path, soc_version):
@@ -383,45 +415,51 @@ def generate_normal_json(map_args, args, zregion_height, config_path, soc_versio
         # Search related operator of IP distance with share mask
         op_name_ = flat_ip_max_with_share_mask_op_name.format(process_id)
         file_path_ = os.path.join(config_path, '{}.json'.format(op_name_))
-        generate_distance_flat_ip_maxs_with_share_mask_json(core_num, search_page_sizes,
-            dim, zregion_height, file_path_)
+        generate_distance_flat_ip_maxs_with_share_mask_json(
+            core_num, search_page_sizes, dim, zregion_height, file_path_
+        )
         map_args.append((op_name_, soc_version))
 
         # Search related operator of IP distance with nonshare mask
         op_name_ = flat_ip_max_with_nonshare_mask_op_name.format(process_id)
         file_path_ = os.path.join(config_path, '{}.json'.format(op_name_))
-        generate_distance_flat_ip_maxs_with_nonshare_mask_json(core_num, search_page_sizes,
-            dim, zregion_height, file_path_)
+        generate_distance_flat_ip_maxs_with_nonshare_mask_json(
+            core_num, search_page_sizes, dim, zregion_height, file_path_
+        )
         map_args.append((op_name_, soc_version))
 
         op_name_ = flat_ip_max_with_share_mask_extra_score_op_name.format(process_id)
         file_path_ = os.path.join(config_path, '{}.json'.format(op_name_))
-        generate_distance_flat_ip_maxs_with_share_and_score_json(core_num, search_page_sizes,
-            dim, zregion_height, file_path_)
+        generate_distance_flat_ip_maxs_with_share_and_score_json(
+            core_num, search_page_sizes, dim, zregion_height, file_path_
+        )
         map_args.append((op_name_, soc_version))
 
         op_name_ = flat_ip_max_with_nonshare_mask_extra_score_op_name.format(process_id)
         file_path_ = os.path.join(config_path, '{}.json'.format(op_name_))
-        generate_distance_flat_ip_maxs_with_nonshare_and_score_json(core_num, search_page_sizes,
-            dim, zregion_height, file_path_)
+        generate_distance_flat_ip_maxs_with_nonshare_and_score_json(
+            core_num, search_page_sizes, dim, zregion_height, file_path_
+        )
         map_args.append((op_name_, soc_version))
 
         generate_scale_json(map_args, args, soc_version, core_num, config_path, search_page_sizes, zregion_height)
 
     # Search related operator of IP distance for batch 128 and 64
-    search_optimize_page_sizes = (128, 64,)
+    search_optimize_page_sizes = (
+        128,
+        64,
+    )
     op_name_ = flat_ip_max_batch_op_name.format(process_id)
     file_path_ = os.path.join(config_path, '{}.json'.format(op_name_))
     generate_distance_flat_ip_maxs_batch_json(core_num, search_optimize_page_sizes, dim, zregion_height, file_path_)
     map_args.append((op_name_, soc_version))
 
-   # Search related operator of L2 distance for larger batch
+    # Search related operator of L2 distance for larger batch
     search_optimize_l2_page_sizes = (96, 80, 64, 48, 36, 32, 30, 24, 18, 16, 12, 8, 6, 4, 2, 1)
     op_name_ = flat_l2_max_op_name.format(process_id)
     file_path_ = os.path.join(config_path, '{}.json'.format(op_name_))
     generate_distance_flat_l2_mins_json(core_num, search_optimize_l2_page_sizes, dim, zregion_height, file_path_)
     map_args.append((op_name_, soc_version))
-
 
 
 def generate_soc_json(map_args, args, zregion_height, config_path, soc_version):
@@ -441,15 +479,15 @@ def generate_soc_json(map_args, args, zregion_height, config_path, soc_version):
     # ComputeDistanceByIdx underlayer operator, support batch256
     op_name_ = flat_ip_by_idx_op_name.format(process_id)
     file_path_ = os.path.join(config_path, '{}.json'.format(op_name_))
-    generate_distance_flat_ip_by_idx_json(
-        core_num, compute_distance_by_idx_batches, dim, zregion_height, file_path_)
+    generate_distance_flat_ip_by_idx_json(core_num, compute_distance_by_idx_batches, dim, zregion_height, file_path_)
     map_args.append((op_name_, soc_version))
 
     # ComputeDistanceByIdxWithTable underlayer operator, support batch256
     op_name_ = flat_ip_by_idx_with_table_op_name.format(process_id)
     file_path_ = os.path.join(config_path, '{}.json'.format(op_name_))
     generate_distance_flat_ip_by_idx_with_table_json(
-        core_num, compute_distance_by_idx_batches, dim, zregion_height, file_path_)
+        core_num, compute_distance_by_idx_batches, dim, zregion_height, file_path_
+    )
     map_args.append((op_name_, soc_version))
 
     # Search related operator of IP distance
@@ -477,7 +515,10 @@ def generate_soc_json(map_args, args, zregion_height, config_path, soc_version):
     map_args.append((op_name_, soc_version))
 
     # For ILFlat, use the operators of IP distance with batch 128 and 64, with normal dims, with _Z_SOC.
-    search_optimize_page_sizes = (128, 64,)
+    search_optimize_page_sizes = (
+        128,
+        64,
+    )
     op_name_ = flat_ip_max_batch_ilflat_op_name.format(process_id)
     file_path_ = os.path.join(config_path, '{}.json'.format(op_name_))
     generate_distance_flat_ip_maxs_batch_json(core_num, search_optimize_page_sizes, dim, zregion_height, file_path_)
@@ -489,14 +530,12 @@ def generate_soc_ilflat_json(map_args, args, zregion_height, config_path, soc_ve
     dim = args.dim
     core_num = utils.get_core_num_by_npu_type(args.core_num, args.npu_type)
     compute_distance_by_idx_batches = (64, 48, 32, 30, 18, 16, 8, 6, 4, 2, 1)
-    ilflat_ip_op_name = "distance_ilflat_ip_op_pid{}"
     flat_ip_by_idx2_op_name = "distance_flat_ip_by_idx2_op_pid{}"
 
     # ComputeDistanceByIdx underlayer operator, support batch256
     op_name_ = flat_ip_by_idx2_op_name.format(process_id)
     file_path_ = os.path.join(config_path, '{}.json'.format(op_name_))
-    generate_distance_flat_ip_by_idx2_json(
-        core_num, compute_distance_by_idx_batches, dim, zregion_height, file_path_)
+    generate_distance_flat_ip_by_idx2_json(core_num, compute_distance_by_idx_batches, dim, zregion_height, file_path_)
     map_args.append((op_name_, soc_version))
 
 
@@ -506,38 +545,18 @@ def generate_910b_flat_ip_json(core_num, search_page_sizes, dim, zregion_height,
     for query_num in search_page_sizes:
         burst_len = 64
         obj = {
-            "op":
-                "DistanceFlatIP",
-            "input_desc": [{
-                FORMAT: ND,
-                SHAPE: [query_num, dim],
-                TYPE: "float16"
-            }, {
-                FORMAT: ND,
-                SHAPE: [query_num, (_CODE_NUM + 7) // 8],
-                TYPE: "uint8"
-            }, {
-                FORMAT: ND,
-                SHAPE: [_CODE_NUM // zregion_height, dim // 16, zregion_height, 16],
-                TYPE: "float16"
-            }, {
-                FORMAT: ND,
-                SHAPE: [core_num, 8],
-                TYPE: "uint32"
-            }],
-            "output_desc": [{
-                FORMAT: ND,
-                SHAPE: [query_num, _CODE_NUM],
-                TYPE: "float16"
-            }, {
-                FORMAT: ND,
-                SHAPE: [query_num, (_CODE_NUM + burst_len - 1) // burst_len * 2],
-                TYPE: "float16"
-            }, {
-                FORMAT: ND,
-                SHAPE: [core_num, 16],
-                TYPE: "uint16"
-            }]
+            "op": "DistanceFlatIP",
+            "input_desc": [
+                {FORMAT: ND, SHAPE: [query_num, dim], TYPE: "float16"},
+                {FORMAT: ND, SHAPE: [query_num, (_CODE_NUM + 7) // 8], TYPE: "uint8"},
+                {FORMAT: ND, SHAPE: [_CODE_NUM // zregion_height, dim // 16, zregion_height, 16], TYPE: "float16"},
+                {FORMAT: ND, SHAPE: [core_num, 8], TYPE: "uint32"},
+            ],
+            "output_desc": [
+                {FORMAT: ND, SHAPE: [query_num, _CODE_NUM], TYPE: "float16"},
+                {FORMAT: ND, SHAPE: [query_num, (_CODE_NUM + burst_len - 1) // burst_len * 2], TYPE: "float16"},
+                {FORMAT: ND, SHAPE: [core_num, 16], TYPE: "uint16"},
+            ],
         }
         dist_flat_ip_obj.append(obj)
 
@@ -550,46 +569,47 @@ def generate_910b_flat_l2_json(core_num, search_page_sizes, dim, zregion_height,
     for query_num in search_page_sizes:
         burst_len = 64
         obj = {
-            "op":
-                "DistanceFlatL2",
-            "input_desc": [{
-                FORMAT: ND,
-                SHAPE: [query_num, dim],
-                TYPE: "float16"
-            }, {
-                FORMAT: "ND",
-                SHAPE: [query_num, (_CODE_NUM + 7) // 8],
-                TYPE: "uint8"
-            }, {
-                FORMAT: ND,
-                SHAPE: [_CODE_NUM // zregion_height, dim // 16, zregion_height, 16],
-                TYPE: "float16"
-            }, {
-                FORMAT: ND,
-                SHAPE: [_CODE_NUM],
-                TYPE: "float16"
-            }, {
-                FORMAT: ND,
-                SHAPE: [core_num, 8],
-                TYPE: "uint32"
-            }],
-            "output_desc": [{
-                FORMAT: ND,
-                SHAPE: [query_num, _CODE_NUM],
-                TYPE: "float16"
-            }, {
-                FORMAT: ND,
-                SHAPE: [query_num, (_CODE_NUM + burst_len - 1) // burst_len * 2],
-                TYPE: "float16"
-            }, {
-                FORMAT: ND,
-                SHAPE: [core_num, 16],
-                TYPE: "uint16"
-            }]
+            "op": "DistanceFlatL2",
+            "input_desc": [
+                {FORMAT: ND, SHAPE: [query_num, dim], TYPE: "float16"},
+                {FORMAT: "ND", SHAPE: [query_num, (_CODE_NUM + 7) // 8], TYPE: "uint8"},
+                {FORMAT: ND, SHAPE: [_CODE_NUM // zregion_height, dim // 16, zregion_height, 16], TYPE: "float16"},
+                {FORMAT: ND, SHAPE: [_CODE_NUM], TYPE: "float16"},
+                {FORMAT: ND, SHAPE: [core_num, 8], TYPE: "uint32"},
+            ],
+            "output_desc": [
+                {FORMAT: ND, SHAPE: [query_num, _CODE_NUM], TYPE: "float16"},
+                {FORMAT: ND, SHAPE: [query_num, (_CODE_NUM + burst_len - 1) // burst_len * 2], TYPE: "float16"},
+                {FORMAT: ND, SHAPE: [core_num, 16], TYPE: "uint16"},
+            ],
         }
         dist_flat_l2_obj.append(obj)
 
     utils.generate_op_config(dist_flat_l2_obj, file_path)
+
+
+def generate_ascendc_distance_flat_ip_maxs_with_mask_json(core_num, search_page_sizes, dim, zregion_height, file_path):
+    # write dist_compute_flat_mins json
+    dist_flat_ip_obj = []
+    for query_num in search_page_sizes:
+        burst_len = 64
+        obj = {
+            "op": "AscendcDistanceFlatIPMaxsWithMask",
+            "input_desc": [
+                {FORMAT: ND, SHAPE: [query_num, dim], TYPE: "float16"},
+                {FORMAT: ND, SHAPE: [query_num, (_CODE_NUM + 7) // 8], TYPE: "uint8"},
+                {FORMAT: ND, SHAPE: [_CODE_NUM // zregion_height, dim // 16, zregion_height, 16], TYPE: "float16"},
+                {FORMAT: ND, SHAPE: [core_num, 8], TYPE: "uint32"},
+            ],
+            "output_desc": [
+                {FORMAT: ND, SHAPE: [query_num, _CODE_NUM], TYPE: "float16"},
+                {FORMAT: ND, SHAPE: [query_num, (_CODE_NUM + burst_len - 1) // burst_len * 2], TYPE: "float16"},
+                {FORMAT: ND, SHAPE: [core_num, 16], TYPE: "uint16"},
+            ],
+        }
+        dist_flat_ip_obj.append(obj)
+
+    utils.generate_op_config(dist_flat_ip_obj, file_path)
 
 
 def generate_910b_flat_offline_model(map_args, args, zregion_height, config_path, soc_version):
@@ -611,14 +631,20 @@ def generate_910b_flat_offline_model(map_args, args, zregion_height, config_path
     generate_910b_flat_l2_json(core_num, search_page_sizes, dim, zregion_height, file_path_)
     map_args.append((op_name_, soc_version))
 
+    flat_ip_op_name = "ascendc_distance_flat_ip_maxs_with_mask_op_pid{}"
+
+    search_page_sizes = (128, 64, 48, 36, 32, 30, 24, 18, 16, 12, 8, 6, 4, 2, 1)
+    op_name_ = flat_ip_op_name.format(process_id)
+    file_path_ = os.path.join(config_path, '{}.json'.format(op_name_))
+    generate_ascendc_distance_flat_ip_maxs_with_mask_json(core_num, search_page_sizes, dim, zregion_height, file_path_)
+    map_args.append((op_name_, soc_version))
+
 
 def generate_flat_offline_model():
     utils.set_env()
     args = arg_parse()
     dim = args.dim
-    process_id = args.process_id
     soc_version = utils.get_soc_version_from_npu_type(args.npu_type)
-    core_num = utils.get_core_num_by_npu_type(args.core_num, args.npu_type)
     work_dir = "."
     map_args = []
     config_path = utils.get_config_path(work_dir)
@@ -628,10 +654,9 @@ def generate_flat_offline_model():
         generate_910b_flat_offline_model(map_args, args, _Z_DEFAULT, config_path, soc_version)
     else:
         if dim in _DIM_LIST:
-
             # generate normal operators of zregion_height 16
             generate_normal_json(map_args, args, _Z_DEFAULT, config_path, soc_version)
-            
+
             # generate soc related operators of zregion_height 2
             generate_soc_json(map_args, args, _Z_SOC, config_path, soc_version)
 
@@ -646,7 +671,7 @@ def generate_flat_offline_model():
             # generate normal operators of zregion_height 16
             generate_normal_json(map_args, args, _Z_DEFAULT, config_path, soc_version)
         else:
-            raise ValueError(f"Given dim is invalid")
+            raise ValueError("Given dim is invalid")
 
     utils.run_generate_model_task(args, map_args)
 

@@ -11,24 +11,25 @@
 # EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
 # MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 # See the Mulan PSL v2 for more details.
- 
+
 cmake_minimum_required(VERSION 3.20)
- 
+
 project(TestAscendUTTSInt8Cos)
- 
+
 create_testable_target(${PROJECT_NAME}
     SOURCE_FILE
         TestAscendUTTSInt8Cos.cpp
- 
+        TestAscendUTTSInt8CosWithMask.cpp
+
     DEPENDS
         # to be tested
         ascendfaiss
- 
+
         # 3rd lib
         gtest_main
         gtest
         ${ASCENDFAISS_LIBRARY}
- 
+
     INCLUDES
         ${ASCENDFAISS_INCLUDE}
 )

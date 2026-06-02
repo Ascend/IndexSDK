@@ -1,2 +1,3 @@
 [codespell]
 ignore-words-list = indext, te
+skip = pre-commit/typos.toml

@@ -18,9 +18,10 @@
 
 #include <cmath>
 #include <iostream>
-#include "securec.h"
-#include "AscendSimuExecFlow.h"
+
 #include "../acl_base.h"
+#include "AscendSimuExecFlow.h"
+#include "securec.h"
 
 using float16_t = uint16_t;
 
@@ -30,7 +31,8 @@ void resetFlat(aclopHandle &opHandle)
     auto flag_Byte_size = opHandle.outputData[2].size;
     auto flat_num = flag_Byte_size / sizeof(*flag);  // 个数 = 总字节数 / 单个元素字节数
 
-    for (uint32_t i = 0; i < flat_num; i++) {
+    for (uint32_t i = 0; i < flat_num; i++)
+    {
         flag[i] = 1;
     }
 }
@@ -54,7 +56,8 @@ void MrgbaOperator(aclopHandle &opHandle)
     size_t dataSize = opHandle.inputData[0].size;
     uint8_t *input2 = (uint8_t *)(opHandle.inputData[1].data);
     uint8_t *output = (uint8_t *)(opHandle.outputData[0].data);
-    for (size_t i = 0; i < dataSize / 3; i++) {
+    for (size_t i = 0; i < dataSize / 3; i++)
+    {
         output[i] = input1[i] * input2[i] / 255;
         output[i + 1] = input1[i + 1] * input2[i] / 255;
         output[i + 2] = input1[i + 2] * input2[i] / 255;
@@ -69,7 +72,8 @@ void BitwiseXorOperator(aclopHandle &opHandle)
 
     uint8_t *output = (uint8_t *)(opHandle.outputData[0].data);
 
-    for (size_t i = 0; i < dataSize; i++) {
+    for (size_t i = 0; i < dataSize; i++)
+    {
         output[i] = input1[i] ^ input2[i];
     }
 }
@@ -82,7 +86,8 @@ void BitwiseOrOperator(aclopHandle &opHandle)
 
     uint8_t *output = (uint8_t *)(opHandle.outputData[0].data);
 
-    for (size_t i = 0; i < dataSize; i++) {
+    for (size_t i = 0; i < dataSize; i++)
+    {
         output[i] = input1[i] | input2[i];
     }
 }
@@ -95,85 +100,70 @@ void BitwiseAndOperator(aclopHandle &opHandle)
 
     uint8_t *output = (uint8_t *)(opHandle.outputData[0].data);
 
-    for (size_t i = 0; i < dataSize; i++) {
+    for (size_t i = 0; i < dataSize; i++)
+    {
         output[i] = input1[i] & input2[i];
     }
 }
 
-void BitwiseNotOperator(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "BitwiseNot simu exec");
-}
+void BitwiseNotOperator(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "BitwiseNot simu exec"); }
 
-void AddOperator(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "Add simu exec");
-}
+void AddOperator(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "Add simu exec"); }
 
 void SubtractOperator(aclopHandle &opHandle)
 {
-    if (opHandle.inputDesc[0].dataType == ACL_FLOAT16) {
+    if (opHandle.inputDesc[0].dataType == ACL_FLOAT16)
+    {
         aclFloat16 *input1 = (aclFloat16 *)(opHandle.inputData[0].data);
         size_t dataSize = opHandle.inputData[0].size;
         aclFloat16 *input2 = (aclFloat16 *)(opHandle.inputData[1].data);
 
         aclFloat16 *output = (aclFloat16 *)(opHandle.outputData[0].data);
 
-        for (size_t i = 0; i < dataSize / 2; i++) {
+        for (size_t i = 0; i < dataSize / 2; i++)
+        {
             output[i] = input1[i] - input2[i];
         }
-    } else if (opHandle.inputDesc[0].dataType == ACL_UINT8) {
+    }
+    else if (opHandle.inputDesc[0].dataType == ACL_UINT8)
+    {
         uint8_t *input1 = (uint8_t *)(opHandle.inputData[0].data);
         size_t dataSize = opHandle.inputData[0].size;
         uint8_t *input2 = (uint8_t *)(opHandle.inputData[1].data);
 
         uint8_t *output = (uint8_t *)(opHandle.outputData[0].data);
 
-        for (size_t i = 0; i < dataSize; i++) {
+        for (size_t i = 0; i < dataSize; i++)
+        {
             output[i] = input1[i] - input2[i];
         }
-    } else {
+    }
+    else
+    {
         float *input1 = (float *)(opHandle.inputData[0].data);
         size_t dataSize = opHandle.inputData[0].size;
         float *input2 = (float *)(opHandle.inputData[1].data);
 
         float *output = (float *)(opHandle.outputData[0].data);
 
-        for (size_t i = 0; i < dataSize / 4; i++) {
+        for (size_t i = 0; i < dataSize / 4; i++)
+        {
             output[i] = input1[i] - input2[i];
         }
     }
 }
 
-void PowOperator(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "Pow simu exec");
-}
+void PowOperator(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "Pow simu exec"); }
 
-void SqrtOperator(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "Sqrt simu exec");
-}
+void SqrtOperator(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "Sqrt simu exec"); }
 
-void ExpOperator(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "Exp simu exec");
-}
+void ExpOperator(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "Exp simu exec"); }
 
-void LogOperator(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "Log simu exec");
-}
+void LogOperator(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "Log simu exec"); }
 
-void SqrOperator(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "Sqr simu exec");
-}
+void SqrOperator(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "Sqr simu exec"); }
 
-void ThresholdBinaryOperator(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "ThresholdBinary simu exec");
-}
+void ThresholdBinaryOperator(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "ThresholdBinary simu exec"); }
 
 void AddWeightedOperator(aclopHandle &opHandle)
 {
@@ -185,37 +175,40 @@ void AddWeightedOperator(aclopHandle &opHandle)
     float alpha = opHandle.opAttr->attrs["alpha"];
     float beta = opHandle.opAttr->attrs["beta"];
     float gamma = opHandle.opAttr->attrs["gamma"];
-    for (size_t i = 0; i < dataSize; i++) {
+    for (size_t i = 0; i < dataSize; i++)
+    {
         output[i] = input1[i] * alpha + input2[i] * beta + gamma;
     }
 }
 
-void AbsDiffOperator(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "AbsDiff simu exec");
-}
+void AbsDiffOperator(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "AbsDiff simu exec"); }
 
 void MultiplyOperator(aclopHandle &opHandle)
 {
     float scale = opHandle.opAttr->attrs["scale"];
-    if (opHandle.inputDesc[0].dataType == ACL_FLOAT) {
+    if (opHandle.inputDesc[0].dataType == ACL_FLOAT)
+    {
         float *input1 = (float *)(opHandle.inputData[0].data);
         size_t dataSize = opHandle.inputData[0].size;
         float *input2 = (float *)(opHandle.inputData[1].data);
 
         float *output = (float *)(opHandle.outputData[0].data);
 
-        for (size_t i = 0; i < dataSize / 4; i++) {
+        for (size_t i = 0; i < dataSize / 4; i++)
+        {
             output[i] = input1[i] * input2[i] * scale;
         }
-    } else {
+    }
+    else
+    {
         uint8_t *input1 = (uint8_t *)(opHandle.inputData[0].data);
         size_t dataSize = opHandle.inputData[0].size;
         uint8_t *input2 = (uint8_t *)(opHandle.inputData[1].data);
 
         uint8_t *output = (uint8_t *)(opHandle.outputData[0].data);
 
-        for (size_t i = 0; i < dataSize; i++) {
+        for (size_t i = 0; i < dataSize; i++)
+        {
             output[i] = input1[i] * input2[i] * scale;
         }
     }
@@ -223,84 +216,84 @@ void MultiplyOperator(aclopHandle &opHandle)
 
 void DivideOperator(aclopHandle &opHandle)
 {
-    if (opHandle.inputDesc[0].dataType == ACL_FLOAT) {
+    if (opHandle.inputDesc[0].dataType == ACL_FLOAT)
+    {
         float *input1 = (float *)(opHandle.inputData[0].data);
         size_t dataSize = opHandle.inputData[0].size;
         float *input2 = (float *)(opHandle.inputData[1].data);
 
         float *output = (float *)(opHandle.outputData[0].data);
 
-        for (size_t i = 0; i < dataSize / 4; i++) {
+        for (size_t i = 0; i < dataSize / 4; i++)
+        {
             output[i] = input1[i] / input2[i];
         }
-    } else {
+    }
+    else
+    {
         uint8_t *input1 = (uint8_t *)(opHandle.inputData[0].data);
         size_t dataSize = opHandle.inputData[0].size;
         uint8_t *input2 = (uint8_t *)(opHandle.inputData[1].data);
 
         uint8_t *output = (uint8_t *)(opHandle.outputData[0].data);
 
-        for (size_t i = 0; i < dataSize; i++) {
+        for (size_t i = 0; i < dataSize; i++)
+        {
             output[i] = input1[i] / input2[i];
         }
     }
 }
 
-void AbsOperator(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "Abs simu exec");
-}
+void AbsOperator(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "Abs simu exec"); }
 
-void ScaleAddOperator(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "ScaleAdd simu exec");
-}
+void ScaleAddOperator(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "ScaleAdd simu exec"); }
 
 void ConvertToOperator(aclopHandle &opHandle)
 {
     int dst_type = (int)(opHandle.opAttr->attrs["dst_type"]);
-    if (opHandle.inputDesc[0].dataType == ACL_FLOAT && dst_type == ACL_FLOAT16) {
+    if (opHandle.inputDesc[0].dataType == ACL_FLOAT && dst_type == ACL_FLOAT16)
+    {
         float *input1 = (float *)(opHandle.inputData[0].data);
         size_t dataSize = opHandle.inputData[0].size;
         aclFloat16 *output = (aclFloat16 *)(opHandle.outputData[0].data);
 
-        for (size_t i = 0; i < dataSize / 4; i++) {
+        for (size_t i = 0; i < dataSize / 4; i++)
+        {
             output[i] = aclFloatToFloat16(input1[i]);
         }
-    } else if (opHandle.inputDesc[0].dataType == ACL_FLOAT16 && dst_type == ACL_FLOAT) {
+    }
+    else if (opHandle.inputDesc[0].dataType == ACL_FLOAT16 && dst_type == ACL_FLOAT)
+    {
         aclFloat16 *input1 = (aclFloat16 *)(opHandle.inputData[0].data);
         size_t dataSize = opHandle.inputData[0].size;
         uint8_t *output = (uint8_t *)(opHandle.outputData[0].data);
 
-        for (size_t i = 0; i < dataSize / 2; i++) {
+        for (size_t i = 0; i < dataSize / 2; i++)
+        {
             output[i] = aclFloat16ToFloat(input1[i]);
         }
-    } else if (opHandle.inputDesc[0].dataType == ACL_UINT8 && dst_type == ACL_FLOAT16) {
+    }
+    else if (opHandle.inputDesc[0].dataType == ACL_UINT8 && dst_type == ACL_FLOAT16)
+    {
         uint8_t *input1 = (uint8_t *)(opHandle.inputData[0].data);
         size_t dataSize = opHandle.inputData[0].size;
         aclFloat16 *output = (aclFloat16 *)(opHandle.outputData[0].data);
-        for (size_t i = 0; i < dataSize; i++) {
+        for (size_t i = 0; i < dataSize; i++)
+        {
             output[i] = aclFloatToFloat16((float)(input1[i]));
         }
-    } else {
+    }
+    else
+    {
         std::cout << "Not avaliable for " << opHandle.inputDesc[0].dataType << " to " << dst_type << std::endl;
     }
 }
 
-void ClipOperator(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "Clip simu exec");
-}
+void ClipOperator(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "Clip simu exec"); }
 
-void MinOperator(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "Min simu exec");
-}
+void MinOperator(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "Min simu exec"); }
 
-void MaxOperator(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "Max simu exec");
-}
+void MaxOperator(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "Max simu exec"); }
 
 void RescaleOperator(aclopHandle &opHandle)
 {
@@ -309,7 +302,8 @@ void RescaleOperator(aclopHandle &opHandle)
     uint8_t *output = (uint8_t *)(opHandle.outputData[0].data);
     float scale = opHandle.opAttr->attrs["scale"];
     float bias = opHandle.opAttr->attrs["bias"];
-    for (size_t i = 0; i < dataSize; i++) {
+    for (size_t i = 0; i < dataSize; i++)
+    {
         output[i] = input1[i] * scale + bias;
     }
 }
@@ -327,9 +321,10 @@ void BlendImageCaptionOperator(aclopHandle &opHandle)
     int32_t *tilling = (int32_t *)(opHandle.inputDesc[4].dims);
     float Opacity = tilling[28] / 100.0;
     uint8_t *output = (uint8_t *)(opHandle.outputData[0].data);
-    for (size_t i = 0; i < dataSize; i++) {
+    for (size_t i = 0; i < dataSize; i++)
+    {
         output[i] = caption[i] * (alpha[i] * 1.0 / 255) + (1 - alpha[i] * 1.0 / 255) * (1 - Opacity) * frame[i] +
-            captionBg[i] * Opacity * (1 - alpha[i] * 1.0 / 255);
+                    captionBg[i] * Opacity * (1 - alpha[i] * 1.0 / 255);
     }
 }
 
@@ -342,9 +337,9 @@ void BackgroundReplaceOperator(aclopHandle &opHandle)
     // 100*(100/255) + 200*(1-100/255) = 161
 
     uint8_t *output = (uint8_t *)(opHandle.outputData[0].data);
-    for (size_t i = 0; i < dataSize; i++) {
-        output[i] = std::round(input2[i] * aclFloat16ToFloat(mask[i]) + input1[i] * \
-                    (1 - aclFloat16ToFloat(mask[i])));
+    for (size_t i = 0; i < dataSize; i++)
+    {
+        output[i] = std::round(input2[i] * aclFloat16ToFloat(mask[i]) + input1[i] * (1 - aclFloat16ToFloat(mask[i])));
     }
 }
 
@@ -355,7 +350,8 @@ void BlendImagesOperator(aclopHandle &opHandle)
     uint8_t *input2 = (uint8_t *)(opHandle.inputData[2].data);
     size_t dataSize = opHandle.inputData[1].size;
     uint8_t *output = (uint8_t *)(opHandle.outputData[0].data);
-    for (size_t i = 0; i < dataSize; i++) {
+    for (size_t i = 0; i < dataSize; i++)
+    {
         output[i] = input1[i] * (mask[i] * 1.0 / 255) + input2[i] * (1 - mask[i] * 1.0 / 255);
     }
 }
@@ -368,9 +364,10 @@ void BackgroundReplaceNormOperator(aclopHandle &opHandle)
     aclFloat16 *mask = (aclFloat16 *)(opHandle.inputData[2].data);
     size_t dataSize = std::min(opHandle.inputData[0].size / 3, opHandle.inputData[2].size / 2);
     uint8_t *output = (uint8_t *)(opHandle.outputData[0].data);
-    for (size_t i = 0; i < dataSize; i++) {
-        output[i] = std::round(input2[i] * (aclFloat16ToFloat(mask[i]) / 255) + input1[i] * \
-                    (1 - aclFloat16ToFloat(mask[i]) / 255));
+    for (size_t i = 0; i < dataSize; i++)
+    {
+        output[i] = std::round(input2[i] * (aclFloat16ToFloat(mask[i]) / 255) +
+                               input1[i] * (1 - aclFloat16ToFloat(mask[i]) / 255));
     }
 }
 
@@ -378,7 +375,8 @@ void SplitOperator(aclopHandle &opHandle)
 {
     uint8_t *input1 = (uint8_t *)(opHandle.inputData[0].data);
     size_t dataSize = opHandle.inputData[0].size;
-    for (size_t i = 0; i < dataSize; i++) {
+    for (size_t i = 0; i < dataSize; i++)
+    {
         uint8_t *output = (uint8_t *)(opHandle.outputData[i % opHandle.numOutPuts].data);
         output[i / opHandle.numOutPuts] = input1[i];
     }
@@ -388,7 +386,8 @@ void MergeOperator(aclopHandle &opHandle)
 {
     uint8_t *output = (uint8_t *)(opHandle.outputData[0].data);
     size_t dataSize = opHandle.outputData[0].size;
-    for (size_t i = 0; i < dataSize; i++) {
+    for (size_t i = 0; i < dataSize; i++)
+    {
         uint8_t *input = (uint8_t *)(opHandle.inputData[i % opHandle.numInputs].data);
         output[i] = input[i / opHandle.numInputs];
     }
@@ -403,35 +402,17 @@ void aclrtMemsetAsyncOperator(aclopHandle &opHandle)
     aclrtMemset(devPtr, maxCount, value, count);
 }
 
-void simuDistanceIVFSQ8IP8(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "simuDistanceIVFSQ8IP8 simu exec");
-}
+void simuDistanceIVFSQ8IP8(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "simuDistanceIVFSQ8IP8 simu exec"); }
 // 算子TransdataShaped 回调函数 这里可以实现CPU的算子算法 当前demo简单未实现 其实这里需要实现一个数据变形
-void simuOpTransdataShaped(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "TransdataShaped simu exec");
-}
+void simuOpTransdataShaped(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "TransdataShaped simu exec"); }
 
-void simuOpTransdataGet(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "TransdataGet simu exec");
-}
+void simuOpTransdataGet(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "TransdataGet simu exec"); }
 
-void simuOpTransdataDist(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "TransdataDist simu exec");
-}
+void simuOpTransdataDist(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "TransdataDist simu exec"); }
 
-void simuOpTransdataIdx(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "TransdataIdx simu exec");
-}
+void simuOpTransdataIdx(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "TransdataIdx simu exec"); }
 
-void simuOpVecL2Sqr(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "VecL2Sqr simu exec");
-}
+void simuOpVecL2Sqr(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "VecL2Sqr simu exec"); }
 
 void simuOpTransdataRaw(aclopHandle &opHandle)
 {
@@ -439,7 +420,8 @@ void simuOpTransdataRaw(aclopHandle &opHandle)
     size_t outDistSizeInByte = opHandle.outputData[0].size;
 
     auto ret = memset_s(outDist, outDistSizeInByte, 0, outDistSizeInByte);
-    if (ret != EOK) {
+    if (ret != EOK)
+    {
         ACL_APP_LOG(ACL_ERROR, "simuOpTransdataRaw memset failed !!!");
     }
     ACL_APP_LOG(ACL_INFO, "TransdataRaw simu exec");
@@ -464,30 +446,15 @@ void simuDistanceComputeFlatMin64(aclopHandle &opHandle)
     resetFlat(opHandle);
 }
 
-void simuL2Norm(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "simuL2Norm simu exec");
-}
+void simuL2Norm(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "simuL2Norm simu exec"); }
 
-void simuDistanceFlatL2MinsAt(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "DistanceFlatL2MinsAt simu exec");
-}
+void simuDistanceFlatL2MinsAt(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "DistanceFlatL2MinsAt simu exec"); }
 
-void simuTopkIvf(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "simuTopkIvf simu exec");
-}
+void simuTopkIvf(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "simuTopkIvf simu exec"); }
 
-void simuResidualIvf(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "simuResidualIvf simu exec");
-}
+void simuResidualIvf(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "simuResidualIvf simu exec"); }
 
-void simuDistanceIVFSQ8L2(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "simuDistanceIVFSQ8L2 simu exec");
-}
+void simuDistanceIVFSQ8L2(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "simuDistanceIVFSQ8L2 simu exec"); }
 
 void simuDistanceBatchMaskGenerator(aclopHandle &opHandle)
 {
@@ -504,64 +471,31 @@ void simuDistanceBatchMaskGeneratorWithExtra(aclopHandle &opHandle)
     ACL_APP_LOG(ACL_INFO, "DistanceBatchMaskGeneratorWithExtra simu exec");
 }
 
-void simuDistanceMaskGenerator(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "DistanceMaskGenerator simu exec");
-}
-void simuDistanceFlatHamming(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "DistanceFlatHamming simu exec");
-}
+void simuDistanceMaskGenerator(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "DistanceMaskGenerator simu exec"); }
+void simuDistanceFlatHamming(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "DistanceFlatHamming simu exec"); }
 
 void simuDistanceFlatHammingWithMask(aclopHandle &opHandle)
 {
     ACL_APP_LOG(ACL_INFO, "DistanceFlatHammingWithMask simu exec");
 }
 
-void simuL2NormFlatSub(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "DistanceFlatL2MinsAt simu exec");
-}
+void simuL2NormFlatSub(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "DistanceFlatL2MinsAt simu exec"); }
 
-void simuDistanceFlatL2At(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "DistanceFlatL2At simu exec");
-}
+void simuDistanceFlatL2At(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "DistanceFlatL2At simu exec"); }
 
-void simuSubcentAccum(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "SubcentAccum simu exec");
-}
+void simuSubcentAccum(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "SubcentAccum simu exec"); }
 
-void simuDistanceFlatL2Mins(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "DistanceFlatL2Mins simu exec");
-}
+void simuDistanceFlatL2Mins(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "DistanceFlatL2Mins simu exec"); }
 
-void simuTopkIvfsqtL1(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "TopkIvfsqtL1 simu exec");
-}
+void simuTopkIvfsqtL1(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "TopkIvfsqtL1 simu exec"); }
 
-void simuDistanceFlatSubcenters(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "DistanceFlatSubcenters simu exec");
-}
+void simuDistanceFlatSubcenters(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "DistanceFlatSubcenters simu exec"); }
 
-void simuTopkIvfsqtL2(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "TopkIvfsqtL2 simu exec");
-}
+void simuTopkIvfsqtL2(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "TopkIvfsqtL2 simu exec"); }
 
-void simuDistanceIVFSQ8IPX(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "DistanceIVFSQ8IPX simu exec");
-}
+void simuDistanceIVFSQ8IPX(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "DistanceIVFSQ8IPX simu exec"); }
 
-void simuTopkIvfFuzzy(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "TopkIvfFuzzy simu exec");
-}
+void simuTopkIvfFuzzy(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "TopkIvfFuzzy simu exec"); }
 
 void simuDistanceFlatIPMaxs(aclopHandle &opHandle)
 {
@@ -570,60 +504,30 @@ void simuDistanceFlatIPMaxs(aclopHandle &opHandle)
     return;
 }
 
-void simuDistanceFlatIpByIdx(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "DistanceFlatIpByIdx simu exec");
-}
+void simuDistanceFlatIpByIdx(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "DistanceFlatIpByIdx simu exec"); }
 
 void simuDistanceFlatIpByIdxWithTable(aclopHandle &opHandle)
 {
     ACL_APP_LOG(ACL_INFO, "DistanceFlatIpByIdxWithTable simu exec");
 }
 
-void simuDistanceFlatIp(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "DistanceFlatIp simu exec");
-}
+void simuDistanceFlatIp(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "DistanceFlatIp simu exec"); }
 
-void simuDistanceFlatIpWithTable(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "DistanceFlatIpWithTable simu exec");
-}
+void simuDistanceFlatIpWithTable(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "DistanceFlatIpWithTable simu exec"); }
 
-void simuDistanceFilter(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "simuDistanceFilter simu exec");
-}
+void simuDistanceFilter(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "simuDistanceFilter simu exec"); }
 
-void simuDistanceFlatIpByIdx2(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "simuDistanceFlatIpByIdx2 simu exec");
-}
+void simuDistanceFlatIpByIdx2(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "simuDistanceFlatIpByIdx2 simu exec"); }
 
-void simuRemovedataAttr(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "simuRemovedataAttr simu exec");
-}
+void simuRemovedataAttr(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "simuRemovedataAttr simu exec"); }
 
-void simuTransdataCustomAttr(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "simuTransdataCustomAttr simu exec");
-}
+void simuTransdataCustomAttr(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "simuTransdataCustomAttr simu exec"); }
 
-void simuRemovedataCustomAttr(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "simuRemovedataCustomAttr simu exec");
-}
+void simuRemovedataCustomAttr(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "simuRemovedataCustomAttr simu exec"); }
 
-void simuRemovedataShaped(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "RemovedataShaped simu exec");
-}
+void simuRemovedataShaped(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "RemovedataShaped simu exec"); }
 
-void simuInt8L2Norm(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "Int8L2Norm simu exec");
-}
+void simuInt8L2Norm(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "Int8L2Norm simu exec"); }
 
 void simuDistanceInt8CosMaxs(aclopHandle &opHandle)
 {
@@ -642,35 +546,17 @@ void simuDistanceFlatIPMaxsWithMask(aclopHandle &opHandle)
     ACL_APP_LOG(ACL_INFO, "DistanceFlatIPMaxsWithMask simu exec");
 }
 
-void simuCorrCompute(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "CorrCompute simu exec");
-}
+void simuCorrCompute(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "CorrCompute simu exec"); }
 
-void simuKmUpdateCentroids(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "KmUpdateCentroids simu exec");
-}
+void simuKmUpdateCentroids(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "KmUpdateCentroids simu exec"); }
 
-void simuL2NormTypingInt8(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "L2NormTypingInt8 simu exec");
-}
+void simuL2NormTypingInt8(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "L2NormTypingInt8 simu exec"); }
 
-void simuDistanceL2MinsInt8At(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "DistanceL2MinsInt8At simu exec");
-}
+void simuDistanceL2MinsInt8At(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "DistanceL2MinsInt8At simu exec"); }
 
-void simuCodesQuantify(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "CodesQuantify simu exec");
-}
+void simuCodesQuantify(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "CodesQuantify simu exec"); }
 
-void simuDistanceSQ8L2Mins(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "DistanceSQ8L2Mins simu exec");
-}
+void simuDistanceSQ8L2Mins(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "DistanceSQ8L2Mins simu exec"); }
 
 void simuDistanceInt8CosMaxsFilter(aclopHandle &opHandle)
 {
@@ -689,10 +575,7 @@ void simuDistanceInt8L2MinsWithMask(aclopHandle &opHandle)
     resetFlat(opHandle);
 }
 
-void simuDistanceSQ8IPMaxsDim64(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "DistanceSQ8IPMaxsDim64 simu exec");
-}
+void simuDistanceSQ8IPMaxsDim64(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "DistanceSQ8IPMaxsDim64 simu exec"); }
 
 void simuDistanceInt8L2FullMins(aclopHandle &opHandle)
 {
@@ -712,60 +595,56 @@ void simuDistanceFlatIPMaxsBatch(aclopHandle &opHandle)
     resetFlat(opHandle);
 }
 
-void simuTopkMultisearch(aclopHandle &opHandle)
+void simuAscendcDistanceFlatIPMaxsWithMask(aclopHandle &opHandle)
 {
-    ACL_APP_LOG(ACL_INFO, "TopkMultisearch simu exec");
+    ACL_APP_LOG(ACL_INFO, "simuAscendcDistanceFlatIPMaxsWithMask simu exec");
 }
 
-void simuDistanceMaskedSQ8L2Mins(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "DistanceMaskedSQ8L2Mins simu exec");
-}
+void simuTopkMultisearch(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "TopkMultisearch simu exec"); }
+
+void simuDistanceMaskedSQ8L2Mins(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "DistanceMaskedSQ8L2Mins simu exec"); }
 
 void simuDistanceMaskedSQ8IPMaxsDim64(aclopHandle &opHandle)
 {
     ACL_APP_LOG(ACL_INFO, "simuDistanceMaskedSQ8IPMaxsDim64 simu exec");
 }
 
-void simuCidFilter(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "simuCidFilter simu exec");
-}
+void simuCidFilter(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "simuCidFilter simu exec"); }
 
 void simuDistanceInt8L2MinsWoQueryNorm(aclopHandle &opHandle)
 {
     ACL_APP_LOG(ACL_INFO, "simuDistanceInt8L2MinsWoQueryNorm simu exec");
 }
 
-void simuDistanceFlatL2(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "DistanceFlatL2 simu exec");
-}
+void simuDistanceFlatL2(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "DistanceFlatL2 simu exec"); }
 
-void simuDistanceFlatIP(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "simuDistanceFlatIP simu exec");
-}
+void simuDistanceFlatIP(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "simuDistanceFlatIP simu exec"); }
 
-void simuDistanceBinaryFloat(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "simuDistanceBinaryFloat simu exec");
-}
+void simuDistanceBinaryFloat(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "simuDistanceBinaryFloat simu exec"); }
 
 void simuDistanceBatchValMaskGenerator(aclopHandle &opHandle)
 {
     ACL_APP_LOG(ACL_INFO, "simuDistanceBatchValMaskGenerator simu exec");
 }
 
-void simuAscendcL2Norm(aclopHandle &opHandle)
+void simuAscendcDistanceBatchMaskGenerator(aclopHandle &opHandle)
 {
-    ACL_APP_LOG(ACL_INFO, "simuAscendcL2Norm simu exec");
+    ACL_APP_LOG(ACL_INFO, "simuAscendcDistanceBatchMaskGenerator simu exec");
 }
 
-void simuAscendcDistInt8FlatL2(aclopHandle &opHandle)
+void simuAscendcDistanceBatchMaskGeneratorWithExtra(aclopHandle &opHandle)
 {
-    ACL_APP_LOG(ACL_INFO, "simuAscendcDistInt8FlatL2 simu exec");
+    ACL_APP_LOG(ACL_INFO, "simuAscendcDistanceBatchMaskGeneratorWithExtra simu exec");
 }
+
+void simuAscendcDistanceInt8CosMaxsWithMask(aclopHandle &opHandle)
+{
+    ACL_APP_LOG(ACL_INFO, "simuAscendcDistanceInt8CosMaxsWithMask simu exec");
+}
+
+void simuAscendcL2Norm(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "simuAscendcL2Norm simu exec"); }
+
+void simuAscendcDistInt8FlatL2(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "simuAscendcDistInt8FlatL2 simu exec"); }
 
 void simuAscendcDistInt8FlatCos(aclopHandle &opHandle)
 {
@@ -782,25 +661,13 @@ void SimuAscendTransdataShapedSp(aclopHandle &opHandle)
     ACL_APP_LOG(ACL_INFO, "simuAscendTransdataShapedSp simu exec");
 }
 
-void SimuAscendVecL2SqrSp(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "simuAscendVecL2SqrSp simu exec");
-}
+void SimuAscendVecL2SqrSp(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "simuAscendVecL2SqrSp simu exec"); }
 
-void SimuAscendFpToFp16(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "simuAscendFpToFp16 simu exec");
-}
+void SimuAscendFpToFp16(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "simuAscendFpToFp16 simu exec"); }
 
-void SimuAscendTopkIvfSpL1(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "simuAscendTopkIvfSpL1 simu exec");
-}
+void SimuAscendTopkIvfSpL1(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "simuAscendTopkIvfSpL1 simu exec"); }
 
-void SimuAscendTopkIvfSp(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "simuAscendTopkIvfSp simu exec");
-}
+void SimuAscendTopkIvfSp(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "simuAscendTopkIvfSp simu exec"); }
 
 void SimuAscendDistanceIVFSpIntL2Mins(aclopHandle &opHandle)
 {
@@ -812,10 +679,7 @@ void SimuAscendTopkMultisearchIvfV2(aclopHandle &opHandle)
     ACL_APP_LOG(ACL_INFO, "simuAscendTopkMultisearchIvfV2 simu exec");
 }
 
-void SimuAscendIvfCidFilter3(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "simuAscendIvfCidFilter3 simu exec");
-}
+void SimuAscendIvfCidFilter3(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "simuAscendIvfCidFilter3 simu exec"); }
 
 void SimuAscendDistanceMaskedIVFSpIntL2Mins(aclopHandle &opHandle)
 {
@@ -842,60 +706,27 @@ void SimuDistanceFlatIPMaxsNoScoreWithScale(aclopHandle &opHandle)
     ACL_APP_LOG(ACL_INFO, "DistanceFlatIPMaxsNoScoreWithScale simu exec");
 }
 
-void SimuVstarBaseAddMatMul(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "VstarBaseAddMatMul simu exec");
-}
+void SimuVstarBaseAddMatMul(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "VstarBaseAddMatMul simu exec"); }
 
-void SimuIvfMultiSpTopkL3(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "IvfMultiSpTopkL3 simu exec");
-}
+void SimuIvfMultiSpTopkL3(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "IvfMultiSpTopkL3 simu exec"); }
 
-void SimuIvfSpTopkL2WithMask(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "IvfSpTopkL2WithMask simu exec");
-}
+void SimuIvfSpTopkL2WithMask(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "IvfSpTopkL2WithMask simu exec"); }
 
-void SimuIvfSpTopkL3(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "IvfSpTopkL3 simu exec");
-}
+void SimuIvfSpTopkL3(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "IvfSpTopkL3 simu exec"); }
 
-void SimuIvfSpTopkL1(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "IvfSpTopkL1 simu exec");
-}
+void SimuIvfSpTopkL1(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "IvfSpTopkL1 simu exec"); }
 
-void SimuIvfSpTopkL2(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "IvfSpTopkL2 simu exec");
-}
+void SimuIvfSpTopkL2(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "IvfSpTopkL2 simu exec"); }
 
-void SimuIvfMultiSpTopkL2(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "IvfMultiSpTopkL2 simu exec");
-}
+void SimuIvfMultiSpTopkL2(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "IvfMultiSpTopkL2 simu exec"); }
 
-void SimuVstarComputeL1(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "VstarComputeL1 simu exec");
-}
+void SimuVstarComputeL1(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "VstarComputeL1 simu exec"); }
 
-void SimuVstarComputeL2(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "VstarComputeL2 simu exec");
-}
+void SimuVstarComputeL2(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "VstarComputeL2 simu exec"); }
 
-void SimuVSC3(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "VSC3 simu exec");
-}
+void SimuVSC3(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "VSC3 simu exec"); }
 
-void SimuVSM3(aclopHandle &opHandle)
-{
-    ACL_APP_LOG(ACL_INFO, "VSM3 simu exec");
-}
+void SimuVSM3(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "VSM3 simu exec"); }
 
 void simuOpInstall()
 {
@@ -954,6 +785,7 @@ void simuOpInstall()
     REG_OP("DistanceFlatIpWithTable", simuDistanceFlatIpWithTable);
     REG_OP("DistanceFilter", simuDistanceFilter);
     REG_OP("DistanceFlatIpByIdx2", simuDistanceFlatIpByIdx2);
+    REG_OP("AscendcDistanceFlatIPMaxsWithMask", simuAscendcDistanceFlatIPMaxsWithMask);
     REG_OP("RemovedataAttr", simuRemovedataAttr);
     REG_OP("TransdataCustomAttr", simuTransdataCustomAttr);
     REG_OP("RemovedataCustomAttr", simuRemovedataCustomAttr);
@@ -985,10 +817,13 @@ void simuOpInstall()
     REG_OP("DistanceMaskGeneratorWithExtra", simuDistanceMaskGeneratorWithExtra);
     REG_OP("DistanceBatchMaskGeneratorWithExtra", simuDistanceBatchMaskGeneratorWithExtra);
     REG_OP("DistanceInt8L2MinsWoQueryNorm", simuDistanceInt8L2MinsWoQueryNorm);
+    REG_OP("AscendcDistanceInt8CosMaxsWithMask", simuAscendcDistanceInt8CosMaxsWithMask);
     REG_OP("DistanceFlatL2", simuDistanceFlatL2);
     REG_OP("DistanceFlatIP", simuDistanceFlatIP);
     REG_OP("DistanceBinaryFloat", simuDistanceBinaryFloat);
     REG_OP("DistanceBatchValMaskGenerator", simuDistanceBatchValMaskGenerator);
+    REG_OP("AscendcDistanceBatchMaskGenerator", simuAscendcDistanceBatchMaskGenerator);
+    REG_OP("AscendcDistanceBatchMaskGeneratorWithExtra", simuAscendcDistanceBatchMaskGeneratorWithExtra);
     REG_OP("AscendcL2Norm", simuAscendcL2Norm);
     REG_OP("AscendcDistInt8FlatL2", simuAscendcDistInt8FlatL2);
     REG_OP("AscendcDistInt8FlatCos", simuAscendcDistInt8FlatCos);
@@ -1085,6 +920,7 @@ void simuOpUninstall()
     UNREG_OP("DistanceFlatIpWithTable");
     UNREG_OP("DistanceFilter");
     UNREG_OP("DistanceFlatIpByIdx2");
+    UNREG_OP("AscendcDistanceFlatIPMaxsWithMask");
     UNREG_OP("RemovedataAttr");
     UNREG_OP("TransdataCustomAttr");
     UNREG_OP("RemovedataCustomAttr");
@@ -1115,10 +951,13 @@ void simuOpUninstall()
     UNREG_OP("DistanceBatchMaskGenerator");
     UNREG_OP("DistanceBatchMaskGeneratorWithExtra");
     UNREG_OP("DistanceInt8L2MinsWoQueryNorm");
+    UNREG_OP("AscendcDistanceInt8CosMaxsWithMask");
     UNREG_OP("DistanceFlatL2");
     UNREG_OP("DistanceFlatIP");
     UNREG_OP("DistanceBinaryFloat");
     UNREG_OP("DistanceBatchValMaskGenerator");
+    UNREG_OP("AscendcDistanceBatchMaskGenerator");
+    UNREG_OP("AscendcDistanceBatchMaskGeneratorWithExtra");
     UNREG_OP("AscendcL2Norm");
     UNREG_OP("AscendcDistInt8FlatL2");
     UNREG_OP("AscendcDistInt8FlatCos");

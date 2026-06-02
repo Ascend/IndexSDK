@@ -157,12 +157,12 @@ openEuler 22.03</li><li>openEuler 24.03</li><li>Ubuntu 18.04</li><li>Ubuntu 20.0
 </tr>
 <tr>
 <td ><term>Atlas A2 推理系列产品</term>
-<br>说明：Atlas A2 推理系列产品支持AscendIndexFlat及AscendIndexInt8Flat算法。</td>
+<br>说明：Atlas A2 推理系列产品支持AscendIndexFlat，AscendIndexInt8Flat算法，AscendIndexTS-FlatIP算法，AscendIndexTS-Int8Cos算法。</td>
 <td>Atlas 800I A2 推理服务器</td>
 <td><li>CentOS 7.6</li><li>openEuler 20.03</li><li>openEuler 22.03</li><li>openEuler 24.03</li><li>Ubuntu 18.04</li><li>Ubuntu 20.04</li><li>Ubuntu 24.04</li><li>EulerOS 2.12</li><li>EulerOS 2.15</li><li>UOS V20</li><li>UOS V25</li><li>KylinOS V10 SP3</li><li>KylinOS V11</li><li>BC-Linux_21.10 U4</li></td>
 </tr>
 <tr>
-<td><term>Atlas A3 推理系列产品</term><br>说明：当前仅支持AscendIndexFlat算法。</td>
+<td><term>Atlas A3 推理系列产品</term><br>说明：当前支持AscendIndexFlat算法，AscendIndexTS-FlatIP算法，AscendIndexTS-Int8Cos算法。</td>
 <td>Atlas 800I A3 超节点服务器</td>
 <td><li>Ubuntu 18.04</li><li>CUlinux 3.0</li><li>KylinOS V10 SP3 2403</li><li>KylinOS V11</li><li>CTyunOS 4</li><li>UOS V25</li></td>
 </tr>

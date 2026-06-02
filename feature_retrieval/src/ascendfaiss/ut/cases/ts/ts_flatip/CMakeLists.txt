@@ -12,6 +12,23 @@
 # MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 # See the Mulan PSL v2 for more details.
 
-add_subdirectory(ts_binaryflat)
-add_subdirectory(ts_int8cos)
-add_subdirectory(ts_flatip)
+cmake_minimum_required(VERSION 3.20)
+
+project(TestAscendUTTSFlatIP)
+
+create_testable_target(${PROJECT_NAME}
+    SOURCE_FILE
+        TestAscendUTTSFlatIP.cpp
+
+    DEPENDS
+        # to be tested
+        ascendfaiss
+
+        # 3rd lib
+        gtest_main
+        gtest
+        ${ASCENDFAISS_LIBRARY}
+
+    INCLUDES
+        ${ASCENDFAISS_INCLUDE}
+)
