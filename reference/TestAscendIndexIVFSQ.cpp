@@ -16,7 +16,9 @@
  * -------------------------------------------------------------------------
  */
 
-// 需要生成aicpu算子+ivfsq8算子(-d 64 -c 8192)+flat_at算子(-d 64 -c 8192)
+// python3 aicpu_generate_model.py -t 310P
+// python3 ivfsq8_generate_model.py -d 256 -c 8192 -t 310P
+// python3 flat_at_generate_model.py -d 256 -c 8192 -t 310P
 
 #include <faiss/ascend/AscendIndexIVFSQ.h>
 
@@ -52,8 +54,8 @@ void Norm(float *data, size_t n, size_t dim)
 
 int main()
 {
-    size_t dim = 64;
-    size_t ntotal = 1000000;
+    size_t dim = 256;
+    size_t ntotal = 100000;
     int ncentroids = 8192;
     int nprobe = 64;
 

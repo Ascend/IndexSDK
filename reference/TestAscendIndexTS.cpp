@@ -16,7 +16,9 @@
  * -------------------------------------------------------------------------
  */
 
-// 需要生成aicpu算子+binary_flat算子(-d 512)+mask算子
+// python3 aicpu_generate_model.py -t npu_type
+// python3 binary_flat_generate_model.py -d 256
+// python3 mask_generate_model.py -t npu_type
 
 #include <faiss/ascend/AscendIndexTS.h>
 #include <gmock/gmock.h>
@@ -116,7 +118,7 @@ void InitAndAdd(faiss::ascend::AscendIndexTS &tsIndex, int ntotal, int addNum, i
 
 TEST(TestAscendIndexTS, Init)
 {
-    uint32_t dim = 512;
+    uint32_t dim = 256;
     auto ts = GetMillisecs();
     faiss::ascend::AscendIndexTS *tsIndex = new faiss::ascend::AscendIndexTS();
     int res = tsIndex->Init(DEVICE_ID, dim, TOKEN_NUM, faiss::ascend::AlgorithmType::FLAT_HAMMING);
@@ -129,7 +131,7 @@ TEST(TestAscendIndexTS, Init)
 TEST(TestAscendIndexTS, add)
 {
     idx_t ntotal = 1000000;
-    uint32_t dim = 512;
+    uint32_t dim = 256;
     faiss::ascend::AscendIndexTS *tsIndex = new faiss::ascend::AscendIndexTS();
     auto res = tsIndex->Init(DEVICE_ID, dim, TOKEN_NUM, faiss::ascend::AlgorithmType::FLAT_HAMMING);
     EXPECT_EQ(res, 0);
@@ -155,7 +157,7 @@ TEST(TestAscendIndexTS, add)
 
 TEST(TestAscendIndexTS, GetFeatureByLabel)
 {
-    int dim = 512;
+    int dim = 256;
     int maxTokenId = 2500;
     int ntotal = 100000;
     std::vector<uint8_t> base(ntotal * dim / 8);
@@ -186,7 +188,7 @@ TEST(TestAscendIndexTS, GetFeatureByLabel)
 
 TEST(TestAscendIndexTS, DeleteFeatureByLabel)
 {
-    int dim = 512;
+    int dim = 256;
     int maxTokenId = 2500;
     int ntotal = 1000000;
     std::vector<uint8_t> base(ntotal * dim / 8);
@@ -221,7 +223,7 @@ TEST(TestAscendIndexTS, DeleteFeatureByLabel)
 
 TEST(TestAscendIndexTS, DeleteFeatureByToken)
 {
-    int dim = 512;
+    int dim = 256;
     int maxTokenId = 2500;
     int ntotal = 1000000;
     std::vector<uint8_t> base(ntotal * dim / 8);
@@ -252,7 +254,7 @@ TEST(TestAscendIndexTS, Acc)
 {
     idx_t ntotal = 1000000;
     uint32_t addNum = 1;
-    uint32_t dim = 512;
+    uint32_t dim = 256;
     std::vector<int> queryNums = {1, 2, 4, 8, 16, 32, 64, 128, 256};
     int k = 10;
     faiss::ascend::AscendIndexTS tsIndex;
@@ -310,7 +312,7 @@ TEST(TestAscendIndexTS, SearchNoShareQPS)
 {
     idx_t ntotal = 1000000;
     uint32_t addNum = 10;
-    uint32_t dim = 512;
+    uint32_t dim = 256;
     std::vector<int> queryNums = {1, 2, 4, 8, 16, 32, 64, 128, 256};
     int k = 10;
     faiss::ascend::AscendIndexTS tsIndex;
@@ -364,7 +366,7 @@ TEST(TestAscendIndexTS, SearchShareQPS)
 {
     idx_t ntotal = 1000000;
     uint32_t addNum = 10;
-    uint32_t dim = 512;
+    uint32_t dim = 256;
     std::vector<int> queryNums = {1, 2, 4, 8, 16, 32, 64, 128, 256};
     int k = 10;
     faiss::ascend::AscendIndexTS tsIndex;
