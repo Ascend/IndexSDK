@@ -16,7 +16,8 @@
  * -------------------------------------------------------------------------
  */
 
-// 需要生成aicpu算子+int8flat算子(-d 512)
+// python3 aicpu_generate_model.py -t npu_type
+// python3 int8flat_generate_model.py -d 256 -t npu_type
 
 #include <faiss/ascend/AscendCloner.h>
 #include <faiss/ascend/AscendIndexInt8Flat.h>
@@ -119,7 +120,7 @@ recallMap calRecall(std::vector<T> label, int64_t *gt, int queryNum)
 
 TEST(TestAscendIndexInt8Flat, QPS)
 {
-    int dim = 512;
+    int dim = 256;
     size_t ntotal = 1000000;
     std::vector<int> searchNum = {8, 16, 32, 64, 128, 256};
     try
@@ -178,7 +179,7 @@ TEST(TestAscendIndexInt8Flat, QPS)
 
 TEST(TestAscendIndexInt8Flat, Recall)
 {
-    int dim = 512;
+    int dim = 256;
     size_t ntotal = 1000000;
     int searchNum = 8;
     try

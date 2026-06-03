@@ -16,7 +16,10 @@
  * -------------------------------------------------------------------------
  */
 
-// 需要生成ivfsqt算子(-d 256 -c 16384)+flat_at算子(-d 256 -c 16384)+flat_at_int8算子(-d 256 -c 16384)
+// python3 aicpu_generate_model.py -t 310P
+// python3 ivfsqt_generate_model.py -d 256 -c 8192 -t 310P
+// python3 flat_at_generate_model.py -d 256 -c 8192 -t 310P
+// python3 flat_at_int8_generate_model.py -d 256 -c 8192 -t 310P
 
 #include <faiss/ascend/AscendCloner.h>
 #include <faiss/ascend/custom/AscendIndexIVFSQT.h>
@@ -57,11 +60,11 @@ void Norm(float *data, size_t n, size_t dim)
 const size_t DIM_IN = 256;
 const size_t DIM_OUT = 64;
 const float THRESHOLD = 1.5;
-const size_t ADD_TOTAL = 6000000;
+const size_t ADD_TOTAL = 600000;
 
 const int FUZZYK = 3;
 const size_t K = 100;
-const size_t QUERY_NUM = 500000;
+const size_t QUERY_NUM = 50000;
 const std::vector<int> DEVICE = {0};
 const int FAST_RAND_MAX = 0x7FFF;
 unsigned int g_seed = 5678;
@@ -107,8 +110,8 @@ void TestAscendToCpu(faiss::ascend::AscendIndexIVFSQT *index, std::vector<float>
 
 int main(int argc, char **argv)
 {
-    const size_t nlist = 16384;
-    const size_t trainTotal = 2000000;
+    const size_t nlist = 8192;
+    const size_t trainTotal = 200000;
     const int niter = 16;
     const int centroids = 256;
 

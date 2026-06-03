@@ -73,34 +73,43 @@ cd "$BUILD_DIR"
 
 cmake ..
 
-if [ -z "$1" ]; then
+if [ $# -eq 0 ]; then
     echo ""
     echo "No test case specified. Building all test cases..."
     echo ""
     make
 else
-    TARGET="$1"
+    TARGETS=()
 
-    if [[ "$TARGET" =~ ^[0-9]+$ ]]; then
-        TARGET=$(get_test_name_by_number "$TARGET")
-        if [ $? -ne 0 ]; then
-            echo "Error: Invalid test case number: $1"
+    for arg in "$@"; do
+        TARGET="$arg"
+
+        if [[ "$TARGET" =~ ^[0-9]+$ ]]; then
+            TARGET=$(get_test_name_by_number "$TARGET")
+            if [ $? -ne 0 ]; then
+                echo "Error: Invalid test case number: $arg"
+                list_test_cases
+                exit 1
+            fi
+        fi
+
+        if [ ! -f "${SCRIPT_DIR}/${TARGET}.cpp" ]; then
+            echo "Error: Test case '${TARGET}.cpp' not found"
             list_test_cases
             exit 1
         fi
-        echo "Selected test case: $TARGET"
-    fi
 
-    if [ ! -f "${SCRIPT_DIR}/${TARGET}.cpp" ]; then
-        echo "Error: Test case '${TARGET}.cpp' not found"
-        list_test_cases
-        exit 1
-    fi
+        TARGETS+=("$TARGET")
+    done
 
     echo ""
-    echo "Building test case: $TARGET"
+    echo "Building ${#TARGETS[@]} test case(s): ${TARGETS[*]}"
     echo ""
-    make "$TARGET"
+
+    for target in "${TARGETS[@]}"; do
+        echo "Building: $target"
+        make "$target"
+    done
 fi
 
 echo ""

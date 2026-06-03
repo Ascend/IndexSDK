@@ -16,7 +16,9 @@
  * -------------------------------------------------------------------------
  */
 
-// 需要生成aicpu算子+int8flat(-d 64)+sq8算子(-d 64)
+// python3 aicpu_generate_model.py -t npu_type
+// python3 int8flat_generate_model.py -d 256 -t npu_type
+// python3 sq8_generate_model.py -d 256 -t npu_type
 
 #include <faiss/ascend/AscendIndexInt8Flat.h>
 #include <faiss/ascend/AscendIndexSQ.h>
@@ -159,7 +161,7 @@ void DoSearchFilter(int ntotal, int dim, std::vector<float> &data)
 
 void AscendIndexSQMultiSearchFilter()
 {
-    int dim = 64;
+    int dim = 256;
     try
     {
         int ntotal = 128;
@@ -237,7 +239,7 @@ void DoIndexSearchFilter(int ntotal, int dim, std::vector<float> &data)
 
 void IndexSQMultiSearchFilter()
 {
-    int dim = 64;
+    int dim = 256;
     try
     {
         int ntotal = 128;
@@ -260,7 +262,7 @@ void AscendIndexSQMultiSearch()
 {
     size_t ntotal = 1000000;
     int k = 5;
-    int dim = 64;
+    int dim = 256;
     int indexNum = 10;
     std::vector<int> searchNum = {1, 2, 4, 8};
     size_t maxSize = ntotal * dim;
@@ -312,7 +314,7 @@ void AscendIndexInt8MultiSearch()
 {
     size_t ntotal = 100000;
     int k = 5;
-    int dim = 64;
+    int dim = 256;
     int indexNum = 10;
     std::vector<int> searchNum = {1, 2, 4, 8};
 

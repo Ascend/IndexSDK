@@ -16,7 +16,8 @@
  * -------------------------------------------------------------------------
  */
 
-// 需要生成aicpu算子+sq8算子(-d 256)
+// python3 aicpu_generate_model.py -t npu_type
+// python3 sq8_generate_model.py -d 256 -t npu_type
 
 #include <faiss/ascend/AscendCloner.h>
 #include <faiss/ascend/AscendIndexSQ.h>

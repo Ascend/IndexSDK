@@ -16,7 +16,8 @@
  * -------------------------------------------------------------------------
  */
 
-// 需要生成aicpu算子+flat算子(-d 512)
+// python3 aicpu_generate_model.py -t npu_type
+// python3 flat_generate_model.py -d 256 -t npu_type
 
 #include <faiss/IndexFlat.h>
 #include <faiss/ascend/AscendCloner.h>
@@ -148,7 +149,7 @@ void Norm(float *data, size_t n, int dim)
 
 TEST(TestAscendIndexFlat, QPS)
 {
-    int dim = 512;
+    int dim = 256;
     size_t ntotal = 1000000;
     size_t maxSize = ntotal * dim;
     try
@@ -210,7 +211,7 @@ TEST(TestAscendIndexFlat, QPS)
 
 TEST(TestAscendIndexFlat, Acc)
 {
-    int dim = 512;
+    int dim = 256;
     size_t ntotal = 1000000;
     size_t maxSize = ntotal * dim;
     faiss::MetricType type = faiss::METRIC_L2;

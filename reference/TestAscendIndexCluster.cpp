@@ -16,7 +16,8 @@
  * -------------------------------------------------------------------------
  */
 
-// 需要生成aicpu算子+flat算子(-d 64)
+// python3 aicpu_generate_model.py -t npu_type
+// python3 flat_generate_model.py -d 256 -t npu_type
 
 #include <faiss/ascend/AscendIndexCluster.h>
 
@@ -63,7 +64,7 @@ void Genarate(std::vector<float> &addnVec, std::vector<uint32_t> &ids, int ntota
 
 int main(int argc, char **argv)
 {
-    int dim = 64;
+    int dim = 256;
     int ntotal = 100000;
     int capacity = 1200000;
     int64_t resourceSize = static_cast<int64_t>(2) * static_cast<int64_t>(1024 * 1024 * 1024);

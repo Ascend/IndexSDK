@@ -16,7 +16,8 @@
  * -------------------------------------------------------------------------
  */
 
-// 需要生成aicpu算子+binary_flat算子(-d 512)
+// python3 aicpu_generate_model.py -t npu_type
+// python3 binary_flat_generate_model.py -d 256
 
 #include <faiss/Clustering.h>
 #include <faiss/ascend/AscendCloner.h>
@@ -56,7 +57,7 @@ inline double GetMillisecs()
 
 TEST(TestAscendIndexBinaryFlat, QPS)
 {
-    int dim = 512;
+    int dim = 256;
     size_t ntotal = 1000000;
     std::vector<int> searchNum = {8, 16, 32, 64, 128, 256};
 

@@ -16,7 +16,8 @@
  * -------------------------------------------------------------------------
  */
 
-// 需要生成aicpu算子+flat算子(-d 512)
+// python3 aicpu_generate_model.py -t npu_type
+// python3 flat_generate_model.py -d 256 -t npu_type
 
 #include <faiss/ascend/AscendCloner.h>
 #include <faiss/ascend/AscendIndexILFlat.h>
@@ -90,7 +91,7 @@ static void CreateNormVectorFloat(std::vector<float> &normVec, size_t addn, size
 
 TEST(TestAscendIndexFlat, QPS)
 {
-    size_t dim = 512;
+    size_t dim = 256;
     size_t ntotal = 1000000;
     size_t capacity = 12000000;
     int queryN = 10;
