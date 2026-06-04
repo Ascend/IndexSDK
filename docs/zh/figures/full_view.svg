@@ -1,0 +1,118 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 400" font-family="'Microsoft YaHei','PingFang SC','Helvetica Neue',Arial,sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#f8faff;stop-opacity:1"/>
+      <stop offset="100%" style="stop-color:#eef2ff;stop-opacity:1"/>
+    </linearGradient>
+    <linearGradient id="header" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#1a56db"/>
+      <stop offset="100%" style="stop-color:#3b82f6"/>
+    </linearGradient>
+    <linearGradient id="layer1" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#3b82f6"/>
+      <stop offset="100%" style="stop-color:#2563eb"/>
+    </linearGradient>
+    <linearGradient id="layer2" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#10b981"/>
+      <stop offset="100%" style="stop-color:#059669"/>
+    </linearGradient>
+    <linearGradient id="layer2Sub" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#34d399"/>
+      <stop offset="100%" style="stop-color:#10b981"/>
+    </linearGradient>
+    <linearGradient id="layer3" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#f59e0b"/>
+      <stop offset="100%" style="stop-color:#d97706"/>
+    </linearGradient>
+    <linearGradient id="layer4" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#8b5cf6"/>
+      <stop offset="100%" style="stop-color:#7c3aed"/>
+    </linearGradient>
+    <linearGradient id="footerBg" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#f8fafc"/>
+      <stop offset="100%" style="stop-color:#eff6ff"/>
+    </linearGradient>
+
+    <filter id="shadow" x="-2%" y="-2%" width="104%" height="108%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#000" flood-opacity="0.15"/>
+    </filter>
+    <filter id="shadowSm" x="-2%" y="-2%" width="104%" height="108%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#000" flood-opacity="0.12"/>
+    </filter>
+
+    <clipPath id="round-corner">
+      <rect width="920" height="400" rx="16"/>
+    </clipPath>
+  </defs>
+
+  <rect width="920" height="400" rx="16" fill="url(#bg)"/>
+
+  <rect x="0" y="0" width="920" height="52" fill="url(#header)" clip-path="url(#round-corner)"/>
+  <text x="460" y="34" text-anchor="middle" fill="white" font-size="22" font-weight="bold">Index SDK</text>
+
+  <text x="20" y="86" fill="#1e40af" font-size="14" font-weight="bold">接口层</text>
+  <rect x="100" y="66" width="800" height="36" rx="8" fill="url(#layer1)" filter="url(#shadowSm)"/>
+  <text x="500" y="90" text-anchor="middle" fill="white" font-size="14" font-weight="bold">兼容 Faiss C++ API</text>
+
+  <text x="20" y="138" fill="#059669" font-size="14" font-weight="bold">功能层</text>
+  
+  <rect x="100" y="118" width="386" height="82" rx="10" fill="none" stroke="#10b981" stroke-width="2" stroke-dasharray="4,2"/>
+  <rect x="100" y="118" width="386" height="36" rx="10" fill="url(#layer2)"/>
+  <text x="293" y="142" text-anchor="middle" fill="white" font-size="14" font-weight="bold">Faiss 预置算法池</text>
+
+  <rect x="500" y="118" width="400" height="82" rx="10" fill="none" stroke="#10b981" stroke-width="2" stroke-dasharray="4,2"/>
+  <rect x="500" y="118" width="400" height="36" rx="10" fill="url(#layer2)"/>
+  <text x="700" y="142" text-anchor="middle" fill="white" font-size="14" font-weight="bold">产品扩展算法池</text>
+
+  <rect x="110" y="158" width="80" height="30" rx="6" fill="url(#layer2Sub)" filter="url(#shadowSm)"/>
+  <text x="150" y="178" text-anchor="middle" fill="white" font-size="12" font-weight="bold">IVFFlat</text>
+  
+  <rect x="198" y="158" width="80" height="30" rx="6" fill="url(#layer2Sub)" filter="url(#shadowSm)"/>
+  <text x="238" y="178" text-anchor="middle" fill="white" font-size="12" font-weight="bold">IVFPQ</text>
+  
+  <rect x="286" y="158" width="80" height="30" rx="6" fill="url(#layer2Sub)" filter="url(#shadowSm)"/>
+  <text x="326" y="178" text-anchor="middle" fill="white" font-size="12" font-weight="bold">Flat</text>
+  
+  <rect x="374" y="158" width="100" height="30" rx="6" fill="url(#layer2Sub)" filter="url(#shadowSm)"/>
+  <text x="424" y="178" text-anchor="middle" fill="white" font-size="12" font-weight="bold">RaBitQ</text>
+
+  <rect x="510" y="158" width="85" height="30" rx="6" fill="url(#layer2Sub)" filter="url(#shadowSm)"/>
+  <text x="552" y="178" text-anchor="middle" fill="white" font-size="12" font-weight="bold">TS</text>
+  
+  <rect x="603" y="158" width="85" height="30" rx="6" fill="url(#layer2Sub)" filter="url(#shadowSm)"/>
+  <text x="645" y="178" text-anchor="middle" fill="white" font-size="12" font-weight="bold">ILFlat</text>
+  
+  <rect x="696" y="158" width="85" height="30" rx="6" fill="url(#layer2Sub)" filter="url(#shadowSm)"/>
+  <text x="738" y="178" text-anchor="middle" fill="white" font-size="12" font-weight="bold">IVFSP</text>
+  
+  <rect x="789" y="158" width="100" height="30" rx="6" fill="url(#layer2Sub)" filter="url(#shadowSm)"/>
+  <text x="839" y="178" text-anchor="middle" fill="white" font-size="12" font-weight="bold">图算法</text>
+
+  <text x="20" y="250" fill="#d97706" font-size="14" font-weight="bold">加速层</text>
+  <rect x="100" y="230" width="188" height="36" rx="8" fill="url(#layer3)" filter="url(#shadowSm)"/>
+  <text x="194" y="254" text-anchor="middle" fill="white" font-size="14" font-weight="bold">排序优化</text>
+
+  <rect x="100" y="230" width="188" height="36" rx="8" fill="url(#layer3)" filter="url(#shadowSm)"/>
+  <text x="194" y="254" text-anchor="middle" fill="white" font-size="14" font-weight="bold">排序优化</text>
+  
+  <rect x="300" y="230" width="188" height="36" rx="8" fill="url(#layer3)" filter="url(#shadowSm)"/>
+  <text x="394" y="254" text-anchor="middle" fill="white" font-size="14" font-weight="bold">相似度计算</text>
+  
+  <rect x="500" y="230" width="188" height="36" rx="8" fill="url(#layer3)" filter="url(#shadowSm)"/>
+  <text x="594" y="254" text-anchor="middle" fill="white" font-size="14" font-weight="bold">属性过滤</text>
+  
+  <rect x="700" y="230" width="200" height="36" rx="8" fill="url(#layer3)" filter="url(#shadowSm)"/>
+  <text x="800" y="254" text-anchor="middle" fill="white" font-size="14" font-weight="bold">降维</text>
+
+  <rect x="20" y="290" width="880" height="46" rx="10" fill="url(#layer4)" filter="url(#shadow)"/>
+  <text x="460" y="320" text-anchor="middle" fill="white" font-size="16" font-weight="bold">CANN</text>
+
+  <rect x="20" y="348" width="880" height="36" rx="10" fill="url(#footerBg)" filter="url(#shadow)" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="290" y="372" text-anchor="middle" fill="#1e40af" font-size="14" font-weight="bold">全量检索</text>
+  <circle cx="335" cy="367" r="2.5" fill="#94a3b8"/>
+  <text x="379" y="372" text-anchor="middle" fill="#1e40af" font-size="14" font-weight="bold">近似检索</text>
+  <circle cx="425" cy="367" r="2.5" fill="#94a3b8"/>
+  <text x="485" y="372" text-anchor="middle" fill="#1e40af" font-size="14" font-weight="bold">属性过滤检索</text>
+  <circle cx="544" cy="367" r="2.5" fill="#94a3b8"/>
+  <text x="618" y="372" text-anchor="middle" fill="#1e40af" font-size="14" font-weight="bold">支持异构计算平台</text>
+</svg>

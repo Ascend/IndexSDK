@@ -26,7 +26,7 @@ readonly CUR_DIR=$(dirname "$(readlink -f "$0")")
 readonly RUN_PKG_PATH="${CUR_DIR}/../.."                     # ci 拉取的 run 包路径
 readonly CHANGE_FILE="${CUR_DIR}/../../change.txt"           # ci 生成的 change.txt 文件，记录修改的文件路径
 readonly PRESMOKE_DIR="/home/indexSDK/preSmokeTestFiles"     # 预冒烟测试文件目录，pkg 下存放 run 包，modelpath 下存放算子模型
-readonly REFERENCE_DIR="${CUR_DIR}/../reference"             # 参考样例目录
+readonly REFERENCE_DIR="${CUR_DIR}/../examples"              # 参考样例目录
 export MX_INDEX_INSTALL_PATH=/usr/local/Ascend/mxIndex
 export MX_INDEX_MODELPATH="${PRESMOKE_DIR}/modelpath"
 export MX_INDEX_FINALIZE=1
@@ -229,7 +229,7 @@ echo "[PRESMOKE_INFO] start installing run pkg"
 echo "[PRESMOKE_INFO] start compile test demo..."
 
 if [ ! -d "$REFERENCE_DIR" ]; then
-    echo "[PRESMOKE_ERROR] reference not exist!"
+    echo "[PRESMOKE_ERROR] examples not exist!"
     exit 1
 fi
 
