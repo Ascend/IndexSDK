@@ -348,6 +348,7 @@ unzip Ascend-cann-device-sdk_{version}_linux-{arch}.zip
 # 解压得到 CANN-runtime-*-minios.{arch}.run
 ./CANN-runtime-*-minios.{arch}.run --devel --install-path=/usr/local/AscendMiniOs
 ./CANN-runtime-*-minios.{arch}.run --run --install-path=/usr/local/AscendMiniOSRun
+```
 
 执行以下命令编译：
 

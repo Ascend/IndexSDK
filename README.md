@@ -13,30 +13,16 @@
 
 <span style="font-size:14px;">
 
-🔹 **[2026.4.25]**：🚀 [IndexSDK 26.0.0 Release 版本发布](https://gitcode.com/Ascend/IndexSDK/releases/v26.0.0)<br>
+🔹 **[2026.04.25]**：🚀 [IndexSDK 26.0.0 Release 版本发布](https://gitcode.com/Ascend/IndexSDK/releases/v26.0.0)<br>
 🔹 **[2025.12.30]**：🚀 IndexSDK 开源发布<br>
 
 </span>
 
 ## ℹ️ 简介
 
-Index SDK是基于Faiss开发的昇腾NPU异构检索加速框架，针对高维空间中的海量数据，提供高性能的检索，采用与Faiss风格一致的C++语言，结合TBE，Ascendc算子开发，支持ARM和x86_64平台。
-用户可以在此框架上实现面向应用场景的检索系统。更多详情可查看[简介](./docs/zh/introduction.md)。
+Index SDK是基于Faiss开发的昇腾NPU异构检索加速框架，针对高维空间中的海量数据，提供高性能的检索，采用与Faiss风格一致的C++语言，结合TBE，Ascendc算子开发，支持ARM和x86_64平台。用户可以在此框架上实现面向应用场景的检索系统。
 
-## 🔍 目录结构
-
-代码仓关键目录如下：
-
-```bash
-├── build                      # 编译构建脚本、安装脚本和打包配置
-├── docker                     # Docker镜像构建文件，支持多款NPU型号和操作系统
-├── docs                       # 项目文档，包含RFC设计文档、API文档、用户指南等
-├── feature_retrieval          # 核心检索功能实现，包含Flat、IVF、IVFPQ等索引类型
-├── ivfsp_impl                 # IVFSP索引实现，包含IVFSPSQ索引及训练工具
-├── ivfsp_utils                # IVFSP工具库，包含码本训练、TBE/CPU算子实现
-├── vsa_hpp                    # VSA异构内存管理接口和基础设施
-└── vstar_great_impl           # VStar/Great混合检索索引实现
-```
+<img src="./docs/zh/figures/full_view.svg" width="1200"/>
 
 ## ⚙️ 功能介绍
 
@@ -50,32 +36,33 @@ Index SDK是基于Faiss开发的昇腾NPU异构检索加速框架，针对高维
 
 ## 🚀 快速入门
 
-Index SDK提供了一个简单的样例，帮助用户快速体验运用Index SDK进行检索的流程。详情可参考[快速入门](./docs/zh/quick_start.md)。
+Index SDK提供了一个简单的样例，帮助用户快速体验Index SDK检索流程。详情可参考《[快速入门](./docs/zh/quick_start.md)》。
 
 ## 📦 环境部署
 
-介绍Index SDK的安装方式，详情可查看[安装指南](./docs/zh/installation_guide.md)。
+Index SDK支持物理机和Docker容器两种部署方式，详情可查看《[安装指南](./docs/zh/installation_guide.md)》。
 
 ## 🛠️ 贡献指南
 
-欢迎参与项目贡献，请参考[贡献指南](./CONTRIBUTING.md)。
+欢迎参与项目贡献，贡献流程和规范请参见《[贡献指南](./CONTRIBUTING.md)》。
 
 ## ⚖️ 相关说明
 
-🔹 [使用指导](./docs/zh/user_guide.md)<br>
-🔹 [版本说明](./docs/zh/release_notes.md)<br>
-🔹 [许可证声明](LICENSE.md)<br>
-🔹 [文档许可证声明](./docs/LICENSE)<br>
-🔹 [免责声明](./docs/zh/disclaimer.md)<br>
-🔹 [安全加固](./docs/zh/security_hardening.md)<br>
-🔹 [附录](./docs/zh/appendix.md)<br>
+🔹 《[使用指导](./docs/zh/user_guide.md)》<br>
+🔹 《[版本说明](./docs/zh/release_notes.md)》<br>
+🔹 《[许可证声明](LICENSE.md)》<br>
+🔹 《[文档许可证声明](./docs/LICENSE)》<br>
+🔹 《[免责声明](./docs/zh/disclaimer.md)》<br>
+🔹 《[安全加固](./docs/zh/security_hardening.md)》<br>
+🔹 《[附录](./docs/zh/appendix.md)》<br>
 
 ## 🤝 建议与交流
 
-欢迎大家为社区做贡献。贡献前，请先签署开放项目贡献者许可协议（CLA）。
+欢迎大家通过以下方式提出问题、交流讨论。
 
-在提问前，建议先查看[常见问题 FAQ](./docs/zh/faq.md)。
-
-如果有任何疑问或建议，请提交[GitCode Issues](https://gitcode.com/Ascend/IndexSDK/issues)，我们会尽快回复。 感谢您的支持。
-
-想了解社区的最新动态或参与线上讨论？请查看我们的[会议日历](https://meeting.ascend.osinfra.cn/?sig=sig-MindSeriesSDK)以获取sig会议的时间安排。
+| 资源 | 说明 |
+|:--|:--|
+| [FAQ](./docs/zh/faq.md) | 常见问题解答与使用答疑 |
+| [创建Issue](https://gitcode.com/Ascend/IndexSDK/issues/new) | 提交 Bug、需求或建议 |
+| [社区任务](https://gitcode.com/Ascend/IndexSDK/issues) | 查看和认领社区任务 |
+| [会议日历](https://meeting.ascend.osinfra.cn/?sig=sig-MindSeriesSDK) | 社区定期例会与活动日程 |

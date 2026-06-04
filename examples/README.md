@@ -1,4 +1,4 @@
-# reference
+# examples
 
 ## 介绍
 
@@ -87,6 +87,7 @@ cd .. && rm -rf release-1.8.1.tar.gz googletest-release-1.8.1
         -L/usr/local/Ascend/driver/lib64/driver \
         -lopenblas -lfaiss -lascendfaiss -lascend_hal -lgtest
     ```
+
     > [!NOTE]
     > 编译 TestAscendIndexIVFRabitQ.cpp 需要安装 faiss1.14.1。
 
@@ -129,6 +130,6 @@ cd .. && rm -rf release-1.8.1.tar.gz googletest-release-1.8.1
     以TestAscendIndexFlat.cpp为例，执行:
 
     ```bash
-    cd reference/build/
+    cd examples/build/
     ./TestAscendIndexFlat
     ```
