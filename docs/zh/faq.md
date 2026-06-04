@@ -190,7 +190,7 @@ export LD_PRELOAD={…/libgomp.so}  # 请将{}里的内容替换成libgomp.so文
 
 **问题原因<a name="section147095251275"></a>**
 
-问题原因一：可参见《CANN 软件安装指南》中的“执行ATC转换或模型训练时，报错：fatal error: 'cstdint' file not found”章节中的“可能原因”部分。
+问题原因一：可参见《CANN 软件安装指南》中的“[执行ATC转换或模型训练时，报错：fatal error: 'cstdint' file not found](https://www.hiascend.com/document/detail/zh/canncommercial/900/softwareinst/instg/instg_0086.html)”章节中的“可能原因”部分。
 
 问题原因二：在部分特定系统中，该问题源于操作系统发行版的工具链命名差异。昇腾 CANN 软件栈在构建算子时，默认会去查找标准的 aarch64-linux-gnu 工具链目录以获取 C++ 标准库头文件。然而，在部分特定操作系统（kylin、openEuler、ctyunos）中，为了区分特定的系统 ABI，其工具链目录被重命名（例如 aarch64-kylin-linux）。由于 CANN 编译器未在默认路径中找到对应的头文件，从而导致编译中断。
 

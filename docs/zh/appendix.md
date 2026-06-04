@@ -8,7 +8,7 @@
 
 以下环境变量会在程序读取时使用，请勿修改。
 
-**表 1**  环境变量
+**表 1** 环境变量
 
 |环境变量名|说明|
 |--|--|
@@ -177,9 +177,9 @@ int main(int argc, char **argv)
     - 头文件：mxIndex/device/include/IndexILFlat.h
     - 动态库：mxIndex/device/lib/libascendfaiss\_minios.so
 
-2. 代码需要使用CANN内置的HCC编译器（默认CANN安装路径下，编译器路径为“/usr/local/Ascend/ascend-toolkit/latest/toolkit/toolchain/hcc/bin/aarch64-target-linux-gnu-g++”）进行编译，编译完成后部署到Device侧（具体请参见《CANN 软件安装指南 （开放态,  Atlas 推理系列产品）》的“定制文件系统”章节进行部署）。
+2. 代码需要使用CANN内置的HCC编译器（默认CANN安装路径下，编译器路径为“/usr/local/Ascend/ascend-toolkit/latest/toolkit/toolchain/hcc/bin/aarch64-target-linux-gnu-g++”）进行编译，编译完成后部署到Device侧（具体请参见《CANN 软件安装指南 （开放态,  <term>Atlas 推理系列产品</term>）》的“[定制文件系统](https://www.hiascend.com/document/detail/zh/canncommercial/82RC1/openform/instguide310/instgopen_0007.html)”章节进行部署）。
 
-    如果需通过SSH服务直接拷贝依赖到Device侧或通过SSH登录到Device上直接运行样例，则需要参考《CANN 软件安装指南 \(开放态,  Atlas 推理系列产品\)》的“使用DSMI接口打开SSH服务”章节解除SSH服务的50M内存占用限制，否则无法发送全部依赖文件，用例无法执行。
+    如果需通过SSH服务直接拷贝依赖到Device侧或通过SSH登录到Device上直接运行样例，则需要参考《CANN 软件安装指南 \(开放态,  <term>Atlas 推理系列产品</term>\)》的“[使用DSMI接口打开SSH服务](https://www.hiascend.com/document/detail/zh/canncommercial/82RC1/openform/instguide310/instgopen_0056.html)”章节解除SSH服务的50M内存占用限制，否则无法发送全部依赖文件，用例无法执行。
 
 3. 算子om文件生成。
 
@@ -198,15 +198,15 @@ int main(int argc, char **argv)
     在Index SDK工程内新建test路径（mxIndex/test），在test路径下创建“IndexILDemo.cpp”源文件，复制[参考用例代码](#section15454820982)，编译命令参考如下。
 
     ```bash
-    /usr/local/Ascend/ascend-toolkit/latest/toolkit/toolchain/hcc/bin/aarch64-target-linux-gnu-g++ -fPIC -fPIE -fstack-protector-all -D_FORTIFY_SOURCE=2 -O2 \ 
-    -o IndexILDemo IndexILDemo.cpp \ 
-    -fopenmp -O3 -frename-registers -fpeel-loops -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack -pie -s \ 
-    -I/usr/local/AscendMiniOs/acllib/include/ \ 
-    -I../include \ 
-    -I../device/include \ 
-    -L../device/lib \ 
-    -L/usr/local/AscendMiniOs/acllib/lib64/stub \ 
-    -L/usr/local/Ascend/driver/lib64/common \ 
+    /usr/local/Ascend/ascend-toolkit/latest/toolkit/toolchain/hcc/bin/aarch64-target-linux-gnu-g++ -fPIC -fPIE -fstack-protector-all -D_FORTIFY_SOURCE=2 -O2 \
+    -o IndexILDemo IndexILDemo.cpp \
+    -fopenmp -O3 -frename-registers -fpeel-loops -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack -pie -s \
+    -I/usr/local/AscendMiniOs/acllib/include/ \
+    -I../include \
+    -I../device/include \
+    -L../device/lib \
+    -L/usr/local/AscendMiniOs/acllib/lib64/stub \
+    -L/usr/local/Ascend/driver/lib64/common \
     -lascendcl -lascend_hal -lc_sec -lascendfaiss_minios
     ```
 
@@ -221,8 +221,8 @@ int main(int argc, char **argv)
 
 **前提条件<a name="section178968232301"></a>**
 
-- 已经按照开放态的流程安装CANN，确保“/usr/local/AscendMiniOSRun/”文件夹已存在。具体操作请参见《CANN 软件安装指南 \(开放态, Atlas 推理系列产品\)》。
-- 已经解除SSH服务的50M内存占用限制，确保可以发送全部依赖文件。具体操作可参考《CANN 软件安装指南 \(开放态,  Atlas 推理系列产品\)》的“使用DSMI接口打开SSH服务”章节。
+- 已经按照开放态的流程安装CANN，确保“/usr/local/AscendMiniOSRun/”文件夹已存在。具体操作请参见《[CANN 软件安装指南 (开放态, <term>Atlas 推理系列产品</term>)](https://www.hiascend.com/document/detail/zh/canncommercial/82RC1/openform/instguide310/instgopen_0002.html)》。
+- 已经解除SSH服务的50M内存占用限制，确保可以发送全部依赖文件。具体操作可参考《CANN 软件安装指南 (开放态,  <term>Atlas 推理系列产品</term>)》的“[使用DSMI接口打开SSH服务](https://www.hiascend.com/document/detail/zh/canncommercial/82RC1/openform/instguide310/instgopen_0056.html)”章节。
 - Host侧需为ARM架构。
 - P2P内存在device侧预留4G，该部分内存默认不可用。若要使用这部分内存，达到最大库容，需使用**npu-smi info set -t p2p-mem-cfg -i "id" -d "value"**命令设置芯片BAR空间拷贝使能状态为“禁用”状态。命令使用可参考《Atlas 中心推理卡 25.3.RC1 npu-smi 命令参考》中的“[设置指定芯片BAR空间拷贝使能状态](https://support.huawei.com/enterprise/zh/doc/EDOC1100523602/dbbc4954)”章节。
 
@@ -240,7 +240,7 @@ int main(int argc, char **argv)
     - 算子文件：$\{MX\_INDEX\_HOME\}/modelpath/
 
         > [!NOTE]
-        >算子文件必须保证只有Atlas 推理系列产品的算子，不能有其他产品的算子，否则可能导致Device侧运行失败。
+        >算子文件必须保证只有<term>Atlas 推理系列产品</term>的算子，不能有其他产品的算子，否则可能导致Device侧运行失败。
 
 3. 登录到Device侧，配置以下环境变量。
 
