@@ -53,7 +53,7 @@ apt-get update
 apt-get install -y wget gfortran openmpi-bin libopenmpi-dev
 
 python3 -m pip install --upgrade pip
-pip3 install numpy==1.26.4 tqdm scikit-learn torch_npu torch attrs cloudpickle decorator jinja2 ml-dtypes psutil scipy tornado absl-py sympy pyyaml \
+pip3 install numpy==1.26.4 decorator sympy==1.4 cffi==1.15.1 pyyaml pathlib2 protobuf scipy requests attrs psutil faiss-cpu==1.13.2 \
      -i https://repo.huaweicloud.com/repository/pypi/simple
 
 # 检查 CMake 版本，低于 3.24.0 则安装
