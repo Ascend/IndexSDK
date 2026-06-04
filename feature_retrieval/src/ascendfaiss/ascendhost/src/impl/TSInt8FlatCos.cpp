@@ -623,7 +623,11 @@ APP_ERROR TSInt8FlatCos::searchPagedWithMasks(int pageIdx, int batch, const int8
                                               AscendTensor<int64_t, DIMS_2> &outIndicesOnDevice,
                                               const float16_t *extraScore)
 {
-    const int FLAG_NUM = faiss::ascend::SocUtils::GetInstance().GetCoreNum();
+    int coreNum = 16;
+    if (faiss::ascend::SocUtils::GetInstance().IsAscend910B())
+    {
+        coreNum = faiss::ascend::SocUtils::GetInstance().GetCoreNum();
+    }
     auto streamPtr = resources.getDefaultStream();
     auto stream = streamPtr->GetStream();
     auto streamAicpuPtr = resources.getAlternateStreams()[0];
@@ -647,7 +651,7 @@ APP_ERROR TSInt8FlatCos::searchPagedWithMasks(int pageIdx, int batch, const int8
         mem, {static_cast<size_t>(blockNum), static_cast<size_t>(batch), static_cast<size_t>(this->burstsOfBlock)},
         stream);
     AscendTensor<uint32_t, DIMS_3> opSize(mem, {blockNum, CORE_NUM, SIZE_ALIGN}, stream);
-    AscendTensor<uint16_t, DIMS_3> opFlag(mem, {blockNum, FLAG_NUM, FLAG_SIZE}, stream);
+    AscendTensor<uint16_t, DIMS_3> opFlag(mem, {blockNum, coreNum, FLAG_SIZE}, stream);
     opFlag.zero();
 
     int pageNum = static_cast<int>(utils::divUp(this->ntotal, static_cast<size_t>(this->pageSize)));
