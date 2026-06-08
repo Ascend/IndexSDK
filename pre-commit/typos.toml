@@ -48,6 +48,8 @@ dout = "dout"
 Pn = "Pn"
 arange = "arange"
 nd = "nd"
+rabitq = "rabitq"
+rabit = "rabit"
 
 [type.py]
 extend-glob = []
