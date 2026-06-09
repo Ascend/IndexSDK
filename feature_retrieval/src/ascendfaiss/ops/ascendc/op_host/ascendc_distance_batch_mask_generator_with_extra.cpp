@@ -117,11 +117,7 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     }
     batchSize = queryTokenSetShape.GetDim(QUERY_TOKEN_SET_BATCH_DIM);
     tokenCnt = queryTokenSetShape.GetDim(QUERY_TOKEN_SET_TOKEN_CNT_DIM);
-    if (tokenCnt >= Utils::DivUp(MAX_TOKEN_CNT, 8) * 2)
-    {
-        ERROR_LOG("MAX_TOKEN_CNT must be less than %u.", Utils::DivUp(MAX_TOKEN_CNT, 8) * 2);
-        return ge::GRAPH_FAILED;
-    }
+
     extraMaskLen = extraMaskShape.GetDim(EXTRA_MASK_LEN_DIM);
     if (extraMaskLen > MAX_K)
     {
