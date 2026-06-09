@@ -565,7 +565,7 @@ def generate_int8_offline_model():
     work_dir = "."
     config_path = utils.get_config_path(work_dir)
 
-    if args.npu_type.find('910B') != -1:
+    if args.npu_type.find('910') != -1:
         valid_code_num_list = CODE_NUM_LIST
         if "-code" in sys.argv:
             code_num = args.code_num
