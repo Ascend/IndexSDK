@@ -45,17 +45,16 @@ Tags follow this pattern:
 
 ## 3.Quick Start
 
-### 3.1 Prerequisites (optional)
+### 3.1 Prerequisites
 
 #### 3.1.1 Install Driver
 
-An Atlas NPU driver compatible with the container's CANN version must be installed on the host. See the [CANN Compatibility Matrix](https://www.hiascend.com/document) for driver ↔ CANN version mapping.
-
----
+- An Atlas NPU driver compatible with the container's CANN version must be installed on the host. See the [CANN Compatibility Matrix](https://www.hiascend.com/document) for driver ↔ CANN version mapping.
+- Docker version requirement: Docker version should not be lower than 24.0.x.
 
 ### 3.2 Running a Index Container
 
-#### 3.2.1 Mount Devices Manually
+#### Mount Devices Manually
 
 - Device Mounting: Map host device files to the container using the --device parameter to ensure the container can access specified hardware resources. /dev/davinci is the NPU accelerator card (mount as needed), while /dev/davinci_manager, /dev/devmm_svm, and /dev/hisi_hdc are NPU management devices (mount all).
 
@@ -78,13 +77,7 @@ docker run \
     -it atlas/index:tag bash
 ```
 
-#### 3.2.2 Check Driver Mount Status
-
-```bash
-npu-smi info # Should display NPU card information without errors
-```
-
-#### 3.2.3 Generate Operators
+### 3.3 Generate Operators
 
 ```bash
 cd /usr/local/Ascend/mxIndex/ops
@@ -97,7 +90,7 @@ mv op_models/* $MX_INDEX_MODELPATH
 
 For more details on operator generation, refer to: [Operator Generation](https://gitcode.com/Ascend/IndexSDK/blob/master/docs/zh/user_guide.md#%E8%87%AA%E5%AE%9A%E4%B9%89%E7%AE%97%E5%AD%90%E4%BB%8B%E7%BB%8D)
 
-#### 3.2.4 Compile Demo
+### 3.4 Compile Demo
 
 [Demo Example](https://gitcode.com/Ascend/IndexSDK/blob/master/docs/zh/user_guide.md#%E4%BD%BF%E7%94%A8%E6%A0%B7%E4%BE%8B)
 
@@ -122,13 +115,13 @@ g++ --std=c++11 -fPIC -fPIE -fstack-protector-all -Wall -D_FORTIFY_SOURCE=2 -O3 
 - MX_INDEX_INSTALL_PATH: Index SDK installation path, default is /usr/local/Ascend/mxIndex
 - ASCEND_HOME_PATH: Toolkit installation path, default is /usr/local/Ascend/cann
 
-#### 3.2.5 Run Demo
+### 3.5 Run Demo
 
 ```bash
 ./demo
 ```
 
-### 3.3 How to Build Locally
+### 3.6 How to Build Locally
 
 ```bash
 docker build -t {your_repo}/index:latest -f Dockerfile .
