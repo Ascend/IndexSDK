@@ -44,17 +44,16 @@ Tag 遵循以下格式：
 
 ## 3.快速开始
 
-### 3.1 前置要求（可选）
+### 3.1 前置要求
 
 #### 3.1.1 安装驱动
 
-主机上必须安装与容器内 CANN 版本兼容的NPU 驱动。请参阅 [CANN 兼容性矩阵](https://www.hiascend.com/document) 了解驱动与 CANN 版本的对应关系。
-
----
+- 主机上必须安装与容器内 CANN 版本兼容的NPU 驱动。请参阅 [CANN 兼容性矩阵](https://www.hiascend.com/document) 了解驱动与 CANN 版本的对应关系。
+- docker版本要求：docker版本建议不低于24.0.x。
 
 ### 3.2 运行 Index 容器
 
-#### 3.2.1 手动挂载设备
+#### 手动挂载设备
 
 - 设备挂载 ：通过 --device 参数将宿主机的设备文件映射到容器中，确保容器能够访问指定的硬件资源。/dev/davinci为NPU加速卡（按需挂载），/dev/davinci_manager, /dev/devmm_svm， /dev/hisi_hdc为NPU管理设备（全部挂载）。
 
@@ -77,13 +76,7 @@ docker run \
     -it atlas/index:tag bash
 ```
 
-#### 3.2.2 执行npu-smi info命令检查驱动是否挂载正常
-
-```bash
-npu-smi info #正常显示npu卡信息无报错
-```
-
-#### 3.2.3 生成算子
+### 3.3 生成算子
 
 ```bash
 cd /usr/local/Ascend/mxIndex/ops
@@ -96,7 +89,7 @@ mv op_models/* $MX_INDEX_MODELPATH
 
 算子生成可以参考：[算子生成](https://gitcode.com/Ascend/IndexSDK/blob/master/docs/zh/user_guide.md#%E8%87%AA%E5%AE%9A%E4%B9%89%E7%AE%97%E5%AD%90%E4%BB%8B%E7%BB%8D)
 
-#### 3.2.4 编译入门用例
+### 3.4 编译入门用例
 
 [demo用例](https://gitcode.com/Ascend/IndexSDK/blob/master/docs/zh/user_guide.md#%E4%BD%BF%E7%94%A8%E6%A0%B7%E4%BE%8B)
 
@@ -121,13 +114,13 @@ g++ --std=c++11 -fPIC -fPIE -fstack-protector-all -Wall -D_FORTIFY_SOURCE=2 -O3 
 - MX_INDEX_INSTALL_PATH：Index SDK 安装路径，默认值为 /usr/local/Ascend/mxIndex
 - ASCEND_HOME_PATH：Toolkit 安装路径，默认值为 /usr/local/Ascend/cann
 
-#### 3.2.5 运行入门用例
+### 3.5 运行入门用例
 
 ```bash
 ./demo
 ```
 
-### 3.3 如何本地构建
+### 3.6 如何本地构建
 
 ```bash
 docker build -t {your_repo}/index:latest -f Dockerfile .
