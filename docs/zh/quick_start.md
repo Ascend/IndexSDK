@@ -1,22 +1,38 @@
 # 快速入门
 
-本教程主要包含三个部分，以Flat索引类型为例，帮助您快速掌握IndexSDK的基本使用方法：
+本教程以 Flat 索引类型为例，帮助您通过 Docker 容器快速掌握 Index SDK 的基本使用方法，如需在宿主机原生安装 Index SDK，请参考[安装指南](./installation_guide.md)。
 
-1. 环境准备：拉取IndexSDK镜像，检测NPU环境。
-2. 算子生成：生成Flat索引类型的算子。
-3. 用例测试：使用生成的算子进行检索测试。
+## 前置条件
 
-## 环境准备
+开始之前请确认：
 
-- 请正确安装NPU驱动和固件，具体参见[商用版](https://www.hiascend.com/document/detail/zh/canncommercial/900/softwareinst/instg/instg_0000.html?OS=openEuler&InstallType=netyum)或[社区版](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/900/softwareinst/instg/instg_0000.html?OS=openEuler&InstallType=netyum)，按照 "选择安装场景" > "准备软件包"（仅驱动和固件）> "安装NPU驱动和固件" 进行安装。
+- **硬件**：支持 Atlas 200/300/500、Atlas 800I A2、Atlas 800I A3
+- **Docker**：已安装并正确配置 Docker 环境，且当前用户可运行容器。
 
-- 请根据NPU型号和CPU架构[拉取IndexSDK镜像](https://www.hiascend.com/developer/ascendhub/detail/7f91c3663b5d4a97b3ae40e3cabbb3a2)，并按照指导运行Index容器。
+## 步骤 1：拉取镜像
 
-- 执行`npu-smi info`命令检查驱动是否挂载正常。
+1. **选择匹配版本**
+   - 访问 [Index SDK 昇腾社区镜像仓](https://www.hiascend.com/developer/ascendhub/detail/7f91c3663b5d4a97b3ae40e3cabbb3a2)
+   - 根据当前硬件型号（如 Atlas 800I A2 推理服务器）选择对应的镜像版本。
+   - 注意区分 CPU 架构（x86_64/aarch64）和昇腾芯片型号（Ascend 310/910 等）
 
-## 算子生成
+2. **环境预检查**
+   - 使用 `npu-smi info` 命令验证 NPU 驱动状态
+   - 检查驱动版本与镜像 CANN 版本匹配性（参考《[固件与驱动](https://www.hiascend.com/hardware/firmware-drivers/community)》文档，若未安装 NPU 驱动和固件，请先[安装](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/900/softwareinst/instg/instg_0000.html?OS=openEuler&InstallType=netyum)）
 
-- 以910B4为例（若为其他NPU型号，请参考[此文档](https://gitcode.com/Ascend/IndexSDK/blob/master/docs/zh/user_guide.md#flat)修改），生成512维flat算子：
+3. **镜像拉取示例**
+
+   ```bash
+   docker pull swr.cn-south-1.myhuaweicloud.com/ascendhub/indexsdk:26.0.0-910b-ubuntu22.04-py3.11
+   ```
+
+## 步骤 2：运行容器
+
+参考 [Index SDK 昇腾社区镜像仓](https://www.hiascend.com/developer/ascendhub/detail/7f91c3663b5d4a97b3ae40e3cabbb3a2)中“运行 Index 容器”章节，正确挂载 NPU 设备和驱动，创建并运行容器。
+
+## 步骤 3：算子生成
+
+- 以 910B4 为例（若为其他 NPU 型号，请参考[此文档](https://gitcode.com/Ascend/IndexSDK/blob/master/docs/zh/user_guide.md#flat)修改），生成 512 维 flat 算子：
 
 ```bash
 cd /usr/local/Ascend/mxIndex/ops && ./custom_opp_*.run
@@ -28,9 +44,9 @@ python3 flat_generate_model.py -d 512 -t 910B4
 mv op_models/* $MX_INDEX_MODELPATH
 ```
 
-## 用例测试
+## 步骤 4：用例测试
 
-1. 使用Flat（暴力检索）算法进行示例测试：底库大小100万条，特征维度512维，检索向量数128个，TopK为10。创建demo.cpp文件，内容如下：
+1. 使用 Flat（暴力检索）算法进行示例测试：底库大小 100 万条，特征维度 512 维，检索向量数 128 个，TopK 为 10。创建 demo.cpp 文件，内容如下：
 
     ```cpp
     #include <faiss/ascend/AscendIndexFlat.h>
@@ -119,7 +135,7 @@ mv op_models/* $MX_INDEX_MODELPATH
     }
     ```
 
-2. 编译demo.cpp：
+2. 编译 demo.cpp：
 
     ```bash
     export MX_INDEX_INSTALL_PATH=/usr/local/Ascend/mxIndex
@@ -140,7 +156,7 @@ mv op_models/* $MX_INDEX_MODELPATH
     -lfaiss -lascendfaiss -lopenblas -lc_sec -lascendcl -lascend_hal -lascendsearch -lock_hmm
     ```
 
-3. 运行demo：
+3. 运行 demo：
 
     ```bash
     ./demo
