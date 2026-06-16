@@ -494,8 +494,7 @@ void AscendIndexIVFRaBitQImpl::train(idx_t n, const float* x, bool clearNpuData)
         {
             indices[i] = i;
         }
-        std::random_device rd;
-        std::mt19937 gen(rd());
+        std::mt19937 gen(static_cast<uint32_t>(this->ivfConfig.cp.seed));
         std::shuffle(indices.begin(), indices.end(), gen);
         for (size_t i = 0; i < trainNum; ++i)
         {
