@@ -986,14 +986,14 @@ VSTAR检索当前只支持<term>Atlas 推理系列产品</term>，涉及VSTAR业
 
 环境依赖库参见如下：
 
-- nnae（8.0.0 <= version  <  8.5.0）
+- nnae（version \>= 8.0.0, 8.5.0 及以后由 toolkit 包收编）
 - python（version \>= 3.9）
 - torch（version \>= 2.0.1）
 - torch\_npu（version \>= 2.0.1.post4）
 
 - numpy（version \>= 1.26.4）
 - scikit-learn（version \>= 1.4.1.post1）
-- tqdm（version ≥ 4.66.1）
+- tqdm（version \>= 4.66.1）
 
 torch、torch\_npu、numpy、scikit-learn和tqdm可通过**pip install**命令安装，执行命令参考如下。
 

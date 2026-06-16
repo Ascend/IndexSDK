@@ -27,8 +27,8 @@ Index SDK 支持[离线安装](#离线安装)、[镜像安装](#镜像安装)、
 
 |依赖名称|版本建议|获取建议|
 |--|--|--|
-|gcc|7.5.0|建议通过获取源码包编译安装|
-|cmake|不低于3.24.0|建议通过包管理安装，安装命令参考如下。<br>```sudo apt-get install -y cmake```<br>若包管理中的版本不符合最低版本要求，可自行通过源码方式安装。|
+|gcc|>=7.5.0|建议通过获取源码包编译安装|
+|cmake|>=3.24.0|建议通过包管理安装，安装命令参考如下。<br>`sudo apt-get install -y cmake`<br>若包管理中的版本不符合最低版本要求，可自行通过源码方式安装。|
 |Python|3.9/3.10/3.11/3.12|建议通过获取源码包编译安装|
 
 参考如下命令，检查是否已安装 GCC、CMake 等依赖软件。
@@ -53,10 +53,10 @@ Python 安装好后，pip 所需依赖名称、对应版本及获取建议请参
 
 |依赖名称|版本建议|获取建议|
 |--|--|--|
-|numpy|1.25.0|安装命令参考如下。<br>```pip3 install numpy==1.25.0```<br>|
-|decorator|5.2.1|安装命令参考如下。<br>```pip3 install decorator==5.2.1```<br>|
-|sympy|1.14|安装命令参考如下。<br>```pip3 install sympy==1.14```<br>|
-|cffi|1.15.1|安装命令参考如下。<br>```pip3 install cffi==1.15.1```<br>|
+|numpy|>=1.25.0|安装命令参考如下。<br>```pip3 install "numpy>=1.25.0"```<br>|
+|decorator|>=5.2.1|安装命令参考如下。<br>```pip3 install "decorator>=5.2.1"```<br>|
+|sympy|>=1.14|安装命令参考如下。<br>```pip3 install "sympy>=1.14"```<br>|
+|cffi|>=1.15.1|安装命令参考如下。<br>```pip3 install "cffi>=1.15.1"```<br>|
 |pyyaml|无|安装命令参考如下。<br>```pip3 install pyyaml```<br>|
 |pathlib2|无|安装命令参考如下。<br>```pip3 install pathlib2```<br>|
 |protobuf|无|安装命令参考如下。<br>```pip3 install protobuf```<br>|
