@@ -162,7 +162,16 @@ static ge::graphStatus TilingFunc(gert::TilingContext *context)
     int32_t queryNumLength = context->GetInputShape(0)->GetStorageShape().GetDim(0);
     int32_t codesNumLength = context->GetInputShape(1)->GetStorageShape().GetDim(0);
     int32_t dimLength = context->GetInputShape(0)->GetStorageShape().GetDim(1);
+    if (codesNumLength % REDUCE_SIZE != 0)
+    {
+        return ge::GRAPH_FAILED;
+    }
     int32_t baseCodesNumLength = std::min(BASE_CODE, codesNumLength);
+    int32_t tileLength = CalculateTileLength(ub_size, baseCodesNumLength, dimLength);
+    if (tileLength <= 0)
+    {
+        return ge::GRAPH_FAILED;
+    }
 
     tiling.set_queryNumLength(queryNumLength);
     tiling.set_codesNumLength(codesNumLength);
@@ -210,7 +219,7 @@ static ge::graphStatus InferShape(gert::InferShapeContext *context)
 
     min_result_shape->SetDimNum(2);
     min_result_shape->SetDim(0, query_shape->GetDim(0));
-    min_result_shape->SetDim(1, codes_shape->GetDim(0) / 64);
+    min_result_shape->SetDim(1, (codes_shape->GetDim(0) + REDUCE_SIZE - 1) / REDUCE_SIZE * 2);
 
     flag_shape_shape->SetDimNum(2);
     flag_shape_shape->SetDim(0, 40);
