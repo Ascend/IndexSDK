@@ -201,13 +201,13 @@ void PrintMultiRecall(std::vector<T>& labels, int64_t* gt, int bs, int batchNum)
 void InitData(std::vector<float>& data, std::vector<float>& qData, std::vector<int64_t>& gts, int dim, int ntotal)
 {
     // 数据集（特征数据、查询数据、groundtruth数据）， 所在的目录。请根据实际情况填写。
-    std::string basePath = " ";
+    std::string baseInitPath = " ";
     // 特征底库数据
-    std::string dataPath = basePath + "base.bin";
+    std::string dataPath = baseInitPath + "base.bin";
     // 查询数据
-    std::string queryPath = basePath + "query.bin";
+    std::string queryPath = baseInitPath + "query.bin";
     // （groundtruth） 测试召回的比较数据
-    std::string gtsPath = basePath + "gt.bin";
+    std::string gtsPath = baseInitPath + "gt.bin";
 
     std::ifstream codesFin(dataPath.c_str(), std::ios::binary);
     codesFin.read(reinterpret_cast<char*>(data.data()), sizeof(float) * dim * ntotal);
@@ -393,9 +393,9 @@ void MultiSearchWithDifFilter(std::vector<faiss::ascend::AscendIndex*>& indexes,
 
 void LoadAndSaveData(std::vector<faiss::ascend::AscendIndex*>& indexes, int ntotal, std::vector<float>& data)
 {
-    std::string basePath = " ";
+    std::string baseLoadPath = " ";
     // ivfsp索引数据落盘保存到的路径indexPath
-    std::string indexPath = basePath + "myivfsp_base_data.bin";
+    std::string indexPath = baseLoadPath + "myivfsp_base_data.bin";
     struct stat indexPathStat;
     if (lstat(indexPath.c_str(), &indexPathStat) == 0)
     {
@@ -484,9 +484,9 @@ void CreateMultiIndex(std::vector<faiss::ascend::AscendIndex*>& indexes, int dim
 {
     int nonzeroNum = 64;
     int nlist = 256;
-    std::string basePath = " ";
+    std::string baseMultiPath = " ";
     // codeBook 码本
-    std::string codeBookPath = basePath + "codebook.bin";
+    std::string codeBookPath = baseMultiPath + "codebook.bin";
     for (int i = 0; i < INDEX_NUM; ++i)
     {
         faiss::ascend::AscendIndexIVFSP* index;
