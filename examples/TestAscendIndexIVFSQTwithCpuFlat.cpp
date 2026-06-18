@@ -15,6 +15,7 @@
  * See the Mulan PSL v2 for more details.
  * -------------------------------------------------------------------------
  */
+
 // 需要生成 aicpu算子+ivfsqt算子(-d 256 -c 16384)+flat_at算子(-d 256 -c 16384)
 
 #include <faiss/ascend/custom/AscendIndexIVFSQT.h>
@@ -196,7 +197,7 @@ void SearchProccess(faiss::ascend::AscendIndexIVFSQT &index, size_t ntotal, std:
     float threshold = 1.6;
     int trainSize = learn.size() / DIM_IN;
     int topk = 100;
-    int searchNum = 10240;
+    int searchNum = 8;
     index.verbose = true;
     index.setFuzzyK(fuzzyK);
     index.setThreshold(threshold);

@@ -290,7 +290,6 @@ int main(int argc, char **argv)
         // 创建faiss index
         faiss::IndexScalarQuantizer *cpuSQ = new faiss::IndexScalarQuantizer();
         faiss::IndexIDMap *cpuIDMap = new faiss::IndexIDMap(cpuSQ);
-        cpuIDMap->own_fields = true;
         cpuIDMap->index->reset();
         cpuIDMap->index->metric_type = metricType;
         cpuIDMap->index->d = dim;
