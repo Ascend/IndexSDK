@@ -305,7 +305,7 @@ Python 安装好后，pip 所需依赖名称、对应版本及获取建议请参
 |--install|特征检索软件包安装操作命令。|
 |--install-path=*\<path>*|（可选）自定义特征检索软件包安装根目录。如未设置，默认为当前命令执行所在目录。配置的路径必须以/或~开头，路径取值仅支持大小写字母、数字、-_./字符。<br>若不指定，将安装到默认路径下：<ul><li>若使用root用户安装，默认安装路径为：/usr/local/Ascend。</li><li>若使用非root用户安装，则默认安装路径为：\$\{HOME}/Ascend，${HOME}指用户目录。</li></ul>若通过该参数指定了安装目录，该目录其他用户不能有写权限，如果指定普通用户安装，安装目录属主必须为当前安装用户。|
 |--upgrade|特征检索软件包升级操作命令，将特征检索升级到安装包所包含的Index SDK版本。|
-|--platform=*\<npu_type>*|对应昇腾AI处理器类型。<ul><li>使用<term>Atlas 200/300/500 推理产品</term>请输入310。使用<term>Atlas 推理系列产品</term>请输入310P。</li><li>使用Atlas 800I A3 超节点服务器请输入“A3”。</li><li>使用<term>Atlas A2 推理系列产品</term>，请在安装昇腾AI处理器的服务器执行npu-smi info命令进行查询，将查询到的“Name”最后一位数字删掉，即是--platform的取值。</li></ul>|
+|--platform=*\<npu_type>*|对应昇腾AI处理器类型。<ul><li>使用<term>Atlas 推理系列产品</term>请输入310P。</li><li>使用Atlas 800I A3 超节点服务器请输入“A3”。</li><li>使用<term>Atlas A2 推理系列产品</term>，请在安装昇腾AI处理器的服务器执行npu-smi info命令进行查询，将查询到的“Name”最后一位数字删掉，即是--platform的取值。</li></ul>|
 |--faiss-version=*\<version>*|（可选）多版本run包用于选择安装后激活的Faiss ABI版本；单版本run包用于校验用户选择和包内版本是否一致。支持“1.10”、“1.10.0”、“faiss1.10”、“1.14”、“1.14.1”和“faiss1.14”等取值，默认值为包内默认版本。选择“1.10”时，激活基于Faiss 1.10.x构建的业务动态库和头文件；选择“1.14”时，激活基于Faiss 1.14.1构建的业务动态库和头文件。单版本run包无需设置该参数，如果设置为包内不包含的版本，安装会报错退出。|
 
 > [!NOTE]
@@ -402,7 +402,7 @@ bash build.sh
 | 参数名 | 参数说明 |
 |--|--|
 | --upgrade | 特征检索软件包升级操作命令，将特征检索升级到安装包所包含的 Index SDK 版本。|
-| --platform=*\<npu_type>* | 对应昇腾 AI 处理器类型。<ul><li>使用 Atlas 200/300/500 推理产品请输入 `310`。</li><li>使用 Atlas 推理系列产品请输入 `310P`。</li><li>使用 Atlas 800I A3 超节点服务器请输入 `A3`。</li><li>使用 Atlas A2 推理系列产品，请在安装昇腾 AI 处理器的服务器执行 `npu-smi info` 命令进行查询，将查询到的 `Name` 最后一位数字删掉，即是 --platform 的取值。</li></ul> |
+| --platform=*\<npu_type>* | 对应昇腾 AI 处理器类型。<ul><li>使用 Atlas 推理系列产品请输入 `310P`。</li><li>使用 Atlas 800I A3 超节点服务器请输入 `A3`。</li><li>使用 Atlas A2 推理系列产品，请在安装昇腾 AI 处理器的服务器执行 `npu-smi info` 命令进行查询，将查询到的 `Name` 最后一位数字删掉，即是 --platform 的取值。</li></ul> |
 | --install-path=*\<path>* |（可选）自定义特征检索软件包安装根目录。如未设置，默认为 `usr/local/Ascend`。如使用自定义目录安装，建议在升级操作时使用该参数。|
 | --faiss-version=*\<version>* |（可选）多版本 run 包用于选择升级后激活的 Faiss ABI 版本；单版本 run 包用于校验用户选择和包内版本是否一致。支持“1.10”、“1.10.0”、“faiss1.10”、“1.14”、“1.14.1”和“faiss1.14”等取值，默认值为包内默认版本。如果升级后需要继续使用 IVFRaBitQ/RaBitQ 特性，请使用 Faiss 1.14.1 版本 run 包，或在多版本 run 包中指定“--faiss-version=1.14”。单版本 run 包无需设置该参数，如果设置为包内不包含的版本，升级会报错退出。 |
 
