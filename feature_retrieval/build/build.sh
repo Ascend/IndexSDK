@@ -178,7 +178,6 @@ prepare_ascendsearch()
     fi
 
     cd "${ASCEND_SEARCH_HOME}"/.. && rm -rf ascendsearch/*
-    prepare_ascendsearch_with_npu_type 310 || true
     prepare_ascendsearch_with_npu_type 310P || true
 }
 
@@ -311,25 +310,21 @@ build_ops_for_npu_type()
 
 build_ops()
 {
-    local pid_310
     local pid_310p
     local pid_910b
     local build_failed=0
 
     cp_mix_ops_project
-    build_ops_for_npu_type 310 &
-    pid_310=$!
     build_ops_for_npu_type 310P &
     pid_310p=$!
     build_ops_for_npu_type 910B &
     pid_910b=$!
 
-    wait "${pid_310}" || build_failed=1
     wait "${pid_310p}" || build_failed=1
     wait "${pid_910b}" || build_failed=1
 
-    rm -rf "${PROJECT_ZIP_PATH}"/stage_310 "${PROJECT_ZIP_PATH}"/stage_310P "${PROJECT_ZIP_PATH}"/stage_910B
-    rm -rf "${PROJECT_SRC_PATH}"/ops_src_310 "${PROJECT_SRC_PATH}"/ops_src_310P "${PROJECT_SRC_PATH}"/ops_src_910B
+    rm -rf "${PROJECT_ZIP_PATH}"/stage_310P "${PROJECT_ZIP_PATH}"/stage_910B
+    rm -rf "${PROJECT_SRC_PATH}"/ops_src_310P "${PROJECT_SRC_PATH}"/ops_src_910B
     if [ "${build_failed}" -ne 0 ]; then
         error "build ops failed."
         exit 1
@@ -338,7 +333,6 @@ build_ops()
 
 package_without_ops()
 {
-    make_zip_src ${RELEASE_PKG_NAME}-310
     make_zip_src ${RELEASE_PKG_NAME}-310P
     make_zip_src ${RELEASE_PKG_NAME}-910B
 }
@@ -426,14 +420,10 @@ main()
 
     [ ! -d "${ASCEND_SEARCH_HOME}" ] && mkdir -p "${ASCEND_SEARCH_HOME}"
     prepare_ascendsearch
-    ascend_search_home_310="${ASCEND_SEARCH_HOME}/310"
     ascend_search_home_310P="${ASCEND_SEARCH_HOME}/310P"
     if [ -d "${ascend_search_home_310P}" ]; then
         readonly DEFAULT_IVFSP_HOME_WITH_NPU_TYPE="${ascend_search_home_310P}/IVFSP"
         readonly DEFAULT_MIX_SEARCH_HOME_WITH_NPU_TYPE="${ascend_search_home_310P}/mix-index"
-    elif [ -d "${ascend_search_home_310}" ]; then
-        readonly DEFAULT_IVFSP_HOME_WITH_NPU_TYPE="${ascend_search_home_310}/IVFSP"
-        readonly DEFAULT_MIX_SEARCH_HOME_WITH_NPU_TYPE="${ascend_search_home_310}/mix-index"
     else
         readonly DEFAULT_IVFSP_HOME_WITH_NPU_TYPE="${ascend_search_home_310P}/IVFSP"
         readonly DEFAULT_MIX_SEARCH_HOME_WITH_NPU_TYPE="${ascend_search_home_310P}/mix-index"

@@ -29,7 +29,7 @@ info_record_file="deployment.log"
 info_record_file_back="deployment.log.bak"
 log_file=$info_record_path/$info_record_file
 LOG_SIZE_THRESHOLD=1024000
-ascend_type=310
+ascend_type=310P
 MAX_LEN_OF_PATH=1024
 MIN_LEN_OF_PATH=0
 log_init_flag=n
@@ -375,7 +375,7 @@ function parse_script_args() {
             ;;
         --platform=*)
             ascend_type=$(echo "$1" | cut -d"=" -f2)
-            if [[ "$ascend_type" != "310" && "$ascend_type" != "310P" && "$ascend_type" != "910B" && "$ascend_type" != "A3" && "$ascend_type" != "A5" ]]; then
+            if [[ "$ascend_type" != "310P" && "$ascend_type" != "910B" && "$ascend_type" != "A3" && "$ascend_type" != "A5" ]]; then
                 echo "not support ascend platform"
                 log "ERROR" "not support ascend platform"
                 exit 1
@@ -436,9 +436,7 @@ function UnTAR()
     export GCC_VERSION=$(gcc -dumpversion | cut -c1-2)
     if test x"$GCC_VERSION" = x"4." || test x"$GCC_VERSION" = x"3." || \
         test x"$GCC_VERSION" = x"2." || test x"$GCC_VERSION" = x"1."; then
-        if [ "$ascend_type" == "310" ]; then
-            tar_package_name="*gcc4.8.5*310.tar.gz"
-        elif [ "$ascend_type" = "310P" ]; then
+        if [ "$ascend_type" = "310P" ]; then
             tar_package_name="*gcc4.8.5*310P.tar.gz"
         elif [ "$ascend_type" = "910B" ]; then
             tar_package_name="*gcc4.8.5*910B.tar.gz"
@@ -448,9 +446,7 @@ function UnTAR()
             tar_package_name="*gcc4.8.5*910B.tar.gz"
         fi
     else
-        if [ "$ascend_type" == "310" ]; then
-            tar_package_name="*gcc7.3.0*310.tar.gz"
-        elif [ "$ascend_type" = "310P" ]; then
+        if [ "$ascend_type" = "310P" ]; then
             tar_package_name="*gcc7.3.0*310P.tar.gz"
         elif [ "$ascend_type" = "910B" ]; then
             tar_package_name="*gcc7.3.0*910B.tar.gz"
