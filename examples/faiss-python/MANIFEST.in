@@ -1,0 +1,3 @@
+include ascendfaiss.py
+include swig_ascendfaiss.py
+include _swig_ascendfaiss.so
