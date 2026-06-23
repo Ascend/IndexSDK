@@ -17,6 +17,7 @@ MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 See the Mulan PSL v2 for more details.
 -------------------------------------------------------------------------
 """
+
 import os
 import argparse
 import common as utils
@@ -31,14 +32,13 @@ def arg_parse():
     Parse arguements to the operator model
     """
 
-    parser = argparse.ArgumentParser(
-        description='generate aicore operator model')
+    parser = argparse.ArgumentParser(description='generate aicore operator model')
 
     utils.op_common_parse(parser, "--cores", 'core_num', 2, int, "Core number")
     utils.op_common_parse(parser, "-d", 'dim', 64, int, "Feature dimension")
     utils.op_common_parse(parser, "-c", 'code_num', 8192, int, "Number vector of base")
     utils.op_common_parse(parser, "-p", 'process_id', 0, int, "Number of process_id")
-    utils.op_common_parse(parser, "-t", 'npu_type', "310", str, "NPU type, 310 or 310P. 310 by default")
+    utils.op_common_parse(parser, "-t", 'npu_type', "310P", str, "NPU type, 310P by default")
 
     return parser.parse_args()
 
@@ -76,7 +76,13 @@ def generate_corr_compute_json(core_nums, dim, file_path):
     corr_compute_obj = []
     generator = OpJsonGenerator("CorrCompute")
     generator.add_input("ND", [1, code_num // 16, dim, 16], "float16")
-    generator.add_input("ND", [core_nums, ], "uint64")
+    generator.add_input(
+        "ND",
+        [
+            core_nums,
+        ],
+        "uint64",
+    )
     generator.add_output("ND", [dim, dim], "float16")
     generator.add_output("ND", [core_nums, 16], "uint16")
     corr_compute_obj.append(generator.generate_obj())
@@ -92,14 +98,14 @@ def generate_flat_offline_model():
 
     code_num = args.code_num
     utils.check_param_range(code_num, [1024, 2048, 4096, 8192, 16384, 32768], "code_num")
-    
+
     soc_version = utils.get_soc_version_from_npu_type(args.npu_type)
     core_num = utils.get_core_num_by_npu_type(args.core_num, args.npu_type)
     work_dir = '.'
     try:
         page_num = 32768 * 8192 / code_num
     except ZeroDivisionError as e:
-        raise Exception("Code_num can not be zero!") from e
+        raise ValueError("Code_num can not be zero!") from e
     config_path = utils.get_config_path(work_dir)
 
     op_name_ = f"l2_norm_op_pid{process_id}"

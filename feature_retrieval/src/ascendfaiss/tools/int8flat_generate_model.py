@@ -50,14 +50,7 @@ def arg_parse():
     utils.op_common_parse(parser, "-d", "dim", 512, int, "Feature dimension")
     utils.op_common_parse(parser, "-pool", "pool_size", 10, int, "Number of pool_size")
     utils.op_common_parse(parser, "-p", "process_id", 0, int, "Number of process_id")
-    utils.op_common_parse(
-        parser,
-        "-t",
-        'npu_type',
-        "310",
-        str,
-        "NPU type, 310 / 310P / 910B1 / 910B2 / 910B3 / 910B4 / 910_{NPU Name}. 310 by default",
-    )
+    utils.add_npu_type_arg(parser)
     utils.op_common_parse(parser, "-code", "code_num", 262144, int, "size of code block")
     return parser.parse_args()
 
@@ -92,11 +85,7 @@ def generate_distance_int8_cos_maxs_json(core_num, query_num, dim, file_path, co
         generator.add_input("ND", [code_num // 16, dim // 32, 16, 32], "int8")
         generator.add_input("ND", [(query_num + 15) // 16 * 16], "float16")
         generator.add_input("ND", [code_num], "float16")
-        generator.add_input("ND", [core_num, 8], "uint32")
-        generator.add_output("ND", [query_num, code_num], "float16")
-        generator.add_output("ND", [query_num, (code_num + 63) // 64 * 2], "float16")
-        generator.add_output("ND", [16, 16], "uint16")
-        obj = generator.generate_obj()
+        obj = utils.add_distance_compute_tail(generator, core_num, query_num, code_num)
         int8_cos_maxs_obj.append(obj)
 
     utils.generate_op_config(int8_cos_maxs_obj, file_path)
@@ -112,11 +101,7 @@ def generate_distance_int8_cos_maxs_with_mask_json(core_num, query_num, dim, fil
         generator.add_input("ND", [code_num // 16, dim // 32, 16, 32], "int8")
         generator.add_input("ND", [(query_num + 15) // 16 * 16], "float16")
         generator.add_input("ND", [code_num], "float16")
-        generator.add_input("ND", [core_num, 8], "uint32")
-        generator.add_output("ND", [query_num, code_num], "float16")
-        generator.add_output("ND", [query_num, (code_num + 63) // 64 * 2], "float16")
-        generator.add_output("ND", [16, 16], "uint16")
-        obj = generator.generate_obj()
+        obj = utils.add_distance_compute_tail(generator, core_num, query_num, code_num)
         int8_cos_maxs_with_mask_obj.append(obj)
 
     utils.generate_op_config(int8_cos_maxs_with_mask_obj, file_path)
@@ -153,11 +138,7 @@ def generate_distance_int8_cos_maxs_with_share_mask_json(core_num, query_num, di
         generator.add_input("ND", [code_num // 16, dim // 32, 16, 32], "int8")
         generator.add_input("ND", [(query_num + 15) // 16 * 16], "float16")
         generator.add_input("ND", [code_num], "float16")
-        generator.add_input("ND", [core_num, 8], "uint32")
-        generator.add_output("ND", [query_num, code_num], "float16")
-        generator.add_output("ND", [query_num, (code_num + 63) // 64 * 2], "float16")
-        generator.add_output("ND", [16, 16], "uint16")
-        obj = generator.generate_obj()
+        obj = utils.add_distance_compute_tail(generator, core_num, query_num, code_num)
         int8_cos_maxs_with_share_mask_obj.append(obj)
     utils.generate_op_config(int8_cos_maxs_with_share_mask_obj, file_path)
 
@@ -193,11 +174,7 @@ def generate_distance_int8_l2_mins_json(core_num, query_num, dim, file_path, cod
         generator.add_input("ND", [query_num, (code_num + 7) // 8], "uint8")
         generator.add_input("ND", [code_num // 16, dim // 32, 16, 32], "int8")
         generator.add_input("ND", [code_num], "int32")
-        generator.add_input("ND", [core_num, 8], "uint32")
-        generator.add_output("ND", [query_num, code_num], "float16")
-        generator.add_output("ND", [query_num, (code_num + 63) // 64 * 2], "float16")
-        generator.add_output("ND", [16, 16], "uint16")
-        obj = generator.generate_obj()
+        obj = utils.add_distance_compute_tail(generator, core_num, query_num, code_num)
         int8_l2_mins_obj.append(obj)
 
     utils.generate_op_config(int8_l2_mins_obj, file_path)
@@ -236,11 +213,7 @@ def generate_distance_int8_l2_mins_with_mask_json(core_num, query_num, dim, file
         generator.add_input("ND", [query_num, (code_num + 7) // 8], "uint8")
         generator.add_input("ND", [code_num // 16, dim // 32, 16, 32], "int8")
         generator.add_input("ND", [code_num], "int32")
-        generator.add_input("ND", [core_num, 8], "uint32")
-        generator.add_output("ND", [query_num, code_num], "float16")
-        generator.add_output("ND", [query_num, (code_num + 63) // 64 * 2], "float16")
-        generator.add_output("ND", [16, 16], "uint16")
-        obj = generator.generate_obj()
+        obj = utils.add_distance_compute_tail(generator, core_num, query_num, code_num)
         int8_l2_mins_with_mask_obj.append(obj)
 
     utils.generate_op_config(int8_l2_mins_with_mask_obj, file_path)
@@ -255,11 +228,7 @@ def generate_distance_int8_l2_mins_with_share_mask_json(core_num, query_num, dim
         generator.add_input("ND", [1, (code_num + 7) // 8], "uint8")
         generator.add_input("ND", [code_num // 16, dim // 32, 16, 32], "int8")
         generator.add_input("ND", [code_num], "int32")
-        generator.add_input("ND", [core_num, 8], "uint32")
-        generator.add_output("ND", [query_num, code_num], "float16")
-        generator.add_output("ND", [query_num, (code_num + 63) // 64 * 2], "float16")
-        generator.add_output("ND", [16, 16], "uint16")
-        obj = generator.generate_obj()
+        obj = utils.add_distance_compute_tail(generator, core_num, query_num, code_num)
         int8_l2_mins_with_share_mask_obj.append(obj)
 
     utils.generate_op_config(int8_l2_mins_with_share_mask_obj, file_path)
@@ -274,11 +243,7 @@ def generate_distance_int8_l2_full_mins_json(core_num, query_num, dim, file_path
         generator.add_input("ND", [query_num, (code_num + 7) // 8], "uint8")
         generator.add_input("ND", [code_num // 16, dim // 32, 16, 32], "int8")
         generator.add_input("ND", [code_num], "int32")
-        generator.add_input("ND", [core_num, 8], "uint32")
-        generator.add_output("ND", [query_num, code_num], "float16")
-        generator.add_output("ND", [query_num, (code_num + 63) // 64 * 2], "float16")
-        generator.add_output("ND", [16, 16], "uint16")
-        obj = generator.generate_obj()
+        obj = utils.add_distance_compute_tail(generator, core_num, query_num, code_num)
         int8_l2_mins_obj.append(obj)
 
     utils.generate_op_config(int8_l2_mins_obj, file_path)
@@ -293,11 +258,7 @@ def generate_distance_int8_l2_full_mins_with_mask_json(core_num, query_num, dim,
         generator.add_input("ND", [query_num, (code_num + 7) // 8], "uint8")
         generator.add_input("ND", [code_num // 16, dim // 32, 16, 32], "int8")
         generator.add_input("ND", [code_num], "int32")
-        generator.add_input("ND", [core_num, 8], "uint32")
-        generator.add_output("ND", [query_num, code_num], "float16")
-        generator.add_output("ND", [query_num, (code_num + 63) // 64 * 2], "float16")
-        generator.add_output("ND", [16, 16], "uint16")
-        obj = generator.generate_obj()
+        obj = utils.add_distance_compute_tail(generator, core_num, query_num, code_num)
         int8_l2_mins_with_mask_obj.append(obj)
 
     utils.generate_op_config(int8_l2_mins_with_mask_obj, file_path)
@@ -312,11 +273,7 @@ def generate_distance_int8_l2_full_mins_with_share_mask_json(core_num, query_num
         generator.add_input("ND", [1, (code_num + 7) // 8], "uint8")
         generator.add_input("ND", [code_num // 16, dim // 32, 16, 32], "int8")
         generator.add_input("ND", [code_num], "int32")
-        generator.add_input("ND", [core_num, 8], "uint32")
-        generator.add_output("ND", [query_num, code_num], "float16")
-        generator.add_output("ND", [query_num, (code_num + 63) // 64 * 2], "float16")
-        generator.add_output("ND", [16, 16], "uint16")
-        obj = generator.generate_obj()
+        obj = utils.add_distance_compute_tail(generator, core_num, query_num, code_num)
         int8_l2_mins_with_share_mask_obj.append(obj)
 
     utils.generate_op_config(int8_l2_mins_with_share_mask_obj, file_path)
@@ -331,11 +288,7 @@ def generate_distance_int8_l2_mins_wo_query_norm_json(core_num, query_num, dim, 
         generator.add_input("ND", [query_num, (code_num + 7) // 8], "uint8")
         generator.add_input("ND", [code_num // 16, dim // 32, 16, 32], "int8")
         generator.add_input("ND", [code_num], "float16")
-        generator.add_input("ND", [core_num, 8], "uint32")
-        generator.add_output("ND", [query_num, code_num], "float16")
-        generator.add_output("ND", [query_num, (code_num + 63) // 64 * 2], "float16")
-        generator.add_output("ND", [16, 16], "uint16")
-        obj = generator.generate_obj()
+        obj = utils.add_distance_compute_tail(generator, core_num, query_num, code_num)
         int8_l2_mins_wo_query_norm_obj.append(obj)
 
     utils.generate_op_config(int8_l2_mins_wo_query_norm_obj, file_path)

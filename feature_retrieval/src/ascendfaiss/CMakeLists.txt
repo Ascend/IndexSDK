@@ -26,7 +26,7 @@ ELSE()
     SET(ASCEND_MINIOS_HOME      /usr/local/AscendMiniOs      CACHE STRING   "")
 ENDIF()
 SET(FAISS_HOME                  /usr/local/faiss             CACHE STRING   "")
-SET(NPU_TYPE                    310                          CACHE STRING   "310 | 310P")
+SET(NPU_TYPE                    310P                         CACHE STRING   "310P")
 # Relative paths
 SET(PROJECT_SRC_ROOT ${CMAKE_CURRENT_LIST_DIR})
 SET(ASCEND_TOOLKIT_PATH ${ASCEND_HOME}/ascend-toolkit/${ASCEND_TOOLKIT_VERSION})

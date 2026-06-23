@@ -37,14 +37,7 @@ def arg_parse():
     utils.op_common_parse(parser, "-token", 'max_token_cnt', 2500, int, "Max token num, default 2500")
     utils.op_common_parse(parser, "-p", 'process_id', 0, int, "Number of process_id, default 0")
     utils.op_common_parse(parser, "-pool", 'pool_size', 16, int, "Number of pool_size, default 16")
-    utils.op_common_parse(
-        parser,
-        "-t",
-        'npu_type',
-        "310P",
-        str,
-        "NPU type, 310P / 910B1 / 910B2 / 910B3 / 910B4 / 910_{NPU Name}. 310P by default",
-    )
+    utils.add_npu_type_arg(parser)
     return parser.parse_args()
 
 

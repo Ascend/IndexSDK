@@ -17,6 +17,7 @@ MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 See the Mulan PSL v2 for more details.
 -------------------------------------------------------------------------
 """
+
 import os
 import signal
 import time
@@ -29,21 +30,20 @@ from common import generate_work_dir
 
 logging.basicConfig(level=logging.NOTSET, format="")
 
-_SUPPORTED_MODES = [
-    "Flat", "SQ8", "IVFSQ8", "INT8", "ALL"]
+_SUPPORTED_MODES = ["Flat", "SQ8", "IVFSQ8", "INT8", "ALL"]
 
 
 def arg_parse():
     """
     Parse arguements to the operator model
     """
-    parser = argparse.ArgumentParser(
-        description="generate linear_transform operator model")
+    parser = argparse.ArgumentParser(description="generate linear_transform operator model")
 
-    utils.op_common_parse(parser, "-m", "mode", "ALL", str, 
-                          "Generate mode, include combination of {}".format(", ".join(_SUPPORTED_MODES)))
+    utils.op_common_parse(
+        parser, "-m", "mode", "ALL", str, "Generate mode, include combination of {}".format(", ".join(_SUPPORTED_MODES))
+    )
     utils.op_common_parse(parser, "-p", "pipeline", "true", str, "pipeline, true or false. default true")
-    utils.op_common_parse(parser, "-t", "npu_type", "310", str, "NPU type, 310 or 310P. 310 by default")
+    utils.op_common_parse(parser, "-t", "npu_type", "310P", str, "NPU type, 310P by default")
     utils.op_common_parse(parser, "-pool", "pool_size", 32, int, "Number of pool_size")
     return parser.parse_args()
 
@@ -69,7 +69,6 @@ class GenerateModel:
         self.pipeline_flag = pipeline_flag
         self.npu_type = npu_type
         self.pool_size = 1
-        return
 
     def run_command(self, arguments, adapted_to_310p=True):
         if "-p" in arguments:
@@ -82,7 +81,6 @@ class GenerateModel:
         # Set cores number for 310P
         if adapted_to_310p and self.npu_type == "310P":
             arguments += ["--cores", "8"]
-        
 
         cmd = " ".join(arguments)
         self.cmd = cmd
@@ -91,61 +89,46 @@ class GenerateModel:
         if not self.pipeline_flag:
             self.err_code = subprocess.call(arguments, shell=False)  # Serial processing
         else:
-            self.subprocess = subprocess.Popen(arguments, shell=False)  # Parallel processing
-        return
+            # Keep the process handle alive until wait_to_finish polls it.
+            self.subprocess = subprocess.Popen(arguments, shell=False)  # pylint: disable=consider-using-with
 
     def run_flat(self):
         dim = get_field_value(self.parameter, "dim")
 
-        arguments = [
-            "python3", "flat_generate_model.py",
-            "-d", "%d" % dim,
-            "-pool", "%d" % self.pool_size
-        ]
+        arguments = ["python3", "flat_generate_model.py", "-d", "%d" % dim, "-pool", "%d" % self.pool_size]
         self.run_command(arguments)
-        return
 
     def run_sq8(self):
         dim = get_field_value(self.parameter, "dim")
 
-        arguments = [
-            "python3", "sq8_generate_model.py",
-            "-d", "%d" % dim,
-            "-pool", "%d" % self.pool_size
-        ]
+        arguments = ["python3", "sq8_generate_model.py", "-d", "%d" % dim, "-pool", "%d" % self.pool_size]
         self.run_command(arguments)
-        return
 
     def run_ivf_sq8(self):
         dim = get_field_value(self.parameter, "dim")
         coarse_centroid_num_ = get_field_value(self.parameter, "nlist")
 
         arguments = [
-            "python3", "ivfsq8_generate_model.py",
-            "-d", "%d" % dim,
-            "-c", "%d" % coarse_centroid_num_,
-            "-pool", "%d" % self.pool_size
+            "python3",
+            "ivfsq8_generate_model.py",
+            "-d",
+            "%d" % dim,
+            "-c",
+            "%d" % coarse_centroid_num_,
+            "-pool",
+            "%d" % self.pool_size,
         ]
         self.run_command(arguments)
-        return
 
     def run_int8_flat(self):
         dim = get_field_value(self.parameter, "dim")
 
-        arguments = [
-            "python3", "int8flat_generate_model.py",
-            "-d", "%d" % dim,
-            "-pool", "%d" % self.pool_size
-        ]
+        arguments = ["python3", "int8flat_generate_model.py", "-d", "%d" % dim, "-pool", "%d" % self.pool_size]
         self.run_command(arguments)
-        return
 
     def run_aicpu(self):
-        arguments = [
-            'python3', 'aicpu_generate_model.py'
-        ]
+        arguments = ['python3', 'aicpu_generate_model.py']
         self.run_command(arguments)
-        return
 
     def generate_offline_model(self, pool_size):
         self.pool_size = pool_size
@@ -159,7 +142,6 @@ class GenerateModel:
             self.run_int8_flat()
         elif self.para_mode == 'AICPU':
             self.run_aicpu()
-        return
 
     def get_err_code(self):
         return self.err_code
@@ -177,10 +159,9 @@ def print_process_status(process):
     logging.info("%s", "-" * 100)
     for model_id in process:
         mode, _, status, running_time, cmd = process[model_id]
-        running_time = int(running_time) if ((status == "success") or (status == "failed")) else "-"
+        running_time = int(running_time) if status in ("success", "failed") else "-"
         logging.info("%-10s%-10s%-12s%-15s%s", model_id, mode, status, running_time, cmd)
     logging.info("%s\r\n", "-" * 100)
-    return
 
 
 def wait_to_finish(process):
@@ -202,10 +183,10 @@ def wait_to_finish(process):
             running_time = time.time() - time_
 
             if sub_process.returncode == 0 and running_time > 3:
-                process[model_id] = ([mode, sub_process, "success", running_time, cmd])
+                process[model_id] = [mode, sub_process, "success", running_time, cmd]
             else:
                 logging.info("ERROR: generate model of ID %s failed", model_id)
-                process[model_id] = ([mode, sub_process, "failed", running_time, cmd])
+                process[model_id] = [mode, sub_process, "failed", running_time, cmd]
             print_process_status(process)
 
         if finished:
@@ -226,7 +207,7 @@ def count_process(parameters):
             model_id = get_attribute_value(parameter, "ID")
             mode_ = parameter.getElementsByTagName("mode")[0]
             para_mode = str(mode_.childNodes[0].data)
-            process[model_id] = ([para_mode, None, "waiting", "None", "None"])
+            process[model_id] = [para_mode, None, "waiting", "None", "None"]
     return process
 
 
@@ -248,10 +229,15 @@ def generate_oms(parameters, arg_mode, pipeline_flag, npu_type, pool_size):
 
             if pipeline_flag:
                 generate_model.generate_offline_model(pool_size)
-                process[model_id] = ([para_mode, generate_model.get_subprocess(),
-                                      "processing", time.time(), generate_model.get_cmd()])
+                process[model_id] = [
+                    para_mode,
+                    generate_model.get_subprocess(),
+                    "processing",
+                    time.time(),
+                    generate_model.get_cmd(),
+                ]
             else:
-                process[model_id] = ([para_mode, None, "processing", None, generate_model.get_cmd()])
+                process[model_id] = [para_mode, None, "processing", None, generate_model.get_cmd()]
                 print_process_status(process)
 
                 start_time_ = time.time()
@@ -259,9 +245,9 @@ def generate_oms(parameters, arg_mode, pipeline_flag, npu_type, pool_size):
                 running_time = time.time() - start_time_
 
                 if generate_model.get_err_code() == 0:
-                    process[model_id] = ([para_mode, None, "success", running_time, generate_model.get_cmd()])
+                    process[model_id] = [para_mode, None, "success", running_time, generate_model.get_cmd()]
                 else:
-                    process[model_id] = ([para_mode, None, "failed", running_time, generate_model.get_cmd()])
+                    process[model_id] = [para_mode, None, "failed", running_time, generate_model.get_cmd()]
                     logging.info("ERROR: generate model of ID %s failed", model_id)
                 print_process_status(process)
         else:
@@ -275,7 +261,7 @@ def generate_oms(parameters, arg_mode, pipeline_flag, npu_type, pool_size):
             mode, sub_process, status, time_, cmd = proc
             pid = sub_process.pid
             try:
-                os.killpg(pid, signal.SIGKILL)
+                os.killpg(pid, signal.SIGKILL)  # pylint: disable=no-member
             except KeyError:
                 logging.error(" pid %d has been killed", pid)
         return {}
@@ -298,18 +284,13 @@ def pipeline_generate_oms(parameters, max_pool, arg_mode, npu_type):
 
     all_process = {}
     # Generate operators by category loop
-    for para_mode in split_paras_dict:
+    for para_mode, mode_parameters in split_paras_dict.items():
         start = time.time()
 
-        try:
-            parameters = split_paras_dict[para_mode]
-        except KeyError as error:
-            raise ValueError(f"key {para_mode} not in split_paras_dict ") from error
-
-        pool_size = max_pool // len(parameters)
-        pipeline_flag = True if pool_size > 0 else False
+        pool_size = max_pool // len(mode_parameters)
+        pipeline_flag = pool_size > 0
         pool_size = pool_size if pipeline_flag else 32
-        one_type_process = generate_oms(parameters, arg_mode, pipeline_flag, npu_type, pool_size)
+        one_type_process = generate_oms(mode_parameters, arg_mode, pipeline_flag, npu_type, pool_size)
         if len(one_type_process) == 0:
             break
         all_process.update(one_type_process)
@@ -321,7 +302,7 @@ def pipeline_generate_oms(parameters, max_pool, arg_mode, npu_type):
 def is_config_file_valid(config_path):
     invalid_fields = ["DOCTYPE", "ENTITY", "SCHEMA", "XSI", "XMLNS"]
 
-    with open(config_path, 'r') as xml_file:
+    with open(config_path, 'r', encoding='utf-8') as xml_file:
         file_context = xml_file.read().upper()
         for field in invalid_fields:
             if field in file_context:
@@ -340,8 +321,8 @@ def main():
 
     logging.info("\r\nModels of %s would be generated\r\n", npu_type)
 
-    if npu_type not in ["310", "310P", "910B1", "910B2", "910B3", "910B4"]:
-        raise RuntimeError("NPU type only support 310 / 310P / 910B1 / 910B2 / 910B3 / 910B4 now!")
+    if npu_type not in ["310P", "910B1", "910B2", "910B3", "910B4"]:
+        raise RuntimeError("NPU type only support 310P / 910B1 / 910B2 / 910B3 / 910B4 now!")
 
     generate_work_dir(work_dir=".")
 

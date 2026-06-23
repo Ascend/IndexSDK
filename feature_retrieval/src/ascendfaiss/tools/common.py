@@ -67,7 +67,7 @@ def set_env():
     os.environ['ASCEND_OPP_PATH'] = os.path.join(ascend_toolkit_path, 'opp')
 
 
-def atc_model(json_file, soc_version="Ascend310"):
+def atc_model(json_file, soc_version="Ascend310P3"):
     # generate aicore operator model
     ascend_toolkit_path = os.path.join(os.environ['ASCEND_HOME'], os.environ['ASCEND_VERSION'])
     atc_path = os.path.join(ascend_toolkit_path, 'bin/atc')
@@ -187,7 +187,6 @@ def get_config_path(work_dir=''):
 def get_soc_version_from_npu_type(npu_type):
     npu_type_soc_version_dict = {
         "310P": "Ascend310P3",
-        "310": "Ascend310",
         "910B1": "Ascend910B1",
         "910B2": "Ascend910B2",
         "910B3": "Ascend910B3",
@@ -208,7 +207,6 @@ def get_soc_version_from_npu_type(npu_type):
 def get_core_num_by_npu_type(core_num, npu_type):
     # 设置默认的core num
     npu_type_core_num_dict = {
-        "310": 2,
         "310P": 8,
         "910B1": 48,
         "910B2": 48,
@@ -254,3 +252,22 @@ def check_pool_size(pool_size):
 
 def op_common_parse(parser, key_str: str, dest: str, default_value, data_type, help_str: str):
     parser.add_argument(key_str, dest=dest, default=default_value, type=data_type, help=help_str)
+
+
+def add_npu_type_arg(parser):
+    op_common_parse(
+        parser,
+        "-t",
+        'npu_type',
+        "310P",
+        str,
+        "NPU type, 310P / 910B1 / 910B2 / 910B3 / 910B4 / 910_{NPU Name}. 310P by default",
+    )
+
+
+def add_distance_compute_tail(generator, core_num, query_num, code_num):
+    generator.add_input("ND", [core_num, 8], "uint32")
+    generator.add_output("ND", [query_num, code_num], "float16")
+    generator.add_output("ND", [query_num, (code_num + 63) // 64 * 2], "float16")
+    generator.add_output("ND", [16, 16], "uint16")
+    return generator.generate_obj()

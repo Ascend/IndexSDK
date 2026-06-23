@@ -55,7 +55,7 @@
 
 |特性名称|特性描述|配套产品型号|
 |---------|--------------------------------------------|----------|
-|Index SDK|<li>ILFlat标准态性能优化：底库500w，256维度，通过GetFeature随机获取4w底库，耗时减少到25ms内。</li><li>异构内存支持时空库附加属性：功能支持时空库TSInt8FlatCos，1024维度下，异构内存场景能添加附加属性，检索能正常过滤附加属性。</li>|Atlas 300I Pro 推理卡<br>Atlas 300V 视频解析卡<br>Atlas 300V Pro 视频解析卡<br>Atlas 300I Duo 推理卡<br>Atlas 200I SoC A1 核心板<br>Atlas 300I 推理卡（型号 3000）<br>Atlas 300I 推理卡（型号 3010）<br>Atlas 800I A2 推理服务器|
+|Index SDK|<li>ILFlat标准态性能优化：底库500w，256维度，通过GetFeature随机获取4w底库，耗时减少到25ms内。</li><li>异构内存支持时空库附加属性：功能支持时空库TSInt8FlatCos，1024维度下，异构内存场景能添加附加属性，检索能正常过滤附加属性。</li>|Atlas 300I Pro 推理卡<br>Atlas 300V 视频解析卡<br>Atlas 300V Pro 视频解析卡<br>Atlas 300I Duo 推理卡<br>Atlas 200I SoC A1 核心板<br>Atlas 800I A2 推理服务器|
 
 ## 业务接口变更<a name="ZH-CN_TOPIC_0000002492442008"></a>
 
