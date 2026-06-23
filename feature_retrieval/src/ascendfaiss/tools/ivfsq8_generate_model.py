@@ -17,9 +17,9 @@ MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 See the Mulan PSL v2 for more details.
 -------------------------------------------------------------------------
 """
+
 import os
 import argparse
-from multiprocessing import Pool
 
 import common as utils
 from common import OpJsonGenerator
@@ -30,15 +30,14 @@ def arg_parse():
     Parse arguements to the operator model
     """
 
-    parser = argparse.ArgumentParser(
-        description="generate distance_compute_ivf_sq8 operator model")
+    parser = argparse.ArgumentParser(description="generate distance_compute_ivf_sq8 operator model")
 
     utils.op_common_parse(parser, "--cores", "core_num", 2, int, "Core number")
     utils.op_common_parse(parser, "-d", "dim", 128, int, "Feature dimension")
     utils.op_common_parse(parser, "-c", "coarse_centroid_num", 16384, int, "Number of coarse centroid")
     utils.op_common_parse(parser, "-p", "process_id", 0, int, "Number of process_id")
     utils.op_common_parse(parser, "-pool", "pool_size", 10, int, "Number of pool_size")
-    utils.op_common_parse(parser, "-t", 'npu_type', "310", str, "NPU type, 310 or 310P. 310 by default")
+    utils.op_common_parse(parser, "-t", 'npu_type', "310P", str, "NPU type, 310P by default")
     return parser.parse_args()
 
 

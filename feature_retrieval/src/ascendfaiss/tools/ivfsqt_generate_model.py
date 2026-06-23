@@ -17,6 +17,7 @@ MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 See the Mulan PSL v2 for more details.
 -------------------------------------------------------------------------
 """
+
 import os
 import argparse
 from multiprocessing import Pool
@@ -30,8 +31,7 @@ def arg_parse():
     Parse arguements to the operator model
     """
 
-    parser = argparse.ArgumentParser(
-        description='generate distance_compute_sq8 operator model')
+    parser = argparse.ArgumentParser(description='generate distance_compute_sq8 operator model')
 
     utils.op_common_parse(parser, "--cores", 'core_num', 2, int, "Core number")
     utils.op_common_parse(parser, "-d", 'dim_in', 256, int, "Feature dimension")
@@ -39,7 +39,7 @@ def arg_parse():
     utils.op_common_parse(parser, "-c", 'coarse_centroid_num', 16384, int, "Number of coarse centroid")
     utils.op_common_parse(parser, "-p", 'process_id', 0, int, "Number of process_id")
     utils.op_common_parse(parser, "-pool", "pool_size", 32, int, "Number of pool_size")
-    utils.op_common_parse(parser, "-t", 'npu_type', "310", str, "NPU type, 310 or 310P. 310 by default")
+    utils.op_common_parse(parser, "-t", 'npu_type', "310P", str, "NPU type, 310P by default")
     return parser.parse_args()
 
 
@@ -93,28 +93,25 @@ def generate_distance_sq8_ipx_json(core_nums, query_num, di, segment_nums, file_
 
 def generate_corr_compute_json(core_nums, dim, file_path):
     code_num = 1024
-    corr_compute_obj = [{
-        "op":
-            "CorrCompute",
-        "input_desc": [{
-            "format": "ND",
-            "shape": [1, code_num // 16, dim, 16],
-            "type": "float16"
-        }, {
-            "format": "ND",
-            "shape": [core_nums, ],
-            "type": "uint64"
-        }],
-        "output_desc": [{
-            "format": "ND",
-            "shape": [dim, dim],
-            "type": "float16"
-        }, {
-            "format": "ND",
-            "shape": [core_nums, 16],
-            "type": "uint16"
-        }]
-    }]
+    corr_compute_obj = [
+        {
+            "op": "CorrCompute",
+            "input_desc": [
+                {"format": "ND", "shape": [1, code_num // 16, dim, 16], "type": "float16"},
+                {
+                    "format": "ND",
+                    "shape": [
+                        core_nums,
+                    ],
+                    "type": "uint64",
+                },
+            ],
+            "output_desc": [
+                {"format": "ND", "shape": [dim, dim], "type": "float16"},
+                {"format": "ND", "shape": [core_nums, 16], "type": "uint16"},
+            ],
+        }
+    ]
 
     utils.generate_op_config(corr_compute_obj, file_path)
 
@@ -126,7 +123,7 @@ def generate_ivf_sqt_offline_model():
     process_ids = args.process_id
     coarse_centroid_nums = args.coarse_centroid_num
     utils.check_param_range(coarse_centroid_nums, [1024, 2048, 4096, 8192, 16384, 32768], "coarse_centroid_num")
-    
+
     ratio = args.compress_ratio
     if ratio <= 1:
         raise ValueError("not support compress_ratio %d" % ratio)
@@ -156,8 +153,6 @@ def generate_ivf_sqt_offline_model():
     map_args = []
     utils.check_pool_size(args.pool_size)
 
-    p = Pool(args.pool_size)
-
     for page_size in search_page_sizes_l1:
         flat_l2_op_name_ = flat_l2_op_name.format(page_size, process_ids)
         file_l2_path_ = os.path.join(config_path, '%s.json' % flat_l2_op_name_)
@@ -173,8 +168,9 @@ def generate_ivf_sqt_offline_model():
         for pick_num in picked_nums_l2:
             op_name_ = subcenter_op_name.format(page_size, pick_num, process_ids)
             file_path_ = os.path.join(config_path, '%s.json' % op_name_)
-            generate_distance_flat_subcenters_json(core_nums, page_size, coarse_centroid_nums,
-                                                   pick_num, din, file_path_)
+            generate_distance_flat_subcenters_json(
+                core_nums, page_size, coarse_centroid_nums, pick_num, din, file_path_
+            )
             map_args.append((op_name_, soc_version))
 
     for page_size in search_page_sizes_l3:
@@ -189,7 +185,8 @@ def generate_ivf_sqt_offline_model():
         generate_distance_sq8_ip4_json(core_nums, 1, dim, file_path_)
         map_args.append((op_name_, soc_version))
 
-    p.starmap(utils.atc_model, map_args)
+    with Pool(args.pool_size) as p:
+        p.starmap(utils.atc_model, map_args)
 
     for dim in [din]:
         op_name_ = "corr_compute_op{}_pid{}".format(dim, process_ids)

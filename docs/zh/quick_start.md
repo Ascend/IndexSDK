@@ -6,7 +6,7 @@
 
 开始之前请确认：
 
-- **硬件**：支持 Atlas 200/300/500、Atlas 800I A2、Atlas 800I A3
+- **硬件**：支持 Atlas 推理系列产品、Atlas 800I A2、Atlas 800I A3
 - **Docker**：已安装并正确配置 Docker 环境，且当前用户可运行容器。
 
 ## 步骤 1：拉取镜像
@@ -14,7 +14,7 @@
 1. **选择匹配版本**
    - 访问 [Index SDK 昇腾社区镜像仓](https://www.hiascend.com/developer/ascendhub/detail/7f91c3663b5d4a97b3ae40e3cabbb3a2)
    - 根据当前硬件型号（如 Atlas 800I A2 推理服务器）选择对应的镜像版本。
-   - 注意区分 CPU 架构（x86_64/aarch64）和昇腾芯片型号（Ascend 310/910 等）
+   - 注意区分 CPU 架构（x86_64/aarch64）和昇腾芯片型号（Ascend 310P/910 等）
 
 2. **环境预检查**
    - 使用 `npu-smi info` 命令验证 NPU 驱动状态

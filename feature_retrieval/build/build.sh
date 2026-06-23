@@ -191,18 +191,10 @@ cp_ivfsp_ops_ini()
     # DEFAULT_IVFSP_HOME_WITH_NPU_TYPE
     if [ -d "${DEFAULT_IVFSP_HOME_WITH_NPU_TYPE}" ]; then
         # 拷贝tik/aicpu描述文件、tik算子文件
-        ivfsp_tbe_aicore_ascend310=(distance_compute_qc.ini distance_ivf_sp_int_l2.ini distance_ivf_sp_int_l2_mins.ini \
-            distance_masked_ivf_sp_int_l2_mins.ini ivf_cid_filter3.ini matmul_compute.ini fp_to_fp16.ini)
         ivfsp_tbe_aicore_ascend310p=(corr_compute.ini distance_compute_qc.ini distance_ivf_sp_int_l2.ini \
             distance_ivf_sp_int_l2_mins.ini distance_masked_ivf_sp_int_l2_mins.ini ivf_cid_filter3.ini matmul_compute.ini fp_to_fp16.ini)
         ivfsp_tbe_aicore_ascend710=(corr_compute.ini distance_compute_qc.ini distance_ivf_sp_int_l2.ini \
             distance_ivf_sp_int_l2_mins.ini distance_masked_ivf_sp_int_l2_mins.ini ivf_cid_filter3.ini matmul_compute.ini fp_to_fp16.ini)
-        for ivfsp_tbe_aicore_file in ${ivfsp_tbe_aicore_ascend310[@]}
-        do
-            cp "${DEFAULT_IVFSP_HOME_WITH_NPU_TYPE}"/ops/tbe/op_info_cfg/ai_core/ascend310/"${ivfsp_tbe_aicore_file}" \
-                "${PROJECT_SRC_PATH}"/ops/tbe/op_info_cfg/ai_core/ascend310/"${ivfsp_tbe_aicore_file}"
-        done
-
         for ivfsp_tbe_aicore_file in ${ivfsp_tbe_aicore_ascend310p[@]}
         do
             cp "${DEFAULT_IVFSP_HOME_WITH_NPU_TYPE}"/ops/tbe/op_info_cfg/ai_core/ascend310p/"${ivfsp_tbe_aicore_file}" \

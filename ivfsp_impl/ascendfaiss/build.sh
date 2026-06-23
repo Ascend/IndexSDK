@@ -18,7 +18,7 @@ set -e
 
 usage() {
     echo "Usage:"
-    echo "build.sh [-g generate_model] [-t npu_type, 310 or 310P] [-f faiss_path] [-p protobuf_host_path] [-a protobuf_minios_path] [-d driver_path]"
+    echo "build.sh [-g generate_model] [-t npu_type, 310P] [-f faiss_path] [-p protobuf_host_path] [-a protobuf_minios_path] [-d driver_path]"
     exit 1
 }
 
@@ -27,25 +27,25 @@ DRIVER_PATH="/usr/local/Ascend"
 PROTO_HOST_PATH="/usr/local/protobuf"
 PROTO_MINIOS_PATH="/opt/aarch64/protobuf"
 generate_model="false"
-npu_type="310"
+npu_type="310P"
 
 while getopts 'hd:f:p:a:gt:' OPT; do
     case "$OPT" in
-        d) 
+        d)
 		DRIVER_PATH="$OPTARG";;
-        f) 
+        f)
 		FAISS_PATH="$OPTARG";;
-        p) 
+        p)
 		PROTO_HOST_PATH="$OPTARG";;
-        a) 
+        a)
 		PROTO_MINIOS_PATH="$OPTARG";;
-        g) 
+        g)
 		generate_model="true";;
-        t) 
+        t)
 		npu_type="$OPTARG";;
-        h) 
+        h)
 		usage;;
-        ?) 
+        ?)
 		usage;;
     esac
 done
@@ -63,23 +63,13 @@ adapt_to_310p()
     sed -i 's/const int CORE_NUM = 2/const int CORE_NUM = 8/g' ops/op_proto/include/ascend_operator.h
 }
 
-adapt_to_310()
-{
-    sed -i 's/-DASCEND_N310/-DASCEND_310/g' acinclude/fa_check_ascend.m4
-    sed -i 's/const int CORE_NUM = 8/const int CORE_NUM = 2/g' ops/op_proto/include/ascend_operator.h
-}
-
-if [ "${npu_type}" == "310" ]; then
-    adapt_to_310
-else
-    adapt_to_310p
-fi
+adapt_to_310p
 
 # generate configure file
 ./autogen.sh
 result=$?
 if [ ${result} -ne 0 ]; then
-    echo "[ERROR] autogen faild!"
+    echo "[ERROR] autogen failed!"
     exit 1
 fi
 
@@ -124,6 +114,6 @@ fi
 make install
 result=$?
 if [ ${result} -ne 0 ];then
-    echo "[ERROR] make install faild!"
+    echo "[ERROR] make install failed!"
     exit 1
 fi

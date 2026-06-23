@@ -17,9 +17,9 @@ MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 See the Mulan PSL v2 for more details.
 -------------------------------------------------------------------------
 """
+
 import os
 import argparse
-from multiprocessing import Pool
 
 import common as utils
 from common import OpJsonGenerator
@@ -30,14 +30,13 @@ def arg_parse():
     Parse arguements to the operator model
     """
 
-    parser = argparse.ArgumentParser(
-        description="generate distance_compute_sq8 operator model")
+    parser = argparse.ArgumentParser(description="generate distance_compute_sq8 operator model")
 
     utils.op_common_parse(parser, "--cores", "core_num", 2, int, "Core number")
     utils.op_common_parse(parser, "-d", "dim", 128, int, "Feature dimension")
     utils.op_common_parse(parser, "-p", "process_id", 0, int, "Number of process_id")
     utils.op_common_parse(parser, "-pool", "pool_size", 10, int, "Number of pool_size")
-    utils.op_common_parse(parser, "-t", 'npu_type', "310", str, "NPU type, 310 or 310P. 310 by default")
+    utils.op_common_parse(parser, "-t", 'npu_type', "310P", str, "NPU type, 310P by default")
     return parser.parse_args()
 
 
@@ -50,11 +49,7 @@ def generate_distance_sq8_ip_maxs_json(core_num, query_num, code_nums, dim, file
         generator.add_input("ND", [code_num // 16, dim // 16, 16, 16], "uint8")
         generator.add_input("ND", [dim], "float16")
         generator.add_input("ND", [dim], "float16")
-        generator.add_input("ND", [core_num, 8], "uint32")
-        generator.add_output("ND", [query_num, code_num], "float16")
-        generator.add_output("ND", [query_num, (code_num + 63) // 64 * 2], "float16")
-        generator.add_output("ND", [16, 16], "uint16")
-        obj = generator.generate_obj()
+        obj = utils.add_distance_compute_tail(generator, core_num, query_num, code_num)
         dist_sq8_obj.append(obj)
 
     utils.generate_op_config(dist_sq8_obj, file_path)
@@ -70,11 +65,7 @@ def generate_distance_masked_sq8_ip_maxs_json(core_num, query_num, code_nums, di
         generator.add_input("ND", [code_num // 16, dim // 16, 16, 16], "uint8")
         generator.add_input("ND", [dim], "float16")
         generator.add_input("ND", [dim], "float16")
-        generator.add_input("ND", [core_num, 8], "uint32")
-        generator.add_output("ND", [query_num, code_num], "float16")
-        generator.add_output("ND", [query_num, (code_num + 63) // 64 * 2], "float16")
-        generator.add_output("ND", [16, 16], "uint16")
-        obj = generator.generate_obj()
+        obj = utils.add_distance_compute_tail(generator, core_num, query_num, code_num)
         dist_sq8_obj.append(obj)
 
     utils.generate_op_config(dist_sq8_obj, file_path)
@@ -89,11 +80,7 @@ def generate_distance_sq8_ip_maxs_dim64_json(core_num, query_num, code_nums, dim
         generator.add_input("ND", [code_num // 16, dim // 16, 16, 16], "uint8")
         generator.add_input("ND", [dim], "float16")
         generator.add_input("ND", [dim], "float16")
-        generator.add_input("ND", [core_num, 8], "uint32")
-        generator.add_output("ND", [query_num, code_num], "float16")
-        generator.add_output("ND", [query_num, (code_num + 63) // 64 * 2], "float16")
-        generator.add_output("ND", [16, 16], "uint16")
-        obj = generator.generate_obj()
+        obj = utils.add_distance_compute_tail(generator, core_num, query_num, code_num)
         dist_sq8_obj.append(obj)
     utils.generate_op_config(dist_sq8_obj, file_path)
 
@@ -108,11 +95,7 @@ def generate_distance_masked_sq8_ip_maxs_dim64_json(core_num, query_num, code_nu
         generator.add_input("ND", [code_num // 16, dim // 16, 16, 16], "uint8")
         generator.add_input("ND", [dim], "float16")
         generator.add_input("ND", [dim], "float16")
-        generator.add_input("ND", [core_num, 8], "uint32")
-        generator.add_output("ND", [query_num, code_num], "float16")
-        generator.add_output("ND", [query_num, (code_num + 63) // 64 * 2], "float16")
-        generator.add_output("ND", [16, 16], "uint16")
-        obj = generator.generate_obj()
+        obj = utils.add_distance_compute_tail(generator, core_num, query_num, code_num)
         dist_sq8_obj.append(obj)
 
     utils.generate_op_config(dist_sq8_obj, file_path)
@@ -128,11 +111,7 @@ def generate_distance_sq8_l2_mins_json(core_num, query_num, code_nums, dim, file
         generator.add_input("ND", [code_num], "float32")
         generator.add_input("ND", [dim], "float16")
         generator.add_input("ND", [dim], "float16")
-        generator.add_input("ND", [core_num, 8], "uint32")
-        generator.add_output("ND", [query_num, code_num], "float16")
-        generator.add_output("ND", [query_num, (code_num + 63) // 64 * 2], "float16")
-        generator.add_output("ND", [16, 16], "uint16")
-        obj = generator.generate_obj()
+        obj = utils.add_distance_compute_tail(generator, core_num, query_num, code_num)
         distance_compute_sq8_mins_obj.append(obj)
 
     utils.generate_op_config(distance_compute_sq8_mins_obj, file_path)
@@ -149,11 +128,7 @@ def generate_distance_masked_sq8_l2_mins_json(core_num, query_num, code_nums, di
         generator.add_input("ND", [code_num], "float32")
         generator.add_input("ND", [dim], "float16")
         generator.add_input("ND", [dim], "float16")
-        generator.add_input("ND", [core_num, 8], "uint32")
-        generator.add_output("ND", [query_num, code_num], "float16")
-        generator.add_output("ND", [query_num, (code_num + 63) // 64 * 2], "float16")
-        generator.add_output("ND", [16, 16], "uint16")
-        obj = generator.generate_obj()
+        obj = utils.add_distance_compute_tail(generator, core_num, query_num, code_num)
         distance_compute_sq8_mins_obj.append(obj)
 
     utils.generate_op_config(distance_compute_sq8_mins_obj, file_path)

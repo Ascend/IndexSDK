@@ -18,7 +18,7 @@ set -e
 
 if [ $# -lt 1 ] ; then
     echo "Usage:  bash build.sh NPU_TYPE"
-    echo "  Examples:  bash build.sh 310 / bash build.sh 310P"
+    echo "  Examples:  bash build.sh 310P"
     exit 1
 fi
 build_target=$1
@@ -66,6 +66,6 @@ cmake .. -DCMAKE_CXX_COMPILER=g++ -DNPU_TYPE=${build_target}
 make -j
 
 if [ $? -ne 0 ]; then
-    echo "[ERROR] build operator faild!"
+    echo "[ERROR] build operator failed!"
     exit 1
 fi
