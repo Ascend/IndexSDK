@@ -60,6 +60,7 @@ APP_ERROR TSBase::initialize(int deviceId)
     {
         resetMaskGenerateComputeOp();
         resetExtraMaskGenerateComputeOp();
+        resetValMaskGenerateComputeOp();
         auto ret = resetBatchMaskGenerateComputeOp();
         APPERR_RETURN_IF_NOT_LOG(ret == APP_ERR_OK, ret, "failed to resetBatchMaskGenerateComputeOp");
         ret = resetBatchValMaskGenerateComputeOp();
