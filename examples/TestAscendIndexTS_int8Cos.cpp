@@ -476,6 +476,110 @@ TEST(TestAscendIndexTS_int8Cos, SearchShareWithExtraQPS)
     }
 }
 
+TEST(TestAscendIndexTS_int8Cos, Int8AccVal)
+{
+    idx_t ntotal = 10000;
+    uint32_t addNum = 2;
+    uint32_t deviceId = 0;
+    uint32_t dim = 1024;
+    uint32_t tokenNum = 300000;
+    std::vector<int> queryNums = {1};
+    std::vector<int> topks = {32};
+    uint64_t resources = 1024 * 1024 * 1024;
+    faiss::ascend::AscendIndexTS tsIndex;
+
+    auto ret =
+        tsIndex.InitWithExtraVal(deviceId, dim, tokenNum, resources, faiss::ascend::AlgorithmType::FLAT_COS_INT8);
+    EXPECT_EQ(ret, 0);
+
+    std::vector<int8_t> features(ntotal * dim);
+    FeatureGeneratorInt8(features);
+    std::vector<FeatureAttr> attrs(addNum * ntotal);
+    std::vector<ExtraValAttr> valAttrs(addNum * ntotal);
+    FeatureAttrGenerator(attrs);
+    ExtraValAttrGenerator(valAttrs);
+    std::vector<int64_t> labels;
+    for (size_t i = 0; i < addNum; i++)
+    {
+        labels.clear();
+        for (int64_t j = 0; j < ntotal; ++j)
+        {
+            labels.emplace_back(j + i * ntotal);
+        }
+        ret = tsIndex.AddWithExtraVal(ntotal, features.data(), attrs.data() + i * ntotal, labels.data(),
+                                      valAttrs.data() + i * ntotal);
+        EXPECT_EQ(ret, 0);
+    }
+    for (auto k : topks)
+    {
+        int warmupTimes = 0;
+        int loopTimes = 1;
+        for (auto queryNum : queryNums)
+        {
+            std::vector<float> distances(queryNum * k, -1);
+            std::vector<int64_t> labelRes(queryNum * k, 10);
+            std::vector<uint32_t> validnum(queryNum, 0);
+            uint32_t size = queryNum * dim;
+            std::vector<uint8_t> querys(size);
+            querys.assign(features.begin(), features.begin() + size);
+
+            uint32_t setlen = (uint32_t)(((tokenNum + 7) / 8));
+            std::vector<uint8_t> bitSet(setlen, 255);
+            AttrFilter filter{};
+            filter.timesStart = 0;
+            filter.timesEnd = 3;
+            filter.tokenBitSet = bitSet.data();
+            filter.tokenBitSetLen = setlen;
+
+            ExtraValFilter valFilter{};
+
+            valFilter.filterVal = 99;
+            valFilter.matchVal = 0;
+
+            std::vector<AttrFilter> queryFilters(queryNum, filter);
+            std::vector<ExtraValFilter> queryValFilters(queryNum, valFilter);
+
+            ret = tsIndex.SearchWithExtraVal(queryNum, querys.data(), queryFilters.data(), false, k, labelRes.data(),
+                                             distances.data(), validnum.data(), queryValFilters.data());
+            EXPECT_EQ(ret, 0);
+
+            bool flag = false;
+            auto mask = 0;
+            for (int i = 0; i < queryNum; i++)
+            {
+                for (int j = 0; j < k; j++)
+                {
+                    auto cid = labelRes[j + i * k];
+                    if (queryValFilters[i].matchVal == 0)
+                    {
+                        mask = ((queryValFilters[i].filterVal & valAttrs[cid].val) == queryValFilters[i].filterVal) ? 1
+                                                                                                                    : 0;
+                    }
+                    else
+                    {
+                        mask = ((queryValFilters[i].filterVal & valAttrs[cid].val) > 0) ? 1 : 0;
+                    }
+                    if (mask == 0)
+                    {
+                        printf("cid = %ld \n", cid);
+                        // mask 为0说明过滤后的结果中包含需要过滤的标签
+                        std::cout << std::endl;
+                        flag = true;
+                    }
+                }
+            }
+            if (flag)
+            {
+                ASSERT_TRUE(false);
+            }
+            else
+            {
+                printf("dim: %d model %d, batch %d, Acc successful\n", dim, valFilter.matchVal, queryNum);
+            }
+        }
+    }
+}
+
 int main(int argc, char **argv)
 {
     testing::InitGoogleTest(&argc, argv);
