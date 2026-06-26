@@ -18,7 +18,7 @@
 set -e
 
 # ========== 环境配置（可通过环境变量覆盖）==========
-: "${FAISS_HOME:=/home/indexSDK/faiss1.14.1}"
+: "${FAISS_HOME:=/usr/local/faiss/faiss1.14.1}"
 : "${GTEST_HOME:=/opt/buildtools/googletest-1.11.0}"
 : "${OPENBLAS_HOME:=/opt/OpenBLAS}"
 
@@ -265,10 +265,11 @@ echo "[PRESMOKE_INFO] start generate ops..."
 bash /usr/local/Ascend/mxIndex/ops/custom_opp_*.run
 cd $MX_INDEX_INSTALL_PATH/tools
 
-# 检查是否是新环境（MX_INDEX_MODELPATH 不存在或为空）
-if [ ! -d "$MX_INDEX_MODELPATH" ] || [ -z "$(ls -A $MX_INDEX_MODELPATH 2>/dev/null)" ]; then
+# 检查是否是新环境（MX_INDEX_MODELPATH 不存在）
+if [ ! -d "$MX_INDEX_MODELPATH" ]; then
     echo "[PRESMOKE_INFO] New environment detected, generating all ops..."
     # 新环境，生成所有算子
+    mkdir -p $MX_INDEX_MODELPATH
     for op in "${OPS_LIST[@]}"; do
         gen_cmd="${OP_GEN_CMD[$op]}"
         echo "[PRESMOKE_INFO] Running: $gen_cmd"

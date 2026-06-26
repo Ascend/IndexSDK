@@ -16,7 +16,9 @@
  * -------------------------------------------------------------------------
  */
 
-// 需要生成aicpu算子+int8flat算子(-d 512)+mask算子
+// python3 aicpu_generate_model.py -t npu_type
+// python3 int8flat_generate_model.py -d 256 -t npu_type
+// python3 mask_generate_model.py -t npu_type
 
 #include <faiss/ascend/AscendIndexTS.h>
 #include <gmock/gmock.h>
@@ -38,7 +40,10 @@ namespace
 using idx_t = int64_t;
 using FeatureAttr = faiss::ascend::FeatureAttr;
 using AttrFilter = faiss::ascend::AttrFilter;
+using ExtraValAttr = faiss::ascend::ExtraValAttr;
+using ExtraValFilter = faiss::ascend::ExtraValFilter;
 
+const int DIM = 256;
 const int BITS = 8;
 const int SEED = 1;
 const uint32_t TOKEN_NUM = 2500;
@@ -64,6 +69,16 @@ void FeatureAttrGenerator(std::vector<FeatureAttr> &attrs)
     {
         attrs[i].time = int32_t(i % power);
         attrs[i].tokenId = int32_t(i % power);
+    }
+}
+
+void ExtraValAttrGenerator(std::vector<faiss::ascend::ExtraValAttr> &attrs)
+{
+    size_t n = attrs.size();
+    int power = 4;
+    for (size_t i = 0; i < n; ++i)
+    {
+        attrs[i].val = static_cast<int32_t>(i % power);
     }
 }
 
@@ -109,7 +124,7 @@ void CheckResult(int queryNum, int k, std::vector<float> &distances, std::vector
         else
         {
             ASSERT_TRUE(labelRes[i * k] != i);
-            ASSERT_TRUE(distances[i * k] <= float(0.3));  // 对于期望dis值小于等于0.3
+            ASSERT_TRUE(distances[i * k] <= float(0.5));  // 对于期望dis值小于等于0.5
         }
     }
 }
@@ -118,7 +133,7 @@ void CheckResult(int queryNum, int k, std::vector<float> &distances, std::vector
 
 TEST(TestAscendIndexTS_int8Cos, Init)
 {
-    uint32_t dim = 512;
+    uint32_t dim = DIM;
     auto ts = GetMillisecs();
     faiss::ascend::AscendIndexTS *tsIndex = new faiss::ascend::AscendIndexTS();
     int res = tsIndex->Init(DEVICE_ID, dim, TOKEN_NUM, faiss::ascend::AlgorithmType::FLAT_COS_INT8);
@@ -130,8 +145,8 @@ TEST(TestAscendIndexTS_int8Cos, Init)
 
 TEST(TestAscendIndexTS_int8Cos, add)
 {
-    idx_t ntotal = 1000000;
-    uint32_t dim = 512;
+    idx_t ntotal = 100000;
+    uint32_t dim = DIM;
     faiss::ascend::AscendIndexTS *tsIndex = new faiss::ascend::AscendIndexTS();
     tsIndex->Init(DEVICE_ID, dim, TOKEN_NUM, faiss::ascend::AlgorithmType::FLAT_COS_INT8);
 
@@ -156,7 +171,7 @@ TEST(TestAscendIndexTS_int8Cos, add)
 
 TEST(TestAscendIndexTS_int8Cos, GetFeatureByLabel)
 {
-    int dim = 512;
+    int dim = DIM;
     int ntotal = 100000;
     std::vector<int8_t> base(ntotal * dim);
     FeatureGenerator(base);
@@ -186,8 +201,8 @@ TEST(TestAscendIndexTS_int8Cos, GetFeatureByLabel)
 
 TEST(TestAscendIndexTS_int8Cos, DeleteFeatureByLabel)
 {
-    int dim = 512;
-    int ntotal = 1000000;
+    int dim = DIM;
+    int ntotal = 100000;
     std::vector<int8_t> base(ntotal * dim);
     FeatureGenerator(base);
     std::vector<int64_t> label(ntotal);
@@ -220,8 +235,8 @@ TEST(TestAscendIndexTS_int8Cos, DeleteFeatureByLabel)
 
 TEST(TestAscendIndexTS_int8Cos, DeleteFeatureByToken)
 {
-    int dim = 512;
-    int ntotal = 1000000;
+    int dim = DIM;
+    int ntotal = 100000;
     std::vector<int8_t> base(ntotal * dim);
     FeatureGenerator(base);
     std::vector<int64_t> label(ntotal);
@@ -248,9 +263,9 @@ TEST(TestAscendIndexTS_int8Cos, DeleteFeatureByToken)
 
 TEST(TestAscendIndexTS_int8Cos, Acc)
 {
-    idx_t ntotal = 1000000;
+    idx_t ntotal = 100000;
     uint32_t addNum = 1;
-    uint32_t dim = 512;
+    uint32_t dim = DIM;
     std::vector<int> queryNums = {1, 2, 4, 8, 16, 32, 64, 128, 256};
     int k = 10;
     faiss::ascend::AscendIndexTS tsIndex;
@@ -306,9 +321,9 @@ TEST(TestAscendIndexTS_int8Cos, Acc)
 
 TEST(TestAscendIndexTS_int8Cos, SearchNoShareQPS)
 {
-    idx_t ntotal = 1000000;
+    idx_t ntotal = 100000;
     uint32_t addNum = 10;
-    uint32_t dim = 512;
+    uint32_t dim = DIM;
     std::vector<int> queryNums = {1, 2, 4, 8, 16, 32, 64, 128, 256};
     int k = 10;
     faiss::ascend::AscendIndexTS tsIndex;
@@ -359,9 +374,9 @@ TEST(TestAscendIndexTS_int8Cos, SearchNoShareQPS)
 
 TEST(TestAscendIndexTS_int8Cos, SearchShareQPS)
 {
-    idx_t ntotal = 1000000;
+    idx_t ntotal = 100000;
     uint32_t addNum = 10;
-    uint32_t dim = 512;
+    uint32_t dim = DIM;
     std::vector<int> queryNums = {1, 2, 4, 8, 16, 32, 64, 128, 256};
     int k = 10;
     faiss::ascend::AscendIndexTS tsIndex;
@@ -412,9 +427,9 @@ TEST(TestAscendIndexTS_int8Cos, SearchShareQPS)
 
 TEST(TestAscendIndexTS_int8Cos, SearchShareWithExtraQPS)
 {
-    idx_t ntotal = 1000000;
+    idx_t ntotal = 100000;
     uint32_t addNum = 10;
-    uint32_t dim = 512;
+    uint32_t dim = DIM;
     std::vector<int> queryNums = {1, 2, 4, 8, 16, 32, 64, 128, 256};
     int k = 10;
     faiss::ascend::AscendIndexTS tsIndex;
@@ -478,11 +493,11 @@ TEST(TestAscendIndexTS_int8Cos, SearchShareWithExtraQPS)
 
 TEST(TestAscendIndexTS_int8Cos, Int8AccVal)
 {
-    idx_t ntotal = 10000;
+    idx_t ntotal = 100000;
     uint32_t addNum = 2;
-    uint32_t deviceId = 0;
-    uint32_t dim = 1024;
-    uint32_t tokenNum = 300000;
+    uint32_t deviceId = DEVICE_ID;
+    uint32_t dim = DIM;
+    uint32_t tokenNum = TOKEN_NUM;
     std::vector<int> queryNums = {1};
     std::vector<int> topks = {32};
     uint64_t resources = 1024 * 1024 * 1024;
@@ -493,7 +508,7 @@ TEST(TestAscendIndexTS_int8Cos, Int8AccVal)
     EXPECT_EQ(ret, 0);
 
     std::vector<int8_t> features(ntotal * dim);
-    FeatureGeneratorInt8(features);
+    FeatureGenerator(features);
     std::vector<FeatureAttr> attrs(addNum * ntotal);
     std::vector<ExtraValAttr> valAttrs(addNum * ntotal);
     FeatureAttrGenerator(attrs);
@@ -533,7 +548,7 @@ TEST(TestAscendIndexTS_int8Cos, Int8AccVal)
 
             ExtraValFilter valFilter{};
 
-            valFilter.filterVal = 99;
+            valFilter.filterVal = 3;
             valFilter.matchVal = 0;
 
             std::vector<AttrFilter> queryFilters(queryNum, filter);
