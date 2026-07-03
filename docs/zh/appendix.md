@@ -20,6 +20,18 @@
 |TMPDIR|临时文件路径。|
 |LANG|语言环境。|
 
+### IVFRaBitQ 调试环境变量<a name="ivfrabitq-debug-env"></a>
+
+以下环境变量用于 AscendIndexIVFRaBitQ 开发调试，**默认不设置**（关闭）。详细用法与日志解读参见《[常用操作](./common_operations.md#ivfrabitq-runtime-debug)》。
+
+**表 2** IVFRaBitQ 调试环境变量
+
+|环境变量名|说明|
+|--|--|
+|IVFRABITQ\_VERIFY\_COARSE\_CENTER|设为非 `0` 值时，在 coarse centroid 上传各阶段（H2D、rotate、LUT）执行 D2H 抽样/全量校验。|
+|IVFRABITQ\_DEBUG\_L1\_PROBE|设为 `1` 打印 probe 列表；`stats` 打印 tile 分布；`full` 含 golden 对比与完整统计。|
+|IVFRABITQ\_VERIFY\_L1\_DIST|设为非 `0` 值时，在 L1 search 阶段对比 CPU golden 与 NPU 距离/probe。|
+
 ## 代码参考<a name="ZH-CN_TOPIC_0000001456375372"></a>
 
 ### 简介<a name="ZH-CN_TOPIC_0000001456375408"></a>

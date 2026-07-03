@@ -21,9 +21,15 @@
 #include <algorithm>
 #include <atomic>
 #include <cmath>
+#include <cstdlib>
+#include <cstring>
 #include <iostream>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
 #include "ascenddaemon/impl/AuxIndexStructures.h"
+#include "ascenddaemon/utils/CoarseCenterVerify.h"
 #include "ascenddaemon/utils/Limits.h"
 #include "common/utils/CommonUtils.h"
 #include "common/utils/LogUtils.h"
@@ -32,6 +38,89 @@
 
 namespace ascend
 {
+namespace
+{
+float CpuL2Sq(const float *a, const float *b, int dim)
+{
+    float sum = 0.0f;
+    for (int j = 0; j < dim; ++j)
+    {
+        const float d = a[j] - b[j];
+        sum += d * d;
+    }
+    return sum;
+}
+
+void CpuTopkProbeIds(const float *dists, int numLists, int k, std::vector<int64_t> &outIds)
+{
+    std::vector<std::pair<float, int>> pairs(static_cast<size_t>(numLists));
+    for (int i = 0; i < numLists; ++i)
+    {
+        pairs[static_cast<size_t>(i)] = {dists[i], i};
+    }
+    const int topk = std::min(k, numLists);
+    std::partial_sort(pairs.begin(), pairs.begin() + topk, pairs.end());
+    outIds.resize(static_cast<size_t>(topk));
+    for (int i = 0; i < topk; ++i)
+    {
+        outIds[static_cast<size_t>(i)] = pairs[static_cast<size_t>(i)].second;
+    }
+}
+
+int CountProbeOverlap(const std::vector<int64_t> &a, const int64_t *b, int nprobe)
+{
+    std::unordered_set<int64_t> setA(a.begin(), a.end());
+    int overlap = 0;
+    for (int i = 0; i < nprobe; ++i)
+    {
+        if (setA.count(b[i]) != 0)
+        {
+            ++overlap;
+        }
+    }
+    return overlap;
+}
+
+void VerifyL1DistAndProbes(int numLists, int dims, int nprobe, const float *npuDists, const float *rotateQuery,
+                           const float *rotateCentroids, const int64_t *npuProbeIds)
+{
+    std::vector<float> cpuDists(static_cast<size_t>(numLists));
+    for (int i = 0; i < numLists; ++i)
+    {
+        cpuDists[static_cast<size_t>(i)] =
+            CpuL2Sq(rotateQuery, rotateCentroids + static_cast<size_t>(i) * static_cast<size_t>(dims), dims);
+    }
+
+    const int boundaryIds[] = {8191, 8192, 8193, numLists - 3, numLists - 2, numLists - 1};
+    for (int id : boundaryIds)
+    {
+        if (id < 0 || id >= numLists)
+        {
+            continue;
+        }
+        const float cpuVal = cpuDists[static_cast<size_t>(id)];
+        const float npuVal = npuDists[id];
+        const float absErr = std::fabs(cpuVal - npuVal);
+        fprintf(stderr, "[IVFRaBitQ] L1 dist golden id=%d cpu=%.6f npu=%.6f absErr=%.6f\n", id, cpuVal, npuVal, absErr);
+    }
+
+    std::vector<int64_t> cpuProbeIds;
+    CpuTopkProbeIds(cpuDists.data(), numLists, nprobe, cpuProbeIds);
+    const int overlap = CountProbeOverlap(cpuProbeIds, npuProbeIds, nprobe);
+    int tile1Max = std::min(8192, numLists);
+    int cpuTile2 = 0;
+    for (int64_t pid : cpuProbeIds)
+    {
+        if (pid >= tile1Max)
+        {
+            ++cpuTile2;
+        }
+    }
+    fprintf(stderr, "[IVFRaBitQ] L1 probe overlap q0: nprobe=%d overlap=%d jaccard=%.3f cpu_tile2=%d\n", nprobe,
+            overlap, static_cast<double>(overlap) / static_cast<double>(nprobe), cpuTile2);
+}
+}  // namespace
+
 const int KB = 1024;
 const int IVF_RABITQ_BLOCK_SIZE = 16384 * 2;
 const int SCAN_BIT = 8;
@@ -222,6 +311,23 @@ APP_ERROR IndexIVFRaBitQ::updateCoarseCenterImpl(std::vector<float> &centerData)
                              "the centerData size is %d, not dims(%d) * numLists(%d) %d", centerData.size(), dims,
                              numLists, dims * numLists);
 
+    using coarseCenterVerify::IsVerifyEnabled;
+    using coarseCenterVerify::LogHostSampleRows;
+    using coarseCenterVerify::LogMemcpyAudit;
+    using coarseCenterVerify::LogStageDone;
+    using coarseCenterVerify::VerifyCentroidL2SamplesD2H;
+    using coarseCenterVerify::VerifyFullD2H;
+    using coarseCenterVerify::VerifySamplesD2H;
+
+    const size_t centroidBytes = static_cast<size_t>(dims) * static_cast<size_t>(numLists) * sizeof(float);
+    if (IsVerifyEnabled())
+    {
+        LogMemcpyAudit("enter", numLists, dims, dims * static_cast<int>(sizeof(float)),
+                       centerData.size() * sizeof(float), originCentroidsOnDevice->size() * sizeof(float),
+                       centroidBytes);
+        LogHostSampleRows("enter", centerData, numLists, dims);
+    }
+
     auto &mem = resources.getMemoryManager();
     auto streamPtr = resources.getDefaultStream();
     auto stream = streamPtr->GetStream();
@@ -231,9 +337,12 @@ APP_ERROR IndexIVFRaBitQ::updateCoarseCenterImpl(std::vector<float> &centerData)
     auto ret = aclrtMemcpy(originCentroids.data(), originCentroids.getSizeInBytes(), centerData.data(),
                            dims * numLists * sizeof(float), ACL_MEMCPY_HOST_TO_DEVICE);
     ASCEND_THROW_IF_NOT_FMT(ret == ACL_SUCCESS, "Failed to aclrtMemcpy CoarseCenter, result is: %d\n", ret);
+    VerifySamplesD2H("originCentroids_temp", centerData, originCentroids.data(), numLists, dims);
+
     ret = aclrtMemcpy(originCentroidsOnDevice->data(), originCentroidsOnDevice->size() * sizeof(float),
                       centerData.data(), dims * numLists * sizeof(float), ACL_MEMCPY_HOST_TO_DEVICE);
     ASCEND_THROW_IF_NOT_FMT(ret == ACL_SUCCESS, "Failed to aclrtMemcpy CoarseCenter, result is: %d\n", ret);
+    VerifySamplesD2H("originCentroidsOnDevice", centerData, originCentroidsOnDevice->data(), numLists, dims);
 
     // c = Pcr, ||cr||^2 预计算
     AscendTensor<int32_t, DIMS_1> vectorSizeVec(mem, {1}, stream);
@@ -248,6 +357,9 @@ APP_ERROR IndexIVFRaBitQ::updateCoarseCenterImpl(std::vector<float> &centerData)
     runCenterRotateL2Op(originCentroids, vectorSizeVec, rotatematrixDev, centroidsDev, centroidsl2, stream);
     ret = synchronizeStream(stream);
     APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "synchronizeStream default stream: %i\n", ret);
+    VerifySamplesD2H("centroidsOnDevice_rotated", centerData, centroidsOnDevice->data(), numLists, dims, false);
+    VerifyFullD2H("centroidsOnDevice_rotated_full", centerData, centroidsOnDevice->data(), numLists, dims, false);
+    VerifyCentroidL2SamplesD2H("CentroidL2", CentroidL2OnDevice->data(), numLists);
 
     // <x, c> LUT预计算
     AscendTensor<float, DIMS_2> centroidsrotate(centroidsOnDevice->data(), {numLists * dims / SCAN_BIT, SCAN_BIT});
@@ -256,6 +368,7 @@ APP_ERROR IndexIVFRaBitQ::updateCoarseCenterImpl(std::vector<float> &centerData)
     runCenterLUTOp(centroidsrotate, lutmatrixDev, centroidslut, stream);
     ret = synchronizeStream(stream);
     APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "synchronizeStream default stream: %i\n", ret);
+    LogStageDone("LUT precompute");
 
     return APP_ERR_OK;
 }
@@ -1271,11 +1384,13 @@ APP_ERROR IndexIVFRaBitQ::searchImplL2(AscendTensor<float, DIMS_2> &queries, Asc
                        centroidsl2, baseSize, ids, blocknumPerQ, attrs, l1TopNprobeIndicesHost, l1TopNprobeDistsHost);
     AscendTensor<float, DIMS_2, size_t> outDist(mem, {batch, static_cast<size_t>(k)}, stream);
     AscendTensor<idx_t, DIMS_2, size_t> outLabel(mem, {batch, static_cast<size_t>(k)}, stream);
+    auto ret = synchronizeStream(stream);
+    APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "synchronizeStream default stream: %i\n", ret);
     runL2TopkOp(batch, disVec, vcMaxDisVec, ids, baseSize, blocknumPerQ, opFlag, attrs, outDist, outLabel, streamAicpu);
     callL2DistanceOp(batch, totalBlockNum, coreNum, vcMaxLen, queryL2, queriesLut, centroidsLutVec, queryid,
                      centroidsid, centroidsl2, offset, baseSize, indexl2offset, indexl1offset, opFlag, disVec,
                      vcMaxDisVec, codeVec, Indexl2, Indexl1, stream);
-    auto ret = synchronizeStream(stream);
+    ret = synchronizeStream(stream);
     APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "synchronizeStream default stream: %i\n", ret);
     ret = synchronizeStream(streamAicpu);
     APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "sync aicpu stream failed %d", ret);
@@ -1337,6 +1452,86 @@ APP_ERROR IndexIVFRaBitQ::searchImplL1(AscendTensor<float, DIMS_2> &queries, Asc
     ret = aclrtMemcpy(l1TopNprobeDistsHost.data(), l1TopNprobeDistsHost.getSizeInBytes(), l1TopNprobeDists.data(),
                       l1TopNprobeDists.getSizeInBytes(), ACL_MEMCPY_DEVICE_TO_HOST);
     APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "Mem operator error %d", ret);
+
+    const char *debugEnv = std::getenv("IVFRABITQ_DEBUG_L1_PROBE");
+    const bool l1ProbeDebug = debugEnv != nullptr && debugEnv[0] != '\0' && debugEnv[0] != '0';
+    const bool l1DistVerify = []()
+    {
+        const char *verifyEnv = std::getenv("IVFRABITQ_VERIFY_L1_DIST");
+        return verifyEnv != nullptr && verifyEnv[0] != '\0' && verifyEnv[0] != '0';
+    }();
+    const bool probeStatsOnly = l1ProbeDebug && debugEnv != nullptr && std::strcmp(debugEnv, "stats") == 0;
+    const bool probeFull = l1ProbeDebug && debugEnv != nullptr && std::strcmp(debugEnv, "full") == 0;
+
+    auto dumpProbeStats = [&]()
+    {
+        const int tile1Max = std::min(8192, numLists);
+        int inTile1 = 0;
+        int inTile2 = 0;
+        int minId = numLists;
+        int maxId = 0;
+        for (int t = 0; t < nprobe; ++t)
+        {
+            const int64_t id = l1TopNprobeIndicesHost[0][t].value();
+            if (id < tile1Max)
+            {
+                ++inTile1;
+            }
+            else
+            {
+                ++inTile2;
+            }
+            minId = std::min(minId, static_cast<int>(id));
+            maxId = std::max(maxId, static_cast<int>(id));
+        }
+        fprintf(stderr, "[IVFRaBitQ] L1 probe stats q0: nprobe=%d in[0,%d)=%d in[%d,%d)=%d min=%d max=%d\n", nprobe,
+                tile1Max, inTile1, tile1Max, numLists, inTile2, minId, maxId);
+    };
+
+    if (l1ProbeDebug)
+    {
+        const int probeDump = std::min(nprobe, 8);
+        fprintf(stderr, "[IVFRaBitQ] L1 probes nlist=%d n=%d first %d probes q0:", numLists, n, probeDump);
+        for (int t = 0; t < probeDump; ++t)
+        {
+            fprintf(stderr, " %ld", static_cast<long>(l1TopNprobeIndicesHost[0][t].value()));
+        }
+        fprintf(stderr, "\n");
+    }
+
+    if (probeStatsOnly)
+    {
+        dumpProbeStats();
+    }
+
+    if (l1DistVerify || probeFull)
+    {
+        const size_t distRowBytes = static_cast<size_t>(numLists) * sizeof(float);
+        std::vector<float> npuDists(static_cast<size_t>(numLists));
+        std::vector<float> rotateQuery(static_cast<size_t>(dims));
+        std::vector<float> rotateCentroids(static_cast<size_t>(numLists) * static_cast<size_t>(dims));
+        ret = aclrtMemcpy(npuDists.data(), distRowBytes, dists.data(), distRowBytes, ACL_MEMCPY_DEVICE_TO_HOST);
+        APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "L1 verify dist D2H failed %d", ret);
+        ret = aclrtMemcpy(rotateQuery.data(), rotateQuery.size() * sizeof(float), rotateQueries.data(),
+                          static_cast<size_t>(dims) * sizeof(float), ACL_MEMCPY_DEVICE_TO_HOST);
+        APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "L1 verify query D2H failed %d", ret);
+        ret = aclrtMemcpy(rotateCentroids.data(), rotateCentroids.size() * sizeof(float), centroidsDev.data(),
+                          centroidsDev.getSizeInBytes(), ACL_MEMCPY_DEVICE_TO_HOST);
+        APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "L1 verify centroids D2H failed %d", ret);
+
+        std::vector<int64_t> npuProbeIds(static_cast<size_t>(nprobe));
+        for (int t = 0; t < nprobe; ++t)
+        {
+            npuProbeIds[static_cast<size_t>(t)] = l1TopNprobeIndicesHost[0][t].value();
+        }
+        VerifyL1DistAndProbes(numLists, dims, nprobe, npuDists.data(), rotateQuery.data(), rotateCentroids.data(),
+                              npuProbeIds.data());
+
+        if (probeFull)
+        {
+            dumpProbeStats();
+        }
+    }
 
     // <x, q> LUT预计算
     AscendTensor<float, DIMS_2> queriesfastscan(rotateQueries.data(), {n * dims / SCAN_BIT, SCAN_BIT});
