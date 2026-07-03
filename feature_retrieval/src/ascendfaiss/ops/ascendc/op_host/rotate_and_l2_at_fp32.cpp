@@ -25,6 +25,24 @@ namespace
 {
 static const int64_t FLOAT32_BYTES = 4;
 static const int32_t MAX_PER_LOOP_PROCESS_LEN = 4096;
+
+// GEMM LibApi tiling M must match per-core SetTail(vecLength), not global vec_num.
+static int32_t GetMaxVecPerCore(int32_t vecNum, int32_t blockNum)
+{
+    if (vecNum <= 0 || blockNum <= 0)
+    {
+        return 0;
+    }
+    if (vecNum < blockNum)
+    {
+        return 1;
+    }
+    if (vecNum % blockNum == 0)
+    {
+        return vecNum / blockNum;
+    }
+    return vecNum / blockNum + 1;
+}
 }  // namespace
 
 namespace optiling
@@ -76,7 +94,10 @@ static ge::graphStatus TilingFunc(gert::TilingContext *context)
     tiling.set_tileLength(tileLength);
     context->SetBlockDim(aicube_num);
 
+    const int32_t gemmM = GetMaxVecPerCore(vec_num, aicube_num);
+    tiling.set_vecNumLength(gemmM);
     ASCENDC_RETURN_IF_NOT(ge::GRAPH_SUCCESS == DoLibApiTiling(tiling, l1_size, l0c_size), ge::GRAPH_FAILED);
+    tiling.set_vecNumLength(vec_num);
 
     uint32_t sysWorkspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
     size_t *currentWorkspace = context->GetWorkspaceSizes(1);
