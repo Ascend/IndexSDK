@@ -234,6 +234,20 @@ Python 安装好后，pip 所需依赖名称、对应版本及获取建议请参
 > [!NOTE]
 > 如果在 openEuler 系统中编译 Faiss 后报错，请参见[链接 libfaiss.so 时，返回 undefined reference 错误](./faq.md#链接libfaissso时返回undefined-reference错误)解决。
 
+#### 安装 AscendMiniOs(可选)
+
+除了前述依赖外，还需要根据是否需要使用 ILFlat 算法选择安装**开放态场景包**。
+
+- 如不需要，跳过次步骤。
+- 如需要，请先下载 [Ascend-cann-device-sdk 安装包](https://www.hiascend.com/developer/download/community/result?module=cann&cann=9.0.0)。
+
+```bash
+unzip Ascend-cann-device-sdk_{version}_linux-{arch}.zip
+# 解压得到 CANN-runtime-*-minios.{arch}.run
+./CANN-runtime-*-minios.{arch}.run --devel --install-path=/usr/local/AscendMiniOs
+./CANN-runtime-*-minios.{arch}.run --run --install-path=/usr/local/AscendMiniOSRun
+```
+
 ## 安装方式
 
 ### 离线安装
@@ -364,14 +378,7 @@ export LD_LIBRARY_PATH=/home/work/FeatureRetrieval/mxIndex/host/lib:/usr/local/f
 在进行源码编译安装时，除了前述依赖外，还需要根据是否需要使用 ILFlat 算法选择安装**开放态场景包**。
 
 - 如不需要，请在编译前将 `feature_retrieval/src/ascendfaiss/CMakeLists.txt` 中 `BUILD_ASCENDDEVICE` 选项设为 `OFF`，并注释38行 `# ASCEND_MINIOS_HOME`；
-- 如需要，请先下载 [Ascend-cann-device-sdk 安装包](https://www.hiascend.com/developer/download/community/result?module=cann&cann=9.0.0)
-
-```bash
-unzip Ascend-cann-device-sdk_{version}_linux-{arch}.zip
-# 解压得到 CANN-runtime-*-minios.{arch}.run
-./CANN-runtime-*-minios.{arch}.run --devel --install-path=/usr/local/AscendMiniOs
-./CANN-runtime-*-minios.{arch}.run --run --install-path=/usr/local/AscendMiniOSRun
-```
+- 如需要，请先下载并安装AscendMiniOs。
 
 进入 `build` 目录执行以下命令编译：
 
