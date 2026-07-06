@@ -49,11 +49,12 @@ def set_env():
         )
         raise RuntimeError(err_msg)
 
-    python_bin = '/usr/local/python3.11.15/bin'
-    if not os.path.isdir(python_bin):
-        python_bin = '/usr/local/python3.7.5/bin'
-    os.environ['PATH'] = os.pathsep.join(
-        filter(None, [python_bin, os.path.join(ascend_toolkit_path, 'bin'), os.environ.get('PATH', '')])
+    os.environ['PATH'] = os.path.join(
+        os.environ.get('PATH', ''),
+        os.pathsep,
+        'usr/local/python3.7.5/bin',
+        os.pathsep,
+        os.path.join(ascend_toolkit_path, 'bin')[1:],
     )
 
     os.environ['LD_LIBRARY_PATH'] = os.path.join(
