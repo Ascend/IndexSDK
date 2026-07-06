@@ -671,6 +671,13 @@ APP_ERROR IndexIVFFlat::assign(AscendTensor<float, DIMS_2> &queries,
             }
         }
     }
+    for (int64_t i = searched; i < n; i++)
+    {
+        AscendTensor<float, DIMS_2> subQuery(queriesDevice[i].data(), {1, dims});
+        AscendTensor<int64_t, DIMS_2> subL1TopNprobeIndices(l1TopNprobeIndicesHost[i].data(), {1, nprobe});
+        auto ret = searchImplL1(subQuery, subL1TopNprobeIndices);
+        APPERR_RETURN_IF(ret, ret);
+    }
     return APP_ERR_OK;
 }
 

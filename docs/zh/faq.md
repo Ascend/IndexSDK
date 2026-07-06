@@ -280,6 +280,42 @@ openEuler release 22.03 \(LTS\)系统默认安装或使用yum工具安装的Cmak
 
 请访问组件官网，获取对应版本的Cmake源码，重新编译安装。
 
+## IVFRaBitQ 检索精度问题<a name="ivfrabitq-recall-low-nlist-10048"></a>
+
+### AscendIndexIVFRaBitQ 在 nlist=10048 场景下 recall 显著低于 CPU<a name="ivfrabitq-recall-low-symptom"></a>
+
+**问题现象<a name="ivfrabitq-recall-low-symptom-section"></a>**
+
+使用 AscendIndexIVFRaBitQ，`coarse_centroid_num`（nlist）设为 10048 或其他大于 2512 的值时，`copyFrom` 后 NPU search 的 recall@K 明显低于 CPU baseline；nlist ≤ 8192 的控制组可能正常。
+
+**问题原因<a name="ivfrabitq-recall-low-cause"></a>**
+
+常见根因包括：
+
+1. **RotateAndL2AtFP32 算子 GEMM tiling 与多核分核不一致**：coarse centroid 仅前约 2512 行（单 AIC core batch）被正确旋转写入 device，row ≥ 2512 为零，导致 IVF 粗排 probe 选择失效。
+2. **L1 距离算子 8192 codes tile 边界问题**：第二个及后续 tile 距离缺失 query norm 项。
+3. **custom opp 未重新编译部署**：修改 host tiling 或 kernel 后仍运行旧版算子。
+
+**解决方案<a name="ivfrabitq-recall-low-fix"></a>**
+
+1. 确认已应用相关修复并**重新编译部署** custom opp。
+2. 使用运行时诊断分阶段定位：
+
+    ```bash
+    # 步骤 1：验证 coarse center 上传（copyFrom 阶段）
+    export IVFRABITQ_VERIFY_COARSE_CENTER=1
+    # 运行 copyFrom 场景，检查 zeroRowsAfter2512 是否为 0
+
+    # 步骤 2：若 centroid 正常，检查 L1 probe 分布（search 阶段）
+    export IVFRABITQ_DEBUG_L1_PROBE=stats
+    # 确认 in[8192,nlist) > 0（视数据分布而定）
+
+    # 步骤 3：深度对比 L1 8192 边界距离
+    export IVFRABITQ_VERIFY_L1_DIST=1
+    ```
+
+3. 完整操作说明见《[常用操作 — IVFRaBitQ 运行时诊断](./common_operations.md#ivfrabitq-runtime-debug)》。
+
 ## 浮点数计算精度问题
 
 ### 使用NPU聚类时结果与CPU聚类结果不完全一致
