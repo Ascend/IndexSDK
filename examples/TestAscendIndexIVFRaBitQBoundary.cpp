@@ -203,6 +203,8 @@ void runBoundaryRecallTest(int nlist, const char* caseName)
 
 TEST(TestAscendIndexIVFRaBitQBoundary, L1DistCodesTile16384) { runBoundaryRecallTest(16384, "L1DistCodesTile16384"); }
 
+TEST(TestAscendIndexIVFRaBitQBoundary, L1DistCodesTile10048) { runBoundaryRecallTest(10048, "L1DistCodesTile10048"); }
+
 TEST(TestAscendIndexIVFRaBitQBoundary, L1DistCodesTile8192Control)
 {
     runBoundaryRecallTest(8192, "L1DistCodesTile8192Control");

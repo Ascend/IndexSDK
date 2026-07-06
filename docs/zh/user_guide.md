@@ -967,7 +967,7 @@ VSTAR检索当前只支持<term>Atlas 推理系列产品</term>，涉及VSTAR业
 </tr>
 <tr id="row19923139133710"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.4.1"><p id="p68850165377"><a name="p68850165377"></a><a name="p68850165377"></a>约束说明</p>
 </th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.4.1 "><a name="ul16885121613379"></a><a name="ul16885121613379"></a><ul id="ul16885121613379"><li>dim ∈ {128}</li><li>&lt;coarse_centroid_num&gt; ∈ {1024, 2048, 4096, 8192, 16384, 32768}</li><li>0 ≤ &lt;pool_size&gt; ≤ 32</li></ul>
+<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.4.1 "><a name="ul16885121613379"></a><a name="ul16885121613379"></a><ul id="ul16885121613379"><li>dim ∈ {128}</li><li>&lt;coarse_centroid_num&gt; ∈ {1024, 2048, 4096, 8192, 10048, 16384, 32768}</li><li>0 ≤ &lt;pool_size&gt; ≤ 32</li></ul>
 </td>
 </tr>
 </tbody>
@@ -976,6 +976,10 @@ VSTAR检索当前只支持<term>Atlas 推理系列产品</term>，涉及VSTAR业
 **涉及算法<a name="section16686174317488"></a>**
 
 [AscendIndexIVFRaBitQ](./api/approximate_retrieval.md#ascendindexivfrabitq)
+
+**运行时诊断（开发调试）<a name="ivfrabitq-runtime-debug-ref"></a>**
+
+排查 coarse centroid 上传或 L1 粗排异常时，可通过调试环境变量分阶段定位故障点（默认关闭，不影响性能）。环境变量说明见《[附录](./appendix.md#ivfrabitq-debug-env)》，操作步骤与日志解读见《[常用操作 — IVFRaBitQ 运行时诊断](./common_operations.md#ivfrabitq-runtime-debug)》。
 
 #### VSTAR生成码本文件<a name="ZH-CN_TOPIC_0000002008789068"></a>
 
