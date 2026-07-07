@@ -18,6 +18,7 @@ FILE(GLOB  ASCEND_SRC_HEADERS
      ${CMAKE_CURRENT_LIST_DIR}/../ascendhost/include/index/AscendIndexCluster.h
      ${CMAKE_CURRENT_LIST_DIR}/../ascendhost/include/index/AscendIndexILFlat.h
      ${CMAKE_CURRENT_LIST_DIR}/../ascendhost/include/index/AscendIndexTS.h
+     ${CMAKE_CURRENT_LIST_DIR}/../ascendhost/include/index/AscendIndexCagra.h
      ${CMAKE_CURRENT_LIST_DIR}/../ascend/mixsearch/include/AscendIndexGreat.h
      ${CMAKE_CURRENT_LIST_DIR}/../ascend/mixsearch/include/AscendIndexVStar.h
      ${CMAKE_CURRENT_LIST_DIR}/../ascend/mixsearch/include/AscendIndexMixSearchParams.h
