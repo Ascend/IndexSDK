@@ -243,7 +243,7 @@ A2/A3 NPU
 
 - **倒排查询**: 根据查询向量找到最近的 nprobe 个倒排列表
 
-- **距离计算**: 使用预计算的距离表(LUT)加速
+- **距离计算**: 使用预计算的距离表（LUT）加速
 
 - **TopK 选择**: 基于堆的 TopK 算法
 
@@ -357,21 +357,21 @@ public:
     // 构造函数
     AscendIndexIVFPQ(int dims, faiss::MetricType metric, int nlist, int msubs, int nbits,
                      AscendIndexIVFPQConfig config = AscendIndexIVFPQConfig());
-    
+
     // 析构函数
     virtual ~AscendIndexIVFPQ();
-    
+
     // 禁用拷贝构造和赋值
     AscendIndexIVFPQ(const AscendIndexIVFPQ&) = delete;
     AscendIndexIVFPQ& operator=(const AscendIndexIVFPQ&) = delete;
-    
+
     // 核心方法
     void train(idx_t n, const float* x) override;
     void copyFrom(const faiss::IndexIVFPQ* index);
     void copyTo(faiss::IndexIVFPQ* index) const;
     void remove_ids(size_t n, const idx_t* ids);
     std::vector<idx_t> update(idx_t n, const float* x, const idx_t* ids);
-    
+
 protected:
     std::shared_ptr<AscendIndexIVFPQImpl> impl_;
 };
@@ -635,21 +635,21 @@ protected:
    int m = 4;
    int nbits = 8;
    faiss::MetricType metric = faiss::METRIC_L2;
-   
+
    faiss::ascend::AscendIndexIVFPQConfig config({0});  // 使用设备0
    faiss::ascend::AscendIndexIVFPQ index(dim, metric, nlist, m, nbits, config);
-   
+
    // 训练
    int trainNum = nlist * 40;
    index.train(trainNum, trainData);
-   
+
    // 添加向量
    index.add_with_ids(ntotal, baseData, ids);
-   
+
    // 设置检索参数
    int nprobe = 64;
    index.setNumProbes(nprobe);
-   
+
    // 检索
    int k = 10;
    index.search(nq, queryData, k, distances, labels);

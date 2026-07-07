@@ -320,4 +320,4 @@ openEuler release 22.03 \(LTS\)系统默认安装或使用yum工具安装的Cmak
 
 ### 使用NPU聚类时结果与CPU聚类结果不完全一致
 
-聚类时，有些点到两个聚类中心的距离几乎相等，由于浮点数计算存在百万分之一的误差（faiss CPU版本详见：https://github.com/facebookresearch/faiss/issues/297）， 会导致这些向量归属的聚类簇不确定，这种误差在多次迭代后得到放大，所以NPU聚类与CPU聚类的结果不完全一致，在与CPU对比一致性的时候，应统一使用cpu聚类。
+聚类时，有些点到两个聚类中心的距离几乎相等，由于浮点数计算存在百万分之一的误差（faiss CPU版本详见：[https://github.com/facebookresearch/faiss/issues/297](https://github.com/facebookresearch/faiss/issues/297)）， 会导致这些向量归属的聚类簇不确定，这种误差在多次迭代后得到放大，所以NPU聚类与CPU聚类的结果不完全一致，在与CPU对比一致性的时候，应统一使用cpu聚类。

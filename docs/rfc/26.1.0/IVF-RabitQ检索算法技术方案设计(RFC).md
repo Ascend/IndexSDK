@@ -12,13 +12,13 @@
 
 ## 1.1 简介
 
-本提案旨在为 IndexSDK 新增 IVF-RabitQ 检索算法支持。IVF-RabitQ (Inverted File System with Random Binary Quantization) 是一种基于倒排索引和随机二进制量化的大规模向量检索算法。RaBitQ 是一种高维向量量化算法，通过结合倒排文件系统(IVF)和随机正交矩阵量化技术(RaBitQ)，在保证检索精度的同时，实现高性能的近似最近邻搜索。该算法适合大规模向量库的检索场景。
+本提案旨在为 IndexSDK 新增 IVF-RabitQ 检索算法支持。IVF-RabitQ (Inverted File System with Random Binary Quantization) 是一种基于倒排索引和随机二进制量化的大规模向量检索算法。RaBitQ 是一种高维向量量化算法，通过结合倒排文件系统（IVF）和随机正交矩阵量化技术（RaBitQ），在保证检索精度的同时，实现高性能的近似最近邻搜索。该算法适合大规模向量库的检索场景。
 
 ### 核心特性
 
 - **随机正交矩阵**：通过随机正交变换提高量化精度
 - **两级检索**：L1阶段筛选聚类，L2阶段在选定聚类中计算距离
-- **查找表加速**：使用LUT(Look-Up Table)加速距离计算
+- **查找表加速**：使用LUT（Look-Up Table）加速距离计算
 - **Refine机制**：可选的精排机制，提高召回率
 
 ## 1.2 动机
@@ -60,7 +60,7 @@
   - Refine精排机制（可选）
   - copyTo/copyFrom（CPU与NPU数据互拷）
   - 删除和更新操作
-  
+
 - **距离度量**：
   - L2距离
 
@@ -137,7 +137,7 @@
 
 ### 设计思路
 
-IVF-RabitQ 算法结合了倒排文件系统(IVF)和随机正交矩阵量化技术(RabitQ)，主要包含以下核心步骤：
+IVF-RabitQ 算法结合了倒排文件系统（IVF）和随机正交矩阵量化技术（RabitQ），主要包含以下核心步骤：
 
 1. **训练阶段**：
    - 生成随机正交矩阵（可选）
@@ -757,7 +757,7 @@ struct AscendIndexIVFRaBitQConfig : public AscendIndexIVFConfig {
     AscendIndexIVFRaBitQConfig(std::vector<int> devices, bool useRandomOrthogonalMatrix_,
                                bool needRefine_, int matrixSeed_, float alpha_,
                                int64_t resourceSize = IVF_DEFAULT_MEM);
-    
+
     // 配置参数
     bool useRandomOrthogonalMatrix;  // 是否使用随机正交矩阵（默认true）
     bool needRefine;                 // 是否使用Refine精排（默认false）
@@ -785,21 +785,21 @@ public:
     // 构造函数
     AscendIndexIVFRaBitQ(int dims, faiss::MetricType metric, int nlist,
                          AscendIndexIVFRaBitQConfig config = AscendIndexIVFRaBitQConfig());
-    
+
     // 析构函数
     virtual ~AscendIndexIVFRaBitQ();
-    
+
     // 禁用拷贝构造和赋值
     AscendIndexIVFRaBitQ(const AscendIndexIVFRaBitQ&) = delete;
     AscendIndexIVFRaBitQ& operator=(const AscendIndexIVFRaBitQ&) = delete;
-    
+
     // 核心方法
     void train(idx_t n, const float *x) override;
     void copyFrom(const faiss::IndexIVFRaBitQ *index);
     void copyTo(faiss::IndexIVFRaBitQ *index) const;
     void remove_ids(size_t n, const idx_t* ids);
     std::vector<idx_t> update(idx_t n, const float* x, const idx_t* ids);
-    
+
 protected:
     std::shared_ptr<AscendIndexIVFRaBitQImpl> impl_;
 };
@@ -854,25 +854,25 @@ protected:
    int dim = 128;
    int nlist = 1024;
    faiss::MetricType metric = faiss::METRIC_L2;
-   
+
    faiss::ascend::AscendIndexIVFRaBitQConfig config({0});  // 使用设备0
    config.useRandomOrthogonalMatrix = true;  // 使用随机正交矩阵
    config.matrixSeed = 12345;  // 随机种子
    config.needRefine = false;  // 不使用Refine
-   
+
    faiss::ascend::AscendIndexIVFRaBitQ index(dim, metric, nlist, config);
-   
+
    // 训练
    int trainNum = nlist * 40;
    index.train(trainNum, trainData);
-   
+
    // 添加向量
    index.add_with_ids(ntotal, baseData, ids);
-   
+
    // 设置检索参数
    int nprobe = 64;
    index.setNumProbes(nprobe);
-   
+
    // 检索
    int k = 10;
    index.search(nq, queryData, k, distances, labels);
@@ -895,12 +895,12 @@ protected:
      - 检查是否使用了随机正交矩阵
      - 尝试启用Refine精排
      - 增加nprobe值
-   
+
    - **性能不达预期**：
      - 检查batch size是否合理
      - 检查nprobe是否过大
      - 检查NPU利用率
-   
+
    - **内存占用过大**：
      - 检查nlist是否过大
      - 检查向量维度是否合理
