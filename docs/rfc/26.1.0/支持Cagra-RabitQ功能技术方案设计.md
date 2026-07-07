@@ -70,7 +70,7 @@
 │
 ▼
 AscendIndexCagra (扩展)
-├─ Init(dim, graph_degree, ...) // 初始化，增加RabitQ模式参数
+├─ Init(dim, graphDegree, ...) // 初始化，增加RabitQ模式参数
 ├─ Train(vectors, num) // 新增：训练码本
 ├─ BuildGraph(...) // 增强：支持RabitQ压缩
 ├─ Search(...) // 增强：自动选择距离计算
@@ -140,7 +140,7 @@ AscendIndexCagra (扩展)
 
 1. 由性能实验室在同等数据集（100w 128d，SIFT1M）下，分别测试：
    - 对照 GPU（5090/4090/A100）运行 NVIDIA RAFT CAGRA（浮点版本），记录最优 QPS（满足 Recall@200 ≥ 99%）。
-   - A5 运行本方案（`AscendIndexCagra` + RabitQ 模式），调优参数（`graph_degree=32`，`beam_width=64`，开启随机正交矩阵）达到相同召回率，记录 QPS。
+   - A5 运行本方案（`AscendIndexCagra` + RabitQ 模式），调优参数（`graphDegree=32`，`beam_width=64`，开启随机正交矩阵）达到相同召回率，记录 QPS。
 2. 预期目标：`QPS_A5 ≥ 1.2 × QPS_gpu`。
 
 优化手段（基于现有 `AscendIndexCagra` 内核修改）：
@@ -197,7 +197,7 @@ public:
     AscendIndexCagra();
     virtual ~AscendIndexCagra();
 
-    APP_ERROR Init(int dim, int graph_degree, int hashBitlen,
+    APP_ERROR Init(int dim, int graphDegree, int hashBitlen,
                    std::vector<int>& deviceList, int64_t ascendResourceSize);
 
     APP_ERROR add(int n, const float* x);

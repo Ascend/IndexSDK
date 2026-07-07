@@ -620,6 +620,8 @@ void simuDistanceFlatL2(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "Distance
 
 void simuDistanceFlatIP(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "simuDistanceFlatIP simu exec"); }
 
+void simuCagraRabitq(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "simuCagraRabitq simu exec"); }
+
 void simuDistanceBinaryFloat(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "simuDistanceBinaryFloat simu exec"); }
 
 void simuDistanceBatchValMaskGenerator(aclopHandle &opHandle)
@@ -819,6 +821,7 @@ void simuOpInstall()
     REG_OP("DistanceInt8L2MinsWoQueryNorm", simuDistanceInt8L2MinsWoQueryNorm);
     REG_OP("AscendcDistanceInt8CosMaxsWithMask", simuAscendcDistanceInt8CosMaxsWithMask);
     REG_OP("DistanceFlatL2", simuDistanceFlatL2);
+    REG_OP("CagraRabitq", simuCagraRabitq);
     REG_OP("DistanceFlatIP", simuDistanceFlatIP);
     REG_OP("DistanceBinaryFloat", simuDistanceBinaryFloat);
     REG_OP("DistanceBatchValMaskGenerator", simuDistanceBatchValMaskGenerator);
@@ -954,6 +957,7 @@ void simuOpUninstall()
     UNREG_OP("AscendcDistanceInt8CosMaxsWithMask");
     UNREG_OP("DistanceFlatL2");
     UNREG_OP("DistanceFlatIP");
+    UNREG_OP("CagraRabitq");
     UNREG_OP("DistanceBinaryFloat");
     UNREG_OP("DistanceBatchValMaskGenerator");
     UNREG_OP("AscendcDistanceBatchMaskGenerator");
