@@ -8,8 +8,8 @@
 
 当前支持以下算法：
 
-- 二值化特征检索（汉明距离）：使用前需要手动生成[BinaryFlat](../user_guide.md#binaryflat)、[Mask](../user_guide.md#mask)算子并移动到对应的“modelpath”目录中。
-- Int8Flat（cos距离）、FP16Flat（IP距离）、Int8Flat（L2距离）：使用前需要手动生成[Mask](../user_guide.md#mask)算子并移动到对应的“modelpath”目录中。
+- 二值化特征检索（汉明距离）：使用前需要手动生成[BinaryFlat](../05_user_guide.md#binaryflat)、[Mask](../05_user_guide.md#mask)算子并移动到对应的“modelpath”目录中。
+- Int8Flat（cos距离）、FP16Flat（IP距离）、Int8Flat（L2距离）：使用前需要手动生成[Mask](../05_user_guide.md#mask)算子并移动到对应的“modelpath”目录中。
 - 支持多线程并发调用，需要设置“MX\_INDEX\_MULTITHREAD”环境变量为1，即export MX\_INDEX\_MULTITHREAD=1，设置为其他值或者不设置，则表示不开启多线程功能。当前的特征检索内部会使用OMP做性能加速，OMP不支持与其他多线程机制混用。反复创建新线程使用OMP会导致内存持续累加，因此建议使用固定的线程来运行检索任务。
 
 ### AddFeature接口<a name="ZH-CN_TOPIC_0000001458360182"></a>
