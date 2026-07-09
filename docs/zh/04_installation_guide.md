@@ -9,7 +9,7 @@ Index SDK 支持[离线安装](#离线安装)、[镜像安装](#镜像安装)、
 **注意事项**
 
 - 对于第三方的开源软件，如果该版本中存在漏洞，需要及时根据开源版本中的对应说明进行修复和更新。
-- （可选）Ascend Docker Runtime的安装请参考《MindCluster  集群调度用户指南》的“安装 \> 安装部署 \> 手动安装 \> [Ascend Docker Runtime](https://gitcode.com/Ascend/mind-cluster/blob/branch_v26.0.0/docs/zh/scheduling/installation_guide/03_installation/manual_installation/02_ascend_docker_runtime.md)”章节。
+- （可选）Ascend Docker Runtime的安装请参考《MindCluster 集群调度用户指南》的“安装 \> 安装部署 \> 手动安装 \> [Ascend Docker Runtime](https://gitcode.com/Ascend/mind-cluster/blob/branch_v26.0.0/docs/zh/scheduling/installation_guide/03_installation/manual_installation/02_ascend_docker_runtime.md)”章节。
 - （可选）Index SDK已支持虚拟化环境，可在虚拟化环境下进行Index SDK的业务部署及运行，具体环境部署操作请参见《MindCluster 集群调度用户指南》的“使用 \> [虚拟化实例特性指南](https://gitcode.com/Ascend/mind-cluster/blob/branch_v26.0.0/docs/zh/scheduling/usage/virtual_instance/menu_virtual_instance.md)”章节。
 
 ## 安装依赖说明
@@ -117,7 +117,7 @@ Python 安装好后，pip 所需依赖名称、对应版本及获取建议请参
 
 **安装须知**
 
-- 请在安装 Faiss 之前，请先完成上一节 OpenBLAS 的安装。
+- 安装 Faiss 之前，请先完成上一节 OpenBLAS 的安装。
 - Index SDK 构建脚本默认构建基于 Faiss 1.10.x 的单版本业务动态库。如果需要使用 IVFRaBitQ/RaBitQ 等依赖 Faiss 1.14 的特性，可指定构建基于 Faiss 1.14.1 的单版本业务动态库（使用时需对应链接 Faiss 1.14.1 的业务动态库、头文件和 libfaiss.so）；如果需要同时兼容 Faiss 1.10.x 和 Faiss 1.14.1，可在构建时开启多版本业务动态库共存。使用非 IVFRaBitQ/RaBitQ 特性且需要兼容老环境时，可选择 Faiss 1.10.x 版本业务动态库。
 - 推荐将不同 Faiss 版本安装到相互独立的目录，例如 `/usr/local/faiss/faiss1.10.0` 和 `/usr/local/faiss/faiss1.14.1`。不建议通过覆盖 `/usr/local/lib/libfaiss.so` 切换版本，用户编译和运行程序时应通过 `-I`、`-L` 和 `LD_LIBRARY_PATH` 显式选择需要的 Faiss 版本。
 - 此处仅提供 Faiss v1.10.0 的安装参考，具体安装步骤请以实际 Faiss 版本和环境为准。
@@ -238,7 +238,7 @@ Python 安装好后，pip 所需依赖名称、对应版本及获取建议请参
 
 除了前述依赖外，还需要根据是否需要使用 ILFlat 算法选择安装**开放态场景包**。
 
-- 如不需要，跳过次步骤。
+- 如不需要，跳过此步骤。
 - 如需要，请先下载 [Ascend-cann-device-sdk 安装包](https://www.hiascend.com/developer/download/community/result?module=cann&cann=9.0.0)。
 
 ```bash
@@ -317,7 +317,7 @@ unzip Ascend-cann-device-sdk_{version}_linux-{arch}.zip
 |--tar arg1 [arg2 ...]|对软件包执行tar命令，使用tar后面的参数作为命令的参数。例如执行--tar xvf命令，解压run安装包的内容到当前目录。|
 |--version|查询安装包Index SDK版本。|
 |--install|特征检索软件包安装操作命令。|
-|--install-path=*\<path>*|（可选）自定义特征检索软件包安装根目录。如未设置，默认为当前命令执行所在目录。配置的路径必须以/或~开头，路径取值仅支持大小写字母、数字、-_./字符。<br>若不指定，将安装到默认路径下：<ul><li>若使用root用户安装，默认安装路径为：/usr/local/Ascend。</li><li>若使用非root用户安装，则默认安装路径为：\$\{HOME}/Ascend，${HOME}指用户目录。</li></ul>若通过该参数指定了安装目录，该目录其他用户不能有写权限，如果指定普通用户安装，安装目录属主必须为当前安装用户。|
+|--install-path=*\<path>*|（可选）自定义特征检索软件包安装根目录。配置的路径必须以/或~开头，路径取值仅支持大小写字母、数字、-_./字符。<br>若不指定，将安装到默认路径下：<ul><li>若使用root用户安装，默认安装路径为：/usr/local/Ascend。</li><li>若使用非root用户安装，则默认安装路径为：\$\{HOME}/Ascend，${HOME}指用户目录。</li></ul>若通过该参数指定了安装目录，该目录其他用户不能有写权限，如果指定普通用户安装，安装目录属主必须为当前安装用户。|
 |--upgrade|特征检索软件包升级操作命令，将特征检索升级到安装包所包含的Index SDK版本。|
 |--platform=*\<npu_type>*|对应昇腾AI处理器类型。<ul><li>使用<term>Atlas 推理系列产品</term>请输入310P。</li><li>使用Atlas 800I A3 超节点服务器请输入“A3”。</li><li>使用<term>Atlas A2 推理系列产品</term>，请在安装昇腾AI处理器的服务器执行npu-smi info命令进行查询，将查询到的“Name”最后一位数字删掉，即是--platform的取值。</li></ul>|
 |--faiss-version=*\<version>*|（可选）多版本run包用于选择安装后激活的Faiss ABI版本；单版本run包用于校验用户选择和包内版本是否一致。支持“1.10”、“1.10.0”、“faiss1.10”、“1.14”、“1.14.1”和“faiss1.14”等取值，默认值为包内默认版本。选择“1.10”时，激活基于Faiss 1.10.x构建的业务动态库和头文件；选择“1.14”时，激活基于Faiss 1.14.1构建的业务动态库和头文件。单版本run包无需设置该参数，如果设置为包内不包含的版本，安装会报错退出。|
@@ -416,7 +416,7 @@ bash build.sh
 |--|--|
 | --upgrade | 特征检索软件包升级操作命令，将特征检索升级到安装包所包含的 Index SDK 版本。|
 | --platform=*\<npu_type>* | 对应昇腾 AI 处理器类型。<ul><li>使用 Atlas 推理系列产品请输入 `310P`。</li><li>使用 Atlas 800I A3 超节点服务器请输入 `A3`。</li><li>使用 Atlas A2 推理系列产品，请在安装昇腾 AI 处理器的服务器执行 `npu-smi info` 命令进行查询，将查询到的 `Name` 最后一位数字删掉，即是 --platform 的取值。</li></ul> |
-| --install-path=*\<path>* |（可选）自定义特征检索软件包安装根目录。如未设置，默认为 `usr/local/Ascend`。如使用自定义目录安装，建议在升级操作时使用该参数。|
+| --install-path=*\<path>* |（可选）自定义特征检索软件包安装根目录。如未设置，默认为 `/usr/local/Ascend`。如使用自定义目录安装，建议在升级操作时使用该参数。|
 | --faiss-version=*\<version>* |（可选）多版本 run 包用于选择升级后激活的 Faiss ABI 版本；单版本 run 包用于校验用户选择和包内版本是否一致。支持“1.10”、“1.10.0”、“faiss1.10”、“1.14”、“1.14.1”和“faiss1.14”等取值，默认值为包内默认版本。如果升级后需要继续使用 IVFRaBitQ/RaBitQ 特性，请使用 Faiss 1.14.1 版本 run 包，或在多版本 run 包中指定“--faiss-version=1.14”。单版本 run 包无需设置该参数，如果设置为包内不包含的版本，升级会报错退出。 |
 
 命令执行后返回如下信息，则表示特征检索包升级成功。
