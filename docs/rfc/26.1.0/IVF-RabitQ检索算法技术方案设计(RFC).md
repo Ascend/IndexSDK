@@ -49,7 +49,7 @@
 ### 平台支持
 
 - **A2/A3平台**：支持
-- **A5平台**：支持
+- **Ascend950平台**：支持
 
 ### 功能范围
 
@@ -190,7 +190,7 @@ AscendIndexIVFRaBitQImpl
     ↓
 ACL Runtime
     ↓
-NPU (A2/A3/A5)
+NPU (A2/A3/Ascend950)
 ```
 
 ### 核心流程
@@ -606,7 +606,7 @@ NPU (A2/A3/A5)
 **1. 数据格式**：
 
 - 使用ND格式存储数据，提高内存访问效率
-- 数据按burst长度对齐（A2/A3: 64, A5: 32/64）
+- 数据按burst长度对齐（A2/A3: 64, Ascend950: 32/64）
 
 **2. 并行策略**：
 
@@ -646,7 +646,7 @@ NPU (A2/A3/A5)
 #### 4. 平台适配优化
 
 - **A2/A3平台**：使用高burst长度（64）
-- **A5平台**：根据batch size动态调整burst长度（32/64）
+- **Ascend950平台**：根据batch size动态调整burst长度（32/64）
 
 ### 影响范围
 
@@ -975,7 +975,7 @@ protected:
 ### 参考资料
 
 - [Faiss 官方文档](https://github.com/facebookresearch/faiss)
-- [IndexSDK 用户指南](../../zh/user_guide.md)
+- [IndexSDK 用户指南](../../zh/05_user_guide.md)
 - [Ascend NPU 开发文档](https://www.hiascend.com/document)
 - [RabitQ 论文](https://arxiv.org/abs/2405.12456)
 

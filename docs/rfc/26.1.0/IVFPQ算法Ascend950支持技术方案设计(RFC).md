@@ -1,4 +1,4 @@
-# IVFPQ算法A5支持技术方案设计(RFC)
+# IVFPQ算法Ascend950支持技术方案设计(RFC)
 
 **状态 (Status):** Draft
 **作者 (Authors):** @xiangjie10
@@ -12,23 +12,23 @@
 
 ## 1.1 简介
 
-本提案旨在为 IndexSDK 补齐 A5 NPU 平台上的 IVFPQ(L2) 算法能力。IVFPQ (Inverted File System with Product Quantization) 是推荐检索场景中常用的近似检索算法，能够在保证检索精度的同时，大幅降低内存占用和计算开销。通过本提案的实现，IndexSDK 将能够在 Ascend A5 NPU 上完整支持 IVFPQ 算法的训练、索引构建、入库和检索全流程。
+本提案旨在为 IndexSDK 补齐 Ascend950 NPU 平台上的 IVFPQ(L2) 算法能力。IVFPQ (Inverted File System with Product Quantization) 是推荐检索场景中常用的近似检索算法，能够在保证检索精度的同时，大幅降低内存占用和计算开销。通过本提案的实现，IndexSDK 将能够在 Ascend950 NPU 上完整支持 IVFPQ 算法的训练、索引构建、入库和检索全流程。
 
 ## 1.2 动机
 
 ### 背景
 
-在推荐检索场景中，IVFPQ 是常用的近似检索算法。随着库规模增长到十亿甚至百亿级，CPU 方案在时延上已无法满足业务需求，需要通过 NPU 进行加速。A5 作为新一代高性能 NPU 平台，具有更强的计算能力和更高的内存带宽，适合大规模向量检索场景。
+在推荐检索场景中，IVFPQ 是常用的近似检索算法。随着库规模增长到十亿甚至百亿级，CPU 方案在时延上已无法满足业务需求，需要通过 NPU 进行加速。Ascend950 作为新一代高性能 NPU 平台，具有更强的计算能力和更高的内存带宽，适合大规模向量检索场景。
 
 ### 痛点
 
 - 大规模向量检索场景下，CPU 方案时延成为瓶颈
-- A5 NPU 平台缺少 IVFPQ 算法支持，无法充分发挥硬件加速能力
+- Ascend950 NPU 平台缺少 IVFPQ 算法支持，无法充分发挥硬件加速能力
 
 ### 价值
 
-- 补齐 A5 平台的近似检索能力，完善 IndexSDK 的算法支持矩阵
-- 充分利用 A5 NPU 的强大计算能力，大幅提升大规模向量检索性能
+- 补齐 Ascend950 平台的近似检索能力，完善 IndexSDK 的算法支持矩阵
+- 充分利用 Ascend950 NPU 的强大计算能力，大幅提升大规模向量检索性能
 
 ## 1.3 目标
 
@@ -37,7 +37,7 @@
 - 支持 `IVFPQ(L2)` 算法
 - 支持完整的生命周期：训练、索引构建、入库、检索
 - 精度与 CPU 基线对齐，误差控制在 `1e-5` 以内
-- 在 A5 单卡场景完成性能评估，满足召回推荐参数配置
+- 在 Ascend950 单卡场景完成性能评估，满足召回推荐参数配置
 
 # 2. 用例分析
 
@@ -83,7 +83,7 @@
 
 ### 性能验收标准
 
-在 A5 单卡场景下:
+在 Ascend950 单卡场景下:
 
 - `nlist=1024`, `dim=128`, `m=4`
 - `batchSize=1/2/4/8/16/32/64`
@@ -116,7 +116,7 @@
 
 ### 设计思路
 
-基于 IndexSDK 现有的 AscendIndexIVFPQ 架构，扩展支持 A5 NPU 平台。主要工作包括：
+基于 IndexSDK 现有的 AscendIndexIVFPQ 架构，扩展支持 Ascend950 NPU 平台。主要工作包括：
 
 - 训练模块：实现聚类中心训练，生成倒排列表和乘积量化码本
 - 索引构建：构建倒排索引结构，存储向量编码
@@ -139,7 +139,7 @@ AscendIndexIVFPQImpl
     ↓
 ACL Runtime
     ↓
-A5 NPU
+Ascend950 NPU
 ```
 
 ### 核心流程
@@ -169,15 +169,15 @@ A5 NPU
 
 ### 方案
 
-复用现有 AscendIndexIVFPQ 框架，针对 A5 进行开发 AscendC 算子
+复用现有 AscendIndexIVFPQ 框架，针对 Ascend950 进行开发 AscendC 算子
 
 ### 选择理由
 
-复用现有 AscendIndexIVFPQ 的算子框架，针对 A5 进行适配优化，可以在保证性能的同时，降低开发和维护成本。
+复用现有 AscendIndexIVFPQ 的算子框架，针对 Ascend950 进行适配优化，可以在保证性能的同时，降低开发和维护成本。
 
-### A5 平台特性
+### Ascend950 平台特性
 
-A5 NPU 相比 A2/A3 具有以下优势：
+Ascend950 NPU 相比 A2/A3 具有以下优势：
 
 - 更强的计算能力，支持更高吞吐量
 - 更高的内存带宽，支持更大规模向量库
@@ -190,7 +190,7 @@ A5 NPU 相比 A2/A3 具有以下优势：
 #### 训练模块
 
 - **聚类算法**: K-Means
-- **实现方式**: 利用 A5 NPU 的强大计算能力
+- **实现方式**: 利用 Ascend950 NPU 的强大计算能力
 - **数据流**: 训练数据 → K-Means 聚类 → 聚类中心 → 码本生成
 
 #### 索引构建模块
@@ -208,20 +208,20 @@ A5 NPU 相比 A2/A3 具有以下优势：
 ### 性能优化策略
 
 1. **内存优化**: 优化编码存储格式，提高内存访问效率
-2. **计算优化**: 利用 A5 NPU 的强大并行计算能力，优化批量处理
+2. **计算优化**: 利用 Ascend950 NPU 的强大并行计算能力，优化批量处理
 3. **流水线优化**: 重叠计算和数据传输，提高吞吐量
 4. **预计算优化**: 预计算距离表，减少检索时计算量
 
 ### 性能对比
 
-相比 A3 平台，A5 平台预期性能提升：
+相比 A3 平台，Ascend950 平台预期性能提升：
 
 - 时延降低约 4-5 倍
 - 吞吐量提升约 4-5 倍
 
 ### 影响范围
 
-- 新增文件: A5 平台的算子实现文件
+- 新增文件: Ascend950 平台的算子实现文件
 - 修改文件: AscendIndexIVFPQ 相关配置和初始化逻辑
 - 不影响现有其他平台的实现
 
@@ -259,7 +259,7 @@ A5 NPU 相比 A2/A3 具有以下优势：
 
 #### 开发环境
 
-- 硬件平台: Ascend A5 NPU
+- 硬件平台: Ascend Ascend950 NPU
 - 软件环境: CANN 工具链， ACL Runtime
 
 #### 开发约束
@@ -457,7 +457,7 @@ protected:
 **1. 数据格式**：
 
 - 使用ND格式存储数据，提高内存访问效率
-- 数据按burst长度对齐（A5: 32/64，根据batch size动态调整）
+- 数据按burst长度对齐（Ascend950: 32/64，根据batch size动态调整）
 
 **2. 并行策略**：
 
@@ -479,7 +479,7 @@ protected:
 
 需要在现有《IndexSDK 用户指南》中新增以下章节：
 
-#### A5 平台 IVFPQ 算法使用指南
+#### Ascend950 平台 IVFPQ 算法使用指南
 
 1. **环境准备**：
    - 安装 CANN 工具链
@@ -545,7 +545,7 @@ protected:
 
 ### 性能风险
 
-- A5 平台性能需要充分测试验证
+- Ascend950 平台性能需要充分测试验证
 - 大规模向量库可能存在内存压力
 
 ### 复杂度提升
@@ -561,7 +561,7 @@ protected:
 
 ### 对用户的影响
 
-- 用户需要升级到支持 A5 的版本
+- 用户需要升级到支持 Ascend950 的版本
 - 需要重新训练索引和生成算子模型文件
 
 ## 4.3 实现成本
@@ -587,7 +587,7 @@ protected:
 
 ## IndexSDK 现有实现
 
-- AscendIndexIVFPQ 已在 IndexSDK 中实现，本提案复用现有架构，扩展支持 A5
+- AscendIndexIVFPQ 已在 IndexSDK 中实现，本提案复用现有架构，扩展支持 Ascend950
 
 # 6. 未解决问题
 
@@ -600,7 +600,7 @@ protected:
 ### 参考资料
 
 - [Faiss 官方文档](https://github.com/facebookresearch/faiss)
-- [IndexSDK 用户指南](../../zh/user_guide.md)
+- [IndexSDK 用户指南](../../zh/05_user_guide.md)
 - [Ascend NPU 开发文档](https://www.hiascend.com/document)
 
 ### 术语表
@@ -610,9 +610,9 @@ protected:
 - **m**: 乘积量化子空间数量
 - **nbits**: 每个子空间的编码位数
 - **nprobe**: 检索时访问的倒排列表数量
-- **A5**: Ascend NPU 型号
+- **Ascend950**: Ascend NPU 型号
 
 ### 文档更新计划
 
 - RFC 评审通过后，更新《IndexSDK 用户指南》
-- 更新《快速开始指南》，添加 A5 平台 IVFPQ 使用说明
+- 更新《快速开始指南》，添加 Ascend950 平台 IVFPQ 使用说明

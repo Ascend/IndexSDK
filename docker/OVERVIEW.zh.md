@@ -87,11 +87,11 @@ python3 flat_generate_model.py -t npu-type -d 512
 mv op_models/* $MX_INDEX_MODELPATH
 ```
 
-算子生成可以参考：[算子生成](https://gitcode.com/Ascend/IndexSDK/blob/master/docs/zh/user_guide.md#%E8%87%AA%E5%AE%9A%E4%B9%89%E7%AE%97%E5%AD%90%E4%BB%8B%E7%BB%8D)
+算子生成可以参考：[算子生成](https://gitcode.com/Ascend/IndexSDK/blob/master/docs/zh/05_user_guide.md#%E8%87%AA%E5%AE%9A%E4%B9%89%E7%AE%97%E5%AD%90%E4%BB%8B%E7%BB%8D)
 
 ### 3.4 编译入门用例
 
-[demo用例](https://gitcode.com/Ascend/IndexSDK/blob/master/docs/zh/user_guide.md#%E4%BD%BF%E7%94%A8%E6%A0%B7%E4%BE%8B)
+[demo用例](https://gitcode.com/Ascend/IndexSDK/blob/master/docs/zh/05_user_guide.md#%E4%BD%BF%E7%94%A8%E6%A0%B7%E4%BE%8B)
 
 ```bash
 export MX_INDEX_INSTALL_PATH=/usr/local/Ascend/mxIndex
@@ -132,7 +132,7 @@ docker build -t {your_repo}/index:latest -f Dockerfile .
 
 | 芯片系列  | 产品示例                        | 架构           |
 | --------- | ------------------------------- | -------------- |
-| Atlas 950  | A5                              | ARM64 / x86_64 |
+| Atlas 350  | Ascend 950                              | ARM64 / x86_64 |
 | Atlas 910  | Atlas 800I A2                   | ARM64 / x86_64 |
 | Atlas A3   | Atlas 800I A3                   | ARM64 / x86_64 |
 | Atlas 300I Pro | Atlas 300I Pro、Atlas 300V Pro  | ARM64 / x86_64 |
