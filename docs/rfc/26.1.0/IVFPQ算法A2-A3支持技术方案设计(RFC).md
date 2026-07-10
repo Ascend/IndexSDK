@@ -761,7 +761,7 @@ protected:
 
 - [Faiss 官方文档](https://github.com/facebookresearch/faiss)
 
-- [IndexSDK 用户指南](../../zh/user_guide.md)
+- [IndexSDK 用户指南](../../zh/05_user_guide.md)
 
 - [Ascend NPU 开发文档](https://www.hiascend.com/document)
 
