@@ -312,7 +312,7 @@ class SocUtils
         }
         else if (ParseA5Data(name))
         {
-            APP_LOG_INFO("find socname A5");
+            APP_LOG_INFO("find socname Ascend950");
         }
         else
         {

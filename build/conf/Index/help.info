@@ -2,5 +2,5 @@
   --install-path=<path>             Install mxIndex packages directly to a target directory (absolute or relative)
   --version                         Query mxIndex version
   --upgrade                         Upgrade mxIndex to the specific version provided by this package
-  --platform                        Ascend platform, 310P or 910B or A3 or A5, default 310P. used with --install or --upgrade
+  --platform                        Ascend platform, 310P or 910B or A3 or Ascend950, default 310P. used with --install or --upgrade
   --faiss-version=<1.10|1.14>       Select the active Faiss ABI variant, default 1.10
