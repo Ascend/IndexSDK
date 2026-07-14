@@ -355,6 +355,12 @@ g++ test.cpp -I/home/work/FeatureRetrieval/mxIndex/include -I/usr/local/faiss/fa
 export LD_LIBRARY_PATH=/home/work/FeatureRetrieval/mxIndex/host/lib:/usr/local/faiss/faiss1.14.1/lib:$LD_LIBRARY_PATH
 ```
 
+命令执行后返回如下信息，则表示特征检索包安装成功。
+
+```bash
+Install package successfully.
+```
+
 ### 镜像安装
 
 请参照 [Index SDK 镜像仓库](https://www.hiascend.com/developer/ascendhub/detail/7f91c3663b5d4a97b3ae40e3cabbb3a2)完成特征检索的容器化部署。
