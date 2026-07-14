@@ -261,6 +261,8 @@
 
 **全量检索算法介绍<a name="section46312418528"></a>**
 
+全量检索（Brute-force Search）是指对底库中的所有向量逐一计算距离，返回与查询向量距离最近的TopK结果。全量检索不进行任何剪枝或近似处理，因此检索精度最高，但计算量与底库规模成正比，适用于对精度要求严格、底库规模适中的场景。
+
 |算法（API参考）|算法使用场景|需要生成的算子|样例链接|
 |--|--|--|--|
 |[AscendIndexInt8Flat](./api/full_retrieval.md#ascendindexint8flat)|<li>特征类型：int8</li><li>特征维度：64, 128, 256, 384, 512, 768, 1024</li><li>距离类型：L2和IP</li><li>计算精度：高</li><li>Device内存占用：较低</li><li>适应场景：精度要求高的暴力检索场景</li>|<li>[INT8Flat](#int8flat)</li><li>[AICPU](#aicpu)</li>|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexInt8Flat.cpp">链接</a>|
@@ -273,6 +275,8 @@
 ### 近似检索<a name="ZH-CN_TOPIC_0000001698168797"></a>
 
 **近似检索算法介绍<a name="section46312418528"></a>**
+
+近似检索（Approximate Nearest Neighbor Search）通过聚类、量化、图索引等方式对底库进行预处理或压缩，检索时仅计算部分向量距离，以牺牲少量精度换取显著的性能提升和内存节省。适用于亿级大库容、对时延敏感、可接受一定精度损失的场景。
 
 |算法（API参考）|算法使用场景|需要生成的算子|样例链接|
 |--|--|--|--|
@@ -290,13 +294,17 @@
 
 **属性过滤检索算法介绍<a name="section46312418528"></a>**
 
+属性过滤检索是指在向量检索的基础上，结合业务属性（如时间、空间、附加属性、自定义属性等）进行过滤，仅对满足属性条件的向量执行距离计算和排序，实现时空联合检索。适用于需要同时满足相似性和属性约束的场景。
+
 |算法（API参考）|算法使用场景|需要生成的算子|样例链接|
 |--|--|--|--|
 |[AscendIndexTS](./api/attribute_filtering-based_retrieval.md#ascendindexts)|<li>特征类型：uint8二值化特征、int8、FP32（具体算法不同而不同）</li><li>特征维度：具体算法不同而不同</li><li>距离类型：Hamming、Cos、IP、L2</li><li>计算精度：较高</li><li>Device内存占用：较高</li><li>适应场景：需要过滤属性的时空库场景</li><li>Cos和IP支持<term>Atlas 推理系列产品</term>，<term>Atlas A2 推理系列产品</term>，<term>Atlas A3 推理系列产品</term></li><li>Hamming距离仅支持<term><term>Atlas 推理系列产品</term></term></li>|<li>[Mask](#mask)</li><li>[BinaryFlat](#binaryflat)</li><li>[Int8Flat](#int8flat)</li><li>[Flat](#flat)</li><li>[AICPU](#aicpu)</li>|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexTS.cpp">链接</a>|
 
 ### 多Index批量检索<a name="ZH-CN_TOPIC_0000001649848472"></a>
 
-**接口介绍<a name="section46312418528"></a>**
+**多Index批量检索介绍<a name="section46312418528"></a>**
+
+多Index批量检索允许在单个Device上同时管理多个Index实例，通过一次调用对多个Index执行检索，减少Host与Device之间的交互次数，提升多库并发检索的整体吞吐。
 
 |接口（API参考）|**接口使用场景**|**可以使用本接口的算法**|样例链接|
 |--|--|--|--|
