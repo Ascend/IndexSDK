@@ -4,7 +4,7 @@
 
 检索日志组件基于《[CANN 软件安装指南](https://www.hiascend.com/document/detail/zh/canncommercial/900/softwareinst/instg/instg_0000.html)》以及《[CANN 日志参考](https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/logreference/logreference_0001.html)》设计和开发。
 
-对于标准态部署，检索的日志属于应用类日志，可以参考《CANN 日志参考》中的“[查看日志（Ascend EP标准形态）](https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/logreference/logreference_0002.html)”章节的“查看应用类日志”描述。默认路径为“$HOME/ascend/log”。也可以使用环境变量ASCEND\_PROCESS\_LOG\_PATH指定日志落盘路径。命令参考如下：
+对于标准态部署，检索的日志属于应用类日志，可以参考《CANN 日志参考》中的“[查看日志（Ascend EP标准形态）](https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/logreference/logreference_0002.html)”章节的“查看应用类日志”描述。默认路径为“$HOME/ascend/log”。也可以使用环境变量 `ASCEND_PROCESS_LOG_PATH` 指定日志落盘路径。命令参考如下：
 
 ```bash
 export ASCEND_PROCESS_LOG_PATH=$HOME/xxx
@@ -12,13 +12,13 @@ export ASCEND_PROCESS_LOG_PATH=$HOME/xxx
 
 可指定日志落盘路径为任意有读写权限的目录。
 
-日志级别由低到高依次为DEBUG < INFO < WARNING < ERROR，级别越低，输出日志越详细，可以通过ASCEND\_GLOBAL\_LOG\_LEVEL环境变量设置日志级别。命令参考如下：
+日志级别由低到高依次为DEBUG < INFO < WARNING < ERROR，级别越低，输出日志越详细，可以通过 `ASCEND_GLOBAL_LOG_LEVEL` 环境变量设置日志级别。命令参考如下：
 
 ```bash
 export ASCEND_GLOBAL_LOG_LEVEL=1
 ```
 
-不传入此参数，默认为ERROR等级。ASCEND\_GLOBAL\_LOG\_LEVEL全部取值说明如下：
+不传入此参数，默认为ERROR等级。`ASCEND_GLOBAL_LOG_LEVEL` 全部取值说明如下：
 
 0：DEBUG
 
@@ -34,7 +34,7 @@ export ASCEND_GLOBAL_LOG_LEVEL=1
 >
 >- 对于容器化场景中使用检索功能，应用类日志位于容器中，需要将日志目录挂载到宿主机才能实现持久化，否则日志将在容器退出时被销毁。
 >- 应用类日志未配置自动轮转，日志会不断增多，因此需要用户定期清理该目录（可以使用系统自带的**logrotate**实现日志切分），否则可能导致磁盘空间不足，影响业务正常运行。
->- 软件包的安装升级卸载等管理面的相关日志会保存至“$HOME/log/mxIndex/deployment.log”，文件中保存有登录用户的用户名、访问端地址以及hostname，用于支持后续的日志记录及审计的操作。
+>- 软件包的安装升级卸载等管理面的相关日志会保存至“$HOME/log/mxIndex/deployment.log”，文件中保存有登录用户的用户名、访问端地址以及 hostname，用于支持后续的日志记录及审计的操作。
 
 ## IVFRaBitQ 运行时诊断<a name="ivfrabitq-runtime-debug"></a>
 
@@ -80,7 +80,7 @@ export IVFRABITQ_VERIFY_COARSE_CENTER=0
 export IVFRABITQ_VERIFY_COARSE_CENTER=1
 
 # 边界测试（copyFrom 触发 updateCoarseCenterImpl）
-./TestAscendIndexIVFRaBitQBoundary --gtest_filter=*CoarseCenterCopy10048* 2>&1 | tee coarse_verify.log
+./TestAscendIndexIVFRaBitQBoundary --gtest_filter="*CoarseCenterCopy10048*" 2>&1 | tee coarse_verify.log
 
 grep -E 'CoarseCenterVerify|zeroRowsAfter2512' coarse_verify.log
 ```

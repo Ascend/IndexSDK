@@ -2,9 +2,7 @@
 
 <div style="text-align: center; margin: 0.5rem 0 0.3rem 0; font-family: 'Avenir Next', 'Avenir', 'Century Gothic', 'Segoe UI', sans-serif;">
   <span style="font-size: 4.5rem; font-weight: 300; letter-spacing: 0.02em;">Index SDK</span>
-</div>
-
-Index SDK是基于Faiss开发的昇腾NPU异构检索加速框架，针对高维空间中的海量数据，提供高性能的检索。本docs仓提供Index SDK的相关指导文档。
+</div> Index SDK 是基于 Faiss 开发的昇腾 NPU 异构检索加速框架，针对高维空间中的海量数据，提供高性能的检索。本 docs 仓提供 Index SDK 的相关指导文档。
 
 ## 文档介绍
 
@@ -13,7 +11,7 @@ Index SDK是基于Faiss开发的昇腾NPU异构检索加速框架，针对高维
 |-|《Index SDK用户指南》目录|00_menu_indexsdk.md|提供《用户指南》的整体目录结构。|[目录](./00_menu_indexsdk.md)|
 |-|简介|01_introduction.md|介绍Index SDK的背景、定义以及产品价值。|[简介](./01_introduction.md)|
 |-|前置知识|02_prerequisite_knowledge.md|介绍Index SDK的前置知识。|[前置知识](./02_prerequisite_knowledge.md)|
-|-|快速入门|03_quick_start.md|提供快速使用Index SDK的示例。|[快速入门](03_quick_start.md)|
+|-|快速入门|03_quick_start.md|提供快速使用Index SDK的示例。|[快速入门](./03_quick_start.md)|
 |-|安装部署|04_installation_guide.md|介绍Index SDK的多种安装方式及维护。|[安装部署](./04_installation_guide.md)|
 |-|使用指导|05_user_guide.md|介绍Index SDK的使用方法。|[使用指导](./05_user_guide.md)|
 |api|API|-|介绍Index SDK的API接口。|[API参考](./api/README.md)|

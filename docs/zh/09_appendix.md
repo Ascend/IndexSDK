@@ -16,7 +16,7 @@
 |LD_LIBRARY_PATH|动态链接库路径。|
 |PYTHONPATH|python模块文件的默认搜索路径。|
 |HOME|当前用户的家目录。|
-|PWD|当前系统路径。|
+|PWD|当前工作目录。|
 |TMPDIR|临时文件路径。|
 |LANG|语言环境。|
 
@@ -245,11 +245,11 @@ int main(int argc, char **argv)
     - openblas：/opt/OpenBLAS/lib
     - Faiss：/usr/local/faiss/faiss1.10.0/lib
     - 运行态toolkit so：/usr/local/AscendMiniOSRun/acllib/lib64和/usr/local/AscendMiniOSRun/aarch64-linux/data
-    - 检索so：$\{MX\_INDEX\_HOME\}/mxIndex/host/lib，其中\{MX\_INDEX\_HOME\}为Index SDK的安装目录。
+    - 检索 so：`${MX_INDEX_HOME}/mxIndex/host/lib`，其中 `${MX_INDEX_HOME}` 为 Index SDK 的安装目录。
     - Host侧编译器中的libgfortran.so：/usr/lib/aarch64-linux-gnu/libgfortran.so\*
     - Demo编译出来的二进制
     - toolkit目录下的latest/opp/version.info文件
-    - 算子文件：$\{MX\_INDEX\_HOME\}/modelpath/
+    - 算子文件：`${MX_INDEX_HOME}/modelpath/`
 
         > [!NOTE]
         >算子文件必须保证只有<term>Atlas 推理系列产品</term>的算子，不能有其他产品的算子，否则可能导致Device侧运行失败。
@@ -258,7 +258,7 @@ int main(int argc, char **argv)
 
     ```bash
     # 配置环境变量
-    export LD_LIBRARY_PATH=./lib:./lib64:./
+    export LD_LIBRARY_PATH=./lib:./lib64:./:$LD_LIBRARY_PATH
     # 配置version.info文件所在的目录
     export ASCEND_OPP_PATH=./
     ```
