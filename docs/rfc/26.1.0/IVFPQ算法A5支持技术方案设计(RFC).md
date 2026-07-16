@@ -301,21 +301,21 @@ public:
     // 构造函数
     AscendIndexIVFPQ(int dims, faiss::MetricType metric, int nlist, int msubs, int nbits,
                      AscendIndexIVFPQConfig config = AscendIndexIVFPQConfig());
-    
+
     // 析构函数
     virtual ~AscendIndexIVFPQ();
-    
+
     // 禁用拷贝构造和赋值
     AscendIndexIVFPQ(const AscendIndexIVFPQ&) = delete;
     AscendIndexIVFPQ& operator=(const AscendIndexIVFPQ&) = delete;
-    
+
     // 核心方法
     void train(idx_t n, const float* x) override;
     void copyFrom(const faiss::IndexIVFPQ* index);
     void copyTo(faiss::IndexIVFPQ* index) const;
     void remove_ids(size_t n, const idx_t* ids);
     std::vector<idx_t> update(idx_t n, const float* x, const idx_t* ids);
-    
+
 protected:
     std::shared_ptr<AscendIndexIVFPQImpl> impl_;
 };
@@ -495,21 +495,21 @@ protected:
    int m = 4;
    int nbits = 8;
    faiss::MetricType metric = faiss::METRIC_L2;
-   
+
    faiss::ascend::AscendIndexIVFPQConfig config({0});  // 使用设备0
    faiss::ascend::AscendIndexIVFPQ index(dim, metric, nlist, m, nbits, config);
-   
+
    // 训练
    int trainNum = nlist * 40;
    index.train(trainNum, trainData);
-   
+
    // 添加向量
    index.add_with_ids(ntotal, baseData, ids);
-   
+
    // 设置检索参数
    int nprobe = 64;
    index.setNumProbes(nprobe);
-   
+
    // 检索
    int k = 10;
    index.search(nq, queryData, k, distances, labels);
@@ -525,12 +525,12 @@ protected:
      - 增加nprobe值
      - 增加m值
      - 检查训练数据是否充分
-   
+
    - **性能不达预期**：
      - 检查batch size是否合理
      - 检查nprobe是否过大
      - 检查NPU利用率
-   
+
    - **内存占用过大**：
      - 检查nlist是否过大
      - 检查m值是否合理

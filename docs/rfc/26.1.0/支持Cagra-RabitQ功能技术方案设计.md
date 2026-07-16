@@ -4,7 +4,7 @@
 **作者 (Authors):** @chasefhb
 **创建日期 (Created):** 2026-05-06
 **更新日期 (Updated):** 2026-05-08
-**相关 Issue/PR:** https://gitcode.com/Ascend/IndexSDK/issues/42 (关联issue：昇腾Index组件支持Cagra-RabitQ功能)
+**相关 Issue/PR:** [#42](https://gitcode.com/Ascend/IndexSDK/issues/42)
 
 ---
 

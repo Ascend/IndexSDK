@@ -1,12 +1,12 @@
 # 快速入门
 
-本教程以 Flat 索引类型为例，帮助您通过 Docker 容器快速掌握 Index SDK 的基本使用方法，如需在宿主机原生安装 Index SDK，请参考[安装指南](./installation_guide.md)。
+本教程以 [Flat](./user_guide.md#全量检索) 索引类型为例，帮助您通过 Docker 容器快速掌握 Index SDK 的基本使用方法，如需在宿主机原生安装 Index SDK，请参考[安装指南](./installation_guide.md)。
 
 ## 前置条件
 
 开始之前请确认：
 
-- **硬件**：支持 Atlas 推理系列产品、Atlas 800I A2、Atlas 800I A3
+- **硬件**：支持 Atlas 推理系列产品、Atlas 800I A2、Atlas 800I A3，Atlas 950。可参见“[支持的硬件和操作系统](./introduction.md#支持的硬件和操作系统)”。
 - **Docker**：已安装并正确配置 Docker 环境，且当前用户可运行容器。
 
 ## 步骤 1：拉取镜像
@@ -32,7 +32,7 @@
 
 ## 步骤 3：算子生成
 
-- 以 910B4 为例（若为其他 NPU 型号，请参考[此文档](https://gitcode.com/Ascend/IndexSDK/blob/master/docs/zh/user_guide.md#flat)修改），生成 512 维 flat 算子：
+- 以 Atlas 800I A2（910B4） 为例（若为其他 NPU 型号，请参考[此文档](https://gitcode.com/Ascend/IndexSDK/blob/branch_v26.1.0/docs/zh/user_guide.md#flat)修改），生成 512 维 flat 算子：
 
 ```bash
 cd /usr/local/Ascend/mxIndex/ops && ./custom_opp_*.run
@@ -40,13 +40,16 @@ cd /usr/local/Ascend/mxIndex/tools
 python3 aicpu_generate_model.py -t 910B4
 python3 flat_generate_model.py -d 512 -t 910B4
 
+# MX_INDEX_MODELPATH为存放算子的路径，当前以/home/Ascend/modelpath为例
+export MX_INDEX_MODELPATH=/home/Ascend/modelpath
+mkdir -p ${MX_INDEX_MODELPATH}
 # 将算子模型移动到MX_INDEX_MODELPATH目录
 mv op_models/* $MX_INDEX_MODELPATH
 ```
 
 ## 步骤 4：用例测试
 
-1. 使用 Flat（暴力检索）算法进行示例测试：底库大小 100 万条，特征维度 512 维，检索向量数 128 个，TopK 为 10。创建 demo.cpp 文件，内容如下：
+1. 使用 Flat算法进行示例测试：底库大小 100 万条，特征维度 512 维，检索向量数 128 个，TopK 为 10。创建 demo.cpp 文件，内容如下：
 
     ```cpp
     #include <faiss/ascend/AscendIndexFlat.h>
