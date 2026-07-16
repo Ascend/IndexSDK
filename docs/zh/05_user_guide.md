@@ -289,6 +289,7 @@
 |[AscendIndexIVFFlat](./api/02_approximate_retrieval.md#ascendindexivfflat)|<li>特征类型：FP32</li><li>特征维度：128</li><li>距离类型：IP</li><li>计算精度：中</li><li>Device内存占用：中</li><li>适应场景：适用于亿级底库（大库容），对性能要求较高，对精度损失有容忍的近似检索场景。</li><li>仅支持<term>Atlas A2 推理系列产品</term>, <term>Atlas A3 推理系列产品</term>和<term>Ascend 950 系列产品</term></li>|<li>[AICPU](#aicpu)</li><li>[IVFFLAT](#ivfflat)</li>|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexIVFFlat.cpp">链接</a>|
 |[AscendIndexIVFPQ](./api/02_approximate_retrieval.md#ascendindexivfpq)|<li>特征类型：FP32</li><li>特征维度：128</li><li>距离类型：L2</li><li>计算精度：中（近似检索）</li><li>Device内存占用：低（基于PQ编码压缩向量）</li><li>适应场景：适用于亿级底库（大库容），对吞吐和时延要求较高，可接受一定精度损失的近似检索场景。</li><li>仅支持Ascend 950 系列产品</li>|<li>[AICPU](#aicpu)</li><li>[IVFPQ](#ivfpq)</li>|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexIVFPQ.cpp">链接</a>|
 |[AscendIndexIVFRaBitQ](./api/02_approximate_retrieval.md#ascendindexivfrabitq)|<li>特征类型：FP32</li><li>特征维度：128</li><li>距离类型：L2 & IP</li><li>计算精度：中</li><li>Device内存占用：低（压缩特征）</li><li>适应场景：适用于亿级底库（大库容），对性能要求较高，对精度损失有容忍的近似检索场景。</li><li>仅支持<term>Atlas A2 推理系列产品</term>, <term>Atlas A3 推理系列产品</term> 和<term>Ascend 950 系列产品</term></li>|<li>[AICPU](#aicpu)</li><li>[IVFRaBitQ](#ivfrabitq)</li>|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexIVFRabitQ.cpp">链接</a>|
+|[AscendIndexCagra](./api/02_approximate_retrieval.md#ascendindexcagra)|<li>特征类型：FP32</li><li>特征维度：64, 128, 256, 512</li><li>距离类型：L2</li><li>计算精度：中</li><li>Device内存占用：低（RabitQ量化压缩）</li><li>适应场景：基于图检索的近似最近邻搜索，适用于亿级底库（大库容），对性能要求较高，对精度损失有容忍的近似检索场景。</li><li>仅支持<term>Ascend 950 系列产品</term></li>|<li>[Cagra](#cagra)</li>|<a href="../../examples/">链接</a>|
 
 ### 属性过滤检索<a name="ZH-CN_TOPIC_0000001649689168"></a>
 
@@ -347,6 +348,7 @@
 - [IVFFLAT](#ivfflat)：得到IVFFLAT算法一级二级所需的距离算子。
 - [IVFPQ算子](#ivfpq)：得到IVFPQ算法一级二级三级所需的距离算子。
 - [IVFRaBitQ算子](#ivfrabitq): 得到IVFRaBitQ所需的算子。
+- [Cagra算子](#cagra)：得到Cagra图检索算法所需的算子。
 
 ### 算子生成说明<a name="ZH-CN_TOPIC_0000001456695052"></a>
 
@@ -988,6 +990,90 @@ VSTAR检索当前只支持<term>Atlas 推理系列产品</term>，涉及VSTAR业
 **运行时诊断（开发调试）<a name="ivfrabitq-runtime-debug-ref"></a>**
 
 排查 coarse centroid 上传或 L1 粗排异常时，可通过调试环境变量分阶段定位故障点（默认关闭，不影响性能）。环境变量说明见《[附录](./09_appendix.md#ivfrabitq-debug-env)》，操作步骤与日志解读见《[常用操作 — IVFRaBitQ 运行时诊断](./08_common_operations.md#ivfrabitq-runtime-debug)》。
+
+#### Cagra<a name="ZH-CN_TOPIC_0000002513317245"></a>
+
+<a name="table_cagra_op"></a>
+<table><tbody><tr id="row_cagra_op_1"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.1.1"><p id="p_cagra_op_1"><a name="p_cagra_op_1"></a><a name="p_cagra_op_1"></a>用法</p>
+</th>
+<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.1.1 "><p id="p_cagra_op_2"><a name="p_cagra_op_2"></a><a name="p_cagra_op_2"></a>python3 cagra_generate_model.py -d &lt;dim&gt; -data_base &lt;data_base&gt; -degree &lt;degree&gt; -topK &lt;topK&gt; -p &lt;process_id&gt; -t &lt;npu_type&gt;</p>
+</td>
+</tr>
+<tr id="row_cagra_op_2"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.2.1"><p id="p_cagra_op_3"><a name="p_cagra_op_3"></a><a name="p_cagra_op_3"></a>参数名称</p>
+</th>
+<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.2.1 "><p id="p_cagra_op_4"><a name="p_cagra_op_4"></a><a name="p_cagra_op_4"></a>&lt;dim&gt;：特征向量维度，默认值为"128"。</p>
+<p id="p_cagra_op_5"><a name="p_cagra_op_5"></a><a name="p_cagra_op_5"></a>&lt;data_base&gt;：底库数据量，默认值为"1000000"。</p>
+<p id="p_cagra_op_6"><a name="p_cagra_op_6"></a><a name="p_cagra_op_6"></a>&lt;degree&gt;：图度数，默认值为"64"。</p>
+<p id="p_cagra_op_7"><a name="p_cagra_op_7"></a><a name="p_cagra_op_7"></a>&lt;topK&gt;：检索返回的最近邻个数，默认值为"64"。</p>
+<p id="p_cagra_op_8"><a name="p_cagra_op_8"></a><a name="p_cagra_op_8"></a>&lt;process_id&gt;：批量生成算子多进程调度的进程ID，默认值为"0"，无需设置。</p>
+<p id="p_cagra_op_9"><a name="p_cagra_op_9"></a><a name="p_cagra_op_9"></a>&lt;npu_type&gt;：硬件形态，默认值为"Ascend950PR"。</p>
+<p id="p_cagra_op_10"><a name="p_cagra_op_10"></a><a name="p_cagra_op_10"></a>--help | -h：查询帮助信息。</p>
+</td>
+</tr>
+<tr id="row_cagra_op_3"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.3.1"><p id="p_cagra_op_11"><a name="p_cagra_op_11"></a><a name="p_cagra_op_11"></a>说明</p>
+</th>
+<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.3.1 "><p id="p_cagra_op_12"><a name="p_cagra_op_12"></a><a name="p_cagra_op_12"></a>执行此命令，用户可以得到一组算子模型文件，用户需要自行修改命令中的参数。例如对于<term>Ascend 950 系列产品</term> 生成128维，底库100万，图度数64，topK 64的算子：python3 cagra_generate_model.py -d 128 -data_base 1000000 -degree 64 -topK 64 -t Ascend950PR</p>
+</td>
+</tr>
+<tr id="row_cagra_op_4"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.4.1"><p id="p_cagra_op_13"><a name="p_cagra_op_13"></a><a name="p_cagra_op_13"></a>约束说明</p>
+</th>
+<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.4.1 "><a name="ul_cagra_op_1"></a><a name="ul_cagra_op_1"></a><ul id="ul_cagra_op_1"><li>仅支持<term>Ascend 950 系列产品</term></li><li>dim ∈ {64, 128, 256, 512}</li><li>degree ∈ {64, 128, 256, 512}</li></ul>
+</td>
+</tr>
+</tbody>
+</table>
+
+##### Cagra构图脚本<a name="section_cagra_build"></a>
+
+**环境配置**
+
+环境依赖库参见如下：
+
+- joblib（version ≥ 1.3.0）
+
+可通过**pip install**命令安装，命令执行参考如下。
+
+```bash
+pip install joblib
+```
+
+**训练脚本执行**
+
+Cagra构图脚本 "graph_build.py" 用于构建CAGRA图检索算法所需的图文件（脚本位于安装目录下的"tools/train"文件夹中）。
+
+<a name="table_cagra_build"></a>
+<table><tbody><tr id="row_cagra_build_1"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.1.1"><p id="p_cagra_build_1"><a name="p_cagra_build_1"></a><a name="p_cagra_build_1"></a>命令参考</p>
+</th>
+<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.1.1 "><p id="p_cagra_build_2"><a name="p_cagra_build_2"></a><a name="p_cagra_build_2"></a>python3 graph_build.py --input_filepath &lt;input_filepath&gt; --output_filepath &lt;output_filepath&gt; --graph_degree &lt;graph_degree&gt; --intermediate_degree &lt;intermediate_degree&gt; --nn_descent_niter &lt;nn_descent_niter&gt; --eval_samples &lt;eval_samples&gt;</p>
+</td>
+</tr>
+<tr id="row_cagra_build_2"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.2.1"><p id="p_cagra_build_3"><a name="p_cagra_build_3"></a><a name="p_cagra_build_3"></a>参数名称</p>
+</th>
+<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.2.1 "><p id="p_cagra_build_4"><a name="p_cagra_build_4"></a><a name="p_cagra_build_4"></a>&lt;input_filepath&gt;：输入目录路径，需包含"sift_base.fvecs"（底库数据）和"sift_query.fvecs"（查询数据）。该参数为必填项。</p>
+<p id="p_cagra_build_5"><a name="p_cagra_build_5"></a><a name="p_cagra_build_5"></a>&lt;output_filepath&gt;：输出目录路径，生成的KNN图文件存储在该目录下。该参数为必填项。</p>
+<p id="p_cagra_build_6"><a name="p_cagra_build_6"></a><a name="p_cagra_build_6"></a>&lt;graph_degree&gt;：最终图的出度，建议与搜索算子的GRAPH_DEGREE保持一致。类型为int，默认值为"64"。要求大于0。</p>
+<p id="p_cagra_build_7"><a name="p_cagra_build_7"></a><a name="p_cagra_build_7"></a>&lt;intermediate_degree&gt;：中间图的出度，必须大于等于&lt;graph_degree&gt;。若该值不是32的倍数，将自动向上取整为最近的32的倍数。类型为int，默认值为"128"。</p>
+<p id="p_cagra_build_8"><a name="p_cagra_build_8"></a><a name="p_cagra_build_8"></a>&lt;nn_descent_niter&gt;：NN-Descent迭代次数。迭代次数越大，图质量越高但构建时间越长。建议设置足够的迭代次数使得R@1/10/32/64均不低于0.995。类型为int，默认值为"10"。要求大于0。</p>
+<p id="p_cagra_build_9"><a name="p_cagra_build_9"></a><a name="p_cagra_build_9"></a>&lt;eval_samples&gt;：评估图质量时使用的采样点数。设为"0"则跳过评估。类型为int，默认值为"1000"。</p>
+<p id="p_cagra_build_10"><a name="p_cagra_build_10"></a><a name="p_cagra_build_10"></a>--help | -h：查询帮助信息。</p>
+</td>
+</tr>
+<tr id="row_cagra_build_3"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.3.1"><p id="p_cagra_build_11"><a name="p_cagra_build_11"></a><a name="p_cagra_build_11"></a>使用说明</p>
+</th>
+<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.3.1 "><a name="ul_cagra_build_1"></a><a name="ul_cagra_build_1"></a><ul id="ul_cagra_build_1"><li>执行此命令，在&lt;output_filepath&gt;对应的目录下生成以下文件：knn_graph.bin（KNN图文件）、data_ptr.bin（底库数据文件）、visited_map.bin（访问标记文件）和queries.bin（查询数据文件）。</li><li>当输出文件存在时，将执行覆盖写，此种情况程序执行用户应该是文件的属主。</li><li>&lt;intermediate_degree&gt;必须大于等于&lt;graph_degree&gt;，否则程序将报错。</li><li>构建过程中会打印每次迭代后的R@1/10/32/64召回率，建议持续迭代直至召回率稳定（建议R@1/10/32/64均不低于0.995）。</li><li>构图过程中会占用较多CPU和内存资源，建议在内存充足的环境下执行。</li></ul>
+</td>
+</tr>
+<tr id="row_cagra_build_4"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.4.1"><p id="p_cagra_build_12"><a name="p_cagra_build_12"></a><a name="p_cagra_build_12"></a>调用示例</p>
+</th>
+<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.4.1 "><p id="p_cagra_build_13"><a name="p_cagra_build_13"></a><a name="p_cagra_build_13"></a>python3 graph_build.py --input_filepath /home/user/data/sift_origin --output_filepath /home/user/output/iter_64_192 --graph_degree 64 --intermediate_degree 128 --nn_descent_niter 10</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+**涉及算法<a name="section_cagra_algo"></a>**
+
+[AscendIndexCagra](./api/02_approximate_retrieval.md#ascendindexcagra)
 
 #### VSTAR生成码本文件<a name="ZH-CN_TOPIC_0000002008789068"></a>
 
