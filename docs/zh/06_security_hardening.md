@@ -2,7 +2,7 @@
 
 ## 安全要求<a name="ZH-CN_TOPIC_0000001456695036"></a>
 
-使用API读取文件时，用户需要保证该文件的owner必须为自己，且权限不大于640，避免发生提权等安全问题。
+使用 API 读取文件时，用户需要保证该文件的 owner 必须为自己，且权限不大于 640，避免发生提权等安全问题。
 
 外部下载的软件代码或程序可能存在风险，功能的安全性需由用户保证。
 
@@ -18,7 +18,7 @@
 
 ### 设置umask<a name="ZH-CN_TOPIC_0000001499751300"></a>
 
-建议用户将宿主机和容器中的umask设置为027及以上，提高文件权限。
+建议用户将宿主机和容器中的 umask 设置为 027 及以上，提高文件权限。
 
 以设置umask为027为例，具体操作如下所示。
 
@@ -47,7 +47,7 @@
 
 ### 防DoS攻击<a name="ZH-CN_TOPIC_0000001550671317"></a>
 
-用户可以按IP限制与服务器的连接的速率对系统进行防DoS攻击，方法包括但不限于利用Linux系统自带iptables防火墙进行预防、优化sysctl参数等。具体使用方法，用户可自行查阅相关资料。
+用户可以按IP限制与服务器的连接的速率对系统进行防DoS攻击，方法包括但不限于利用 Linux 系统自带 iptables 防火墙进行预防、优化 sysctl 参数等。具体使用方法，请参见 [iptables(8) 手册](https://man7.org/linux/man-pages/man8/iptables.8.html) 与 [Linux 内核 sysctl 文档](https://www.kernel.org/doc/Documentation/sysctl/)。
 
 ## 检索使用安全加固<a name="ZH-CN_TOPIC_0000001742120313"></a>
 
@@ -57,12 +57,12 @@
 
 **OMP设置<a name="section62161855233"></a>**
 
-如果需要修改OMP相关配置，请评估系统的内存、线程数等资源限制，否则可能导致运行异常，例如可以通过设置${OMP_NUM_THREADS}环境变量来控制并发量。OMP的相关设置请参考OMP官方指导。
+如果需要修改 OMP 相关配置，请评估系统的内存、线程数等资源限制，否则可能导致运行异常，例如可以通过设置 `${OMP_NUM_THREADS}` 环境变量来控制并发量。OMP 的相关设置请参考 [OpenMP 官方规范](https://www.openmp.org/specifications/)。
 
 **接口使用<a name="section8919813343"></a>**
 
 检索接口大多采用C语言的入参形式，因此需要用户保证输入指针的长度为有效值，否则可能导致运行异常。
 
-**和faiss::Index的相互转换<a name="section943033715416"></a>**
+**和 faiss::Index 的相互转换<a name="section943033715416"></a>**
 
-检索提供和faiss::Index的相互转换功能，请确保copyTo输出的faiss::Index不会被修改，否则可能导致copyFrom异常；index\_ascend\_to\_cpu、index\_int8\_ascend\_to\_cpu、index\_cpu\_to\_ascend、index\_int8\_cpu\_to\_ascend等接口同理。
+检索提供和 faiss::Index 的相互转换功能，请确保 copyTo 输出的 faiss::Index 不会被修改，否则可能导致 copyFrom 异常；`index_ascend_to_cpu`、`index_int8_ascend_to_cpu`、`index_cpu_to_ascend`、`index_int8_cpu_to_ascend` 等接口同理。

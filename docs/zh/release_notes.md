@@ -25,9 +25,9 @@
 
 ### 相关产品版本配套说明
 
-**表 1**  Index SDK软件版本配套表
+**表 1** Index SDK 软件版本配套表
 
-| Index SDK   | CANN版本 | Ascend HDK版本 |
+| Index SDK | CANN 版本 | Ascend HDK 版本 |
 | ------------ | ------------- | ------------ |
 | 26.1.0       | 9.0.0           | 26.1.0       |
 
@@ -37,7 +37,7 @@
 >
 > 本节表格中“/”表示不可配套，“Y”表示可配套。
 
-**表 2**  Index SDK与CANN版本兼容
+**表 2** Index SDK 与 CANN 版本兼容
 
 <table style="table-layout: fixed; width: 433px"><colgroup>
 <col style="width: 156px">
@@ -48,7 +48,7 @@
 <thead>
   <tr>
     <th rowspan="2">Index SDK</th>
-    <th colspan="3">CANN版本</th>
+    <th colspan="3">CANN 版本</th>
   </tr>
   <tr>
     <th>8.5.0</th>
@@ -77,7 +77,7 @@
 </tbody>
 </table>
 
-**表 3**  Index SDK与Ascend HDK版本兼容
+**表 3** Index SDK 与 Ascend HDK 版本兼容
 
 <table style="table-layout: fixed; width: 433px"><colgroup>
 <col style="width: 156px">
@@ -88,7 +88,7 @@
 <thead>
   <tr>
     <th rowspan="2">Index SDK</th>
-    <th colspan="3">Ascend HDK版本</th>
+    <th colspan="3">Ascend HDK 版本</th>
   </tr>
   <tr>
     <th>25.5.0</th>
@@ -127,7 +127,7 @@
 
 |特性名称|特性描述|配套产品型号|
 |---------|--------------------------------------------|----------|
-|Index SDK|<li>TS FlatIP,Int8Cos支持A2 A3：A2底库6千万，A3底库1.25亿，256维度，batch1-256，topk200。</li><li>A2,A3支持IVF-RabitQ：底库1000万，128维度，topk300，数据精度FP32。</li>|Atlas 800I A3 超节点服务器<br>Atlas 800I A2 推理服务器|
+|Index SDK|<li>TS FlatIP, Int8Cos 支持 A2 A3：A2 底库 6 千万，A3 底库 1.25 亿，256 维度，batch1-256，topk200。</li><li>A2, A3 支持 IVF-RabitQ：底库 1000 万，128 维度，topk300，数据精度 FP32。</li>|Atlas 800I A3 超节点服务器<br>Atlas 800I A2 推理服务器|
 
 ### 业务接口变更
 

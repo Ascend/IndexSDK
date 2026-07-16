@@ -16,9 +16,9 @@
    - 根据当前硬件型号选择对应的镜像版本，注意区分昇腾芯片型号。
    - 根据芯片型号选择对应的镜像拉取命令：
 
-    对于Atlas 推理系列产品，可在安装昇腾AI处理器的服务器执行npu-smi info命令进行查询，将查询到的“Name”<a name="npu_type"></a>最后一位数字删除，即是npu_type的取值。
-    对于Atlas 800I A2 推理服务器，可在安装昇腾AI处理器的服务器执行npu-smi info命令进行查询，查询到的“Name”即是npu_type的取值。
-    对于Atlas 800I A3 超节点服务器，可以通过npu-smi info -t board -i 0 -c 0命令进行查询，获取NPU Name信息，910_NPU Name即是npu_type的取值。
+    对于 Atlas 推理系列产品，可在安装昇腾 AI 处理器的服务器执行 npu-smi info 命令进行查询，将查询到的"Name"最后一位数字删除，即是npu_type的取值。<a name="npu_type"></a>
+    对于 Atlas 800I A2 推理服务器，可在安装昇腾 AI 处理器的服务器执行 npu-smi info 命令进行查询，查询到的"Name"即是npu_type的取值。
+    对于 Atlas 800I A3 超节点服务器，可以通过 npu-smi info -t board -i 0 -c 0 命令进行查询，获取NPU Name信息，910_NPU Name即是npu_type的取值。
 
    | 芯片型号 | 拉取命令 |
    |---------|---------|
@@ -34,11 +34,11 @@
 
 ### 2.1 手动挂载设备
 
-- 设备挂载 ：通过 --device 参数将宿主机的设备文件映射到容器中，确保容器能够访问指定的硬件资源。/dev/davinci为NPU加速卡（按需挂载），/dev/davinci_manager, /dev/devmm_svm， /dev/hisi_hdc为NPU管理设备（全部挂载）。
+- 设备挂载：通过 --device 参数将宿主机的设备文件映射到容器中，确保容器能够访问指定的硬件资源。/dev/davinci为NPU加速卡（按需挂载），/dev/davinci_manager, /dev/devmm_svm， /dev/hisi_hdc为NPU管理设备（全部挂载）。
 
-- 驱动与工具链挂载 ：将宿主机上的驱动文件和工具链目录（如 /usr/local/Ascend/driver 和 /usr/local/bin/npu-smi）以只读方式挂载到容器中，保证容器内的运行环境与宿主机一致。 以下样例代码中，/dev/davinci1 表示挂载 1 号设备。
+- 驱动与工具链挂载：将宿主机上的驱动文件和工具链目录（如 /usr/local/Ascend/driver 和 /usr/local/bin/npu-smi）以只读方式挂载到容器中，保证容器内的运行环境与宿主机一致。以下样例代码中，/dev/davinci1 表示挂载 1 号设备。
 
-- -ti后接对应的镜像标签，例如：-it swr.cn-south-1.myhuaweicloud.com/ascendhub/indexsdk:26.0.0-910b-ubuntu22.04-py3.11
+- 说明：-ti 后接对应的镜像标签，例如：-it swr.cn-south-1.myhuaweicloud.com/ascendhub/indexsdk:26.0.0-910b-ubuntu22.04-py3.11
 
 ```bash
 docker run \
@@ -72,11 +72,11 @@ cd /usr/local/Ascend/mxIndex/tools
 python3 aicpu_generate_model.py -t <npu_type>
 python3 flat_generate_model.py -d 512 -t <npu_type>
 
-# 以 Atlas 800I A2服务器上，910B4为例：
+# 以 Atlas 800I A2 服务器上，910B4 为例：
 # python3 aicpu_generate_model.py -t 910B4
 # python3 flat_generate_model.py -d 512 -t 910B4
 
-# MX_INDEX_MODELPATH为存放算子的路径，当前以/home/Ascend/modelpath为例
+# MX_INDEX_MODELPATH 为存放算子的路径，当前以/home/Ascend/modelpath为例
 export MX_INDEX_MODELPATH=/home/Ascend/modelpath
 mkdir -p ${MX_INDEX_MODELPATH}
 # 将算子模型移动到MX_INDEX_MODELPATH目录
@@ -85,7 +85,7 @@ mv op_models/* $MX_INDEX_MODELPATH
 
 ## 步骤 4：用例测试
 
-1. 使用 Flat算法进行示例测试：底库大小 100 万条，特征维度 512 维，检索向量数 128 个，TopK 为 10。创建 demo.cpp 文件，内容如下：
+1. 使用 Flat 算法进行示例测试：底库大小 100 万条，特征维度 512 维，检索向量数 128 个，TopK 为 10。创建 demo.cpp 文件，内容如下：
 
     ```cpp
     #include <faiss/ascend/AscendIndexFlat.h>
