@@ -191,7 +191,7 @@ int main(int argc, char **argv)
 
 2. 代码需要使用CANN内置的HCC编译器（默认CANN安装路径下，编译器路径为“/usr/local/Ascend/ascend-toolkit/latest/toolkit/toolchain/hcc/bin/aarch64-target-linux-gnu-g++”）进行编译，编译完成后部署到Device侧（具体请参见《CANN 软件安装指南 （开放态,  <term>Atlas 推理系列产品</term>）》的“[定制文件系统](https://www.hiascend.com/document/detail/zh/canncommercial/82RC1/openform/instguide310/instgopen_0007.html)”章节进行部署）。
 
-    如果需通过SSH服务直接拷贝依赖到Device侧或通过SSH登录到Device上直接运行样例，则需要参考《CANN 软件安装指南 \(开放态,  <term>Atlas 推理系列产品</term>\)》的“[使用DSMI接口打开SSH服务](https://www.hiascend.com/document/detail/zh/canncommercial/82RC1/openform/instguide310/instgopen_0056.html)”章节解除SSH服务的50M内存占用限制，否则无法发送全部依赖文件，用例无法执行。
+    如果需通过SSH服务直接拷贝依赖到Device侧或通过SSH登录到Device上直接运行样例，则需要参考《CANN 软件安装指南 \(开放态,  <term>Atlas 推理系列产品</term>\)》的“[使用DSMI接口打开SSH服务](https://www.hiascend.com/document/detail/zh/canncommercial/82RC1/openform/instguide310/instgopen_0056.html)”章节解除SSH服务的50MB内存占用限制，否则无法发送全部依赖文件，用例无法执行。
 
 3. 算子om文件生成。
 
@@ -213,18 +213,18 @@ int main(int argc, char **argv)
     /usr/local/Ascend/ascend-toolkit/latest/toolkit/toolchain/hcc/bin/aarch64-target-linux-gnu-g++ -fPIC -fPIE -fstack-protector-all -D_FORTIFY_SOURCE=2 -O2 \
     -o IndexILDemo IndexILDemo.cpp \
     -fopenmp -O3 -frename-registers -fpeel-loops -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack -pie -s \
-    -I/usr/local/AscendMiniOs/acllib/include/ \
+    -I/usr/local/AscendMiniOSRun/acllib/include/ \
     -I../include \
     -I../device/include \
     -L../device/lib \
-    -L/usr/local/AscendMiniOs/acllib/lib64/stub \
+    -L/usr/local/AscendMiniOSRun/acllib/lib64/stub \
     -L/usr/local/Ascend/driver/lib64/common \
     -lascendcl -lascend_hal -lc_sec -lascendfaiss_minios
     ```
 
 5. 部署依赖。
     - 在可执行二进制文件的同级路径下需要配置路径“modelpath”，放置步骤3生成的算子文件。
-    - CANN的相关库依赖，需要将“/usr/local/AscendMiniOs/aarch64-linux/lib64”部署到Device侧，并配置到“LD\_LIBRARY\_PATH”。
+    - CANN的相关库依赖，需要将“/usr/local/AscendMiniOSRun/aarch64-linux/lib64”部署到Device侧，并配置到“LD\_LIBRARY\_PATH”。
     - 将动态库（mxIndex/device/lib/libascendfaiss\_minios.so）部署到Device侧，并配置到环境变量“LD\_LIBRARY\_PATH”。
 
 ## 在Device侧运行检索业务<a name="ZH-CN_TOPIC_0000001696207262"></a>
@@ -234,9 +234,9 @@ int main(int argc, char **argv)
 **前提条件<a name="section178968232301"></a>**
 
 - 已经按照开放态的流程安装CANN，确保“/usr/local/AscendMiniOSRun/”文件夹已存在。具体操作请参见《[CANN 软件安装指南 (开放态, <term>Atlas 推理系列产品</term>)](https://www.hiascend.com/document/detail/zh/canncommercial/82RC1/openform/instguide310/instgopen_0002.html)》。
-- 已经解除SSH服务的50M内存占用限制，确保可以发送全部依赖文件。具体操作可参考《CANN 软件安装指南 (开放态,  <term>Atlas 推理系列产品</term>)》的“[使用DSMI接口打开SSH服务](https://www.hiascend.com/document/detail/zh/canncommercial/82RC1/openform/instguide310/instgopen_0056.html)”章节。
+- 已经解除SSH服务的50MB内存占用限制，确保可以发送全部依赖文件。具体操作可参考《CANN 软件安装指南 (开放态,  <term>Atlas 推理系列产品</term>)》的“[使用DSMI接口打开SSH服务](https://www.hiascend.com/document/detail/zh/canncommercial/82RC1/openform/instguide310/instgopen_0056.html)”章节。
 - Host侧需为ARM架构。
-- P2P内存在device侧预留4G，该部分内存默认不可用。若要使用这部分内存，达到最大库容，需使用**npu-smi info set -t p2p-mem-cfg -i "id" -d "value"**命令设置芯片BAR空间拷贝使能状态为“禁用”状态。命令使用可参考《Atlas 中心推理卡 25.3.RC1 npu-smi 命令参考》中的“[设置指定芯片BAR空间拷贝使能状态](https://support.huawei.com/enterprise/zh/doc/EDOC1100523602/dbbc4954)”章节。
+- P2P内存在device侧预留4GB，该部分内存默认不可用。若要使用这部分内存，达到最大库容，需使用**npu-smi info set -t p2p-mem-cfg -i "id" -d "value"**命令设置芯片BAR空间拷贝使能状态为“禁用”状态。命令使用可参考《Atlas 中心推理卡 25.3.RC1 npu-smi 命令参考》中的“[设置指定芯片BAR空间拷贝使能状态](https://support.huawei.com/enterprise/zh/doc/EDOC1100523602/dbbc4954)”章节。
 
 **操作步骤<a name="section16775174716308"></a>**
 
@@ -244,7 +244,7 @@ int main(int argc, char **argv)
 2. 将以下依赖的库传输到Device侧上。
     - openblas：/opt/OpenBLAS/lib
     - Faiss：/usr/local/faiss/faiss1.10.0/lib
-    - 运行态toolkit so/usr/local/AscendMiniOSRun/acllib/lib64和/usr/local/AscendMiniOSRun/aarch64-linux/data
+    - 运行态toolkit so：/usr/local/AscendMiniOSRun/acllib/lib64和/usr/local/AscendMiniOSRun/aarch64-linux/data
     - 检索so：$\{MX\_INDEX\_HOME\}/mxIndex/host/lib，其中\{MX\_INDEX\_HOME\}为Index SDK的安装目录。
     - Host侧编译器中的libgfortran.so：/usr/lib/aarch64-linux-gnu/libgfortran.so\*
     - Demo编译出来的二进制
@@ -263,7 +263,7 @@ int main(int argc, char **argv)
     export ASCEND_OPP_PATH=./
     ```
 
-4. 登录到Device侧，运行用例。
+4. 登录到Device侧，运行用例。执行命令：./IndexILDemo
 
 ## 修订记录<a name="ZH-CN_TOPIC_0000001682175202"></a>
 

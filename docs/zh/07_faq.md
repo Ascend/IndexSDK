@@ -106,7 +106,7 @@ IVFSQT算法在添加较大底库后，update接口会使用IndexFlat来进行CP
 
 **解决方案<a name="section18586112214564"></a>**
 
-Faiss源码的exhaustive_L2sqr_seq接口中去掉omp的num_threads(nt)约束后，重新编译安装Faiss 1.10.0版本。多卡场景可设置export OMP_NUM_THREADS=2。
+Faiss源码的exhaustive_L2sqr_seq接口中去掉omp的num_threads(nt)约束后,重新编译安装Faiss 1.10.0版本,多卡场景可设置export OMP_NUM_THREADS=2.
 
 ## 生成算子常见问题<a name="ZH-CN_TOPIC_0000002283337613"></a>
 
@@ -179,7 +179,7 @@ export IGNORE_INFER_ERROR=1
 请执行以下命令导入环境变量。
 
 ```bash
-export LD_PRELOAD={…/libgomp.so}  # 请将{}里的内容替换成libgomp.so文件的实际路径
+export LD_PRELOAD=/path/to/libgomp.so  # 请将/path/to替换为libgomp.so文件的实际路径
 ```
 
 ### 部分操作系统下生成算子失败<a name="ZH-CN_TOPIC_0000002356700501"></a>

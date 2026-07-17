@@ -21,7 +21,7 @@
 
 |类名/API原型|变更类别|变更说明|变更版本|
 |--|--|--|--|
-|AscendIndexCluster的[Init](./01_full_retrieval.md#init接口)|修改|AscendIndexCluster算法Init接口resourceSize变量使用默认值128M。|6.0.RC2|
+|AscendIndexCluster的[Init](./01_full_retrieval.md#init接口)|修改|AscendIndexCluster算法Init接口resourceSize变量使用默认值128MB。|6.0.RC2|
 |AscendIndexBinaryFlat的AscendIndexBinaryFlat构造函数|修改|AscendIndexBinaryFlat构造函数新增参数usedFloat，用于设置入库为二进制、检索特征为float类型的检索方式（search接口）的性能提升。|6.0.RC2|
 |AscendIndexBinaryFlat的[search接口](./02_approximate_retrieval.md#search接口)|新增|AscendIndexBinaryFlat新增入库特征为二进制特征，检索特征为float类型的检索方式。|6.0.RC2|
 |AscendIndexInt8Flat的[AscendIndexInt8FlatConfig](./01_full_retrieval.md#ascendindexint8flatconfig)（表2）|修改|“resourceSize”配置的值不超过16 \* 1024MB（16 \* 1024 \* 1024 \* 1024字节）。|6.0.RC3|
@@ -41,7 +41,7 @@
 |AscendIndexIVFSQT的[setNumProbes](./02_approximate_retrieval.md#setnumprobes接口)|退出声明|预计2025年9月废除，请使用setSearchParams|6.0.RC3|
 |AscendIndexIVFSQT的[updateTParams](./02_approximate_retrieval.md#updatetparams接口)|退出声明|预计2025年9月废除，请使用setSearchParams|6.0.RC3|
 |AscendIndexTS的[SetSaveHostMemory](./03_attribute_filtering-based_retrieval.md#setsavehostmemory接口)|新增|设置使用节约host内存模式的接口|6.0.0|
-|AscendIndex的[add](./01_full_retrieval.md#add接口)|新增|Flat算法新增支持FP16数据底库入库函数|6.0.0|
+|AscendIndexFlat的[add](./01_full_retrieval.md#add接口)|新增|Flat算法新增支持FP16数据底库入库函数|6.0.0|
 |AscendIndex的[add_with_ids](./01_full_retrieval.md#add_with_ids接口)|新增|Flat算法新增支持FP16数据底库带id入库函数|6.0.0|
 |AscendIndex的[search](./01_full_retrieval.md#search接口)|新增|Flat算法新增支持FP16数据检索函数|6.0.0|
 |AscendIndexFlat[search_with_masks](./01_full_retrieval.md#search_with_masks接口)|新增|Flat算法新增支持FP16数据带mask检索函数|6.0.0|
@@ -73,7 +73,7 @@
 >- 由于部分特征检索的输入为指针类型的输入，请用户确保此类指针为合法值，以防止特征检索的运行过程中可能产生的越界读写等潜在风险和问题。此外，特征检索是助力昇腾AI处理器完成向量检索计算，因此输入的Device ID需要用户确保为合法值，否则可能因为连接设备侧失败导致功能失效。
 >- [Faiss](https://github.com/facebookresearch/faiss)是在业界使用非常广泛的向量检索加速库，为了便于生态用户将向量检索聚类业务快速从CPU/GPU平台迁移到昇腾平台，昇腾平台众多算法的基类AscendIndex继承自faiss::Index类，faiss::Index类中d、ntotal等成员变量为public，在使用AscendIndex和AscendIndexInt8各子类过程中，请勿直接修改此类public成员变量。
 >- 本文档不再描述基类faiss::Index的成员函数和变量。
->- 关于Config类中的resourceSize变量，其作用是预留特征检索过程存储中间结果的内存大小，单位为Byte，当底库特征较大（如超过300万）且查询请求数较大时需要调大，避免检索过程中因申请临时内存导致性能抖动（衰退），建议设置为1024 \* 1024 \* 1024 Byte。
+>- 关于Config类中的resourceSize变量，其作用是预留特征检索过程存储中间结果的内存大小，单位为Byte，当底库特征较大（如超过300万）且查询请求数较大时需要调大，避免检索过程中因申请临时内存导致性能抖动（衰退），建议设置为1024 \* 1024 \* 1024Byte。
 > 创建新的Index时，将会与已申请的resources进行对比，如存在差异则会释放原有内存资源并参照最新Index的resources重新申请，建议保持Index整体的resources值一致。
 >- 用户可以通过设置“MX\_INDEX\_SYNCHRONIZE\_STREAM\_TIME”环境变量设置算子执行的超时时间，单位为“ms”，取值范围\[60000, 1800000\]，默认为“300000”。
 
