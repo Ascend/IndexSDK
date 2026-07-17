@@ -705,10 +705,10 @@ A2/A3 NPU
    ```bash
    # 生成 Mask 生成算子模型
    python3 mask_generate_model.py -token 2500 -pool 16
-   
+
    # 生成 FlatIP 算子模型
    python3 flat_generate_model.py
-   
+
    # 生成 Int8Cos 算子模型
    python3 int8flat_generate_model.py
    ```
@@ -719,19 +719,19 @@ A2/A3 NPU
    // 创建 TS FlatIP 索引
    faiss::ascend::AscendIndexTS index;
    index.Init(device_id, dim, tokenNum, faiss::ascend::AlgorithmType::FLAT_IP_FP16);
-   
+
    // 添加向量
    std::vector<faiss::ascend::FeatureAttr> attrs(n);
    // 设置 attrs[i].time 和 attrs[i].tokenId
    index.AddFeature(n, vectors, attrs.data(), labels);
-   
+
    // 检索
    faiss::ascend::AttrFilter attrFilter;
    attrFilter.timesStart = startTime;
    attrFilter.timesEnd = endTime;
    attrFilter.tokenBitSet = tokenBitSet;  // 按位表示的token集合
    attrFilter.tokenBitSetLen = tokenBitSetLen;
-   
+
    index.Search(queryNum, queries, &attrFilter, true, k, labels, distances, validNums);
 
    ```
@@ -844,7 +844,7 @@ A2/A3 NPU
 
 - [Faiss 官方文档](https://github.com/facebookresearch/faiss)
 
-- [IndexSDK 用户指南](../../zh/user_guide.md)
+- [IndexSDK 用户指南](../../zh/05_user_guide.md)
 
 - [Ascend NPU 开发文档](https://www.hiascend.com/document)
 
