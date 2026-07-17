@@ -33,7 +33,7 @@ export ASCEND_GLOBAL_LOG_LEVEL=1
 > [!NOTE]
 >
 >- 对于容器化场景中使用检索功能，应用类日志位于容器中，需要将日志目录挂载到宿主机才能实现持久化，否则日志将在容器退出时被销毁。
->- 应用类日志没有老化，日志会不断增多，因此需要用户定期清理该目录（可以使用系统自带的**logrotate**实现日志切分），否则可能导致磁盘空间不足，影响业务正常运行。
+>- 应用类日志未配置自动轮转，日志会不断增多，因此需要用户定期清理该目录（可以使用系统自带的**logrotate**实现日志切分），否则可能导致磁盘空间不足，影响业务正常运行。
 >- 软件包的安装升级卸载等管理面的相关日志会保存至“$HOME/log/mxIndex/deployment.log”，文件中保存有登录用户的用户名、访问端地址以及hostname，用于支持后续的日志记录及审计的操作。
 
 ## IVFRaBitQ 运行时诊断<a name="ivfrabitq-runtime-debug"></a>
@@ -44,7 +44,7 @@ AscendIndexIVFRaBitQ 提供三组**可选**调试环境变量，用于排查 coa
 >
 >- 环境变量在**进程启动时**读取，需在运行应用程序或测试用例**之前** export。
 >- 诊断日志输出至 stderr 及 APP 日志（`IVFRABITQ_VERIFY_COARSE_CENTER`）；建议重定向到 `.log` 文件便于 grep。
->- `VerifyFullD2H` 与 L1 golden 对比会触发全量 D2H，**不要在性能基准测试中常开**。
+>- `IVFRABITQ_VERIFY_L1_DIST` 与 L1 golden 对比会触发全量 D2H，**不要在性能基准测试中常开**。
 >- 修改 `RotateAndL2AtFP32` 算子后须重新编译部署 custom opp，否则诊断结果可能仍反映旧版算子行为。
 
 ### 环境变量说明
