@@ -668,7 +668,7 @@ AscendCloner接口的配置参数。
 
 Index SDK提供了将NPU上的检索Index资源拷贝到CPU侧Faiss的操作，拷贝过程发生在内存中，原始NPU的Index上加载的数据会被拷贝到CPU侧的内存中，方便用户在CPU上使用相同的底库执行检索。
 
-> [!NOTE] 
+> [!NOTE]
 >部分版本的Faiss中提供了将内存中的Index落盘（内存中的数据保存到本地硬盘）的方法，用户在基于Index SDK和Faiss处理某些敏感数据时需要特别注意提供对应的权限控制和加密保护。
 
 ### index\_ascend\_to\_cpu接口<a name="ZH-CN_TOPIC_0000001506334821"></a>

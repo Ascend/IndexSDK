@@ -22,7 +22,7 @@
 
 ### IVFRaBitQ 调试环境变量<a name="ivfrabitq-debug-env"></a>
 
-以下环境变量用于 AscendIndexIVFRaBitQ 开发调试，**默认不设置**（关闭）。详细用法与日志解读参见《[常用操作](./common_operations.md#ivfrabitq-runtime-debug)》。
+以下环境变量用于 AscendIndexIVFRaBitQ 开发调试，**默认不设置**（关闭）。详细用法与日志解读参见《[常用操作](./08_common_operations.md#ivfrabitq-runtime-debug)》。
 
 **表 2** IVFRaBitQ 调试环境变量
 
@@ -89,7 +89,7 @@ int main(int argc, char **argv)
 
 ### IndexILFlat<a name="ZH-CN_TOPIC_0000001506334833"></a>
 
-IndexILFlat为纯Device侧检索方案，利用昇腾AI处理器和AI Core等资源进行各个接口的使能。程序需要在Host侧编译生成二进制文件，然后将二进制文件和相关运行时依赖部署到Device侧。部署请参见下方使用指导，接口使用约束请参考[IndexILFlat](./api/full_retrieval.md#indexilflat接口)。
+IndexILFlat为纯Device侧检索方案，利用昇腾AI处理器和AI Core等资源进行各个接口的使能。程序需要在Host侧编译生成二进制文件，然后将二进制文件和相关运行时依赖部署到Device侧。部署请参见下方使用指导，接口使用约束请参考[IndexILFlat](./api/01_full_retrieval.md#indexilflat接口)。
 
 **参考用例代码<a id="section15454820982"></a>**
 
@@ -240,7 +240,7 @@ int main(int argc, char **argv)
 
 **操作步骤<a name="section16775174716308"></a>**
 
-1. 生成要运行的算法所需要的算子。算法介绍请参考[算法介绍](./user_guide.md#算法介绍)。
+1. 生成要运行的算法所需要的算子。算法介绍请参考[算法介绍](./05_user_guide.md#算法介绍)。
 2. 将以下依赖的库传输到Device侧上。
     - openblas：/opt/OpenBLAS/lib
     - Faiss：/usr/local/faiss/faiss1.10.0/lib

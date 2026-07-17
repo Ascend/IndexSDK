@@ -314,7 +314,7 @@ openEuler release 22.03 \(LTS\)系统默认安装或使用yum工具安装的Cmak
     export IVFRABITQ_VERIFY_L1_DIST=1
     ```
 
-3. 完整操作说明见《[常用操作 — IVFRaBitQ 运行时诊断](./common_operations.md#ivfrabitq-runtime-debug)》。
+3. 完整操作说明见《[常用操作 — IVFRaBitQ 运行时诊断](./08_common_operations.md#ivfrabitq-runtime-debug)》。
 
 ## 浮点数计算精度问题
 

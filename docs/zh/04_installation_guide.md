@@ -199,7 +199,7 @@ Python 安装好后，pip 所需依赖名称、对应版本及获取建议请参
     ```
 
     > [!NOTE]
-    > - 编译该 Faiss 1.10.0 需要 CMake 的版本不低于 CMake 3.24.0，如果编译 Faiss 时提示 CMake 版本过低，请参考[编译 Faiss 1.10.0 时，CMake 出现报错信息](./faq.md#编译faiss-1100时cmake出现报错信息)解决。
+    > - 编译该 Faiss 1.10.0 需要 CMake 的版本不低于 CMake 3.24.0，如果编译 Faiss 时提示 CMake 版本过低，请参考[编译 Faiss 1.10.0 时，CMake 出现报错信息](./07_faq.md#编译faiss-1100时cmake出现报错信息)解决。
     > - Faiss 默认安装目录为 `/usr/local/lib`，如需指定安装目录，例如 `install_path=/usr/local/faiss/faiss1.10.0`，则在 CMake 编译配置中添加 `-DCMAKE_INSTALL_PREFIX=${install_path}` 选项即可。
     >
     > ```bash
@@ -232,7 +232,7 @@ Python 安装好后，pip 所需依赖名称、对应版本及获取建议请参
     如果正确显示软件的版本信息，则表示安装成功。
 
 > [!NOTE]
-> 如果在 openEuler 系统中编译 Faiss 后报错，请参见[链接 libfaiss.so 时，返回 undefined reference 错误](./faq.md#链接libfaissso时返回undefined-reference错误)解决。
+> 如果在 openEuler 系统中编译 Faiss 后报错，请参见[链接 libfaiss.so 时，返回 undefined reference 错误](./07_faq.md#链接libfaissso时返回undefined-reference错误)解决。
 
 ## 安装方式
 
