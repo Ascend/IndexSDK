@@ -159,4 +159,4 @@ grep 'L1 dist golden\|jaccard' search.log
 
 ### 延伸阅读
 
-- [FAQ：IVFRaBitQ recall 偏低](./faq.md#ivfrabitq-recall-low-nlist-10048)
+- [FAQ：IVFRaBitQ recall 偏低](./07_faq.md#ivfrabitq-recall-low-nlist-10048)
