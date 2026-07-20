@@ -1973,7 +1973,7 @@ It does not support multithreaded concurrent calls. Therefore, in multithreaded 
 | Input | `int dims`: Dimensionality of the base-index retrieval vectors.<br>`faiss::MetricType metric`: Distance type. Currently only `faiss::METRIC_L2` is supported.<br>`int nlist`: Number of IVF buckets.<br>`int msubs`: Number of subspaces to split into.<br>`int nbits`: Number of bits in the PQ code length. For example, when `nbits = 8`, the PQ code indices range from 0 to 255.<br>`AscendIndexIVFPQConfig config`: Device-side resource configuration. |
 | Output | None |
 | Returns | None |
-| Constraints | `dims` currently supports only 128. `nlist` ∈ {1024, 2048, 4096, 8192, 16384}. `msubs` ∈ {2, 4, 8, 16}. `nbits` currently supports only 8. `config.useKmeansPP` indicates whether NPU clustering is enabled. Currently only `useKmeansPP = false` is supported, which means CPU clustering only. |
+| Constraints | `dims` currently supports only 128. `nlist` ∈ {1024, 2048, 4096, 8192, 16384, 262144, 524288}. `msubs` ∈ {2, 4, 8, 16}. `nbits` currently supports only 8. `config.useKmeansPP` enables NPU coarse clustering when `true`, or CPU clustering when `false`. NPU coarse clustering is supported for `nlist=262144/524288` as well (deploy the matching IVFPQ L1 OM first). For large nlist, increase `config.resourceSize` as needed: recommend ≥512 MB for `nlist=262144`, ≥1 GB for `nlist=524288`. |
 
 <a name="table663150151113"></a>
 
