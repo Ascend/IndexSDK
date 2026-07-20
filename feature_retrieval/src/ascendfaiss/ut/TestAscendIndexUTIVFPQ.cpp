@@ -96,6 +96,51 @@ TEST(TestAscendIndexIVFPQ, Construct)
     EXPECT_TRUE(msg.find(str) != std::string::npos);
 }
 
+TEST(TestAscendIndexIVFPQ, ConstructRejectsUnsupportedNlist)
+{
+    const int dim = 128;
+    const int nlist = 512;  // not in NLISTS whitelist
+    const int msub = 4;
+    const int nbit = 8;
+
+    std::string msg;
+    faiss::ascend::AscendIndexIVFPQConfig conf({0});
+    try
+    {
+        faiss::ascend::AscendIndexIVFPQ index(dim, faiss::METRIC_L2, nlist, msub, nbit, conf);
+    }
+    catch (std::exception& e)
+    {
+        msg = e.what();
+    }
+    EXPECT_NE(msg.find("Unsupported nlists"), std::string::npos) << msg;
+}
+
+// Valid large nlist must pass the nlist check; use invalid msub so construct fails
+// before allocating IndexIVFPQ with hundreds of thousands of inverted lists.
+TEST(TestAscendIndexIVFPQ, ConstructAcceptsLargeNlistWhitelist)
+{
+    const int dim = 128;
+    const int msub = 3;  // not in MSUBS / does not divide dim
+    const int nbit = 8;
+    faiss::ascend::AscendIndexIVFPQConfig conf({0});
+
+    for (int nlist : {262144, 524288})
+    {
+        std::string msg;
+        try
+        {
+            faiss::ascend::AscendIndexIVFPQ index(dim, faiss::METRIC_L2, nlist, msub, nbit, conf);
+        }
+        catch (std::exception& e)
+        {
+            msg = e.what();
+        }
+        EXPECT_EQ(msg.find("Unsupported nlists"), std::string::npos) << "nlist=" << nlist << " msg=" << msg;
+        EXPECT_NE(msg.find("Unsupported msubs"), std::string::npos) << "nlist=" << nlist << " msg=" << msg;
+    }
+}
+
 TEST(TestAscendIndexIVFPQ, copyTo)
 {
     int dim = 128;

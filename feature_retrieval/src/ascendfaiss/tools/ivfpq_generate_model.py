@@ -148,7 +148,7 @@ def generate_ivfpq_offline_model():
     ksub = 1 << nbit
 
     utils.check_param_range(dim, [128], "dim")
-    utils.check_param_range(nlist, [1024, 2048, 4096, 8192, 16384], "nlist")
+    utils.check_param_range(nlist, [1024, 2048, 4096, 8192, 16384, 262144, 524288], "nlist")
     utils.check_param_range(m, [2, 4, 8, 16], "m")
     utils.check_param_range(nbit, [8], "nbit")
     utils.check_param_range(ksub, [256], "ksub")

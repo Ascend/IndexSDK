@@ -16,17 +16,21 @@
  * -------------------------------------------------------------------------
  */
 
-
 #include <gtest/gtest.h>
+
 #include <map>
+#include <vector>
+
 #include "DeviceVector.h"
 
 using namespace testing;
 using namespace std;
 
-namespace ascend {
+namespace ascend
+{
 
-class TestDeviceVector : public Test {
+class TestDeviceVector : public Test
+{
 };
 
 TEST_F(TestDeviceVector, create_empty_device_vector)
@@ -45,10 +49,11 @@ TEST_F(TestDeviceVector, resize_exact)
 {
     // given
     DeviceVector<char> dv;
-    vector<size_t> nums { 10, 100, 1000, 10000 };
-    
+    vector<size_t> nums{10, 100, 1000, 10000};
+
     // then
-    for (auto num : nums) {
+    for (auto num : nums)
+    {
         dv.resize(num, true);
         EXPECT_EQ(dv.size(), num);
         EXPECT_EQ(dv.capacity(), num);
@@ -67,15 +72,16 @@ TEST_F(TestDeviceVector, resize_with_ExpandPolicy)
 {
     // given
     DeviceVector<uint8_t> dv;
-    map<size_t, size_t> size2CapacityMap {
-        { 10, 16 },
-        { 100, 128 },
-        { 1000, 1024 },
-        { 10000, 11250 },
+    map<size_t, size_t> size2CapacityMap{
+        {10, 16},
+        {100, 128},
+        {1000, 1024},
+        {10000, 11250},
     };
 
     // then
-    for (auto valPair : size2CapacityMap) {
+    for (auto valPair : size2CapacityMap)
+    {
         dv.resize(valPair.first);
         EXPECT_EQ(dv.size(), valPair.first);
         EXPECT_EQ(dv.capacity(), valPair.second);
@@ -94,15 +100,16 @@ TEST_F(TestDeviceVector, resize_with_ExpandPolicySlim)
 {
     // given
     DeviceVector<uint8_t, ExpandPolicySlim> dv;
-    map<size_t, size_t> size2CapacityMap {
-        { 10, 20 },
-        { 100, 200 },
-        { 1000, 2000 },
-        { 10000, 20000 },
+    map<size_t, size_t> size2CapacityMap{
+        {10, 20},
+        {100, 200},
+        {1000, 2000},
+        {10000, 20000},
     };
 
     // then
-    for (auto valPair : size2CapacityMap) {
+    for (auto valPair : size2CapacityMap)
+    {
         dv.resize(valPair.first);
         EXPECT_EQ(dv.size(), valPair.first);
         EXPECT_EQ(dv.capacity(), valPair.second);
@@ -119,13 +126,15 @@ TEST_F(TestDeviceVector, modify_value)
 
     // when
     dv.resize(num);
-    for (size_t i = 0; i < num; i++) {
+    for (size_t i = 0; i < num; i++)
+    {
         dv[i] = i * power;
     }
 
     // then
     auto data = dv.data();
-    for (size_t i = 0; i < num; i++) {
+    for (size_t i = 0; i < num; i++)
+    {
         EXPECT_EQ(data[i], i * power);
     }
 }
@@ -138,7 +147,7 @@ TEST_F(TestDeviceVector, clear)
 
     // when
     dv.resize(num);
-    dv[10] = 10; // 设置第10个元素值为10
+    dv[10] = 10;  // 设置第10个元素值为10
     dv.clear();
 
     // then
@@ -185,9 +194,8 @@ TEST_F(TestDeviceVector, reclaim_exact)
     // then
     EXPECT_EQ(dv.size(), num);
     EXPECT_EQ(dv.capacity(), num);
-    EXPECT_EQ(freeSize, static_cast<size_t>(224)); // 内部算法释放了224字节
+    EXPECT_EQ(freeSize, static_cast<size_t>(224));  // 内部算法释放了224字节
 }
-
 
 TEST_F(TestDeviceVector, reclaim_unexact)
 {
@@ -201,17 +209,59 @@ TEST_F(TestDeviceVector, reclaim_unexact)
 
     // then
     EXPECT_EQ(dv.size(), num);
-    EXPECT_EQ(dv.capacity(), static_cast<size_t>(128)); // 内部算法实际占用了128字节的空间
+    EXPECT_EQ(dv.capacity(), static_cast<size_t>(128));  // 内部算法实际占用了128字节的空间
     EXPECT_EQ(freeSize, static_cast<size_t>(0));
 
     // when
-    num = 10000; // 先扩容成10000，取一个较大的值
+    num = 10000;  // 先扩容成10000，取一个较大的值
     dv.resize(num);
-    dv.resize(100); // resize为100，让其空间空余出来
+    dv.resize(100);  // resize为100，让其空间空余出来
     freeSize = dv.reclaim(false);
 
     // then
-    EXPECT_EQ(freeSize, static_cast<size_t>(77952)); // 内部算法释放了77952字节
+    EXPECT_EQ(freeSize, static_cast<size_t>(77952));  // 内部算法释放了77952字节
 }
 
-} // namespace ascend
+TEST_F(TestDeviceVector, memcpySChunked_zero_count)
+{
+    uint8_t dst[4] = {1, 2, 3, 4};
+    uint8_t src[4] = {5, 6, 7, 8};
+    EXPECT_EQ(memcpySChunked(dst, sizeof(dst), src, 0), EOK);
+    EXPECT_EQ(dst[0], 1);
+}
+
+TEST_F(TestDeviceVector, memcpySChunked_normal_copy)
+{
+    constexpr size_t kLen = 1024;
+    std::vector<uint8_t> src(kLen);
+    std::vector<uint8_t> dst(kLen, 0);
+    for (size_t i = 0; i < kLen; ++i)
+    {
+        src[i] = static_cast<uint8_t>(i & 0xff);
+    }
+
+    EXPECT_EQ(memcpySChunked(dst.data(), dst.size(), src.data(), src.size()), EOK);
+    EXPECT_EQ(dst, src);
+}
+
+TEST_F(TestDeviceVector, memcpySChunked_count_exceeds_capacity)
+{
+    uint8_t dst[8] = {};
+    uint8_t src[16] = {};
+    EXPECT_EQ(memcpySChunked(dst, sizeof(dst), src, sizeof(src)), ERANGE);
+}
+
+TEST_F(TestDeviceVector, aclrtMemcpyChunked_normal_and_invalid)
+{
+    constexpr size_t kLen = 256;
+    std::vector<uint8_t> src(kLen, 0xab);
+    std::vector<uint8_t> dst(kLen, 0);
+
+    EXPECT_EQ(aclrtMemcpyChunked(dst.data(), dst.size(), src.data(), 0, ACL_MEMCPY_HOST_TO_HOST), ACL_SUCCESS);
+    EXPECT_EQ(aclrtMemcpyChunked(dst.data(), dst.size(), src.data(), src.size(), ACL_MEMCPY_HOST_TO_HOST), ACL_SUCCESS);
+    EXPECT_EQ(dst, src);
+    EXPECT_EQ(aclrtMemcpyChunked(dst.data(), dst.size() / 2, src.data(), src.size(), ACL_MEMCPY_HOST_TO_HOST),
+              ACL_ERROR_FAILURE);
+}
+
+}  // namespace ascend

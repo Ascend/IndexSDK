@@ -33,6 +33,7 @@
 #include <vector>
 
 #include "ascenddaemon/impl/AuxIndexStructures.h"
+#include "ascenddaemon/utils/DevVecMemStrategyIntf.h"
 #include "ascenddaemon/utils/Limits.h"
 #include "common/utils/CommonUtils.h"
 #include "common/utils/LogUtils.h"
@@ -43,7 +44,17 @@ namespace ascend
 {
 const int KB = 1024;
 const int MAX_ITER_NUM = 25;
+const int TRAIN_SAMPLES_PER_LIST = 40;
+const int MAX_TRAIN_SAMPLES = 10000000;
 const int IVF_PQ_BLOCK_SIZE = 16384 * 16;
+
+static int trainMinDistCols(int nlist) { return nlist / IVF_PQ_BURST_LEN * 2; }
+
+static int computeTrainTotalSize(int nlist, int n)
+{
+    int capped = std::min(nlist * (nlist <= 16384 ? 256 : TRAIN_SAMPLES_PER_LIST), n);
+    return std::min(capped, MAX_TRAIN_SAMPLES);
+}
 const int BYTES_PER_FLOAT = 4;
 const int MAX_TOPK = 320;
 IndexIVFPQ::IndexIVFPQ(int numList, int dim, int M, int nbits, int nprobes, int64_t resourceSize)
@@ -523,8 +534,23 @@ void IndexIVFPQ::normL2(int dim, int nlist, float *data)
 APP_ERROR IndexIVFPQ::initTraining(int totalSize, int dim, int nlist, const float *x, std::vector<float> &trainData,
                                    std::vector<float> &centroids)
 {
-    trainData.resize(totalSize * dim);
-    auto ret = memcpy_s(trainData.data(), totalSize * dim * sizeof(float), x, totalSize * dim * sizeof(float));
+    const size_t totalSizeSz = static_cast<size_t>(totalSize);
+    const size_t dimSz = static_cast<size_t>(dim);
+    const size_t numElems = totalSizeSz * dimSz;
+    const size_t numBytes = numElems * sizeof(float);
+    if (verbose)
+    {
+        APP_LOG_INFO("IVFPQ initTraining: totalSize=%d, dim=%d, nlist=%d, trainDataBytes=%zu\n", totalSize, dim, nlist,
+                     numBytes);
+    }
+    constexpr size_t kLargeTrainDataBytes = 1024UL * 1024 * 1024;
+    if (verbose && numBytes > kLargeTrainDataBytes)
+    {
+        APP_LOG_WARNING("IVFPQ initTraining: large trainData allocation %zu bytes (>1GB), may cause memory pressure\n",
+                        numBytes);
+    }
+    trainData.resize(numElems);
+    auto ret = memcpySChunked(trainData.data(), numBytes, x, numBytes);
     ASCEND_THROW_IF_NOT_FMT(ret == EOK, "trainData memcpy_s failed %d", ret);
 
     std::vector<int> perm(totalSize, 0);
@@ -532,9 +558,11 @@ APP_ERROR IndexIVFPQ::initTraining(int totalSize, int dim, int nlist, const floa
     faiss::rand_perm(perm.data(), totalSize, actSeed + 1);
     for (int i = 0; i < nlist; i++)
     {
-        int offset = i * dim;
-        auto ret = memcpy_s(centroids.data() + offset, (centroids.size() - offset) * sizeof(float),
-                            trainData.data() + perm[i] * dim, dim * sizeof(float));
+        const size_t dstOffset = static_cast<size_t>(i) * dimSz;
+        const size_t srcOffset = static_cast<size_t>(perm[i]) * dimSz;
+        const size_t rowBytes = dimSz * sizeof(float);
+        ret = memcpy_s(centroids.data() + dstOffset, (centroids.size() - dstOffset) * sizeof(float),
+                       trainData.data() + srcOffset, rowBytes);
         ASCEND_THROW_IF_NOT_FMT(ret == EOK, "Failed to copy to centroids (error %d)", ret);
     }
     normL2(dim, nlist, centroids.data());
@@ -660,8 +688,7 @@ APP_ERROR IndexIVFPQ::execTrainBatch(AscendTensor<float, DIMS_2> &queries, Ascen
     int batchSize = queries.getSize(0);
     int nlist = centroids.getSize(0);
     AscendTensor<float, DIMS_2> dists(mem, {batchSize, nlist}, stream);
-    AscendTensor<float, DIMS_2> vmdists(mem, {batchSize, std::min(nlist / IVF_PQ_BURST_LEN * 2, MIN_EXTREME_SIZE)},
-                                        stream);
+    AscendTensor<float, DIMS_2> vmdists(mem, {batchSize, trainMinDistCols(nlist)}, stream);
     AscendTensor<float, DIMS_2> outdists(mem, {batchSize, 1}, stream);
     AscendTensor<int64_t, DIMS_2> outlabel(mem, {batchSize, 1}, stream);
 
@@ -758,8 +785,8 @@ APP_ERROR IndexIVFPQ::assignCentroid(int nlist, int dim, int totalSize, std::vec
                              "Failed to reset assignCentroid operations, nlist=%d, dim=%d, ret=%d", nlist, dim, ret);
 
     AscendTensor<float, DIMS_2> dataTensor(mem, {totalSize, dim}, stream);
-    ret = aclrtMemcpy(dataTensor.data(), totalSize * dim * sizeof(float), trainDataHost,
-                      totalSize * dim * sizeof(float), ACL_MEMCPY_HOST_TO_DEVICE);
+    const size_t dataBytes = static_cast<size_t>(totalSize) * static_cast<size_t>(dim) * sizeof(float);
+    ret = aclrtMemcpyChunked(dataTensor.data(), dataBytes, trainDataHost, dataBytes, ACL_MEMCPY_HOST_TO_DEVICE);
     APPERR_RETURN_IF_NOT_LOG(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "Failed to copy data to device");
     ret = runKMeans(nlist, dim, totalSize, 0, centroids, dataTensor, totalAssigns);
     APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, ret, "Failed to run KMeans, nlist=%d, dim=%d, totalSize=%d, ret=%d",
@@ -770,12 +797,26 @@ APP_ERROR IndexIVFPQ::assignCentroid(int nlist, int dim, int totalSize, std::vec
 
 APP_ERROR IndexIVFPQ::trainImpl(int n, const float *x, int dim, int nlist)
 {
+    auto train_start = std::chrono::high_resolution_clock::now();
     auto &mem = resources.getMemoryManager();
     auto streamPtr = resources.getDefaultStream();
     auto stream = streamPtr->GetStream();
-    int totalSize = std::min(nlist * 256, n);
-    std::vector<float> trainData(totalSize * dim);
-    std::vector<float> centroids(nlist * dim);
+    int totalSize = computeTrainTotalSize(nlist, n);
+    if (verbose)
+    {
+        APP_LOG_INFO("IVFPQ trainImpl start: n=%d, dim=%d, nlist=%d, totalSize=%d, maxIter=%d\n", n, dim, nlist,
+                     totalSize, MAX_ITER_NUM);
+        if (totalSize < n)
+        {
+            APP_LOG_INFO("IVFPQ Training data capped: input n=%d -> totalSize=%d (per_list=%d, max=%d)\n", n, totalSize,
+                         TRAIN_SAMPLES_PER_LIST, MAX_TRAIN_SAMPLES);
+        }
+    }
+    const size_t totalSizeSz = static_cast<size_t>(totalSize);
+    const size_t dimSz = static_cast<size_t>(dim);
+    const size_t nlistSz = static_cast<size_t>(nlist);
+    std::vector<float> trainData(totalSizeSz * dimSz);
+    std::vector<float> centroids(nlistSz * dimSz);
     auto ret = initTraining(totalSize, dim, nlist, x, trainData, centroids);
     APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, ret, "Failed to initialize training, n=%d, dim=%d, nlist=%d, ret=%d", n,
                              dim, nlist, ret);
@@ -783,14 +824,19 @@ APP_ERROR IndexIVFPQ::trainImpl(int n, const float *x, int dim, int nlist)
     ret = resetTrainOp(nlist, dim);
     APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, ret, "Failed to reset training operations, nlist=%d, dim=%d, ret=%d",
                              nlist, dim, ret);
-    size_t dataBytes = totalSize * dim * sizeof(float);
+    const size_t dataBytes = totalSizeSz * dimSz * sizeof(float);
     AscendTensor<float, DIMS_2> dataVector(mem, {totalSize, dim}, stream);
-    ret = aclrtMemcpy(dataVector.data(), dataBytes, trainData.data(), dataBytes, ACL_MEMCPY_HOST_TO_DEVICE);
+    ret = aclrtMemcpyChunked(dataVector.data(), dataBytes, trainData.data(), dataBytes, ACL_MEMCPY_HOST_TO_DEVICE);
     APPERR_RETURN_IF_NOT_LOG(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "Failed to upload data to device");
 
     std::vector<int64_t> totalAssigns(totalSize);
     for (int iter = 0; iter < MAX_ITER_NUM; iter++)
     {
+        if (verbose)
+        {
+            APP_LOG_INFO("IVFPQ trainImpl iter %d/%d: runKMeans start\n", iter + 1, MAX_ITER_NUM);
+        }
+        auto iter_start = std::chrono::high_resolution_clock::now();
         ret = runKMeans(nlist, dim, totalSize, iter, centroids, dataVector, totalAssigns);
         APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, ret,
                                  "Failed to run KMeans, nlist=%d, dim=%d, totalSize=%d, iter=%d, ret=%d", nlist, dim,
@@ -801,10 +847,26 @@ APP_ERROR IndexIVFPQ::trainImpl(int n, const float *x, int dim, int nlist)
                                  "Failed to update centroids, nlist=%d, dim=%d, totalSize=%d, ret=%d", nlist, dim,
                                  totalSize, ret);
         normL2(dim, nlist, centroids.data());
+        if (verbose)
+        {
+            auto iter_elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                    std::chrono::high_resolution_clock::now() - iter_start)
+                                    .count();
+            APP_LOG_INFO("IVFPQ trainImpl iter %d/%d: runKMeans done, updateCentroids done, elapsed=%lld ms\n",
+                         iter + 1, MAX_ITER_NUM, static_cast<long long>(iter_elapsed));
+        }
     }
     ret = updateCentroidsToDevice(nlist, dim, centroids);
     APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR,
                              "update centroids result to Device failed, ret=%d", ret);
+    if (verbose)
+    {
+        auto total_elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                 std::chrono::high_resolution_clock::now() - train_start)
+                                 .count();
+        APP_LOG_INFO("IVFPQ trainImpl finished: nlist=%d, dim=%d, totalSize=%d, totalElapsed=%lld ms\n", nlist, dim,
+                     totalSize, static_cast<long long>(total_elapsed));
+    }
     return APP_ERR_OK;
 }
 
@@ -818,7 +880,7 @@ APP_ERROR IndexIVFPQ::resetTrainDistOp(int nlist, int dim)
         std::vector<int64_t> codesShape({nlist, dim});
         std::vector<int64_t> codesDoubleShape({nlist});
         std::vector<int64_t> distResultShape({batch, nlist});
-        std::vector<int64_t> minResultShape({batch, std::min(nlist / IVF_PQ_BURST_LEN * 2, MIN_EXTREME_SIZE)});
+        std::vector<int64_t> minResultShape({batch, trainMinDistCols(nlist)});
         std::vector<int64_t> flagShape({CORE_NUM, 16});
 
         desc.addInputTensorDesc(ACL_FLOAT, queryShape.size(), queryShape.data(), ACL_FORMAT_ND);
@@ -877,7 +939,7 @@ APP_ERROR IndexIVFPQ::resetTrainTopkOp(int nlist)
     {
         AscendOpDesc desc("TopkFlatFp32");
         std::vector<int64_t> shape0{1, batch, nlist};
-        std::vector<int64_t> shape1{1, batch, std::min(nlist / IVF_PQ_BURST_LEN * 2, MIN_EXTREME_SIZE)};
+        std::vector<int64_t> shape1{1, batch, trainMinDistCols(nlist)};
         std::vector<int64_t> shape2{1, CORE_NUM, SIZE_ALIGN};
         std::vector<int64_t> shape3{1, CORE_NUM, FLAG_SIZE};
         std::vector<int64_t> shape4{aicpu::TOPK_FLAT_ATTR_IDX_COUNT};
