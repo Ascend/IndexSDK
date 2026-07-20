@@ -2,11 +2,11 @@
 
 ## 软件中包含的公网地址<a name="ZH-CN_TOPIC_0000001664167368"></a>
 
-软件中包含的公网地址请参见[Index_SDK_7.3.0_公网地址.xlsx](./resource/Index_SDK_7.3.0_公网地址.xlsx)。
+软件中包含的公网地址请参见[Index_SDK_公网地址.xlsx](./resource/Index_SDK_公网地址.xlsx)。
 
 ## 环境变量说明<a name="ZH-CN_TOPIC_0000002062005944"></a>
 
-以下环境变量会在程序读取时使用，请勿修改。
+以下环境变量会在程序读取时使用。
 
 **表 1** 环境变量
 
@@ -22,7 +22,7 @@
 
 ### IVFRaBitQ 调试环境变量<a name="ivfrabitq-debug-env"></a>
 
-以下环境变量用于 AscendIndexIVFRaBitQ 开发调试，**默认不设置**（关闭）。详细用法与日志解读参见《[常用操作](./08_common_operations.md#ivfrabitq-runtime-debug)》。
+以下环境变量用于 AscendIndexIVFRaBitQ 开发调试，**默认不设置**（关闭）。详细用法与日志解读参见《[IVFRaBitQ 运行时诊断](./08_common_operations.md#ivfrabitq-runtime-debug)》。
 
 **表 2** IVFRaBitQ 调试环境变量
 

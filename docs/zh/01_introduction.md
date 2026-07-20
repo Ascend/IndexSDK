@@ -22,7 +22,7 @@
 
 除此之外，特征检索还支持属性过滤检索，多Index批量检索。
 
-- **属性过滤检索**可在底库向量数据入库过程中，添加一些时间和空间相关的属性并在进行检索时，通过特定时间和空间下的底库数据做检索。
+- **属性过滤检索**可在底库向量数据入库时添加时间、空间等属性标签，检索时通过指定属性条件，仅对符合条件的底库数据进行检索，实现精准过滤。
 - **多Index批量检索**支持用户使用多个Index进行分库并在执行检索时，通过统一的接口，一次检索多个Index底库。
 
 **产品价值<a name="section13265153143513"></a>**
@@ -131,12 +131,12 @@ openEuler 22.03</li><li>openEuler 24.03</li><li>Ubuntu 18.04</li><li>Ubuntu 20.0
 </tr>
 <tr>
 <td><term>Atlas A2 推理系列产品</term>
-<br>说明：<term>Atlas A2 推理系列产品</term>支持AscendIndexFlat，AscendIndexInt8Flat算法，AscendIndexTS-FlatIP算法，AscendIndexTS-Int8Cos算法。</td>
+<br>说明：<term>Atlas A2 推理系列产品</term>支持AscendIndexFlat，AscendIndexInt8Flat算法，AscendIndexTS-FlatIP算法，AscendIndexTS-Int8Cos算法，AscendIndexIVFFlat算法，AscendIndexIVFRaBitQ算法。</td>
 <td>Atlas 800I A2 推理服务器</td>
 <td><li>CentOS 7.6</li><li>openEuler 20.03</li><li>openEuler 22.03</li><li>openEuler 24.03</li><li>Ubuntu 18.04</li><li>Ubuntu 20.04</li><li>Ubuntu 24.04</li><li>EulerOS 2.12</li><li>EulerOS 2.15</li><li>UOS V20</li><li>UOS V25</li><li>KylinOS V10 SP3</li><li>KylinOS V11</li><li>BC-Linux_21.10 U4</li></td>
 </tr>
 <tr>
-<td><term>Atlas A3 推理系列产品</term><br>说明：当前支持AscendIndexFlat算法，AscendIndexTS-FlatIP算法，AscendIndexTS-Int8Cos算法。</td>
+<td><term>Atlas A3 推理系列产品</term><br>说明：当前支持AscendIndexFlat算法，AscendIndexTS-FlatIP算法，AscendIndexTS-Int8Cos算法，AscendIndexIVFFlat算法，AscendIndexIVFRaBitQ算法。</td>
 <td>Atlas 800I A3 超节点服务器</td>
 <td><li>Ubuntu 18.04</li><li>CUlinux 3.0</li><li>KylinOS V10 SP3 2403</li><li>KylinOS V11</li><li>CTyunOS 4</li><li>UOS V25</li></td>
 </tr>
