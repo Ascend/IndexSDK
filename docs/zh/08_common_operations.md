@@ -4,7 +4,7 @@
 
 检索日志组件基于《[CANN 软件安装指南](https://www.hiascend.com/document/detail/zh/canncommercial/900/softwareinst/instg/instg_0000.html)》以及《[CANN 日志参考](https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/logreference/logreference_0001.html)》设计和开发。
 
-对于标准态部署，检索的日志属于应用类日志，可以参考《CANN 日志参考》中的“[查看日志（Ascend EP标准形态）](https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/logreference/logreference_0002.html)”章节的“查看应用类日志”描述。默认路径为“$HOME/ascend/log”。也可以使用环境变量 `ASCEND_PROCESS_LOG_PATH` 指定日志落盘路径。命令参考如下：
+对于标准态部署，检索的日志属于应用类日志，可以参考《CANN 日志参考》中的“[查看日志（Ascend EP标准形态）](https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/logreference/logreference_0002.html)”章节的“查看应用类日志”描述。默认路径为“$HOME/ascend/log”。也可以使用环境变量`ASCEND_PROCESS_LOG_PATH`指定日志落盘路径。命令参考如下：
 
 ```bash
 export ASCEND_PROCESS_LOG_PATH=$HOME/xxx
@@ -12,7 +12,7 @@ export ASCEND_PROCESS_LOG_PATH=$HOME/xxx
 
 可指定日志落盘路径为任意有读写权限的目录。
 
-日志级别由低到高依次为DEBUG < INFO < WARNING < ERROR，级别越低，输出日志越详细，可以通过 `ASCEND_GLOBAL_LOG_LEVEL` 环境变量设置日志级别。命令参考如下：
+日志级别由低到高依次为DEBUG < INFO < WARNING < ERROR，级别越低，输出日志越详细，可以通过`ASCEND_GLOBAL_LOG_LEVEL`环境变量设置日志级别。命令参考如下：
 
 ```bash
 export ASCEND_GLOBAL_LOG_LEVEL=1
@@ -38,14 +38,14 @@ export ASCEND_GLOBAL_LOG_LEVEL=1
 
 ## IVFRaBitQ 运行时诊断<a name="ivfrabitq-runtime-debug"></a>
 
-AscendIndexIVFRaBitQ 提供三组**可选**调试环境变量，用于排查 coarse centroid（聚类中心）NPU 上传异常与 L1 粗排 probe 选择偏差。**默认全部关闭**，对生产路径零开销；仅在开发/联调环境按需开启。
+AscendIndexIVFRaBitQ 提供三组**可选**调试环境变量，用于排查coarse centroid（聚类中心）NPU上传异常与L1粗排probe选择偏差。**默认全部关闭**，对生产路径零开销；仅在开发/联调环境按需开启。
 
 > [!NOTE]
 >
->- 环境变量在**进程启动时**读取，需在运行应用程序或测试用例**之前** export。
+>- 环境变量在**进程启动时**读取，需在运行应用程序或测试用例**之前**export。
 >- 诊断日志输出至 stderr 及 APP 日志（`IVFRABITQ_VERIFY_COARSE_CENTER`）；建议重定向到 `.log` 文件便于 grep。
->- `IVFRABITQ_VERIFY_L1_DIST` 与 L1 golden 对比会触发全量 D2H，**不要在性能基准测试中常开**。
->- 修改 `RotateAndL2AtFP32` 算子后须重新编译部署 custom opp，否则诊断结果可能仍反映旧版算子行为。
+>- `IVFRABITQ_VERIFY_L1_DIST`与L1 golden对比会触发全量D2H，**不要在性能基准测试中常开**。
+>- 修改`RotateAndL2AtFP32`算子后须重新编译部署custom opp，否则诊断结果可能仍反映旧版算子行为。
 
 ### 环境变量说明
 
@@ -67,12 +67,12 @@ export IVFRABITQ_VERIFY_COARSE_CENTER=0
 
 ### 诊断决策流程
 
-1. **recall 低且发生在 `copyFrom` 之后** → 开启 `IVFRABITQ_VERIFY_COARSE_CENTER=1`，重跑 copyFrom。
+1. **recall 低且发生在`copyFrom`之后** → 开启`IVFRABITQ_VERIFY_COARSE_CENTER=1`，重跑copyFrom。
 2. 查看 `centroidsOnDevice_rotated_full` 日志中的 `zeroRowsAfter2512`：
-   - **H2D 后 originCentroidsOnDevice 与 host 一致**，但 `zeroRowsAfter2512 > 0` → 故障在 `RotateAndL2AtFP32` 算子。
-   - H2D 即 mismatch → 排查 Memcpy 参数或 buffer 容量。
-3. **centroid 已确认正常，recall 仍低** → 开启 `IVFRABITQ_DEBUG_L1_PROBE=stats`，检查 probe 在 tile1/tile2 的分布。
-4. **需对比 8192 边界 L1 距离** → 开启 `IVFRABITQ_VERIFY_L1_DIST=1` 或 `IVFRABITQ_DEBUG_L1_PROBE=full`。
+   - **H2D后originCentroidsOnDevice与host一致**，但 `zeroRowsAfter2512 > 0` → 故障在 `RotateAndL2AtFP32` 算子。
+   - H2D 即 mismatch → 排查Memcpy参数或buffer容量。
+3. **centroid 已确认正常，recall仍低** → 开启`IVFRABITQ_DEBUG_L1_PROBE=stats`，检查probe在tile1/tile2的分布。
+4. **需对比8192边界L1距离** → 开启`IVFRABITQ_VERIFY_L1_DIST=1`或 `IVFRABITQ_DEBUG_L1_PROBE=full`。
 
 ### Coarse Center 上传诊断
 
