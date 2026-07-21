@@ -26,7 +26,7 @@
     |host|检索动态库，进行特征检索时，请链接此文件夹下的动态库。|
     |include|API头文件。|
     |lib|检索动态库，链接到host/lib。|
-    |modelpath|算子om文件存放目录。编译好算子之后，需要将om文件放置于此文件夹。|
+    |modelpath|算子om文件存放目录。编译好算子之后，可将om文件放置于此文件夹。（可选）|
     |ops|包含custom_opp_\<arch>.run脚本，用于检索算法算子安装。|
     |script|包含卸载脚本uninstall.sh，用于卸载Index SDK安装包。|
     |tools|包含用于算子生成python脚本。|
@@ -112,150 +112,13 @@
     > [!NOTE]
     >生成算子时如果出现报错：Failed to import Python module，请参照[NumPy的数据类型np.float\_ 已被移除](./07_faq.md#numpy的数据类型npfloat_-已被移除)解决。
 
-## 使用样例<a name="ZH-CN_TOPIC_0000001649689164"></a>
-
-本章节提供了一个简单的样例，帮助用户快速体验运用Index SDK进行检索的流程。
-
-假定在<term>Atlas 推理系列产品</term>上，有业务需要使用到暴搜（Flat）算法，底库大小为100w，维度是512维，需要检索的向量是128个，topk是10，编写一个Demo调用Index接口大致步骤如下。
-
-**前提条件<a name="section42712132135"></a>**
-
-- 已完成[安装部署](./04_installation_guide.md#安装部署)操作。
-- 已经生成[Flat](#flat)和[AICPU](#aicpu)算子。
-
-**操作步骤<a name="section1592313504162"></a>**
-
-1. 构造Demo，过程包括：
-
-    1. Demo中引入暴搜（Flat）的头文件。
-    2. 构造底库向量数据，这里用随机数生成代替。
-    3. 归一化底库数据。
-    4. 初始化Flat的Index。
-    5. 调用接口添加底库。
-    6. 调用接口进行检索。
-
-    demo.cpp代码如下：
-
-    ```cpp
-    #include <faiss/ascend/AscendIndexFlat.h>
-    #include <sys/time.h>
-    #include <random>
-    // 获取当前时间
-    inline double GetMillisecs()
-    {
-        struct timeval tv = {0, 0};
-        gettimeofday(&tv, nullptr);
-        return tv.tv_sec * 1e3 + tv.tv_usec * 1e-3;
-    }
-    // 使用随机数构造底库数据
-    void Generate(size_t ntotal, std::vector<float> &data, int seed = 5678)
-    {
-        std::default_random_engine e(seed);
-        std::uniform_real_distribution<float> rCode(0.0f, 1.0f);
-        data.resize(ntotal);
-        for (size_t i = 0; i < ntotal; ++i) {
-            data[i] = static_cast<float>(255 * rCode(e) - 128);
-        }
-    }
-    // 底库数据归一化
-    void Norm(size_t total, std::vector<float> &data, int dim)
-    {
-        for (size_t i = 0; i < total; ++i) {
-            float mod = 0;
-            for (int j = 0; j < dim; ++j) {
-                mod += data[i * dim + j] * data[i * dim + j];
-            }
-            mod = sqrt(mod);
-            for (int j = 0; j < dim; ++j) {
-                data[i * dim + j] = data[i * dim + j] / mod;
-            }
-        }
-    }
-    int main()
-    {
-        int dim = 512;
-        std::vector<int> device{0};
-        size_t ntotal = 1000000;
-        int searchnum = 128;
-        std::vector<float> features(dim * ntotal);
-        int64_t resourceSize = static_cast<int64_t>(1024) * 1024 * 1024;
-        int topK = 10;
-        printf("Generating random numbers start!\r\n");
-        Generate(ntotal, features);
-        Norm(ntotal, features, dim);
-        try {
-            // index初始化
-            faiss::ascend::AscendIndexFlatConfig conf(device, resourceSize);
-            auto metricType = faiss::METRIC_INNER_PRODUCT;
-            faiss::ascend::AscendIndexFlat index(dim, metricType, conf);
-            index.reset();
-            // add底库
-            printf("add start!\r\n");
-            index.add(ntotal, features.data());
-            size_t tmpTotal = index.getBaseSize(0);
-            if (tmpTotal != ntotal) {
-                printf("------- Error -----------------\n");
-                return -1;
-            }
-            // search
-            printf("search start!\r\n");
-            int loopTimes = 1;
-            std::vector<float> dist(searchnum * topK, 0);
-            std::vector<faiss::idx_t> label(searchnum * topK, 0);
-            auto ts = GetMillisecs();
-            for (int i = 0; i < loopTimes; i++) {
-                index.search(searchnum, features.data(), topK, dist.data(), label.data());
-            }
-            auto te = GetMillisecs();
-            printf("search end!\r\n");
-            printf("flat, base:%lu, dim:%d, searchnum:%d, topk:%d, duration:%.3lf, QPS:%.4f\n",
-                ntotal,
-                dim,
-                searchnum,
-                topK,
-                te - ts,
-                1000 * searchnum * loopTimes / (te - ts));
-            return 0;
-        } catch(...) {
-            printf("Exception caught! \r\n");
-            return -1;
-        }
-    }
-    ```
-
-2. 编译demo.cpp
-
-    ```bash
-    # 以安装路径“/home/work/FeatureRetrieval”为例
-    g++ --std=c++11 -fPIC -fPIE -fstack-protector-all -Wall -D_FORTIFY_SOURCE=2 -O3  -Wl,-z,relro,-z,now,-z,noexecstack -s -pie \
-    -o demo demo.cpp \
-    -I/home/work/FeatureRetrieval/mxIndex/include \
-    -I/usr/local/faiss/faiss1.10.0/include \
-    -I/usr/local/Ascend/driver/include \
-    -I/opt/OpenBLAS/include \
-    -L/home/work/FeatureRetrieval/mxIndex/host/lib \
-    -L/usr/local/faiss/faiss1.10.0/lib \
-    -L/usr/local/Ascend/driver/lib64 \
-    -L/usr/local/Ascend/driver/lib64/driver \
-    -L/opt/OpenBLAS/lib \
-    -L/usr/local/Ascend/ascend-toolkit/latest/lib64 \
-    -lfaiss -lascendfaiss -lopenblas -lc_sec -lascendcl -lascend_hal -lascendsearch -lock_hmm -lacl_op_compiler
-    ```
-
-3. 运行Demo，显示search end!即表示Demo运行成功。
-
-    ```bash
-    ./demo
-    ...
-    search end!
-    ```
-
 ## 算法介绍<a name="ZH-CN_TOPIC_0000001649848468"></a>
 
 > [!NOTE]
 >标准态部署主要使用AI CPU，Ctrl CPU和AI CPU的最佳推荐配比如下。
 >
 >- 使用<term>Atlas 推理系列产品</term>，建议设置为1:7。
+具体设置命令参考[npu-smi命令](https://www.hiascend.com/document/detail/zh/Atlas%20200I%20A2/260RC1/re/npu/npusmi_053.html)。
 
 ### 全量检索<a name="ZH-CN_TOPIC_0000001698088061"></a>
 

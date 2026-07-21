@@ -48,7 +48,7 @@
 
 5. **开发构建验证**：
 
-   1. 请参考[安装指南](./docs/zh/installation_guide.md)部署Index SDK开发环境。
+   1. 请参考[安装指南](./docs/zh/04_installation_guide.md)部署Index SDK开发环境。
 
    2. 进入`build`子目录，执行构建脚本：
 

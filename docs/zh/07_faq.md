@@ -122,7 +122,7 @@ Faiss源码的exhaustive_L2sqr_seq接口中去掉omp的num_threads(nt)约束后,
 
 **解决方案<a name="section1477773713218"></a>**
 
-在运行算子生成脚本时通过降低“-pool”参数值，重新运行脚本，可从**-pool 1**开始尝试设置。
+在运行算子生成脚本时通过降低“-pool”参数值，重新运行脚本，可从-pool 1开始尝试设置。
 
 ### NumPy的数据类型np.float\_ 已被移除<a name="ZH-CN_TOPIC_0000002252367678"></a>
 
@@ -134,7 +134,7 @@ Failed to import Python module \[AttributeError: \`np.float\_\` was removed in t
 
 **问题原因<a name="section243812295615"></a>**
 
-Python3.9及以上版本默认安装NumPy 2.0版本，但CANN目前未适配NumPy 2.0。
+Python3.9及以上版本默认安装NumPy 2.0版本，但CANN9.0.0以下版本（不包括9.0.0）目前未适配NumPy 2.0。
 
 **解决方案<a name="section18586112214564"></a>**
 
