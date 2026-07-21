@@ -955,7 +955,7 @@ void AscendIndexIVFPQImpl::indexTrainImpl(int n, const float* x, int dim, int nl
 
     auto train_start = std::chrono::high_resolution_clock::now();
     pIndex->verbose = this->intf_->verbose;
-    auto ret = pIndex->trainImpl(n, x, dim, nlist);
+    auto ret = pIndex->trainImpl(n, x, dim, nlist, this->ivfConfig.cp.niter, this->ivfConfig.cp.seed);
     FAISS_THROW_IF_NOT_MSG(ret == ::ascend::APP_ERR_OK, "IndexIVFPQ::trainImpl failed");
     centroidsData.resize(dim * nlist);
     size_t centroids_bytes = nlist * dim * sizeof(float);

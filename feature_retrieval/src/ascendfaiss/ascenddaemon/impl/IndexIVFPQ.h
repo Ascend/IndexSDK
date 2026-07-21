@@ -68,7 +68,7 @@ class IndexIVFPQ : public IndexIVF
     // Mirrors faiss::Index::verbose; set by host before trainImpl.
     bool verbose = false;
 
-    APP_ERROR trainImpl(int n, const float *x, int dim, int nlist);
+    APP_ERROR trainImpl(int n, const float *x, int dim, int nlist, int niter, int seed);
 
     size_t getPQVecCapacity(size_t vecNum, size_t size, int M) const;
 
@@ -105,19 +105,21 @@ class IndexIVFPQ : public IndexIVF
                                   std::vector<uint8_t> &newCodes, std::vector<idx_t> &newIds);
     APP_ERROR updateDeviceData(int listId, size_t newVecNum, std::vector<uint8_t> &newCodes,
                                const std::vector<idx_t> &newIds);
-    APP_ERROR initTraining(int totalSize, int dim, int nlist, const float *x, std::vector<float> &trainData,
-                           std::vector<float> &centroids);
+    APP_ERROR initTraining(int totalSize, int dim, int nlist, std::vector<float> &trainData,
+                           std::vector<float> &centroids, int seed);
     void initKmeans(std::vector<float> &trainData, std::vector<float> &centroids, int totalSize, int dim, int nlist);
     APP_ERROR resetTrainOp(int nlist, int dim);
     APP_ERROR runKMeans(int nlist, int dim, int totalSize, int iter, std::vector<float> &centroidsHost,
                         AscendTensor<float, DIMS_2> &dataVector, std::vector<int64_t> &totalAssigns);
     APP_ERROR trainBatchImpl(int batchSize, int nlist, int dim, int processed, AscendTensor<float, DIMS_2> &dataVector,
-                             std::vector<float> &centroidsHost, std::vector<float> &centroidDoubleHost,
-                             std::vector<int64_t> &batchAssigns);
+                             AscendTensor<float, DIMS_2> &centroidsDev, AscendTensor<float, DIMS_1> &centroidsDoubleDev,
+                             AscendTensor<uint32_t, DIMS_2> &sizesDev, AscendTensor<uint16_t, DIMS_2> &flagsDev,
+                             AscendTensor<int64_t, DIMS_1> &attrsDev, std::vector<int64_t> &batchAssigns,
+                             int64_t *distMs, int64_t *topkMs);
     APP_ERROR execTrainBatch(AscendTensor<float, DIMS_2> &queries, AscendTensor<float, DIMS_2> &centroids,
                              AscendTensor<float, DIMS_1> &centroidsDouble, AscendTensor<uint32_t, DIMS_2> &sizes,
                              AscendTensor<uint16_t, DIMS_2> &flags, AscendTensor<int64_t, DIMS_1> &attrs,
-                             std::vector<int64_t> &batchAssigns);
+                             std::vector<int64_t> &batchAssigns, int64_t *distMs, int64_t *topkMs);
     APP_ERROR updateCentroids(int nlist, int dim, int totalSize, const std::vector<int64_t> &totalAssigns,
                               const std::vector<float> &trainData, std::vector<float> &centroids);
     APP_ERROR updateCentroidsToDevice(int nlist, int dim, const std::vector<float> &centroids);
@@ -137,6 +139,7 @@ class IndexIVFPQ : public IndexIVF
     APP_ERROR resetL2DistOp();
     APP_ERROR resetL3TopkOp();
     APP_ERROR resetL3DistOp();
+    APP_ERROR ensureL2L3SearchOps();
 
     APP_ERROR searchWithBatch(int n, const float *x, int k, float *distances, idx_t *labels);
     APP_ERROR searchImplL1(AscendTensor<float, DIMS_2> &queries, AscendTensor<int64_t, DIMS_2> &l1TopNprobeIndicesHost,
@@ -192,7 +195,8 @@ class IndexIVFPQ : public IndexIVF
     size_t getMaxListNum(size_t batch, AscendTensor<int64_t, DIMS_2> &l1TopNprobeIndicesHost) const;
     void initializeCodeBook(int M, int nbits, int dsubs);
 
-    uint64_t getActualRngSeed(const int seed);
+    static uint64_t getActualRngSeed(const int seed);
+    static void sampleTrainData(const float *x, int n, int dim, int totalSize, int seed, std::vector<float> &trainData);
 
    protected:
     std::map<int, std::unique_ptr<AscendOperator>> l3DistFp32Ops;
