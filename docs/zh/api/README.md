@@ -2,13 +2,13 @@
 
 |目录|导航链接|
 |--|--|
-|全量检索|[full_retrieval](./01_full_retrieval.md)|
-|近似检索|[approximate_retrieval](./02_approximate_retrieval.md)|
-|属性过滤检索|[attribute_filtering-based_retrieval](./03_attribute_filtering-based_retrieval.md)|
-|多index批量检索|[multi-index_batch_retrieval](./04_multi-index_batch_retrieval.md)|
-|其他功能|[more_functions](./05_more_functions.md)|
-|未使用接口|[unused_apis](./06_unused_apis.md)|
-|接口调用返回值参考|[return_code_reference](./07_return_code_reference.md)|
+|全量检索|[01_full_retrieval](./01_full_retrieval.md)|
+|近似检索|[02_approximate_retrieval](./02_approximate_retrieval.md)|
+|属性过滤检索|[03_attribute_filtering-based_retrieval](./03_attribute_filtering-based_retrieval.md)|
+|多index批量检索|[04_multi-index_batch_retrieval](./04_multi-index_batch_retrieval.md)|
+|其他功能|[05_more_functions](./05_more_functions.md)|
+|未使用接口|[06_unused_apis](./06_unused_apis.md)|
+|接口调用返回值参考|[07_return_code_reference](./07_return_code_reference.md)|
 
 ## 接口变更说明<a name="ZH-CN_TOPIC_0000001691057326"></a>
 
