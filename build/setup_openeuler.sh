@@ -71,7 +71,7 @@ if ! command -v cmake &> /dev/null; then
 else
     CURRENT_VERSION=$(cmake --version | head -n1 | grep -oP '\d+\.\d+\.\d+')
     REQUIRED_VERSION="3.24.0"
-    if ! dpkg --compare-versions "${CURRENT_VERSION}" ge "${REQUIRED_VERSION}"; then
+    if [ "$(printf '%s\n' "${REQUIRED_VERSION}" "${CURRENT_VERSION}" | sort -V | head -n1)" != "${REQUIRED_VERSION}" ]; then
         NEED_INSTALL_CMAKE=1
         echo "[INFO] Current cmake version (${CURRENT_VERSION}) is lower than required (${REQUIRED_VERSION}). Installing..."
     else
@@ -80,7 +80,7 @@ else
     fi
 fi
 if [ "${NEED_INSTALL_CMAKE}" = "1" ]; then
-    cd ${CUR_DIR}
+    cd "${CUR_DIR}"
     if [ -f "${CMAKE_SCRIPT}" ]; then
         echo "[INFO] Using cached cmake installer"
     else
@@ -105,7 +105,7 @@ fi
 
 echo "[INFO] Installing OpenBLAS to ${OPENBLAS_INSTALL_PATH}..."
 
-cd ${CUR_DIR}
+cd "${CUR_DIR}"
 if [ -f "OpenBLAS-0.3.10.tar.gz" ]; then
     echo "[INFO] Using cached OpenBLAS archive"
 else
@@ -133,7 +133,7 @@ fi
 
 echo "[INFO] Installing faiss to ${FAISS_INSTALL_PATH}..."
 
-cd ${CUR_DIR}
+cd "${CUR_DIR}"
 if [ -f "faiss-1.10.0.tar.gz" ]; then
     echo "[INFO] Using cached faiss archive"
 else
@@ -162,11 +162,11 @@ if [ -d "${MX_INDEX_INSTALL_PATH}/mxIndex" ]; then
     if [ -n "${CUSTOM_INDEX_PATH}" ]; then
         MX_INDEX_INSTALL_PATH="${CUSTOM_INDEX_PATH}"
     else
-        bash ${MX_INDEX_INSTALL_PATH}/mxIndex/script/uninstall.sh
+        bash "${MX_INDEX_INSTALL_PATH}/mxIndex/script/uninstall.sh"
     fi
 fi
 
-cd ${CUR_DIR}
+cd "${CUR_DIR}"
 if [ -f "${INDEXSDK_PKG}" ]; then
     echo "[INFO] Using cached IndexSDK installer"
 else

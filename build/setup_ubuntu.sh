@@ -50,7 +50,7 @@ echo "[INFO] Start deploying for ${PLATFORM} on ${ARCH}..."
 # ============== 1. 安装系统依赖 ==============
 echo "[INFO] Installing system dependencies..."
 apt-get update
-apt-get install -y wget gfortran openmpi-bin libopenmpi-dev
+apt-get install -y wget gfortran openmpi-bin libopenmpi-dev gcc g++ make pkg-config libblas-dev liblapack-dev libffi-dev libssl-dev zlib1g-dev
 
 python3 -m pip install --upgrade pip
 pip3 install numpy==1.26.4 decorator sympy==1.4 cffi==1.15.1 pyyaml pathlib2 protobuf scipy requests attrs psutil faiss-cpu==1.13.2 \
@@ -73,7 +73,7 @@ else
     fi
 fi
 if [ "${NEED_INSTALL_CMAKE}" = "1" ]; then
-    cd ${CUR_DIR}
+    cd "${CUR_DIR}"
     if [ -f "${CMAKE_SCRIPT}" ]; then
         echo "[INFO] Using cached cmake installer"
     else
@@ -98,7 +98,7 @@ fi
 
 echo "[INFO] Installing OpenBLAS to ${OPENBLAS_INSTALL_PATH}..."
 
-cd ${CUR_DIR}
+cd "${CUR_DIR}"
 if [ -f "OpenBLAS-0.3.10.tar.gz" ]; then
     echo "[INFO] Using cached OpenBLAS archive"
 else
@@ -126,7 +126,7 @@ fi
 
 echo "[INFO] Installing faiss to ${FAISS_INSTALL_PATH}..."
 
-cd ${CUR_DIR}
+cd "${CUR_DIR}"
 if [ -f "faiss-1.10.0.tar.gz" ]; then
     echo "[INFO] Using cached faiss archive"
 else
@@ -155,11 +155,11 @@ if [ -d "${MX_INDEX_INSTALL_PATH}/mxIndex" ]; then
     if [ -n "${CUSTOM_INDEX_PATH}" ]; then
         MX_INDEX_INSTALL_PATH="${CUSTOM_INDEX_PATH}"
     else
-        bash ${MX_INDEX_INSTALL_PATH}/mxIndex/script/uninstall.sh
+        bash "${MX_INDEX_INSTALL_PATH}/mxIndex/script/uninstall.sh"
     fi
 fi
 
-cd ${CUR_DIR}
+cd "${CUR_DIR}"
 if [ -f "${INDEXSDK_PKG}" ]; then
     echo "[INFO] Using cached IndexSDK installer"
 else
