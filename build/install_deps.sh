@@ -31,7 +31,7 @@ echo "[INSTALL_INFO] start installing OpenBLAS..."
 if [ -d "/opt/OpenBLAS" ]; then
     echo "[INSTALL_INFO] OpenBLAS already exist."
 else
-    cd ${TOP_DIR}
+    cd "${TOP_DIR}"
     if [ -f "OpenBLAS-0.3.10.tar.gz" ]; then
         echo "[INSTALL_INFO] Using local cached OpenBLAS-0.3.10.tar.gz"
     else
@@ -58,7 +58,7 @@ function install_faiss()
         return
     fi
 
-    cd ${TOP_DIR}
+    cd "${TOP_DIR}"
     if [ -f "${faiss_tar_file}" ]; then
         echo "[INSTALL_INFO] Using local cached ${faiss_tar_file}"
     else
@@ -109,7 +109,7 @@ function install_package_deps()
     if [ -d "${TOP_DIR}/makeself" ]; then
         echo "[INSTALL_INFO] makeself already exist."
     else
-        cd ${TOP_DIR}
+        cd "${TOP_DIR}"
         git clone -b v2.5.0.x https://gitcode.com/cann-src-third-party/makeself.git makeself_patch
         git clone -b release-2.5.0 https://gitcode.com/gh_mirrors/ma/makeself.git
     fi
@@ -130,7 +130,7 @@ function install_ut_deps()
 
     # mockcpp
     if [ ! -d "${TOP_DIR}/mockcpp" ]; then
-        cd ${TOP_DIR}
+        cd "${TOP_DIR}"
         git clone -b v2.7.x-h3 https://gitcode.com/cann-src-third-party/mockcpp.git mockcpp_patch
         git clone -b v2.7 https://gitee.com/sinojelly/mockcpp.git
     fi
@@ -149,13 +149,13 @@ function install_ut_deps()
 
     # huawei_secure_c
     if [ ! -d "${TOP_DIR}/huawei_secure_c" ]; then
-        cd ${TOP_DIR}
+        cd "${TOP_DIR}"
         git clone -b v1.1.16 https://gitee.com/openeuler/libboundscheck.git huawei_secure_c
     fi
 
     # googletest
     if [ ! -d "${TOP_DIR}/googletest" ]; then
-        cd ${TOP_DIR}
+        cd "${TOP_DIR}"
         git clone -b release-1.11.0 https://gitcode.com/GitHub_Trending/go/googletest.git googletest
     fi
     cd "${TOP_DIR}/googletest"

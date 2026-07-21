@@ -61,7 +61,10 @@ readonly ip_n
 
 function check_path() {
     local path=$1
-    [[ ${#path} -gt ${MAX_LEN_OF_PATH} ]] || [[ ${#path} -le ${MIN_LEN_OF_PATH} ]] && print "ERROR" "${path} length is invalid, either exceeding ${MAX_LEN_OF_PATH} or less than ${MIN_LEN_OF_PATH}, exiting" "$force_exit" && exit 1
+    if [[ ${#path} -gt ${MAX_LEN_OF_PATH} ]] || [[ ${#path} -le ${MIN_LEN_OF_PATH} ]]; then
+        print "ERROR" "${path} length is invalid, either exceeding ${MAX_LEN_OF_PATH} or less than ${MIN_LEN_OF_PATH}, exiting"
+        exit 1
+    fi
     [[ $(echo "$path" | wc -l) -gt 1 ]]  && print "ERROR" "${path} contains newline characters, exiting"  && exit 1
     [[ -n $(echo "$path" | grep -Ev '^[/~][-_.0-9a-zA-Z/]*$') ]]  && print "ERROR" "${path} must start with '/' or '~' and characters only can contain '-_.0-9a-zA-Z/', exiting"  && exit 1
     [[ $(echo "$path" | grep -E "\.\.") ]]  && print "ERROR" "${path} contains .. , exiting"  && exit 1
@@ -611,7 +614,7 @@ function upgrade_process() {
         log  "WARNING" "user reject to upgrade, nothing changed" "y"
         exit 1
     else
-        "$install_path"/mxIndex/script/uninstall.sh 2>uninstall_err; res=$?;
+        uninstall_err=$("$install_path"/mxIndex/script/uninstall.sh 2>&1 1>/dev/null); res=$?;
         if test "$res" -ne 0; then
             log "ERROR" "uninstall old package failed, ${uninstall_err}" "y"
             exit 1
