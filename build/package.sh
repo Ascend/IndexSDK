@@ -39,7 +39,7 @@ MAKESELF_HEADER=${TOP_DIR}/makeself/makeself-header.sh
 function package_index()
 {
     mkdir -p "${ARCH_DES}"
-    cd ${ARCH_DES} || exit 1
+    cd "${ARCH_DES}" || exit 1
 
     cp -rf ${TOP_DIR}/feature_retrieval/output/*.tar.gz ./ && chmod 640 *.tar.gz
 

@@ -37,7 +37,7 @@ Tag 遵循以下格式：
 | `26.0.0-310p-ubuntu22.04-py3.11`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/Dockerfile.310p.ubuntu)      | toolkit + Index SDK |
 | `26.0.0-a3-ubuntu22.04-py3.11`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/Dockerfile.a3.ubuntu)         | toolkit + Index SDK |
 | `26.0.0-950-ubuntu22.04-py3.11`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/Dockerfile.950.ubuntu)         | toolkit + Index SDK |
-| `26.0.0-910-openeuler24.04-py3.11`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/Dockerfile.910.openeuler) | toolkit + Index SDK |
+| `26.0.0-910-openeuler24.04-py3.11`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/Dockerfile.910b.openeuler) | toolkit + Index SDK |
 | `26.0.0-310p-openeuler24.04-py3.11`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/Dockerfile.310p.openeuler)      | toolkit + Index SDK |
 | `26.0.0-a3-openeuler24.04-py3.11`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/Dockerfile.a3.openeuler)         | toolkit + Index SDK |
 | `26.0.0-950-openeuler24.04-py3.11`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/Dockerfile.950.openeuler)         | toolkit + Index SDK |
