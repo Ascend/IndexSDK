@@ -29,10 +29,10 @@ namespace
 constexpr int THREADS_CNT = 4;
 constexpr int IVF_PQ_BURST_LEN = 64;
 constexpr int MAX_BATCH_SIZE = 64;
-constexpr uint8_t BURST_LEN_LOW = 32;
-constexpr uint8_t BURST_LEN_HIGH = 64;
-constexpr uint8_t BURST_BLOCK_RATIO = 2;
-constexpr uint8_t OPTIMIZE_BATCH_THRES = 48;
+constexpr uint8_t IVF_PQ_BURST_LEN_LOW = 32;
+constexpr uint8_t IVF_PQ_BURST_LEN_HIGH = 64;
+constexpr uint8_t IVF_PQ_BURST_BLOCK_RATIO = 2;
+constexpr uint8_t IVF_PQ_OPTIMIZE_BATCH_THRES = 48;
 }  // namespace
 
 class IndexIVFPQ : public IndexIVF
@@ -66,9 +66,12 @@ class IndexIVFPQ : public IndexIVF
     std::unique_ptr<DeviceVector<float>> clusteringOnDevice;
 
     // Mirrors faiss::Index::verbose; set by host before trainImpl.
+    // Kept for ABI compatibility with existing AscendIndexIVFPQImpl callers.
     bool verbose = false;
 
-    APP_ERROR trainImpl(int n, const float *x, int dim, int nlist, int niter, int seed);
+    APP_ERROR trainImpl(int n, const float *x, int dim, int nlist, int niter, int seed, bool skipSample = false);
+
+    void resetTrainSession();
 
     size_t getPQVecCapacity(size_t vecNum, size_t size, int M) const;
 
@@ -78,18 +81,39 @@ class IndexIVFPQ : public IndexIVF
     {
         if (faiss::ascend::SocUtils::GetInstance().IsAscend910B())
         {
-            burstLen = BURST_LEN_HIGH;
+            burstLen = IVF_PQ_BURST_LEN_HIGH;
         }
         else
         {
-            burstLen = (nq > OPTIMIZE_BATCH_THRES) ? BURST_LEN_LOW : BURST_LEN_HIGH;
+            burstLen = (nq > IVF_PQ_OPTIMIZE_BATCH_THRES) ? IVF_PQ_BURST_LEN_LOW : IVF_PQ_BURST_LEN_HIGH;
         }
-        return utils::divUp(blockSize, burstLen) * BURST_BLOCK_RATIO;
+        return utils::divUp(blockSize, burstLen) * IVF_PQ_BURST_BLOCK_RATIO;
     }
     APP_ERROR searchImpl(int n, const float *x, int k, float *distances, idx_t *labels);
 
     APP_ERROR assignCentroid(int nlist, int dim, int totalSize, std::vector<float> &centroids, float *trainDataHost,
-                             std::vector<int64_t> &totalAssigns);
+                             std::vector<int64_t> &totalAssigns, bool useFastPath = false);
+
+    APP_ERROR initClusterTrainOps(int nlist, int dim);
+
+    APP_ERROR runKMeans(int nlist, int dim, int totalSize, int iter, float *centroidsHost,
+                        AscendTensor<float, DIMS_2> &dataVector, std::vector<int64_t> &totalAssigns,
+                        bool useDeviceCentroids = false, int64_t assignOffset = 0);
+
+    APP_ERROR copyTrainCentroidsFromDevice(int nlist, int dim, const float *srcCentroidsDev,
+                                           const float *srcCentroidsSqrSumDev);
+
+    const float *getTrainCentroidsDevicePtr() const;
+    const float *getTrainCentroidsSqrSumDevicePtr() const;
+
+    void ensureTrainBatchWorkspace(int nlist, int batchSize);
+    void ensureTrainAssignBuffer(int totalSize);
+    void ensureTrainCentroidsDevice(int nlist, int dim);
+    APP_ERROR syncTrainCentroidsToDevice(int nlist, int dim, const std::vector<float> &centroids);
+    APP_ERROR syncTrainCentroidsFromHost(int nlist, int dim, const float *centroids);
+    void ensureAssignQueryBuffer(size_t elemCount);
+    void ensureL1Workspace(int batch, int nlist);
+    APP_ERROR assignCentroidFast(AscendTensor<float, DIMS_2> &queries, std::vector<int64_t> &assignments);
 
    protected:
     void normL2(int dim, int nlist, float *data);
@@ -109,17 +133,20 @@ class IndexIVFPQ : public IndexIVF
                            std::vector<float> &centroids, int seed);
     void initKmeans(std::vector<float> &trainData, std::vector<float> &centroids, int totalSize, int dim, int nlist);
     APP_ERROR resetTrainOp(int nlist, int dim);
-    APP_ERROR runKMeans(int nlist, int dim, int totalSize, int iter, std::vector<float> &centroidsHost,
-                        AscendTensor<float, DIMS_2> &dataVector, std::vector<int64_t> &totalAssigns);
     APP_ERROR trainBatchImpl(int batchSize, int nlist, int dim, int processed, AscendTensor<float, DIMS_2> &dataVector,
                              AscendTensor<float, DIMS_2> &centroidsDev, AscendTensor<float, DIMS_1> &centroidsDoubleDev,
                              AscendTensor<uint32_t, DIMS_2> &sizesDev, AscendTensor<uint16_t, DIMS_2> &flagsDev,
-                             AscendTensor<int64_t, DIMS_1> &attrsDev, std::vector<int64_t> &batchAssigns,
-                             int64_t *distMs, int64_t *topkMs);
+                             AscendTensor<int64_t, DIMS_1> &attrsDev, int64_t *distMs, int64_t *topkMs);
     APP_ERROR execTrainBatch(AscendTensor<float, DIMS_2> &queries, AscendTensor<float, DIMS_2> &centroids,
                              AscendTensor<float, DIMS_1> &centroidsDouble, AscendTensor<uint32_t, DIMS_2> &sizes,
                              AscendTensor<uint16_t, DIMS_2> &flags, AscendTensor<int64_t, DIMS_1> &attrs,
-                             std::vector<int64_t> &batchAssigns, int64_t *distMs, int64_t *topkMs);
+                             int assignOffset, int64_t *distMs, int64_t *topkMs);
+    APP_ERROR execTrainBatchDist(AscendTensor<float, DIMS_2> &queries, AscendTensor<float, DIMS_2> &centroids,
+                                 AscendTensor<float, DIMS_1> &centroidsDouble, AscendTensor<uint16_t, DIMS_2> &flags,
+                                 int bufIdx, int64_t *distMs);
+    APP_ERROR execTrainBatchTopk(AscendTensor<uint32_t, DIMS_2> &sizes, AscendTensor<uint16_t, DIMS_2> &flags,
+                                 AscendTensor<int64_t, DIMS_1> &attrs, int bufIdx, int batchSize, int nlist,
+                                 int assignOffset);
     APP_ERROR updateCentroids(int nlist, int dim, int totalSize, const std::vector<int64_t> &totalAssigns,
                               const std::vector<float> &trainData, std::vector<float> &centroids);
     APP_ERROR updateCentroidsToDevice(int nlist, int dim, const std::vector<float> &centroids);
@@ -180,6 +207,7 @@ class IndexIVFPQ : public IndexIVF
         AscendTensor<float, DIMS_3, size_t> &topkValue, AscendTensor<uint64_t, DIMS_3, size_t> &topkIndexFinal,
         AscendTensor<float, DIMS_3, size_t> &topkValueFinal, AscendTensor<uint8_t, DIMS_1, size_t> &codeBase,
         AscendTensor<uint64_t, DIMS_1, size_t> &labelBase, aclrtStream &stream);
+    int getL3SearchBatchCap() const;
     void fillDisOpInputDataByBlockPQ(size_t qIdx, size_t tIdx, size_t segIdx, size_t segNum, size_t coreNum,
                                      size_t ivfpqBlockSize, AscendTensor<int64_t, DIMS_3, size_t> &baseSizeHostVec,
                                      AscendTensor<int64_t, DIMS_3, size_t> &offsetHostVec,
@@ -208,6 +236,37 @@ class IndexIVFPQ : public IndexIVF
     std::map<int, std::unique_ptr<AscendOperator>> l2DistFp32Ops;
     std::map<int, std::unique_ptr<AscendOperator>> trainDistOps;
     std::map<int, std::unique_ptr<AscendOperator>> trainTopkOps;
+    int trainOpNlist_ = -1;
+    int trainOpDim_ = -1;
+    int trainWsNlist_ = -1;
+    int trainWsMaxBatch_ = 0;
+    std::unique_ptr<DeviceVector<float>> trainBatchDistsDev_;
+    std::unique_ptr<DeviceVector<float>> trainBatchVmdistsDev_;
+    std::unique_ptr<DeviceVector<float>> trainBatchDistsDevAlt_;
+    std::unique_ptr<DeviceVector<float>> trainBatchVmdistsDevAlt_;
+    std::unique_ptr<DeviceVector<float>> trainBatchOutdistsDev_;
+    std::unique_ptr<DeviceVector<int64_t>> trainBatchOutlabelDev_;
+    std::unique_ptr<DeviceVector<int64_t>> trainAssignsDev_;
+    int trainAssignsCapacity_ = 0;
+    std::unique_ptr<DeviceVector<float>> trainCentroidsDev_;
+    std::unique_ptr<DeviceVector<float>> trainCentroidsSqrSumDev_;
+    int trainCentroidsNlist_ = -1;
+    int trainCentroidsDim_ = -1;
+    std::unique_ptr<DeviceVector<float>> assignQueriesOnDevice_;
+    size_t assignQueriesCapacityElems_ = 0;
+    int l1WsNumLists_ = -1;
+    int l1WsMaxBatch_ = 0;
+    std::unique_ptr<DeviceVector<float>> l1DistsDev_;
+    std::unique_ptr<DeviceVector<float>> l1VmdistsDev_;
+    std::unique_ptr<DeviceVector<float>> l1TopNprobeDistsDev_;
+    std::unique_ptr<DeviceVector<int64_t>> l1TopNprobeIndicesDev_;
+    std::unique_ptr<DeviceVector<uint32_t>> l1OpSizeDev_;
+    std::unique_ptr<DeviceVector<uint16_t>> l1OpFlagDev_;
+    std::unique_ptr<DeviceVector<int64_t>> l1AttrsDev_;
+    std::unique_ptr<DeviceVector<float>> assignDistsDevAlt_;
+    std::unique_ptr<DeviceVector<float>> assignVmdistsDevAlt_;
+    std::unique_ptr<DeviceVector<uint16_t>> assignOpFlagDevAlt_;
+    std::unique_ptr<DeviceVector<float>> assignOutdistsDev_;
     int blockSize;
     int M;
     int nbits;
