@@ -4,8 +4,7 @@ FROM swr.cn-south-1.myhuaweicloud.com/ascendhub/cann:${CANN_VERSION}-910b-openeu
 WORKDIR /tmp
 
 ARG PLATFORM=910B
-RUN export DEBIAN_FRONTEND=noninteractive && \
-    export TZ=Asia/Shanghai && \
+RUN export TZ=Asia/Shanghai && \
     for repo in /etc/yum.repos.d/*.repo; do \
         cp $repo ${repo}.bak; \
         sed -i 's|http://repo.openeuler.org|https://repo.huaweicloud.com/openeuler|g' $repo; \
@@ -31,6 +30,7 @@ RUN mkdir ~/.pip && touch ~/.pip/pip.conf && \
     echo "timeout=200" >> ~/.pip/pip.conf
 # python包
 RUN pip3 install -U pip && \
+    pip3 install numpy && \
     pip3 install decorator && \
     pip3 install sympy==1.4 && \
     pip3 install cffi==1.15.1 && \
@@ -92,6 +92,7 @@ ARG TOOLKIT_PATH=$ASCEND_BASE/ascend-toolkit/latest
 ENV GLOG_v=2 \
     ASCEND_OPP_PATH=$TOOLKIT_PATH/opp \
     ASCEND_AICPU_PATH=$TOOLKIT_PATH \
+    TBE_IMPL_PATH=$TOOLKIT_PATH/opp/op_impl/built-in/ai_core/tbe \
     PYTHONPATH=$TBE_IMPL_PATH:/usr/local/python3.11.15/lib/python3.11/site-packages/:$PYTHONPATH \
     ASCEND_HOME=${ASCEND_BASE} \
     MX_INDEX_MODELPATH=/home/Ascend/modelpath \
@@ -100,7 +101,7 @@ ENV GLOG_v=2 \
 RUN mkdir -p ${MX_INDEX_MODELPATH}
 
 ARG VERSION=26.0.0
-RUN ARCH=$(uname -m | sed 's/x86_64/x86_64/; s/aarch64/aarch64/') && \
+RUN ARCH=$(uname -m) && \
     wget https://gitcode.com/Ascend/IndexSDK/releases/download/v${VERSION}/Ascend-mindxsdk-mxindex_${VERSION}_linux-${ARCH}.run && \
     bash Ascend-mindxsdk-mxindex_${VERSION}_linux-${ARCH}.run --install --platform=${PLATFORM} && \
     cd ${ASCEND_BASE}/mxIndex/ops && ./custom_opp_${ARCH}.run
@@ -111,6 +112,5 @@ RUN sed -i '$a\source /usr/local/Ascend/ascend-toolkit/set_env.sh' ~/.bashrc && 
     sed -i '$a\export LD_LIBRARY_PATH=/usr/local/gtest/lib:$LD_LIBRARY_PATH' ~/.bashrc && \
     sed -i '$a\export LD_LIBRARY_PATH=/usr/local/Ascend/driver/lib64/driver:$LD_LIBRARY_PATH' ~/.bashrc
 
-RUN pip3 install numpy==1.26.4
 RUN rm -rf ./*
 WORKDIR /root

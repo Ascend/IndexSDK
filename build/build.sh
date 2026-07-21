@@ -360,7 +360,7 @@ function main()
 }
 
 BUILDTYPE=$1
-bash ${CUR_DIR}/install_deps.sh ${BUILDTYPE}
+bash "${CUR_DIR}/install_deps.sh" "${BUILDTYPE}"
 if [ "${BUILDTYPE}" = "ut" ]; then
     run_ut
 else
