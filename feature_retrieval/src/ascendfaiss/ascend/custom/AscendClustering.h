@@ -16,26 +16,32 @@
  * -------------------------------------------------------------------------
  */
 
-
 #ifndef ASCEND_INDEX_CLUSTERING
 #define ASCEND_INDEX_CLUSTERING
 
-#include <memory>
-
 #include <faiss/Clustering.h>
 
-namespace faiss {
-namespace ascend {
-const int64_t CLUSTERING_DEFAULT_MEM = 0x2000000; // 0x2000000 mean 32M(resource mem pool's size)
-struct AscendClusteringConfig {
-    inline AscendClusteringConfig() : deviceList({ 0 }), resourceSize(CLUSTERING_DEFAULT_MEM) {}
+#include <memory>
+
+namespace faiss
+{
+namespace ascend
+{
+const int64_t CLUSTERING_DEFAULT_MEM = 0x2000000;  // 0x2000000 mean 32M(resource mem pool's size)
+struct AscendClusteringConfig
+{
+    inline AscendClusteringConfig() : deviceList({0}), resourceSize(CLUSTERING_DEFAULT_MEM) {}
 
     inline explicit AscendClusteringConfig(std::initializer_list<int> devices,
-        int64_t resources = CLUSTERING_DEFAULT_MEM)
-        : deviceList(devices), resourceSize(resources) {}
+                                           int64_t resources = CLUSTERING_DEFAULT_MEM)
+        : deviceList(devices), resourceSize(resources)
+    {
+    }
 
     inline explicit AscendClusteringConfig(std::vector<int> devices, int64_t resources = CLUSTERING_DEFAULT_MEM)
-        : deviceList(devices), resourceSize(resources) {}
+        : deviceList(devices), resourceSize(resources)
+    {
+    }
 
     // Ascend devices mask on which the index is resident
     std::vector<int> deviceList;
@@ -43,8 +49,9 @@ struct AscendClusteringConfig {
 };
 
 class AscendClusteringImpl;
-class AscendClustering : public Clustering {
-public:
+class AscendClustering : public Clustering
+{
+   public:
     AscendClustering(int d, int k, MetricType metricType, AscendClusteringConfig config);
 
     virtual ~AscendClustering();
@@ -53,10 +60,11 @@ public:
     void AddFp32(idx_t n, const float *x) const;
 
     void Train(int niter, float *centroids, bool clearData = true) const;
-    void TrainFp32(int niter, float *centroids, bool clearData = true)  const;
+    void TrainFp32(int niter, float *centroids, bool clearData = true) const;
 
 #ifdef HOSTCPU
     void DistributedTrain(int niter, float *centroids, const std::vector<int> &deviceList, bool clearData) const;
+    void DistributedTrainFp32(int niter, float *centroids, const std::vector<int> &deviceList, bool clearData) const;
 #endif
 
     void ComputeCorr(float *corr, bool clearData = false) const;
@@ -65,17 +73,16 @@ public:
 
     void SubClusAddInt8(idx_t n, const uint8_t *x, int seq, int k) const;
 
-    void SubClusExecInt8(int niter, uint16_t *labels, float *centroids,
-        int batchSubNlist, size_t batchNTotal) const;
+    void SubClusExecInt8(int niter, uint16_t *labels, float *centroids, int batchSubNlist, size_t batchNTotal) const;
 
     void UpdateVdm(uint16_t *vmin, uint16_t *vdiff) const;
 
     int GetSubBucketNum(int seq) const;
 
-protected:
+   protected:
     std::shared_ptr<AscendClusteringImpl> impl_;
 };
-}
-}
+}  // namespace ascend
+}  // namespace faiss
 
 #endif

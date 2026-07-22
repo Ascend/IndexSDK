@@ -55,7 +55,7 @@ static int trainMinDistCols(int nlist) { return nlist / IVF_PQ_BURST_LEN * 2; }
 
 static int computeTrainTotalSize(int nlist, int n)
 {
-    int capped = std::min(nlist * (nlist <= 16384 ? 256 : TRAIN_SAMPLES_PER_LIST), n);
+    int capped = std::min(nlist * TRAIN_SAMPLES_PER_LIST, n);
     return std::min(capped, MAX_TRAIN_SAMPLES);
 }
 const int BYTES_PER_FLOAT = 4;
@@ -904,7 +904,8 @@ APP_ERROR IndexIVFPQ::runKMeans(int nlist, int dim, int totalSize, int iter, flo
 
     int processed = 0;
     int batchIdx = 0;
-    int pendingTopkBuf = -1;
+    // Per-slot pending flags (assignCentroidFast pattern); a single index never matches under 0/1 alternation.
+    bool pendingTopkBuf[2] = {false, false};
     while (processed < totalSize)
     {
         int remaining = totalSize - processed;
@@ -919,7 +920,7 @@ APP_ERROR IndexIVFPQ::runKMeans(int nlist, int dim, int totalSize, int iter, flo
         }
 
         const int buf = batchIdx % 2;
-        if (pendingTopkBuf == buf)
+        if (pendingTopkBuf[buf])
         {
             auto topkSyncStart = std::chrono::high_resolution_clock::now();
             ret = synchronizeStream(streamAicpu);
@@ -928,10 +929,12 @@ APP_ERROR IndexIVFPQ::runKMeans(int nlist, int dim, int totalSize, int iter, flo
             topkMs += std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() -
                                                                             topkSyncStart)
                           .count();
-            pendingTopkBuf = -1;
+            pendingTopkBuf[0] = false;
+            pendingTopkBuf[1] = false;
         }
 
-        AscendTensor<float, DIMS_2> queries(dataVector.data() + processed * dim, {batchSize, dim});
+        AscendTensor<float, DIMS_2> queries(
+            dataVector.data() + static_cast<size_t>(processed) * static_cast<size_t>(dim), {batchSize, dim});
         ret = execTrainBatchDist(queries, centroidsDev, centroidsDoubleDev, flagsDev, buf, &distMs);
         APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, ret,
                                  "Failed to execute train batch dist, batchSize=%d, nlist=%d, dim=%d, ret=%d",
@@ -941,14 +944,14 @@ APP_ERROR IndexIVFPQ::runKMeans(int nlist, int dim, int totalSize, int iter, flo
         APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, ret,
                                  "Failed to execute train batch topk, batchSize=%d, nlist=%d, ret=%d", batchSize, nlist,
                                  ret);
-        pendingTopkBuf = buf;
+        pendingTopkBuf[buf] = true;
 
         processed += batchSize;
         batchIdx++;
         batchCount++;
     }
 
-    if (pendingTopkBuf >= 0)
+    if (pendingTopkBuf[0] || pendingTopkBuf[1])
     {
         auto topkSyncStart = std::chrono::high_resolution_clock::now();
         ret = synchronizeStream(streamAicpu);
@@ -981,7 +984,8 @@ APP_ERROR IndexIVFPQ::trainBatchImpl(int batchSize, int nlist, int dim, int proc
                                      AscendTensor<uint32_t, DIMS_2> &sizesDev, AscendTensor<uint16_t, DIMS_2> &flagsDev,
                                      AscendTensor<int64_t, DIMS_1> &attrsDev, int64_t *distMs, int64_t *topkMs)
 {
-    AscendTensor<float, DIMS_2> queries(dataVector.data() + processed * dim, {batchSize, dim});
+    AscendTensor<float, DIMS_2> queries(dataVector.data() + static_cast<size_t>(processed) * static_cast<size_t>(dim),
+                                        {batchSize, dim});
     auto ret = execTrainBatch(queries, centroidsDev, centroidsDoubleDev, sizesDev, flagsDev, attrsDev, processed,
                               distMs, topkMs);
     APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, ret,
@@ -2185,8 +2189,7 @@ APP_ERROR IndexIVFPQ::searchImplL3(AscendTensor<int64_t, DIMS_2> &l1TopNprobeInd
             break;
         }
     }
-    APPERR_RETURN_IF_NOT_LOG(labelBasePtr != nullptr, APP_ERR_INNER_ERROR,
-                             "all nprobe cluster is empty by L1 search !!!");
+    APPERR_RETURN_IF_NOT_LOG(labelBasePtr != nullptr, APP_ERR_OK, "all nprobe cluster is empty by L1 search !!!");
 
     AscendTensor<uint16_t, DIMS_2, size_t> opFlag(mem, {tileNum, segNum * 16}, stream);
     (void)opFlag.zero();

@@ -16,28 +16,24 @@
  * -------------------------------------------------------------------------
  */
 
-
 #include "AscendClustering.h"
+
 #include "AscendClusteringImpl.h"
 
-
-namespace faiss {
-namespace ascend {
+namespace faiss
+{
+namespace ascend
+{
 AscendClustering::AscendClustering(int d, int k, MetricType metricType, AscendClusteringConfig config)
-    : Clustering(d, k),
-    impl_(std::make_shared<AscendClusteringImpl>(d, k, metricType, config, this)) {}
+    : Clustering(d, k), impl_(std::make_shared<AscendClusteringImpl>(d, k, metricType, config, this))
+{
+}
 
 AscendClustering::~AscendClustering() {}
 
-void AscendClustering::Add(idx_t n, const float *x) const
-{
-    impl_->add(n, x);
-}
+void AscendClustering::Add(idx_t n, const float *x) const { impl_->add(n, x); }
 
-void AscendClustering::AddFp32(idx_t n, const float *x)  const
-{
-    impl_->addFp32(n, x);
-}
+void AscendClustering::AddFp32(idx_t n, const float *x) const { impl_->addFp32(n, x); }
 
 // Use fast add to transfer data to dev
 void AscendClustering::Train(int niter, float *centroids, bool clearData) const
@@ -45,48 +41,42 @@ void AscendClustering::Train(int niter, float *centroids, bool clearData) const
     impl_->train(niter, centroids, clearData);
 }
 
-void AscendClustering::TrainFp32(int niter, float *centroids, bool clearData)  const
+void AscendClustering::TrainFp32(int niter, float *centroids, bool clearData) const
 {
     impl_->trainFp32(niter, centroids, clearData);
 }
 
 #ifdef HOSTCPU
-void AscendClustering::DistributedTrain(
-    int niter, float *centroids, const std::vector<int> &deviceList, bool clearData) const
+void AscendClustering::DistributedTrain(int niter, float *centroids, const std::vector<int> &deviceList,
+                                        bool clearData) const
 {
     impl_->distributedTrain(niter, centroids, deviceList, clearData);
 }
+
+void AscendClustering::DistributedTrainFp32(int niter, float *centroids, const std::vector<int> &deviceList,
+                                            bool clearData) const
+{
+    impl_->distributedTrainFp32(niter, centroids, deviceList, clearData);
+}
 #endif
 
-void AscendClustering::ComputeCorr(float *corr, bool clearData) const
-{
-    impl_->computeCorr(corr, clearData);
-}
+void AscendClustering::ComputeCorr(float *corr, bool clearData) const { impl_->computeCorr(corr, clearData); }
 
-size_t AscendClustering::GetNTotal() const
-{
-    return impl_->getNTotal();
-}
+size_t AscendClustering::GetNTotal() const { return impl_->getNTotal(); }
 
 void AscendClustering::SubClusAddInt8(idx_t n, const uint8_t *x, int seq, int k) const
 {
     impl_->subClusAddInt8(n, x, seq, k);
 }
 
-void AscendClustering::SubClusExecInt8(int niter, uint16_t *labels, float *centroids,
-    int batchSubNlist, size_t batchNTotal) const
+void AscendClustering::SubClusExecInt8(int niter, uint16_t *labels, float *centroids, int batchSubNlist,
+                                       size_t batchNTotal) const
 {
     impl_->subClusExecInt8(niter, labels, centroids, batchSubNlist, batchNTotal);
 }
 
-void AscendClustering::UpdateVdm(uint16_t *vmin, uint16_t *vdiff) const
-{
-    impl_->updateVDM(vmin, vdiff);
-}
+void AscendClustering::UpdateVdm(uint16_t *vmin, uint16_t *vdiff) const { impl_->updateVDM(vmin, vdiff); }
 
-int AscendClustering::GetSubBucketNum(int seq) const
-{
-    return impl_->getSubBucketNum(seq);
-}
-}
-}
+int AscendClustering::GetSubBucketNum(int seq) const { return impl_->getSubBucketNum(seq); }
+}  // namespace ascend
+}  // namespace faiss
