@@ -26,7 +26,7 @@ namespace ascend
 {
 namespace
 {
-constexpr int THREADS_CNT = 4;
+constexpr int IVF_PQ_THREADS_CNT = 4;
 constexpr int IVF_PQ_BURST_LEN = 64;
 constexpr int MAX_BATCH_SIZE = 64;
 constexpr uint8_t IVF_PQ_BURST_LEN_LOW = 32;

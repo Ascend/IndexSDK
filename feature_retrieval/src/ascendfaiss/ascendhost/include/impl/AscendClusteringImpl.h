@@ -16,7 +16,6 @@
  * -------------------------------------------------------------------------
  */
 
-
 #ifndef ASCEND_INDEX_CLUSTERING_IMPL_HOST
 #define ASCEND_INDEX_CLUSTERING_IMPL_HOST
 
@@ -24,25 +23,29 @@
 
 #include "ascend/custom/AscendClustering.h"
 #include "ascenddaemon/AscendResourcesProxy.h"
+#include "ascenddaemon/impl/IndexIVFPQ.h"
 #include "ascenddaemon/utils/AscendOperator.h"
 #include "ascenddaemon/utils/AscendTensor.h"
-#include "common/ErrorCode.h"
+#include "ascenddaemon/utils/DeviceVector.h"
 #include "common/AscendFp16.h"
-
+#include "common/ErrorCode.h"
 #include "index_custom/IndexFlatATSubAicpu.h"
-#include "ascenddaemon/impl/IndexIVFFlat.h"
 
 class AscendThreadPool;
 
-namespace ascend {
+namespace ascend
+{
 class IndexFlatATAicpu;
 }
 
-namespace faiss {
-namespace ascend {
+namespace faiss
+{
+namespace ascend
+{
 using namespace ::ascend;
-class AscendClusteringImpl {
-public:
+class AscendClusteringImpl
+{
+   public:
     AscendClusteringImpl(int d, int k, MetricType metric_type, AscendClusteringConfig config, AscendClustering *intf);
 
     virtual ~AscendClusteringImpl();
@@ -58,6 +61,8 @@ public:
 
     void distributedTrain(int niter, float *centroids, const std::vector<int> &deviceList, bool clearData);
 
+    void distributedTrainFp32(int niter, float *centroids, const std::vector<int> &deviceList, bool clearData);
+
     void computeCorr(float *corr, bool clearData);
 
     size_t getNTotal();
@@ -72,26 +77,25 @@ public:
 
     void normalizeVecByHost(float *centrodataHost, AscendTensor<float, DIMS_2> &centrodataDev);
 
-    AscendClusteringImpl(const AscendClusteringImpl&) = delete;
-    AscendClusteringImpl& operator=(const AscendClusteringImpl&) = delete;
+    AscendClusteringImpl(const AscendClusteringImpl &) = delete;
+    AscendClusteringImpl &operator=(const AscendClusteringImpl &) = delete;
 
-protected:
+   protected:
     void init();
 
     void resetKmUpdateCentroidsOp();
 
     void runkmUpdateCentroidsCompute(AscendTensor<float16_t, DIMS_2> &codes,
                                      AscendTensor<float16_t, DIMS_2> &centrodata,
-                                     AscendTensor<uint64_t, DIMS_1> &assign,
-                                     aclrtStream stream);
+                                     AscendTensor<uint64_t, DIMS_1> &assign, aclrtStream stream);
 
     void randomCentrodata(AscendTensor<float16_t, DIMS_2> &centrodata);
 
     void trainPostProcess(AscendTensor<float16_t, DIMS_2> &centrodata, float *centroids);
 
-    void runCorrComputeOp(const AscendTensor<float16_t, DIMS_4>& codesShaped,
-                        const AscendTensor<uint64_t, DIMS_1>& actualNum, AscendTensor<float16_t, DIMS_2>& corrResult,
-                        AscendTensor<uint16_t, DIMS_2>& flag, aclrtStream stream);
+    void runCorrComputeOp(const AscendTensor<float16_t, DIMS_4> &codesShaped,
+                          const AscendTensor<uint64_t, DIMS_1> &actualNum, AscendTensor<float16_t, DIMS_2> &corrResult,
+                          AscendTensor<uint16_t, DIMS_2> &flag, aclrtStream stream);
 
     APP_ERROR resetCorrComputeOp();
 
@@ -108,19 +112,16 @@ protected:
     void execClusteringInt8(int niter, uint16_t *labels, float *centroids);
 
     void trainInt8(std::vector<float16_t> &centrodata, int ncentroids, int n, int niter, int reqCentroids,
-        const uint8_t *data, uint16_t *labels, float *subCentroids);
+                   const uint8_t *data, uint16_t *labels, float *subCentroids);
 
     APP_ERROR resetSubcentsAccumOp();
 
-    void runSubCntCompute(AscendTensor<float16_t, DIMS_4> &subcentsCores,
-                            AscendTensor<int16_t, DIMS_3> &hassignCores,
-                            AscendTensor<uint16_t, DIMS_1> &actualSize,
-                            AscendTensor<float16_t, DIMS_2> &subcents,
-                            AscendTensor<int16_t, DIMS_1> &hassign,
-                            AscendTensor<uint16_t, DIMS_2> &flag,
-                            aclrtStream stream);
+    void runSubCntCompute(AscendTensor<float16_t, DIMS_4> &subcentsCores, AscendTensor<int16_t, DIMS_3> &hassignCores,
+                          AscendTensor<uint16_t, DIMS_1> &actualSize, AscendTensor<float16_t, DIMS_2> &subcents,
+                          AscendTensor<int16_t, DIMS_1> &hassign, AscendTensor<uint16_t, DIMS_2> &flag,
+                          aclrtStream stream);
 
-private:
+   private:
     std::unique_ptr<AscendResourcesProxy> resources;
 
     // aicpu op for topk computation
@@ -140,15 +141,19 @@ private:
 
     std::vector<float> codesFp32;
 
-    void computeCentroids(size_t d, // dim
-                          size_t k, // nlist
-                          size_t n, // ntotal
-                          const float* x,
-                          const int64_t* assign, // ntotal条向量所属桶
-                          float* centroids);
+    std::unique_ptr<DeviceVector<float>> codesFp32OnDevice;
+    size_t codesFp32OnDeviceCount = 0;
+
+    void ensureCodesOnDevice();
+
+    void computeCentroids(size_t d,  // dim
+                          size_t k,  // nlist
+                          size_t n,  // ntotal
+                          const float *x,
+                          const int64_t *assign,  // ntotal条向量所属桶
+                          float *centroids);
 
     std::unique_ptr<IndexFlatATAicpu> npuFlatAt;
-    std::unique_ptr<IndexIVFFlat> npuFlatAtFp32; // 复用ivfflat一阶段检索
 
     std::unique_ptr<IndexFlatATSubAicpu> npuFlatAicpu;
     std::unique_ptr<AscendOperator> corrComputeOp;
@@ -166,7 +171,7 @@ private:
     std::vector<uint16_t> numCodesEachBuck;
     std::vector<uint16_t> numCentroidsEachBuck;
 };
-}
-}
+}  // namespace ascend
+}  // namespace faiss
 
 #endif
