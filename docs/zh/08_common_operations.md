@@ -2,7 +2,7 @@
 
 ## 日志说明<a name="ZH-CN_TOPIC_0000001506334653"></a>
 
-检索日志组件基于《[CANN 软件安装指南](https://www.hiascend.com/document/detail/zh/canncommercial/900/softwareinst/instg/instg_0000.html)》以及《[CANN 日志参考](https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/logreference/logreference_0001.html)》设计和开发。
+检索日志组件基于《[CANN 软件安装](https://www.hiascend.com/document/detail/zh/canncommercial/900/softwareinst/instg/instg_0000.html)》以及《[CANN 日志参考](https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/logreference/logreference_0001.html)》设计和开发。
 
 对于标准态部署，检索的日志属于应用类日志，可以参考《CANN 日志参考》中的“[查看日志（Ascend EP标准形态）](https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/logreference/logreference_0002.html)”章节的“查看应用类日志”描述。默认路径为“$HOME/ascend/log”。也可以使用环境变量ASCEND\_PROCESS\_LOG\_PATH指定日志落盘路径。命令参考如下：
 
