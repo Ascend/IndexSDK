@@ -21,23 +21,102 @@
 #include <faiss/Clustering.h>
 #include <faiss/impl/ProductQuantizer.h>
 #include <faiss/utils/distances.h>
+#include <omp.h>
+#include <securec.h>
 
 #include <algorithm>
 #include <cfloat>
 #include <chrono>
 #include <cmath>
-#include <cstdio>
 #include <fstream>
+#include <future>
 #include <iomanip>
+#include <limits>
+#include <mutex>
+#include <numeric>
 #include <random>
 
 #include "ascend/AscendIndexQuantizerImpl.h"
 #include "ascend/custom/AscendClustering.h"
+#include "ascenddaemon/utils/AscendUtils.h"
+#include "ascenddaemon/utils/DevVecMemStrategyIntf.h"
 
 namespace faiss
 {
 namespace ascend
 {
+
+namespace
+{
+int computeTrainTotalSize(int nlist, int n, int trainSamplesPerList, int maxTrainSamples)
+{
+    // Use 64-bit multiply to avoid overflow when nlist * trainSamplesPerList exceeds INT_MAX
+    // (e.g. nlist=524288 and trainSamplesPerList=256).
+    const int64_t byLists = static_cast<int64_t>(nlist) * static_cast<int64_t>(trainSamplesPerList);
+    const int64_t capped = std::min(byLists, static_cast<int64_t>(n));
+    return static_cast<int>(std::min(capped, static_cast<int64_t>(maxTrainSamples)));
+}
+
+uint64_t getActualRngSeed(int seed)
+{
+    return (seed >= 0) ? static_cast<uint64_t>(seed)
+                       : static_cast<uint64_t>(std::chrono::high_resolution_clock::now().time_since_epoch().count());
+}
+
+void sampleTrainData(const float* x, int n, int dim, int totalSize, int seed, std::vector<float>& trainData)
+{
+    const size_t dimSz = static_cast<size_t>(dim);
+    const size_t totalSizeSz = static_cast<size_t>(totalSize);
+    trainData.resize(totalSizeSz * dimSz);
+    const size_t numBytes = totalSizeSz * dimSz * sizeof(float);
+
+    if (totalSize >= n)
+    {
+        auto ret = ::ascend::memcpySChunked(trainData.data(), numBytes, x, numBytes);
+        FAISS_THROW_IF_NOT_FMT(ret == EOK, "trainData memcpy_s failed %d", ret);
+        return;
+    }
+
+    std::vector<size_t> indices(static_cast<size_t>(n));
+    std::iota(indices.begin(), indices.end(), 0);
+    std::mt19937 gen(static_cast<uint32_t>(getActualRngSeed(seed)));
+    std::shuffle(indices.begin(), indices.end(), gen);
+    for (int i = 0; i < totalSize; i++)
+    {
+        const size_t srcIdx = indices[static_cast<size_t>(i)];
+        const float* src = x + srcIdx * dimSz;
+        float* dst = trainData.data() + static_cast<size_t>(i) * dimSz;
+        auto ret = memcpy_s(dst, dimSz * sizeof(float), src, dimSz * sizeof(float));
+        FAISS_THROW_IF_NOT_FMT(ret == EOK, "trainData sample memcpy_s failed %d", ret);
+    }
+    APP_LOG_INFO("IVFPQ sampleTrainData: shuffled %d vectors from input n=%d\n", totalSize, n);
+}
+
+void buildSampleIndices(int n, int totalSize, int seed, std::vector<size_t>& sampleIndices)
+{
+    sampleIndices.resize(static_cast<size_t>(totalSize));
+    if (totalSize >= n)
+    {
+        std::iota(sampleIndices.begin(), sampleIndices.end(), 0);
+        return;
+    }
+
+    std::vector<size_t> indices(static_cast<size_t>(n));
+    std::iota(indices.begin(), indices.end(), 0);
+    std::mt19937 gen(static_cast<uint32_t>(getActualRngSeed(seed)));
+    std::shuffle(indices.begin(), indices.end(), gen);
+    for (int i = 0; i < totalSize; i++)
+    {
+        sampleIndices[static_cast<size_t>(i)] = indices[static_cast<size_t>(i)];
+    }
+}
+
+long long elapsedMs(const std::chrono::high_resolution_clock::time_point& start)
+{
+    return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start)
+        .count();
+}
+}  // namespace
 
 // Default dim in case of nullptr index
 const size_t DEFAULT_DIM = 128;
@@ -72,11 +151,29 @@ AscendIndexIVFPQImpl::AscendIndexIVFPQImpl(AscendIndexIVFPQ* intf, int dims, int
     : AscendIndexIVFImpl(intf, dims, metric, nlist, config), intf_(intf), msubs(msubs), nbits(nbits)
 {
     checkParams();
+    initCoarseClustering();
     initIndexes();
     initDeviceAddNumMap();
     centroidsData.resize(nlist * dims);
     initProductQuantizer();
     this->intf_->is_trained = false;
+}
+
+void AscendIndexIVFPQImpl::initCoarseClustering()
+{
+    if (!ivfConfig.useKmeansPP)
+    {
+        return;
+    }
+    const int64_t clusteringMaxMem = 0x100000000LL;
+    int64_t clusResource = ivfConfig.resourceSize;
+    if (clusResource > clusteringMaxMem)
+    {
+        clusResource = clusteringMaxMem;
+    }
+    AscendClusteringConfig npuClusConf({ivfConfig.deviceList[0]}, clusResource);
+    pQuantizerImpl->npuClus =
+        std::make_shared<AscendClustering>(this->intf_->d, this->nlist, this->intf_->metric_type, npuClusConf);
 }
 
 AscendIndexIVFPQImpl::~AscendIndexIVFPQImpl() {}
@@ -103,26 +200,10 @@ void AscendIndexIVFPQImpl::copyFromCodebook(const faiss::IndexIVFPQ* index)
     this->pq.ksub = 1 << index->pq.nbits;
     this->pq.dsub = index->d / index->pq.M;
 
-    this->pq.codeBook.clear();
-    this->pq.codeBook.resize(this->pq.M);
-
     const float* codeBook_data = index->pq.centroids.data();
-
-    for (size_t m = 0; m < this->pq.M; m++)
-    {
-        this->pq.codeBook[m].resize(this->pq.ksub);
-        for (size_t k = 0; k < this->pq.ksub; k++)
-        {
-            this->pq.codeBook[m][k].resize(this->pq.dsub);
-            size_t offset = (m * this->pq.ksub + k) * this->pq.dsub;
-            for (size_t d = 0; d < this->pq.dsub; d++)
-            {
-                this->pq.codeBook[m][k][d] = codeBook_data[offset + d];
-            }
-        }
-    }
+    const size_t codebook_size = this->pq.M * this->pq.ksub * this->pq.dsub;
+    this->pq.codeBook.assign(codeBook_data, codeBook_data + codebook_size);
     FAISS_THROW_IF_NOT_FMT(pq.M > 0, "invalid msubs: %zu", pq.M);
-    size_t codebook_size = pq.M * pq.ksub * (static_cast<size_t>(intf_->d) / pq.M);
     for (int deviceId : indexConfig.deviceList)
     {
         auto pIndex = getActualIndex(deviceId);
@@ -414,7 +495,7 @@ void AscendIndexIVFPQImpl::initProductQuantizer()
     pq.M = static_cast<uint32_t>(msubs);
     pq.ksub = 1 << nbits;
     pq.dsub = static_cast<uint32_t>(this->intf_->d / msubs);
-    pq.codeBook.resize(pq.M, std::vector<std::vector<float>>(pq.ksub, std::vector<float>(pq.dsub, 0.0f)));
+    pq.codeBook.resize(pq.M * pq.ksub * pq.dsub);
     APP_LOG_INFO("AscendIndexIVFPQImpl initProductQuantizer operation finished\n");
 }
 
@@ -479,32 +560,92 @@ std::vector<idx_t> AscendIndexIVFPQImpl::update(idx_t n, const float* x, const i
 
 void AscendIndexIVFPQImpl::addL1(int n, const float* x, std::vector<int64_t>& assign)
 {
+    auto l1_start = std::chrono::high_resolution_clock::now();
     if (ivfConfig.useKmeansPP)
     {
-        auto pIndex = getActualIndex(indexConfig.deviceList[0]);
-        if (!pIndex)
+        const size_t deviceCnt = indexConfig.deviceList.size();
+        FAISS_THROW_IF_NOT_MSG(deviceCnt > 0, "device list is empty");
+        auto assignOnDevice = [&](size_t deviceIdx, int count, size_t offset, std::vector<int64_t>& outAssign)
         {
-            FAISS_THROW_MSG("device is invalid");
+            auto pIndex = getActualIndex(indexConfig.deviceList[deviceIdx]);
+            FAISS_THROW_IF_NOT_MSG(pIndex != nullptr, "device is invalid");
+            auto ret = pIndex->assignCentroid(this->nlist, this->intf_->d, count, centroidsOnHost,
+                                              const_cast<float*>(x + offset * this->intf_->d), outAssign, true);
+            FAISS_THROW_IF_NOT_FMT(ret == ::ascend::APP_ERR_OK, "failed to assign centroids from device %d, ret: %d",
+                                   indexConfig.deviceList[deviceIdx], ret);
+        };
+
+        if (deviceCnt == 1)
+        {
+            // Avoid thread-pool overhead on the common single-device path.
+            const auto deviceStart = std::chrono::high_resolution_clock::now();
+            assignOnDevice(0, n, 0, assign);
+            if (this->intf_->verbose)
+            {
+                APP_LOG_INFO("IVFPQ addL1 device: id=%d, vectors=%d, elapsed=%lld ms\n", indexConfig.deviceList[0], n,
+                             elapsedMs(deviceStart));
+            }
         }
-        auto ret =
-            pIndex->assignCentroid(this->nlist, this->intf_->d, n, centroidsOnHost, const_cast<float*>(x), assign);
-        FAISS_THROW_IF_NOT_FMT(ret == ::ascend::APP_ERR_OK, "failed to assign centroids from device, ret: %d", ret);
+        else
+        {
+            std::vector<long long> deviceElapsed(deviceCnt, 0);
+            std::vector<int> deviceCounts(deviceCnt, 0);
+            auto assignFunctor = [&](size_t deviceIdx)
+            {
+                const size_t base = static_cast<size_t>(n) / deviceCnt;
+                const size_t remainder = static_cast<size_t>(n) % deviceCnt;
+                const size_t count = base + (deviceIdx < remainder ? 1 : 0);
+                const size_t offset = deviceIdx * base + std::min(deviceIdx, remainder);
+                deviceCounts[deviceIdx] = static_cast<int>(count);
+                if (count == 0)
+                {
+                    return;
+                }
+
+                const auto deviceStart = std::chrono::high_resolution_clock::now();
+                std::vector<int64_t> deviceAssign(count);
+                assignOnDevice(deviceIdx, static_cast<int>(count), offset, deviceAssign);
+                std::copy(deviceAssign.begin(), deviceAssign.end(), assign.data() + offset);
+                deviceElapsed[deviceIdx] = elapsedMs(deviceStart);
+            };
+            CALL_PARALLEL_FUNCTOR(deviceCnt, pool, assignFunctor);
+            if (this->intf_->verbose)
+            {
+                for (size_t i = 0; i < deviceCnt; ++i)
+                {
+                    APP_LOG_INFO("IVFPQ addL1 device: id=%d, vectors=%d, elapsed=%lld ms\n", indexConfig.deviceList[i],
+                                 deviceCounts[i], deviceElapsed[i]);
+                }
+            }
+        }
     }
     else
     {
         pQuantizerImpl->cpuQuantizer->assign(n, x, assign.data());
     }
+    if (this->intf_->verbose)
+    {
+        APP_LOG_INFO("IVFPQ addL1: assigned %d vectors, elapsed=%lld ms\n", n, elapsedMs(l1_start));
+    }
 }
 
 void AscendIndexIVFPQImpl::addL2(int n, const float* x, std::vector<uint8_t>& pqCodes)
 {
-    size_t code_size = pq.M;
+    const auto encodeStart = std::chrono::high_resolution_clock::now();
+    const size_t codeSize = pq.M;
 #pragma omp parallel for
     for (int i = 0; i < n; i++)
     {
-        const float* vector = x + i * intf_->d;
-        std::vector<uint8_t> singlePQCode = encodeSingleVectorPQ(vector);
-        std::copy(singlePQCode.begin(), singlePQCode.end(), pqCodes.begin() + i * code_size);
+        const float* vector = x + static_cast<size_t>(i) * intf_->d;
+        uint8_t* code = pqCodes.data() + static_cast<size_t>(i) * codeSize;
+        encodeSingleVectorPQ(vector, code);
+    }
+    if (this->intf_->verbose)
+    {
+        const long long elapsed = elapsedMs(encodeStart);
+        const double throughput = elapsed > 0 ? 1000.0 * n / elapsed : 0.0;
+        APP_LOG_INFO("IVFPQ addL2: encoded %d vectors, elapsed=%lld ms, throughput=%.2f vectors/s\n", n, elapsed,
+                     throughput);
     }
 }
 
@@ -524,44 +665,61 @@ void AscendIndexIVFPQImpl::addImpl(int n, const float* x, const idx_t* ids)
     idList.reserve(n);
     listIdList.reserve(n);
 
+    const auto bucketStart = std::chrono::high_resolution_clock::now();
     for (int i = 0; i < n; i++)
     {
         idx_t listId = assign[i];
         FAISS_THROW_IF_NOT(listId >= 0 && listId < this->nlist);
 
-        idList.push_back(ids[i]);
-        listIdList.push_back(listId);
+        if (ids != nullptr)
+        {
+            idList.push_back(ids[i]);
+            listIdList.push_back(listId);
+        }
 
         auto it = assignCounts.find(listId);
         if (it != assignCounts.end())
         {
             int deviceIdx = it->second.addDeviceIdx;
             deviceAddNumMap[listId][deviceIdx]++;
-            idToDeviceMap[ids[i]] = indexConfig.deviceList[deviceIdx];
-            it->second.Add(pqCodes.data() + i * pq.M, ids + i);
+            if (ids != nullptr)
+            {
+                idToDeviceMap[ids[i]] = indexConfig.deviceList[deviceIdx];
+            }
+            it->second.Add(pqCodes.data() + i * pq.M, ids ? (ids + i) : nullptr);
             continue;
         }
         size_t devIdx = 0;
-        size_t minAddNum = deviceAddNumMap[listId][devIdx];
         for (size_t j = 1; j < deviceCnt; j++)
         {
-            if (deviceAddNumMap[listId][j] < minAddNum)
+            if (deviceAddNumMap[listId][j] < deviceAddNumMap[listId][devIdx])
             {
                 devIdx = j;
-                minAddNum = deviceAddNumMap[listId][j];
             }
         }
         deviceAddNumMap[listId][devIdx]++;
-        idToDeviceMap[ids[i]] = indexConfig.deviceList[devIdx];
+        if (ids != nullptr)
+        {
+            idToDeviceMap[ids[i]] = indexConfig.deviceList[devIdx];
+        }
         assignCounts.emplace(listId, AscendIVFAddInfo(devIdx, deviceCnt, code_size));
-        assignCounts.at(listId).Add(pqCodes.data() + i * code_size, ids + i);
+        assignCounts.at(listId).Add(pqCodes.data() + i * code_size, ids ? (ids + i) : nullptr);
     }
     // update idList for delete
-    updateIdMapping(idList, listIdList);
+    if (ids != nullptr)
+    {
+        updateIdMapping(idList, listIdList);
+    }
+    if (this->intf_->verbose)
+    {
+        APP_LOG_INFO("IVFPQ add bucket: grouped %d vectors into %zu lists, elapsed=%lld ms\n", n, assignCounts.size(),
+                     elapsedMs(bucketStart));
+    }
 }
 
 void AscendIndexIVFPQImpl::copyVectorToDevice(int n)
 {
+    const auto uploadStart = std::chrono::high_resolution_clock::now();
     size_t deviceCnt = indexConfig.deviceList.size();
     auto addFunctor = [&](int idx)
     {
@@ -588,6 +746,15 @@ void AscendIndexIVFPQImpl::copyVectorToDevice(int n)
     };
     CALL_PARALLEL_FUNCTOR(deviceCnt, pool, addFunctor);
     this->intf_->ntotal += n;
+    if (this->intf_->verbose)
+    {
+        const long long elapsed = elapsedMs(uploadStart);
+        const double throughput = elapsed > 0 ? 1000.0 * n / elapsed : 0.0;
+        APP_LOG_INFO(
+            "IVFPQ add upload: copied %d vectors to %zu device(s), elapsed=%lld ms, "
+            "throughput=%.2f vectors/s\n",
+            n, deviceCnt, elapsed, throughput);
+    }
     APP_LOG_INFO("AscendIndexIVFPQ addImpl operation finished.\n");
 }
 
@@ -604,6 +771,7 @@ size_t AscendIndexIVFPQImpl::getAddPagedSize(int n) const
 
 void AscendIndexIVFPQImpl::addPaged(int n, const float* x, const idx_t* ids)
 {
+    const auto addStart = std::chrono::high_resolution_clock::now();
     APP_LOG_INFO("AscendIndexIVFPQImpl addPaged operation started.\n");
     size_t totalSize = static_cast<size_t>(n) * getAddElementSize();
     size_t addPageSize = ADD_PAGE_SIZE;
@@ -615,7 +783,7 @@ void AscendIndexIVFPQImpl::addPaged(int n, const float* x, const idx_t* ids)
             size_t curNum = std::min(tileSize, n - i);
             if (this->intf_->verbose)
             {
-                printf("AscendIndexIVFPQImpl::add: adding %zu:%zu / %d\n", i, i + curNum, n);
+                APP_LOG_INFO("AscendIndexIVFPQImpl::add: adding %zu:%zu / %d\n", i, i + curNum, n);
             }
             addImpl(curNum, x + i * static_cast<size_t>(this->intf_->d), ids ? (ids + i) : nullptr);
         }
@@ -624,12 +792,28 @@ void AscendIndexIVFPQImpl::addPaged(int n, const float* x, const idx_t* ids)
     {
         if (this->intf_->verbose)
         {
-            printf("AscendIndexIVFPQImpl::add: adding 0:%d / %d\n", n, n);
+            APP_LOG_INFO("AscendIndexIVFPQImpl::add: adding 0:%d / %d\n", n, n);
         }
         addImpl(n, x, ids);
     }
     copyVectorToDevice(n);
     std::unordered_map<int, AscendIVFAddInfo>().swap(assignCounts);  // 释放host侧占用的内存
+    // Free assign/train workspaces left by addL1::assignCentroid on every device.
+    for (int deviceId : indexConfig.deviceList)
+    {
+        auto pIndex = getActualIndex(deviceId);
+        if (pIndex)
+        {
+            pIndex->resetTrainSession();
+        }
+    }
+    if (this->intf_->verbose)
+    {
+        const long long elapsed = elapsedMs(addStart);
+        const double throughput = elapsed > 0 ? 1000.0 * n / elapsed : 0.0;
+        APP_LOG_INFO("IVFPQ add total: added %d vectors, elapsed=%lld ms, throughput=%.2f vectors/s\n", n, elapsed,
+                     throughput);
+    }
     APP_LOG_INFO("AscendIndexIVFPQImpl addPaged operation finished.\n");
 }
 
@@ -646,48 +830,40 @@ void AscendIndexIVFPQImpl::indexIVFPQAdd(IndexParam<uint8_t, float, ascend_idx_t
     FAISS_THROW_IF_NOT_FMT(ret == APP_ERR_OK, "failed to add to ivf PQ, ret: %d", ret);
 }
 
-std::vector<uint8_t> AscendIndexIVFPQImpl::encodeSingleVectorPQ(const float* vector)
+void AscendIndexIVFPQImpl::encodeSingleVectorPQ(const float* vector, uint8_t* pqCode) const
 {
-    size_t code_size = pq.M;
-    std::vector<uint8_t> pq_code(code_size);
-
-    for (size_t m = 0; m < code_size; m++)
+    for (size_t m = 0; m < pq.M; m++)
     {
-        const float* sub_vector = vector + m * this->pq.dsub;
-
-        uint8_t centroid_idx = findCentroidInSubQuantizer(m, sub_vector);
-        pq_code[m] = centroid_idx;
+        const float* subVector = vector + m * this->pq.dsub;
+        pqCode[m] = findCentroidInSubQuantizer(m, subVector);
     }
-    return pq_code;
 }
 
-uint8_t AscendIndexIVFPQImpl::findCentroidInSubQuantizer(size_t subq_idx, const float* sub_vector)
+uint8_t AscendIndexIVFPQImpl::findCentroidInSubQuantizer(size_t subqIdx, const float* subVector) const
 {
-    if (sub_vector == nullptr || subq_idx >= this->pq.codeBook.size())
+    if (subVector == nullptr || subqIdx >= this->pq.M)
     {
         return 0;
     }
 
-    float min_dist = std::numeric_limits<float>::max();
-    uint8_t find_centroid = 0;
-
-    std::vector<float> distances(this->pq.ksub);
-
+    float minDist = std::numeric_limits<float>::max();
+    uint8_t findCentroid = 0;
+    const float* subCodebook = this->pq.codeBook.data() + subqIdx * this->pq.ksub * this->pq.dsub;
     for (size_t k = 0; k < this->pq.ksub; k++)
     {
-        const float* centroid = this->pq.codeBook[subq_idx][k].data();
-        float dist = calDistance(sub_vector, centroid, this->pq.dsub);
-        if (dist < min_dist)
+        const float* centroid = subCodebook + k * this->pq.dsub;
+        float dist = calDistance(subVector, centroid, this->pq.dsub);
+        if (dist < minDist)
         {
-            min_dist = dist;
-            find_centroid = static_cast<uint8_t>(k);
+            minDist = dist;
+            findCentroid = static_cast<uint8_t>(k);
         }
     }
 
-    return find_centroid;
+    return findCentroid;
 }
 
-float AscendIndexIVFPQImpl::calDistance(const float* a, const float* b, size_t dim)
+float AscendIndexIVFPQImpl::calDistance(const float* a, const float* b, size_t dim) const
 {
     float dist = 0.0;
     for (size_t i = 0; i < dim; i++)
@@ -712,65 +888,135 @@ std::shared_ptr<::ascend::Index> AscendIndexIVFPQImpl::createIndex(int deviceId)
     return index;
 }
 
+void AscendIndexIVFPQImpl::extractAllSubspaces(int nSampled, const std::vector<size_t>& sampleIndices, const float* x,
+                                               std::vector<std::vector<float>>& subspaceData)
+{
+    const idx_t dim = static_cast<idx_t>(this->pq.dim);
+    const idx_t dsub = static_cast<idx_t>(this->pq.dsub);
+    subspaceData.resize(this->pq.M);
+    for (size_t m = 0; m < this->pq.M; m++)
+    {
+        subspaceData[m].resize(static_cast<size_t>(nSampled) * static_cast<size_t>(dsub));
+    }
+
+#pragma omp parallel for if (nSampled > 100)
+    for (int i = 0; i < nSampled; i++)
+    {
+        const idx_t srcRow = static_cast<idx_t>(sampleIndices[static_cast<size_t>(i)]);
+        const float* row = x + srcRow * dim;
+        for (size_t m = 0; m < this->pq.M; m++)
+        {
+            const float* sub_vec = row + static_cast<idx_t>(m) * dsub;
+            float* dst = subspaceData[m].data() + static_cast<idx_t>(i) * dsub;
+            std::copy(sub_vec, sub_vec + dsub, dst);
+        }
+    }
+}
+
 void AscendIndexIVFPQImpl::trainPQCodeBook(idx_t n, const float* x)
 {
+    auto pq_start = std::chrono::high_resolution_clock::now();
     APP_LOG_INFO("Training PQ codebook with %ld vectors\n", n);
 
     FAISS_THROW_IF_NOT_MSG(n >= static_cast<idx_t>(this->pq.M * this->pq.ksub), "Insufficient training data");
     FAISS_THROW_IF_NOT_MSG(pQuantizerImpl->cpuQuantizer->is_trained, "Coarse quantizer not trained");
 
-    for (size_t m = 0; m < this->pq.M; m++)
+    const int pqTrainSize = computeTrainTotalSize(static_cast<int>(this->pq.ksub), static_cast<int>(n),
+                                                  ivfConfig.trainSamplesPerList, ivfConfig.maxTrainSamples);
+    std::vector<size_t> sampleIndices;
+    if (ivfConfig.useKmeansPP)
     {
-        trainSubQuantizer(m, n, x);
+        buildSampleIndices(static_cast<int>(n), pqTrainSize, this->ivfConfig.cp.seed, sampleIndices);
+        APP_LOG_INFO("IVFPQ trainPQCodeBook: pqTrainSize=%d (from n=%ld, ksub=%zu)\n", pqTrainSize,
+                     static_cast<long>(n), this->pq.ksub);
+    }
+    else
+    {
+        sampleIndices.resize(static_cast<size_t>(n));
+        std::iota(sampleIndices.begin(), sampleIndices.end(), 0);
+        APP_LOG_INFO("IVFPQ trainPQCodeBook: CPU path using full n=%ld vectors\n", static_cast<long>(n));
+    }
+    const int trainCount = ivfConfig.useKmeansPP ? pqTrainSize : static_cast<int>(n);
+    const int pqNiter = ivfConfig.pqNiter >= 0 ? ivfConfig.pqNiter : this->ivfConfig.cp.niter;
+
+    auto extract_start = std::chrono::high_resolution_clock::now();
+    std::vector<std::vector<float>> subspaceData;
+    extractAllSubspaces(trainCount, sampleIndices, x, subspaceData);
+    APP_LOG_INFO("IVFPQ trainPQCodeBook: extracted %zu subspaces, nSampled=%d, elapsed=%lld ms\n", this->pq.M,
+                 trainCount, static_cast<long long>(elapsedMs(extract_start)));
+
+    const size_t deviceCnt = indexConfig.deviceList.size();
+    std::vector<std::mutex> deviceTrainMutex(deviceCnt);
+    auto trainFunctor = [&](size_t m)
+    {
+        const size_t devIdx = m % deviceCnt;
+        const int deviceId = indexConfig.deviceList[devIdx];
+        std::lock_guard<std::mutex> lock(deviceTrainMutex[devIdx]);
+        trainSubQuantizer(m, trainCount, subspaceData[m], deviceId, pqNiter);
+    };
+
+    if (ivfConfig.useKmeansPP && deviceCnt > 1 && this->pq.M > 1)
+    {
+        std::vector<std::future<void>> futures;
+        for (size_t m = 0; m < this->pq.M; m++)
+        {
+            futures.emplace_back(GetPool()->Enqueue(trainFunctor, m));
+        }
+        for (auto& future : futures)
+        {
+            future.get();
+        }
+    }
+    else
+    {
+        for (size_t m = 0; m < this->pq.M; m++)
+        {
+            trainFunctor(m);
+        }
     }
 
-    APP_LOG_INFO("PQ codebook training finished\n");
+    if (!indexConfig.deviceList.empty())
+    {
+        for (int deviceId : indexConfig.deviceList)
+        {
+            getActualIndex(deviceId)->resetTrainSession();
+        }
+    }
+
+    APP_LOG_INFO("IVFPQ trainPQCodeBook finished, elapsed=%lld ms\n", static_cast<long long>(elapsedMs(pq_start)));
 }
 
-void AscendIndexIVFPQImpl::trainSubQuantizer(size_t m, idx_t n, const float* x)
+void AscendIndexIVFPQImpl::trainSubQuantizer(size_t m, int nSampled, const std::vector<float>& subspace_data,
+                                             int deviceId, int pqNiter)
 {
-    std::vector<float> subspace_data(n * static_cast<idx_t>(this->pq.dsub));
-
-    for (idx_t i = 0; i < n; i++)
-    {
-        const float* sub_vec = x + i * static_cast<idx_t>(this->pq.dim) + m * this->pq.dsub;
-        std::copy(sub_vec, sub_vec + this->pq.dsub, subspace_data.data() + i * this->pq.dsub);
-    }
-
-    idx_t n_data = n;
-    FAISS_THROW_IF_NOT_MSG(n_data >= static_cast<idx_t>(this->pq.ksub),
+    FAISS_THROW_IF_NOT_MSG(nSampled >= static_cast<int>(this->pq.ksub),
                            "Insufficient data for sub-quantizer clustering");
 
     if (ivfConfig.useKmeansPP)
     {
         try
         {
-            if (this->intf_->verbose)
-            {
-                APP_LOG_INFO("IVFPQ PQ sub-quantizer %zu: NPU K-Means, n_data=%ld, dsub=%d, ksub=%d\n", m,
-                             static_cast<long>(n_data), this->pq.dsub, this->pq.ksub);
-            }
-            indexTrainImpl(n_data, subspace_data.data(), this->intf_->d / this->pq.M, this->pq.ksub);
-            savePQCodeBook(m, centroidsData);
-            if (this->intf_->verbose)
-            {
-                APP_LOG_INFO("IVFPQ PQ sub-quantizer %zu: NPU training finished\n", m);
-            }
+            APP_LOG_INFO("IVFPQ PQ sub-quantizer %zu: NPU K-Means, n_data=%d, dsub=%d, ksub=%d, device=%d\n", m,
+                         nSampled, this->pq.dsub, this->pq.ksub, deviceId);
+            auto train_start = std::chrono::high_resolution_clock::now();
+            std::vector<float> localCentroids;
+            indexTrainImpl(nSampled, subspace_data.data(), this->intf_->d / this->pq.M, this->pq.ksub, deviceId,
+                           localCentroids, true, pqNiter);
+            APP_LOG_INFO("IVFPQ PQ sub-quantizer %zu: NPU training finished, train=%lld ms\n", m,
+                         static_cast<long long>(elapsedMs(train_start)));
+            savePQCodeBook(m, localCentroids);
         }
         catch (std::exception& e)
         {
-            APP_LOG_WARNING("IVFPQ NPU training failed for sub-quantizer %zu: %s\n", m, e.what());
+            FAISS_THROW_FMT("IVFPQ NPU training failed for sub-quantizer %zu: %s", m, e.what());
         }
     }
     else
     {
-        if (this->intf_->verbose)
-        {
-            APP_LOG_INFO("IVFPQ PQ sub-quantizer %zu: CPU Clustering, n_data=%ld, dsub=%d, ksub=%d\n", m,
-                         static_cast<long>(n_data), this->pq.dsub, this->pq.ksub);
-        }
+        APP_LOG_INFO("IVFPQ PQ sub-quantizer %zu: CPU Clustering, n_data=%d, dsub=%d, ksub=%d\n", m, nSampled,
+                     this->pq.dsub, this->pq.ksub);
         faiss::ClusteringParameters cp;
-        cp.niter = 25;
+        cp.niter = pqNiter;
         cp.spherical = true;
         cp.nredo = 1;
         cp.verbose = this->intf_->verbose;
@@ -778,12 +1024,12 @@ void AscendIndexIVFPQImpl::trainSubQuantizer(size_t m, idx_t n, const float* x)
         faiss::Clustering clus(this->pq.dsub, this->pq.ksub, cp);
         faiss::IndexFlatL2 index(this->pq.dsub);
 
-        clus.train(n_data, subspace_data.data(), index);
+        clus.train(nSampled, subspace_data.data(), index);
 
         savePQCodeBook(m, clus.centroids);
     }
 
-    APP_LOG_DEBUG("Sub-quantizer %zu: trained with %ld vectors\n", m, n_data);
+    APP_LOG_DEBUG("Sub-quantizer %zu: trained with %d vectors\n", m, nSampled);
 }
 
 void AscendIndexIVFPQImpl::savePQCodeBook(size_t m, const std::vector<float>& centroids)
@@ -791,48 +1037,32 @@ void AscendIndexIVFPQImpl::savePQCodeBook(size_t m, const std::vector<float>& ce
     FAISS_THROW_IF_NOT_FMT(centroids.size() == this->pq.ksub * this->pq.dsub,
                            "centroids size error: expect %zu, actual %zu\n", this->pq.ksub * this->pq.dsub,
                            centroids.size());
-    if (this->pq.codeBook.size() <= m)
-    {
-        this->pq.codeBook.resize(m + 1);
-    }
-
-    this->pq.codeBook[m].resize(pq.ksub);
-
-    for (size_t k = 0; k < this->pq.ksub; k++)
-    {
-        this->pq.codeBook[m][k].resize(this->pq.dsub);
-        const float* src = centroids.data() + k * this->pq.dsub;
-        std::copy(src, src + this->pq.dsub, this->pq.codeBook[m][k].begin());
-    }
+    FAISS_THROW_IF_NOT_FMT(m < this->pq.M, "sub-quantizer index out of range: %zu", m);
+    float* dst = this->pq.codeBook.data() + m * this->pq.ksub * this->pq.dsub;
+    std::copy(centroids.begin(), centroids.end(), dst);
 }
 
 void AscendIndexIVFPQImpl::updatePQCodeBook()
 {
+    auto upload_start = std::chrono::high_resolution_clock::now();
     APP_LOG_INFO("Updating PQ codebook to device...\n");
 
+    const size_t codebookElems = this->pq.codeBook.size();
+    const size_t codebookBytes = codebookElems * sizeof(float);
     int deviceCnt = static_cast<int>(indexConfig.deviceList.size());
 
     for (int deviceId : indexConfig.deviceList)
     {
         auto pIndex = getActualIndex(deviceId);
-
         float* device_ptr = pIndex->codeBookOnDevice->data();
 
-        for (size_t m = 0; m < this->pq.M; m++)
-        {
-            for (size_t k = 0; k < this->pq.ksub; k++)
-            {
-                const auto& center = this->pq.codeBook[m][k];
-                size_t bytes = this->pq.dsub * sizeof(float);
-
-                auto ret = aclrtMemcpy(device_ptr + m * this->pq.ksub * this->pq.dsub + k * this->pq.dsub, bytes,
-                                       center.data(), bytes, ACL_MEMCPY_HOST_TO_DEVICE);
-                FAISS_THROW_IF_NOT_FMT(ret == ACL_SUCCESS, "aclrtMemcpy error %d", ret);
-            }
-        }
+        auto ret =
+            aclrtMemcpy(device_ptr, codebookBytes, this->pq.codeBook.data(), codebookBytes, ACL_MEMCPY_HOST_TO_DEVICE);
+        FAISS_THROW_IF_NOT_FMT(ret == ACL_SUCCESS, "aclrtMemcpy error %d", ret);
     }
 
-    APP_LOG_INFO("PQ codebook updated to %d device(s)\n", deviceCnt);
+    APP_LOG_INFO("IVFPQ updatePQCodeBook: bulk H2D %zu bytes to %d device(s), elapsed=%lld ms\n", codebookBytes,
+                 deviceCnt, static_cast<long long>(elapsedMs(upload_start)));
 }
 
 void AscendIndexIVFPQImpl::updateCoarseCenter(std::vector<float>& centerData)
@@ -848,6 +1078,7 @@ void AscendIndexIVFPQImpl::updateCoarseCenter(std::vector<float>& centerData)
         }
         centroidsSqrSum[i] = sum;
     }
+    centroidsOnHost = centerData;
     int deviceCnt = static_cast<int>(indexConfig.deviceList.size());
     for (int i = 0; i < deviceCnt; i++)
     {
@@ -866,6 +1097,7 @@ void AscendIndexIVFPQImpl::updateCoarseCenter(std::vector<float>& centerData)
 
 void AscendIndexIVFPQImpl::train(idx_t n, const float* x)
 {
+    auto train_total_start = std::chrono::high_resolution_clock::now();
     APP_LOG_INFO("AscendIndexIVFPQ start to train with %ld vector(s).\n", n);
     FAISS_THROW_IF_NOT_MSG(x, "x can not be nullptr.");
     FAISS_THROW_IF_NOT_FMT((n > 0) && (n < MAX_N), "n must be > 0 and < %ld", MAX_N);
@@ -883,13 +1115,12 @@ void AscendIndexIVFPQImpl::train(idx_t n, const float* x)
         APP_LOG_INFO("METRIC_INNER_PRODUCT must set spherical to true in cpu train case\n");
         this->ivfConfig.cp.spherical = true;
     }
+
+    auto coarse_start = std::chrono::high_resolution_clock::now();
     if (!ivfConfig.useKmeansPP)
     {
-        if (this->intf_->verbose)
-        {
-            APP_LOG_INFO("IVFPQ Coarse quantizer: CPU Clustering, n=%ld, d=%d, nlist=%d\n", static_cast<long>(n),
-                         this->intf_->d, this->nlist);
-        }
+        APP_LOG_INFO("IVFPQ Coarse quantizer: CPU Clustering, n=%ld, d=%d, nlist=%d\n", static_cast<long>(n),
+                     this->intf_->d, this->nlist);
         this->ivfConfig.cp.niter = 25;        // iter nums
         this->ivfConfig.cp.spherical = true;  // spherical clus flag
         this->ivfConfig.cp.nredo = 1;
@@ -905,27 +1136,77 @@ void AscendIndexIVFPQImpl::train(idx_t n, const float* x)
     }
     else
     {
-        if (this->intf_->verbose)
+        const int totalSize = computeTrainTotalSize(this->nlist, static_cast<int>(n), ivfConfig.trainSamplesPerList,
+                                                    ivfConfig.maxTrainSamples);
+        const bool useDistributed = ivfConfig.useDistributedCoarse && indexConfig.deviceList.size() > 1;
+        APP_LOG_INFO(
+            "IVFPQ Coarse quantizer: AscendClustering, n=%ld, sampled=%d, d=%d, nlist=%d, device=%d, distributed=%d\n",
+            static_cast<long>(n), totalSize, this->intf_->d, this->nlist, indexConfig.deviceList[0],
+            static_cast<int>(useDistributed));
+
+        std::vector<float> trainData;
+        sampleTrainData(x, static_cast<int>(n), this->intf_->d, totalSize, this->ivfConfig.cp.seed, trainData);
+
+        FAISS_THROW_IF_NOT_MSG(pQuantizerImpl->npuClus, "npuClus is not init.");
+        pQuantizerImpl->npuClus->verbose = this->intf_->verbose;
+        std::vector<float> tmpCentroids(static_cast<size_t>(nlist) * static_cast<size_t>(this->intf_->d));
+
+        if (useDistributed)
         {
-            APP_LOG_INFO("IVFPQ Coarse quantizer: NPU K-Means, n=%ld, d=%d, nlist=%d, device=%d\n",
-                         static_cast<long>(n), this->intf_->d, this->nlist, indexConfig.deviceList[0]);
+            // Distributed path clusters in fp32 across all devices via
+            // IndexIVFPQ::runKMeans (same assignment backend as single-device
+            // TrainFp32). It shares the fp32 code buffer with TrainFp32 and
+            // performs no internal sampling, so the host-side sample above
+            // still applies.
+            if (pQuantizerImpl->npuClus->GetNTotal() == 0)
+            {
+                pQuantizerImpl->npuClus->AddFp32(totalSize, trainData.data());
+            }
+            if (this->intf_->verbose)
+            {
+                APP_LOG_INFO("Ascend cluster start distributed training %zu vectors on %zu devices\n",
+                             pQuantizerImpl->npuClus->GetNTotal(), indexConfig.deviceList.size());
+            }
+            pQuantizerImpl->npuClus->DistributedTrainFp32(this->ivfConfig.cp.niter, tmpCentroids.data(),
+                                                          indexConfig.deviceList, true);
         }
-        indexTrainImpl(n, x, this->intf_->d, this->nlist);
-        updateCoarseCenter(centroidsData);
-        centroidsOnHost.resize(this->nlist * this->intf_->d);
-        auto ret =
-            aclrtMemcpy(centroidsOnHost.data(), this->nlist * this->intf_->d * sizeof(float), centroidsData.data(),
-                        this->nlist * this->intf_->d * sizeof(float), ACL_MEMCPY_HOST_TO_HOST);
-        FAISS_THROW_IF_NOT_FMT(ret == ACL_SUCCESS, "stash centroids result to Host failed: %d", ret);
+        else
+        {
+            if (pQuantizerImpl->npuClus->GetNTotal() == 0)
+            {
+                pQuantizerImpl->npuClus->AddFp32(totalSize, trainData.data());
+            }
+            if (this->intf_->verbose)
+            {
+                APP_LOG_INFO("Ascend cluster start training %zu vectors\n", pQuantizerImpl->npuClus->GetNTotal());
+            }
+            pQuantizerImpl->npuClus->TrainFp32(this->ivfConfig.cp.niter, tmpCentroids.data(), true);
+        }
+
+        centroidsData = tmpCentroids;
+        updateCoarseCenter(tmpCentroids);
+        centroidsOnHost = tmpCentroids;
+
+        pQuantizerImpl->cpuQuantizer->reset();
+        pQuantizerImpl->cpuQuantizer->add(nlist, tmpCentroids.data());
+        pQuantizerImpl->cpuQuantizer->is_trained = true;
     }
+    APP_LOG_INFO("IVFPQ train coarse quantizer finished, elapsed=%lld ms\n",
+                 static_cast<long long>(elapsedMs(coarse_start)));
+
     trainPQCodeBook(n, x);
+
+    auto upload_start = std::chrono::high_resolution_clock::now();
     updatePQCodeBook();
+    APP_LOG_INFO("IVFPQ train codebook upload finished, elapsed=%lld ms\n",
+                 static_cast<long long>(elapsedMs(upload_start)));
 
     this->intf_->is_trained = true;
-    APP_LOG_INFO("AscendIndexIVFPQ train operation finished.\n");
+    APP_LOG_INFO("IVFPQ train total finished, elapsed=%lld ms\n", static_cast<long long>(elapsedMs(train_total_start)));
 }
 
-void AscendIndexIVFPQImpl::indexTrainImpl(int n, const float* x, int dim, int nlist)
+void AscendIndexIVFPQImpl::indexTrainImpl(int n, const float* x, int dim, int nlist, int deviceId,
+                                          std::vector<float>& centroidsOut, bool dataAlreadySampled, int niterOverride)
 {
     if (n <= 0 || x == nullptr)
     {
@@ -937,40 +1218,30 @@ void AscendIndexIVFPQImpl::indexTrainImpl(int n, const float* x, int dim, int nl
         FAISS_THROW_MSG("NPU device invalid");
     }
 
-    int device_id = indexConfig.deviceList[0];
-
-    auto pIndex = getActualIndex(device_id);
+    auto pIndex = getActualIndex(deviceId);
     if (!pIndex)
     {
-        FAISS_THROW_FMT("device %d Index not reset", device_id);
+        FAISS_THROW_FMT("device %d Index not reset", deviceId);
     }
 
-    if (this->intf_->verbose)
-    {
-        const size_t data_bytes = static_cast<size_t>(n) * static_cast<size_t>(dim) * sizeof(float);
-        APP_LOG_INFO("IVFPQ NPU clustering indexTrainImpl: device=%d, n=%d, dim=%d, nlist=%d, dataBytes=%zu\n",
-                     device_id, n, dim, nlist, data_bytes);
-        APP_LOG_INFO("IVFPQ NPU clustering: IndexIVFPQ::trainImpl starting on device %d\n", device_id);
-    }
+    const size_t data_bytes = static_cast<size_t>(n) * static_cast<size_t>(dim) * sizeof(float);
+    APP_LOG_INFO("IVFPQ NPU clustering indexTrainImpl: device=%d, n=%d, dim=%d, nlist=%d, dataBytes=%zu\n", deviceId, n,
+                 dim, nlist, data_bytes);
 
     auto train_start = std::chrono::high_resolution_clock::now();
-    pIndex->verbose = this->intf_->verbose;
-    auto ret = pIndex->trainImpl(n, x, dim, nlist, this->ivfConfig.cp.niter, this->ivfConfig.cp.seed);
+    APP_LOG_INFO("IVFPQ NPU clustering: IndexIVFPQ::trainImpl starting on device %d\n", deviceId);
+
+    const int niter = niterOverride >= 0 ? niterOverride : this->ivfConfig.cp.niter;
+    auto ret = pIndex->trainImpl(n, x, dim, nlist, niter, this->ivfConfig.cp.seed, dataAlreadySampled);
     FAISS_THROW_IF_NOT_MSG(ret == ::ascend::APP_ERR_OK, "IndexIVFPQ::trainImpl failed");
-    centroidsData.resize(dim * nlist);
-    size_t centroids_bytes = nlist * dim * sizeof(float);
-    ret = aclrtMemcpy(centroidsData.data(), centroids_bytes, pIndex->clusteringOnDevice->data(), centroids_bytes,
+    centroidsOut.resize(static_cast<size_t>(dim) * static_cast<size_t>(nlist));
+    size_t centroids_bytes = static_cast<size_t>(nlist) * static_cast<size_t>(dim) * sizeof(float);
+    ret = aclrtMemcpy(centroidsOut.data(), centroids_bytes, pIndex->clusteringOnDevice->data(), centroids_bytes,
                       ACL_MEMCPY_DEVICE_TO_HOST);
     FAISS_THROW_IF_NOT_FMT(ret == ACL_SUCCESS, "update centroids result to Host failed: %d", ret);
 
-    if (this->intf_->verbose)
-    {
-        auto train_elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-                                 std::chrono::high_resolution_clock::now() - train_start)
-                                 .count();
-        APP_LOG_INFO("IVFPQ NPU clustering done: copied %zu centroid bytes, elapsed=%lld ms\n", centroids_bytes,
-                     static_cast<long long>(train_elapsed));
-    }
+    APP_LOG_INFO("IVFPQ NPU clustering done: copied %zu centroid bytes, elapsed=%lld ms\n", centroids_bytes,
+                 elapsedMs(train_start));
 }
 
 void AscendIndexIVFPQImpl::indexSearch(IndexParam<float, float, ascend_idx_t>& param) const
