@@ -20,16 +20,19 @@
 #define ASCEND_INDEX_IVFPQ_IMPL_INCLUDED
 
 #include <faiss/Clustering.h>
+
 #include "ascend/AscendIndexIVFPQ.h"
 #include "ascend/impl/AscendIndexIVFImpl.h"
-#include "ascenddaemon/impl/IndexIVFPQ.h"
 #include "ascend/utils/AscendIVFAddInfo.h"
+#include "ascenddaemon/impl/IndexIVFPQ.h"
 
-namespace faiss {
-namespace ascend {
-class AscendIndexIVFPQImpl : public AscendIndexIVFImpl {
-public:
-
+namespace faiss
+{
+namespace ascend
+{
+class AscendIndexIVFPQImpl : public AscendIndexIVFImpl
+{
+   public:
     // Construct an empty index
     AscendIndexIVFPQImpl(AscendIndexIVFPQ* intf, int dims, int nlist, int msubs, int nbits,
                          faiss::MetricType metric = MetricType::METRIC_INNER_PRODUCT,
@@ -70,10 +73,10 @@ public:
     std::vector<idx_t> update(idx_t n, const float* x, const idx_t* ids);
 
     void addPaged(int n, const float* x, const idx_t* ids);
-    
+
     size_t getAddPagedSize(int n) const;
 
-protected:
+   protected:
     void copyFromCentroids(const faiss::IndexIVFPQ* index);
 
     void copyFromCodebook(const faiss::IndexIVFPQ* index);
@@ -94,9 +97,13 @@ protected:
 
     std::shared_ptr<::ascend::Index> createIndex(int deviceId) override;
 
-    void indexTrainImpl(int n, const float* x, int dim, int nlist);
+    void indexTrainImpl(int n, const float* x, int dim, int nlist, int deviceId, std::vector<float>& centroidsOut,
+                        bool dataAlreadySampled = false, int niterOverride = -1);
 
-    // Called from AscendIndex for add/add_with_ids
+    void extractAllSubspaces(int nSampled, const std::vector<size_t>& sampleIndices, const float* x,
+                             std::vector<std::vector<float>>& subspaceData);
+
+    void trainSubQuantizer(size_t m, int nSampled, const std::vector<float>& subspace_data, int deviceId, int pqNiter);
     void addL1(int n, const float* x, std::vector<int64_t>& assign);
 
     void addL2(int n, const float* x, std::vector<uint8_t>& pqCodes);
@@ -107,11 +114,11 @@ protected:
 
     void indexIVFPQAdd(IndexParam<uint8_t, float, ascend_idx_t>& param);
 
-    std::vector<uint8_t> encodeSingleVectorPQ(const float* vector);
+    void encodeSingleVectorPQ(const float* vector, uint8_t* pqCode) const;
 
-    uint8_t findCentroidInSubQuantizer(size_t subq_idx, const float* sub_vector);
+    uint8_t findCentroidInSubQuantizer(size_t subqIdx, const float* subVector) const;
 
-    float calDistance(const float* a, const float* b, size_t dim);
+    float calDistance(const float* a, const float* b, size_t dim) const;
 
     inline ::ascend::IndexIVFPQ* getActualIndex(int deviceId) const
     {
@@ -128,11 +135,11 @@ protected:
 
     void trainPQCodeBook(idx_t n, const float* x);
 
-    void trainSubQuantizer(size_t m, idx_t n, const float* x);
-
     void updatePQCodeBook();
 
     void savePQCodeBook(size_t m, const std::vector<float>& centroids);
+
+    void initCoarseClustering();
 
     AscendIndexIVFPQ* intf_;
 
@@ -140,14 +147,16 @@ protected:
 
     std::vector<float> centroidsOnHost;
 
-    struct PQCodebook {
+    struct PQCodebook
+    {
         size_t nlist;
         size_t dim;
         size_t nbits;
         size_t M;
         size_t ksub;
         size_t dsub;
-        std::vector<std::vector<std::vector<float>>> codeBook;
+        // Faiss/device layout: [sub-quantizer][centroid][sub-dimension].
+        std::vector<float> codeBook;
     };
 
     PQCodebook pq;
@@ -155,7 +164,7 @@ protected:
     int msubs;
     int nbits;
 
-private:
+   private:
     AscendIndexIVFPQConfig ivfPQConfig;
 
     std::unordered_map<idx_t, idx_t> idToListMap;
@@ -163,7 +172,8 @@ private:
 
     std::mutex mapMutex;
 
-    struct ListInfo {
+    struct ListInfo
+    {
         std::unordered_set<idx_t> idSet;
     };
     std::vector<ListInfo> listInfos;

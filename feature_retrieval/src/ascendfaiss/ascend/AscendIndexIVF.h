@@ -16,23 +16,27 @@
  * -------------------------------------------------------------------------
  */
 
-
 #ifndef ASCEND_INDEX_IVF_INCLUDED
 #define ASCEND_INDEX_IVF_INCLUDED
 
 #include <faiss/Clustering.h>
+
 #include "ascend/AscendIndex.h"
 
-namespace faiss {
+namespace faiss
+{
 struct IndexIVF;
 }  // namespace faiss
 
-namespace faiss {
-namespace ascend {
-const int64_t IVF_DEFAULT_MEM = 0x8000000; // 0x8000000 mean 128M(resource mem pool's size)
+namespace faiss
+{
+namespace ascend
+{
+const int64_t IVF_DEFAULT_MEM = 0x8000000;  // 0x8000000 mean 128M(resource mem pool's size)
 
-struct AscendIndexIVFConfig : public AscendIndexConfig {
-    inline AscendIndexIVFConfig() : AscendIndexConfig({ 0 }, IVF_DEFAULT_MEM), useKmeansPP(false)
+struct AscendIndexIVFConfig : public AscendIndexConfig
+{
+    inline AscendIndexIVFConfig() : AscendIndexConfig({0}, IVF_DEFAULT_MEM), useKmeansPP(false)
     {
         SetDefaultClusteringConfig();
     }
@@ -57,20 +61,35 @@ struct AscendIndexIVFConfig : public AscendIndexConfig {
         cp.niter = niter;
     }
 
+    // Max training vectors sampled per centroid/list during IVF/PQ training
+    int trainSamplesPerList = 40;
+
+    // Upper cap on training vectors used for k-means sampling
+    int maxTrainSamples = 10000000;
+
+    // PQ sub-quantizer k-means iterations; -1 means use cp.niter
+    int pqNiter = -1;
+
+    // Enable multi-device distributed k-means for the coarse quantizer.
+    // Only effective when useKmeansPP is true and more than one device is
+    // configured. Intended for large nlist / large training-sample workloads;
+    // the distributed path clusters in fp16 across all devices.
+    bool useDistributedCoarse = false;
+
     // Configuration for the coarse quantizer object
     AscendIndexConfig flatConfig;
 
     // whether to use kmeansPP
     bool useKmeansPP;
-    
+
     // clustering parameters for trainQuantizer
     ClusteringParameters cp;
 };
 
 class AscendIndexIVFImpl;
-class AscendIndexIVF : public AscendIndex {
-public:
-
+class AscendIndexIVF : public AscendIndex
+{
+   public:
     AscendIndexIVF(int dims, faiss::MetricType metric, int nlist, AscendIndexIVFConfig config = AscendIndexIVFConfig());
 
     virtual ~AscendIndexIVF();
@@ -99,7 +118,7 @@ public:
     // After adding vectors, one can call this to reclaim device memory
     // to exactly the amount needed. Returns space reclaimed in bytes
     size_t reclaimMemory() override;
-    
+
     // return the list length of a particular list
     virtual uint32_t getListLength(int listId) const;
 
@@ -110,7 +129,7 @@ public:
     AscendIndexIVF(const AscendIndexIVF&) = delete;
     AscendIndexIVF& operator=(const AscendIndexIVF&) = delete;
 
-protected:
+   protected:
     std::shared_ptr<AscendIndexIVFImpl> impl_;
 };
 }  // namespace ascend

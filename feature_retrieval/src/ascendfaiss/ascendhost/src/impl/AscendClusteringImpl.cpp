@@ -52,10 +52,10 @@ const int NUM_BUCK_PER_BATCH = 64;
 const int SUBCENTER_NUM = 64;
 const int LOWER_BOUND = 32;
 const int MAX_CLUS_POINTS = 16384;
-const int MAX_NCENTROIDS = 262144;
+const int MAX_NCENTROIDS = 524288;
 const int MAX_NITER = 65536;
 const std::vector<int> DIMS = {64, 128, 256, 384, 512, 768, 1024, 2048};
-const int MAX_NLISTS = 262144;
+const int MAX_NLISTS = 524288;
 const int64_t RAND_SEED = 1234;
 const int CORR_COMPUTE_SIZE = 1024;
 
@@ -295,7 +295,7 @@ void AscendClusteringImpl::distributedTrain(int niter, float *centroids, const s
                                         "Failed to copy centrodataAll to host, device id %d, ret %d", idx, ret);
                 if (intf_->verbose)
                 {
-                    printf("Cluster Iteration %d (%.2f s)\n", i, (utils::getMillisecs() - t0) / 1000);
+                    APP_LOG_INFO("Cluster Iteration %d (%.2f s)\n", i, (utils::getMillisecs() - t0) / 1000);
                 }
                 count = 0;
             }
@@ -445,7 +445,7 @@ void AscendClusteringImpl::distributedTrainFp32(int niter, float *centroids, con
 
                     if (intf_->verbose)
                     {
-                        printf(
+                        APP_LOG_INFO(
                             "Ascend distributed Cluster Iteration %d (%.2f s): assign_ms=%lld, centroid_cpu_ms=%lld, "
                             "centroid_sync_ms=%lld\n",
                             i, (utils::getMillisecs() - t0) / 1000,
@@ -548,8 +548,8 @@ void AscendClusteringImpl::train(int niter, float *centroids, bool clearData)
         if (intf_->verbose)
         {
             tSearchTotal += utils::getMillisecs() - t0s;
-            printf("Cluster Iteration %d (%.2f s, search %.2f s)\n", i, (utils::getMillisecs() - t0) / 1000,
-                   tSearchTotal / 1000);
+            APP_LOG_INFO("Cluster Iteration %d (%.2f s, search %.2f s)\n", i, (utils::getMillisecs() - t0) / 1000,
+                         tSearchTotal / 1000);
         }
 
         runkmUpdateCentroidsCompute(codesDevice, centrodata, assign, stream);
@@ -676,8 +676,11 @@ void AscendClusteringImpl::ensureCodesOnDevice()
     const auto upload_ms =
         std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - upload_start)
             .count();
-    printf("AscendClustering ensureCodesOnDevice: uploaded %zu bytes, elapsed=%lld ms\n", dataBytes,
-           static_cast<long long>(upload_ms));
+    if (intf_->verbose)
+    {
+        APP_LOG_INFO("AscendClustering ensureCodesOnDevice: uploaded %zu bytes, elapsed=%lld ms\n", dataBytes,
+                     static_cast<long long>(upload_ms));
+    }
 }
 
 void AscendClusteringImpl::trainFp32(int niter, float *centroids, bool clearData)
@@ -711,7 +714,10 @@ void AscendClusteringImpl::trainFp32(int niter, float *centroids, bool clearData
     double tSearchTotal = 0.0;
     double t0 = 0.0;
     double t0s = 0.0;
-    printf("AscendClustering trainFp32: training codes resident on device, ntotal=%zu\n", ntotal);
+    if (this->intf_->verbose)
+    {
+        APP_LOG_INFO("AscendClustering trainFp32: training codes resident on device, ntotal=%zu\n", ntotal);
+    }
 
     if (this->intf_->verbose)
     {
@@ -730,13 +736,13 @@ void AscendClusteringImpl::trainFp32(int niter, float *centroids, bool clearData
         const auto assign_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                                    std::chrono::high_resolution_clock::now() - iter_start)
                                    .count();
-        printf("AscendClustering trainFp32 iter %d/%d: runKMeans assign elapsed=%lld ms\n", i + 1, niter,
-               static_cast<long long>(assign_ms));
         if (this->intf_->verbose)
         {
+            APP_LOG_INFO("AscendClustering trainFp32 iter %d/%d: runKMeans assign elapsed=%lld ms\n", i + 1, niter,
+                         static_cast<long long>(assign_ms));
             tSearchTotal += utils::getMillisecs() - t0s;
-            printf("Ascend Cluster Iteration %d (%.2f s, search %.2f s)  \r", i, (utils::getMillisecs() - t0) / 1000,
-                   tSearchTotal / 1000);  // 除以 1000 将单位转换为s
+            APP_LOG_INFO("Ascend Cluster Iteration %d (%.2f s, search %.2f s)\n", i,
+                         (utils::getMillisecs() - t0) / 1000, tSearchTotal / 1000);
         }
         // aicpu速度不如cpu，直接使用cpu更新
         computeCentroids(intf_->d, intf_->k, ntotal, codesFp32.data(), assignHost.data(), centroids);
