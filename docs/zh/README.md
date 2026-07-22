@@ -19,7 +19,7 @@
 |-|FAQ|07_faq.md|介绍Index SDK的常见问题。|[FAQ](./07_faq.md)|
 |-|常用操作|08_common_operations.md|介绍Index SDK使用涉及的常用操作。|[常用操作](./08_common_operations.md)|
 |-|附录|09_appendix.md|介绍Index SDK的参考代码等信息。|[附录](./09_appendix.md)|
-|-|版本说明书|release_notes.md|对该版本的更新点做简要说明。|[版本说明书](./release_notes.md)|
+|-|版本说明书|release_notes.md|对该版本的更新点做简要说明。|[版本说明书](./release_notes_index.md)|
 |-|免责声明|disclaimer.md|提供免责声明。|[免责声明](./disclaimer.md)|
 |资源（resource）|-|-|提供Index SDK公网地址等资源。|[resource](./resource/)|
 |图片（figures）|-|-|提供docs内各文档使用到的图片文件。|[figures](./figures/)|
