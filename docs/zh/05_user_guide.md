@@ -869,7 +869,7 @@ VSTAR检索当前只支持<term>Atlas 推理系列产品</term>，涉及VSTAR业
 - scikit-learn（version \>= 1.4.1.post1）
 - tqdm（version \>= 4.66.1）
 
-torch、torch\_npu、numpy、scikit-learn和tqdm可通过**pip install**命令安装，执行命令参考如下。
+torch、TorchNPU、numpy、scikit-learn和tqdm可通过**pip install**命令安装，执行命令参考如下。
 
 ```bash
 pip install numpy tqdm scikit-learn torch_npu torch
@@ -898,7 +898,7 @@ CANN 8.5.0之前版本需要单独安装nnae。具体安装步骤如下：
 
 **注意事项<a name="section15462185871819"></a>**
 
-- 若import torch，torch\_npu遇到下面的错误：
+- 若import torch，TorchNPU遇到下面的错误：
 
     ```text
     .../libgomp.so: cannot allocate memory in static TLS block
@@ -1095,7 +1095,7 @@ Index SDK提供两种训练脚本方式：
     pip install faiss-cpu==1.10.0
     ```
 
-- 安装torch\_cpu和torch\_npu。安装方法参见[链接](https://gitee.com/ascend/pytorch)。请根据版本配套表，选择对应版本安装。
+- 安装torch\_cpu和TorchNPU。安装方法参见[链接](https://gitcode.com/Ascend/pytorch)。请根据版本配套表，选择对应版本安装。
 
 **训练模型<a name="section8422152014206"></a>**
 

@@ -16,7 +16,7 @@ Index SDK 支持[离线安装](#离线安装)、[镜像安装](#镜像安装)、
 
 ### 安装 NPU 驱动固件和 CANN
 
-请参考《[CANN 安装指南](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/900/softwareinst/instg/instg_0000.html)》，使用 CANN 9.0.0 及对应驱动版本完成 NPU 驱动固件与 CANN 的安装。
+请参考《[CANN 快速安装](https://www.hiascend.com/cann/download)》，选择 CANN 9.1.0 及对应驱动版本安装昇腾 NPU 驱动固件 和 CANN 软件（包含Toolkit和ops包），并配置环境变量。
 
 > [!NOTE]
 > 安装 CANN 和安装 Index SDK 的用户需为同一用户，建议为普通用户。
