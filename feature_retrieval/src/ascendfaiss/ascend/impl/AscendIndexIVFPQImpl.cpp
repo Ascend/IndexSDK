@@ -428,6 +428,7 @@ void AscendIndexIVFPQImpl::copyTo(faiss::IndexIVFPQ* index) const
     index->is_trained = this->intf_->is_trained;
     index->nlist = nlist;
     index->nprobe = nprobe;
+    index->by_residual = false;
     index->cp = this->ivfConfig.cp;
     index->pq.M = pq.M;
     index->pq.nbits = pq.nbits;

@@ -145,7 +145,7 @@ size_t IndexIVFPQ::getPQVecCapacity(size_t vecNum, size_t size, int M) const
 
     needSize = std::max(needSize, vecNum * static_cast<size_t>(M));
 
-    const size_t align = 2 * KB * KB;
+    const size_t align = (numLists >= 262144) ? static_cast<size_t>(16 * KB) : static_cast<size_t>(2 * KB * KB);
 
     if (needSize < minCapacity)
     {
