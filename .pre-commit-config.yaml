@@ -98,3 +98,18 @@ repos:
           - --redact
           - --config=pre-commit/.gitleaks.toml
         stages: [pre-commit]
+  # -------------------------- Clang tidy 代码检查 --------------------------
+  - repo: local
+    hooks:
+      - id: clang-tidy
+        name: clang-tidy
+        entry: clang-tidy
+        language: system
+        files: ^feature_retrieval/src/ascendfaiss/.*\.(cpp|cc|cxx|c)$
+        exclude: "(test/|tools/|ut/|ops([^/]+)?/)"
+        args:
+            - --config-file=.clang-tidy
+            - --quiet
+            - --header-filter=^$
+            - -p=.
+        pass_filenames: true
