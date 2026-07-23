@@ -336,6 +336,20 @@ function package()
     bash "${CUR_DIR}/package.sh"
 }
 
+function copy_compile_json()
+{
+    local build_dir_name="$1"
+    local src_json="${TOP_DIR}/feature_retrieval/${build_dir_name}/compile_commands.json"
+    local dst_json="${TOP_DIR}/compile_commands.json"
+
+    if [ -f "${src_json}" ]; then
+        cp -f "${src_json}" "${dst_json}"
+        echo "Success: copy compile_commands.json from ${build_dir_name} to project root"
+    else
+        echo "Warning: compile_commands.json not found in ${src_json}"
+    fi
+}
+
 function main()
 {
     validate_default_faiss_abi
@@ -345,16 +359,19 @@ function main()
         export GCC_HOME=/opt/rh/devtoolset-7/root/usr
         set_env
         build_release_for_gcc Gcc4
+        copy_compile_json "build_gcc4"
     fi
     if [ -d "${Gcc7_PATH}" ]; then
         echo "build with Gcc7 in ${Gcc7_PATH}..."
         export GCC_HOME=/opt/rh/devtoolset-index/root/usr
         set_env
         build_release_for_gcc Gcc7
+        copy_compile_json "build_gcc7"
     fi
     if [ ! -d "${Gcc4_PATH}" ] && [ ! -d "${Gcc7_PATH}" ]; then
         echo "build with system default Gcc..."
         build_release_for_gcc Gcc7
+        copy_compile_json "build_gcc7"
     fi
     package
 }
