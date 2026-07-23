@@ -1,0 +1,44 @@
+{
+    "name": "IndexSDK Dev Container",
+    "build": {
+        "dockerfile": "Dockerfile",
+        "network": "host" ,
+        "context": "..",
+        "args": {
+            "CANN_VERSION": "9.0.0",
+            "PLATFORM": "910B",
+            "VERSION": "26.0.0"
+        }
+    },
+    "workspaceFolder": "/workspace",
+    "runArgs": [
+        "--ipc=host",
+        "--device=/dev/davinci0",
+        "--device=/dev/davinci_manager",
+        "--device=/dev/devmm_svm",
+        "--device=/dev/hisi_hdc"
+    ],
+    "mounts": [
+        "source=/usr/local/bin/npu-smi,target=/usr/local/bin/npu-smi,type=bind,readonly",
+        "source=/usr/local/Ascend/driver,target=/usr/local/Ascend/driver,type=bind,readonly",
+        "source=/etc/ascend_install.info,target=/etc/ascend_install.info,type=bind,readonly"
+    ],
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "ms-python.python",
+                "ms-python.vscode-pylance",
+                "eamodio.gitlens",
+                "ms-vscode.cpptools-extension-pack",
+                "twxs.cmake"
+            ],
+            "settings": {
+                "python.defaultInterpreterPath": "/usr/bin/python3",
+                "python.terminal.activateEnvironment": true,
+                "C_Cpp.default.compilerPath": "/usr/bin/g++"
+            }
+        }
+    },
+    "postCreateCommand": "bash .devcontainer/postCreateCommand.sh",
+    "remoteUser": "root"
+}
