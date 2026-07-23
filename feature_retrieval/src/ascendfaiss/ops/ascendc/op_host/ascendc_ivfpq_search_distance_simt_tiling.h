@@ -76,6 +76,7 @@ constexpr uint32_t IVFPQ_ONE = 1;
 constexpr uint32_t IVFPQ_NUM_32 = 32;
 constexpr uint32_t IVFPQ_TOPK_OUTTER_NUM = 4096;
 constexpr uint32_t IVFPQ_BLOCK_MAX_SIZE = 16384;
+constexpr uint32_t IVFPQ_BLOCK_SIZE_M32 = 8192;
 constexpr uint32_t IVFPQ_CODE_BLOCK_SIZE = 262144;
 constexpr uint32_t IVFPQ_MAX_SHARE_MEM = 1024 * 216;
 
@@ -148,9 +149,9 @@ class IvfpqTiling
         AscendC::GetTopKMaxMinTmpSize(blockSize, 1, topk_, false, false, AscendC::TopKMode::TOPK_NORMAL, isLargest,
                                       ge::DataType::DT_FLOAT, config, maxSize, minSize_);
 
-        // block内按照16384进行分块，
-        perCoreInnerBlockDealSize_ = IVFPQ_BLOCK_MAX_SIZE;
-        // 单核处理16384大小数据需要循环的次数，按照内轴长度4096进行循环topk
+        // block内按照16384进行分块；M=32 用 8192 降低 distResult UB
+        perCoreInnerBlockDealSize_ = (subSpaceNum_ >= IVFPQ_NUM_32) ? IVFPQ_BLOCK_SIZE_M32 : IVFPQ_BLOCK_MAX_SIZE;
+        // 单核处理 block 大小数据需要循环的次数，按照内轴长度4096进行循环topk
         singleCoretotalBlock_ = perCoreInnerBlockDealSize_ / IVFPQ_TOPK_OUTTER_NUM;
 
         // 非首轮topk，包含累计topk结果，此时内轴长度就是 (topk * singleCoretotalBlock_+1)
@@ -254,7 +255,7 @@ class IvfpqTiling
 
     ge::graphStatus ParamValueCheck()
     {
-        if (subSpaceNum_ != 2 && subSpaceNum_ != 4 && subSpaceNum_ != 8 && subSpaceNum_ != 16)
+        if (subSpaceNum_ != 2 && subSpaceNum_ != 4 && subSpaceNum_ != 8 && subSpaceNum_ != 16 && subSpaceNum_ != 32)
         {
             return ge::GRAPH_FAILED;
         }

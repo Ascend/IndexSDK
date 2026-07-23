@@ -17,19 +17,20 @@ MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 See the Mulan PSL v2 for more details.
 -------------------------------------------------------------------------
 """
+
 import numpy as np
 import ascendfaiss
 
 
-d = 128      # 向量维度
+d = 128  # 向量维度
 nb = 100000  # 底库大小
-nq = 1       # 查询向量个数
+nq = 1  # 查询向量个数
 np.random.seed(1234)
 xb = np.random.random((nb, d)).astype('float32')
 xq = xb[:nq, :]
 
 nlist = 2048  # L1聚类中心数
-m = 32        # PQ分段数
+m = 32  # PQ分段数
 
 # 指定参与运算的Device
 dev = ascendfaiss.IntVector()
@@ -37,8 +38,8 @@ for i in range(1):
     dev.push_back(i)
 config = ascendfaiss.AscendIndexIVFPQConfig(dev)
 # 创建IVFPQ索引，PQ编码长度为8bit，L2距离作为相似度标准
-ascend_index_ivfpq = ascendfaiss.AscendIndexIVFPQ(
-    d, nlist, m, 8, ascendfaiss.METRIC_L2, config)
+# ctor: (dims, metric, nlist, msubs, nbits, config)
+ascend_index_ivfpq = ascendfaiss.AscendIndexIVFPQ(d, ascendfaiss.METRIC_L2, nlist, m, 8, config)
 
 # 训练
 ascend_index_ivfpq.train(xb)
@@ -53,7 +54,7 @@ print(INDEX[:display])
 
 # 删除底库
 ids_remove = ascendfaiss.IDSelectorRange(0, 1)
-ids_remove_batch = INDEX[0][:int(k / 2)].copy()
+ids_remove_batch = INDEX[0][: int(k / 2)].copy()
 
 print("Remove top1")
 num_removed = ascend_index_ivfpq.remove_ids(ids_remove)
