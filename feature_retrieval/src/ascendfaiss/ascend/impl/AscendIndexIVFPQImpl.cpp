@@ -134,7 +134,7 @@ const std::vector<int> DIMS = {128};
 const std::vector<int> NLISTS = {1024, 2048, 4096, 8192, 16384, 262144, 524288};
 
 // The value range of msub
-const std::vector<int> MSUBS = {2, 4, 8, 16};
+const std::vector<int> MSUBS = {2, 4, 8, 16, 32};
 
 // The value range of nbit
 const std::vector<int> NBITS = {8};

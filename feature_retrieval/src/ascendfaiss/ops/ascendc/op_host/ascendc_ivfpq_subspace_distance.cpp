@@ -28,6 +28,9 @@ constexpr uint32_t ONE = 1;
 constexpr uint32_t BATCH_MIN = 1;
 constexpr uint32_t BATCH_MAX = 256;
 constexpr uint32_t KSUB_DEFAULT = 256;
+constexpr uint32_t DSUB_ALIGN = 8;
+constexpr uint64_t TILING_KEY_CUBE = 0;
+constexpr uint64_t TILING_KEY_VEC_PAD = 1;
 }  // namespace
 
 using namespace matmul_tiling;
@@ -66,6 +69,10 @@ ge::graphStatus IvfpqSubspaceTiling::ProcessInput()
     {
         return ge::GRAPH_FAILED;
     }
+    if (dSub_ == 0 || dim_ % dSub_ != 0 || subSpaceNum_ * dSub_ != dim_)
+    {
+        return ge::GRAPH_FAILED;
+    }
 
     return ge::GRAPH_SUCCESS;
 }
@@ -76,6 +83,8 @@ ge::graphStatus IvfpqSubspaceTiling::Split()
     nBlockNum_ = kSub_ / nBlockTile_;
     totalTaskNum_ = subSpaceNum_ * nBlockNum_;
     usedAicNum_ = std::max(std::min(totalTaskNum_, aicNum_), ONE);
+    // Keep tilingKey 0; kernel branches on dSub < 8 for pad path
+    tilingKey_ = TILING_KEY_CUBE;
 
     return ge::GRAPH_SUCCESS;
 }
@@ -135,7 +144,11 @@ ge::graphStatus IvfpqSubspaceTiling::SetExtraConfig()
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->GetPlatformInfo());
     workSpaceSize_ = ascendcPlatform.GetLibApiWorkSpaceSize();
 
-    uint32_t userSize = batch_ * nBlockTile_ * totalTaskNum_ * sizeof(float);  // M * N * totalTaskNum * dataTypeSize
+    uint32_t userSize = 0;
+    if (dSub_ >= DSUB_ALIGN)
+    {
+        userSize = batch_ * nBlockTile_ * totalTaskNum_ * sizeof(float);  // M * N * totalTaskNum * dataTypeSize
+    }
     currentWorkspace[0] = workSpaceSize_ + userSize;
     return ge::GRAPH_SUCCESS;
 }
@@ -145,9 +158,15 @@ ge::graphStatus IvfpqSubspaceTiling::ProcessTiling(gert::TilingContext* context,
 {
     context_ = context;
     tilingData_ = &tilingData;
-    if (GetNpuInfo() != ge::GRAPH_SUCCESS || ProcessInput() != ge::GRAPH_SUCCESS || Split() != ge::GRAPH_SUCCESS ||
-        CubeTiling() != ge::GRAPH_SUCCESS || FillTilingData() != ge::GRAPH_SUCCESS ||
-        SetExtraConfig() != ge::GRAPH_SUCCESS)
+    if (GetNpuInfo() != ge::GRAPH_SUCCESS || ProcessInput() != ge::GRAPH_SUCCESS || Split() != ge::GRAPH_SUCCESS)
+    {
+        return ge::GRAPH_FAILED;
+    }
+    if (dSub_ >= DSUB_ALIGN && CubeTiling() != ge::GRAPH_SUCCESS)
+    {
+        return ge::GRAPH_FAILED;
+    }
+    if (FillTilingData() != ge::GRAPH_SUCCESS || SetExtraConfig() != ge::GRAPH_SUCCESS)
     {
         return ge::GRAPH_FAILED;
     }

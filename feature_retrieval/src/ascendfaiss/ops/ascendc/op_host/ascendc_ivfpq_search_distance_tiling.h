@@ -24,7 +24,8 @@
 #include "tiling/platform/platform_ascendc.h"
 #include "tiling/tiling_api.h"
 
-namespace optiling {
+namespace optiling
+{
 BEGIN_TILING_DATA_DEF(AscendcIvfpqSearchDistanceTopKTilingData)
 TILING_DATA_FIELD_DEF(uint32_t, subSpaceNum);
 TILING_DATA_FIELD_DEF(uint32_t, ksub);
@@ -66,42 +67,54 @@ REGISTER_TILING_DATA_CLASS(AscendcIvfpqSearchDistance, AscendcIvfpqSearchDistanc
 REGISTER_TILING_DATA_CLASS(AscendcIvfpqSearchDistanceL2, AscendcIvfpqSearchDistanceTopKTilingData)
 REGISTER_TILING_DATA_CLASS(AscendcIvfpqSearchDistanceIP, AscendcIvfpqSearchDistanceTopKTilingData)
 
-enum class ReduceMode { L2, IP };
+enum class ReduceMode
+{
+    L2,
+    IP
+};
 constexpr uint32_t IVFPQ_ONE = 1;
 constexpr uint32_t IVFPQ_NUM_32 = 32;
 constexpr uint32_t IVFPQ_TOPK_OUTTER_NUM = 4096;
 constexpr uint32_t IVFPQ_BLOCK_MAX_SIZE = 16384;
+// M=32 LUT is 32KB; keep distResult smaller so InitBuffer fits Vector UB (~192KB).
+constexpr uint32_t IVFPQ_BLOCK_SIZE_M32 = 8192;
 constexpr uint32_t IVFPQ_CODE_BLOCK_SIZE = 262144;
 constexpr uint32_t IVFPQ_MAX_SHARE_MEM = 1024 * 216;
 
-class IvfpqTiling {
-public:
+class IvfpqTiling
+{
+   public:
     ge::graphStatus ProcessTiling(gert::TilingContext *context, AscendcIvfpqSearchDistanceTopKTilingData &tilingData,
                                   ReduceMode reduceMode)
     {
-        if (context == nullptr) {
+        if (context == nullptr)
+        {
             return ge::GRAPH_FAILED;
         }
 
         context_ = context;
         tilingData_ = &tilingData;
 
-        if (reduceMode == ReduceMode::L2) {
+        if (reduceMode == ReduceMode::L2)
+        {
             reduceMode_ = 0;
-        } else {
+        }
+        else
+        {
             reduceMode_ = 1;
         }
 
         if (GetNpuInfo() != ge::GRAPH_SUCCESS || ProcessInput() != ge::GRAPH_SUCCESS ||
             TopKTiling() != ge::GRAPH_SUCCESS || FillTilingData() != ge::GRAPH_SUCCESS ||
-            SetExtraConfig() != ge::GRAPH_SUCCESS) {
+            SetExtraConfig() != ge::GRAPH_SUCCESS)
+        {
             return ge::GRAPH_FAILED;
         }
 
         return ge::GRAPH_SUCCESS;
     }
 
-private:
+   private:
     ge::graphStatus GetNpuInfo()
     {
         auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->GetPlatformInfo());
@@ -122,31 +135,31 @@ private:
         bool isLargest = (reduceMode_ == 1);
         // 块内数据循环topk，单轮topk内轴设置为4096，外轴设置为1
         AscendC::TopKTilingFunc(platformInfo,
-                                blockSize, // inner
-                                1,         // outter
+                                blockSize,  // inner
+                                1,          // outter
                                 topk_, dtypeSize, false, AscendC::TopKMode::TOPK_NORMAL, isLargest,
                                 tilingData_->topkTilingData);
-    
-        // 块内数据循环topk，单轮topk内轴设置为4096，外轴设置为1
-        AscendC::GetTopKMaxMinTmpSize(platformInfo, blockSize, 1, false, false, AscendC::TopKMode::TOPK_NORMAL, isLargest,
-                                      ge::DataType::DT_FLOAT, maxSize, minSize_);
 
-        // block内按照16384进行分块，
-        perCoreInnerBlockDealSize_ = IVFPQ_BLOCK_MAX_SIZE;
-        // 单核处理16384大小数据需要循环的次数，按照内轴长度4096进行循环topk
+        // 块内数据循环topk，单轮topk内轴设置为4096，外轴设置为1
+        AscendC::GetTopKMaxMinTmpSize(platformInfo, blockSize, 1, false, false, AscendC::TopKMode::TOPK_NORMAL,
+                                      isLargest, ge::DataType::DT_FLOAT, maxSize, minSize_);
+
+        // block内按照16384进行分块；M=32 用 8192 降低 distResult UB
+        perCoreInnerBlockDealSize_ = (subSpaceNum_ >= IVFPQ_NUM_32) ? IVFPQ_BLOCK_SIZE_M32 : IVFPQ_BLOCK_MAX_SIZE;
+        // 单核处理 block 大小数据需要循环的次数，按照内轴长度4096进行循环topk
         singleCoretotalBlock_ = perCoreInnerBlockDealSize_ / IVFPQ_TOPK_OUTTER_NUM;
 
         // 非首轮topk，包含累计topk结果，此时内轴长度就是 (topk * singleCoretotalBlock_+1)
         AscendC::TopKTilingFunc(platformInfo,
-                                topk_ * (singleCoretotalBlock_ + 1), // inner
-                                1,                                   // outter
+                                topk_ * (singleCoretotalBlock_ + 1),  // inner
+                                1,                                    // outter
                                 topk_, dtypeSize, true, AscendC::TopKMode::TOPK_NORMAL, isLargest,
                                 tilingData_->topkTilingDataWhole);
 
         // 首轮topk，不包含累计topk结果，此时内轴长度就是 topk * singleCoretotalBlock_
         AscendC::TopKTilingFunc(platformInfo,
-                                topk_ * (singleCoretotalBlock_), // inner
-                                1,                               // outter
+                                topk_ * (singleCoretotalBlock_),  // inner
+                                1,                                // outter
                                 topk_, dtypeSize, true, AscendC::TopKMode::TOPK_NORMAL, isLargest,
                                 tilingData_->topkTilingDataSingle);
 
@@ -157,8 +170,8 @@ private:
         // 多少轮可以处理完全部block的topk结果
         mergeBeginBlockLoopTime_ = (codeBlockNum_ * topk_) / mergeBeginBlockSize;
         AscendC::TopKTilingFunc(platformInfo,
-                                mergeBeginBlockSize, // inner
-                                1,                   // outter
+                                mergeBeginBlockSize,  // inner
+                                1,                    // outter
                                 topk_, dtypeSize, true, AscendC::TopKMode::TOPK_NORMAL, isLargest,
                                 tilingData_->topkTilingDataMergeBegin);
 
@@ -166,31 +179,36 @@ private:
                                       isLargest, ge::DataType::DT_FLOAT, maxSize, minSizeMergeBegin_);
         // 尾块处理
         uint32_t mergeBeginTailBlockSize = codeBlockNum_ * topk_ - mergeBeginBlockSize * mergeBeginBlockLoopTime_;
-        if (mergeBeginTailBlockSize == 0) {
+        if (mergeBeginTailBlockSize == 0)
+        {
             mergeBeginTailBlockLoopTime_ = 0;
             mergeBeginTailTopNumInLoop_ = 0;
-        } else {
+        }
+        else
+        {
             mergeBeginTailBlockLoopTime_ = 1;
             mergeBeginTailTopNumInLoop_ = mergeBeginTailBlockSize / topk_;
         }
         // 尾块topk的tiling方法
         AscendC::TopKTilingFunc(platformInfo,
-                                mergeBeginTailBlockSize, // inner
-                                1,                       // outter
+                                mergeBeginTailBlockSize,  // inner
+                                1,                        // outter
                                 topk_, dtypeSize, true, AscendC::TopKMode::TOPK_NORMAL, isLargest,
                                 tilingData_->topkTilingDataMergeBeginTail);
-        AscendC::GetTopKMaxMinTmpSize(platformInfo, mergeBeginTailBlockSize, 1, false, true, AscendC::TopKMode::TOPK_NORMAL,
-                                      isLargest, ge::DataType::DT_FLOAT, maxSize, minSizeMergeBeginTail_);
-       
+        AscendC::GetTopKMaxMinTmpSize(platformInfo, mergeBeginTailBlockSize, 1, false, true,
+                                      AscendC::TopKMode::TOPK_NORMAL, isLargest, ge::DataType::DT_FLOAT, maxSize,
+                                      minSizeMergeBeginTail_);
+
         // 最终归并topk
         // 内轴长度为 topk_ * (mergeBeginBlockLoopTime_ + mergeBeginTailBlockLoopTime_)
         AscendC::TopKTilingFunc(platformInfo,
-                                topk_ * (mergeBeginBlockLoopTime_ + mergeBeginTailBlockLoopTime_), // inner
-                                1,                                                                 // outter
+                                topk_ * (mergeBeginBlockLoopTime_ + mergeBeginTailBlockLoopTime_),  // inner
+                                1,                                                                  // outter
                                 topk_, dtypeSize, true, AscendC::TopKMode::TOPK_NORMAL, isLargest,
                                 tilingData_->topkTilingDataMergeEnd);
-        AscendC::GetTopKMaxMinTmpSize(platformInfo, topk_ * (mergeBeginBlockLoopTime_ + mergeBeginTailBlockLoopTime_), 1, false, true,
-                                      AscendC::TopKMode::TOPK_NORMAL, isLargest, ge::DataType::DT_FLOAT, maxSize, minSizeMergeEnd_);
+        AscendC::GetTopKMaxMinTmpSize(platformInfo, topk_ * (mergeBeginBlockLoopTime_ + mergeBeginTailBlockLoopTime_),
+                                      1, false, true, AscendC::TopKMode::TOPK_NORMAL, isLargest, ge::DataType::DT_FLOAT,
+                                      maxSize, minSizeMergeEnd_);
         return ge::GRAPH_SUCCESS;
     }
 
@@ -203,23 +221,28 @@ private:
         auto codeOffsetDimNum = codeOffsetShape.GetDimNum();
         auto codeSizeDimNum = codeSizeShape.GetDimNum();
         auto topkDimNum = topkShape.GetDimNum();
-        if (queryPQDimNum != 3U) {
+        if (queryPQDimNum != 3U)
+        {
             return ge::GRAPH_FAILED;
         }
 
-        if (codeBaseDimNum != 1U) {
+        if (codeBaseDimNum != 1U)
+        {
             return ge::GRAPH_FAILED;
         }
 
-        if (codeOffsetDimNum != 2U) {
+        if (codeOffsetDimNum != 2U)
+        {
             return ge::GRAPH_FAILED;
         }
 
-        if (codeSizeDimNum != 2U) {
+        if (codeSizeDimNum != 2U)
+        {
             return ge::GRAPH_FAILED;
         }
 
-        if (topkDimNum != 1U) {
+        if (topkDimNum != 1U)
+        {
             return ge::GRAPH_FAILED;
         }
 
@@ -228,19 +251,23 @@ private:
 
     ge::graphStatus ParamValueCheck()
     {
-        if (subSpaceNum_ != 2 && subSpaceNum_ != 4 && subSpaceNum_ != 8 && subSpaceNum_ != 16) {
+        if (subSpaceNum_ != 2 && subSpaceNum_ != 4 && subSpaceNum_ != 8 && subSpaceNum_ != 16 && subSpaceNum_ != 32)
+        {
             return ge::GRAPH_FAILED;
         }
 
-        if (ksub_ != 256) {
+        if (ksub_ != 256)
+        {
             return ge::GRAPH_FAILED;
         }
 
-        if (codeSizeNum_ != codeBlockNum_) {
+        if (codeSizeNum_ != codeBlockNum_)
+        {
             return ge::GRAPH_FAILED;
         }
 
-        if (codeBlockNum_ > 256) {
+        if (codeBlockNum_ > 256)
+        {
             return ge::GRAPH_FAILED;
         }
 
@@ -250,14 +277,15 @@ private:
     virtual ge::graphStatus ProcessInput()
     {
         // InTensor
-        auto queryPQShape = context_->GetInputShape(0)->GetStorageShape();    // 第0个输入 queryPQ
-        auto codeBaseShape = context_->GetInputShape(1)->GetStorageShape();   // 第1个输入 codeBase
-        auto codeOffsetShape = context_->GetInputShape(2)->GetStorageShape(); // 第2个输入 codeOffset
-        auto codeSizeShape = context_->GetInputShape(3)->GetStorageShape();   // 第3个输入 codeSize
-        auto topkShape = context_->GetInputShape(4)->GetStorageShape();       // 第4个输入 topk
+        auto queryPQShape = context_->GetInputShape(0)->GetStorageShape();     // 第0个输入 queryPQ
+        auto codeBaseShape = context_->GetInputShape(1)->GetStorageShape();    // 第1个输入 codeBase
+        auto codeOffsetShape = context_->GetInputShape(2)->GetStorageShape();  // 第2个输入 codeOffset
+        auto codeSizeShape = context_->GetInputShape(3)->GetStorageShape();    // 第3个输入 codeSize
+        auto topkShape = context_->GetInputShape(4)->GetStorageShape();        // 第4个输入 topk
 
         auto ret = ParamDimCheck(queryPQShape, codeBaseShape, codeOffsetShape, codeSizeShape, topkShape);
-        if (ret != ge::GRAPH_SUCCESS) {
+        if (ret != ge::GRAPH_SUCCESS)
+        {
             return ret;
         }
 
@@ -313,7 +341,8 @@ private:
         context_->GetRawTilingData()->SetDataSize(tilingData_->GetDataSize());
 
         size_t *currentWorkspace = context_->GetWorkspaceSizes(1);
-        if (currentWorkspace == nullptr) {
+        if (currentWorkspace == nullptr)
+        {
             return ge::GRAPH_FAILED;
         }
         currentWorkspace[0] = workSpaceSize_;
@@ -321,7 +350,7 @@ private:
         return ge::GRAPH_SUCCESS;
     }
 
-private:
+   private:
     gert::TilingContext *context_ = nullptr;
     AscendcIvfpqSearchDistanceTopKTilingData *tilingData_ = nullptr;
 
@@ -358,5 +387,5 @@ private:
     uint32_t batch_ = 0;
 };
 
-} // namespace optiling
+}  // namespace optiling
 #endif

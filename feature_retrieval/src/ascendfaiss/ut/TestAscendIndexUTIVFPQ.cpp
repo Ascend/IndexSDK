@@ -141,6 +141,48 @@ TEST(TestAscendIndexIVFPQ, ConstructAcceptsLargeNlistWhitelist)
     }
 }
 
+TEST(TestAscendIndexIVFPQ, ConstructMsub32)
+{
+    int dim = 128;
+    int nlist = 1024;
+    int msub = 32;
+    int nbit = 8;
+
+    std::string msg = "";
+    faiss::MetricType type = faiss::METRIC_L2;
+    faiss::ascend::AscendIndexIVFPQConfig conf({0});
+    try
+    {
+        faiss::ascend::AscendIndexIVFPQ index(dim, type, nlist, msub, nbit, conf);
+    }
+    catch (std::exception& e)
+    {
+        msg = e.what();
+    }
+    EXPECT_TRUE(msg.find("Unsupported msubs") == std::string::npos);
+}
+
+TEST(TestAscendIndexIVFPQ, ConstructUnsupportedMsub)
+{
+    int dim = 128;
+    int nlist = 1024;
+    int msub = 64;
+    int nbit = 8;
+
+    std::string msg = "";
+    faiss::MetricType type = faiss::METRIC_L2;
+    faiss::ascend::AscendIndexIVFPQConfig conf({0});
+    try
+    {
+        faiss::ascend::AscendIndexIVFPQ index(dim, type, nlist, msub, nbit, conf);
+    }
+    catch (std::exception& e)
+    {
+        msg = e.what();
+    }
+    EXPECT_TRUE(msg.find("Unsupported msubs") != std::string::npos);
+}
+
 TEST(TestAscendIndexIVFPQ, copyTo)
 {
     int dim = 128;

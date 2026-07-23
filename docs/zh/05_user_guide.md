@@ -803,7 +803,7 @@ VSTAR检索当前只支持<term>Atlas 推理系列产品</term>，涉及VSTAR业
 </tr>
 <tr id="row1827720142259"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.4.1"><p id="p327810141252"><a name="p327810141252"></a><a name="p327810141252"></a>约束说明</p>
 </th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.4.1 "><a name="ul144021537172510"></a><a name="ul144021537172510"></a><ul id="ul144021537172510"><li>dim ∈ {128}</li><li>nlist ∈ {1024, 2048, 4096, 8192, 16384, 262144, 524288}</li><li>m ∈ {2, 4, 8, 16}</li><li>n ∈ {8}</li></ul>
+<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.4.1 "><a name="ul144021537172510"></a><a name="ul144021537172510"></a><ul id="ul144021537172510"><li>dim ∈ {128}</li><li>nlist ∈ {1024, 2048, 4096, 8192, 16384, 262144, 524288}</li><li>m ∈ {2, 4, 8, 16, 32}</li><li>n ∈ {8}</li></ul>
 </td>
 </tr>
 </tbody>

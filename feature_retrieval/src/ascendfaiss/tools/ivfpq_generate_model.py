@@ -18,6 +18,9 @@ See the Mulan PSL v2 for more details.
 -------------------------------------------------------------------------
 """
 
+# Sibling tools/common.py; pylint may bind test/python/common.py when co-linted.
+# pylint: disable=no-name-in-module,no-member
+
 import os
 import argparse
 import common as utils
@@ -149,7 +152,7 @@ def generate_ivfpq_offline_model():
 
     utils.check_param_range(dim, [128], "dim")
     utils.check_param_range(nlist, [1024, 2048, 4096, 8192, 16384, 262144, 524288], "nlist")
-    utils.check_param_range(m, [2, 4, 8, 16], "m")
+    utils.check_param_range(m, [2, 4, 8, 16, 32], "m")
     utils.check_param_range(nbit, [8], "nbit")
     utils.check_param_range(ksub, [256], "ksub")
     soc_version = utils.get_soc_version_from_npu_type(args.npu_type)

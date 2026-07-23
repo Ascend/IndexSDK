@@ -430,6 +430,13 @@ __aicore__ inline void AscendcIvfpqSearchDistanceTopKSimt::DistCompute(
                                                    this->codeBlockNum, this->perCoreInnerBlockDealSize,
                                                    this->distResultInitValue, innerBlockindex, blockIndex, usedAivNum);
     }
+    else if (this->subSpaceNum == 32)
+    {
+        Simt::VF_CALL<SimtSearchComputeSimtV1<32>>(Simt::Dim3{IVFPQ_THREAD_NUM, 1, 1}, queryPQUb, codeBase,
+                                                   distResultUbPtr, codeSize, codeOffset, this->ksub,
+                                                   this->codeBlockNum, this->perCoreInnerBlockDealSize,
+                                                   this->distResultInitValue, innerBlockindex, blockIndex, usedAivNum);
+    }
     AscendC::PipeBarrier<PIPE_ALL>();
 }
 
