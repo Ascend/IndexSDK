@@ -160,3 +160,61 @@ grep 'L1 dist golden\|jaccard' search.log
 ### 延伸阅读
 
 - [FAQ：IVFRaBitQ recall 偏低](./07_faq.md#ivfrabitq-recall-low-nlist-10048)
+
+## Device 内存调试<a name="ascendfaiss-mem-debug"></a>
+
+AscendFaiss 提供两组**可选**环境变量，用于排查 Device HBM 分配失败、索引上传/扩容过程中的显存占用变化。**默认全部关闭**，对生产路径零开销；仅在开发/联调环境按需开启。环境变量一览见《[附录](./09_appendix.md#ascendfaiss-mem-debug-env)》。
+
+> [!NOTE]
+>
+>- 环境变量在**进程首次查询时**读取并缓存，需在运行应用程序或测试用例**之前** export。
+>- 调试日志输出至 stderr，并同步写入 APP 日志（`[MemDebug]` 前缀）；建议重定向到 `.log` 文件便于 grep。
+>- 开启后会查询 `aclrtGetMemInfo(ACL_HBM_MEM)` 并抽样打印，**不要在性能基准测试中常开**。
+
+### 环境变量说明
+
+**表 2** Device 内存调试环境变量
+
+|环境变量名|取值|默认|用途|
+|--|--|--|--|
+|ASCENDFAISS\_MEM\_DEBUG|非空且非 `0` / `false` / `off`（大小写不敏感）|关闭|总开关：开启分配抽样、HBM 余量打印；`aclrtMalloc` 失败时 dump 最近分配环形缓冲|
+|ASCENDFAISS\_MEM\_DEBUG\_EVERY|正整数 N|`64`|抽样周期：分配序号满足 `seq % N == 0`，或 `size ≤ 4096` 时打印明细；未设置/非法/0 时回退为 `64`|
+
+关闭方式：
+
+```bash
+unset ASCENDFAISS_MEM_DEBUG ASCENDFAISS_MEM_DEBUG_EVERY
+# 或
+export ASCENDFAISS_MEM_DEBUG=0
+```
+
+### 使用示例
+
+```bash
+# 开启内存调试（默认每 64 次分配抽样一次）
+export ASCENDFAISS_MEM_DEBUG=1
+
+# 提高采样密度（每 8 次分配打印一次）
+export ASCENDFAISS_MEM_DEBUG=1
+export ASCENDFAISS_MEM_DEBUG_EVERY=8
+
+# 运行业务或 UT，并保存日志
+./your_app 2>&1 | tee mem_debug.log
+grep '\[MemDebug\]' mem_debug.log
+```
+
+### 日志解读
+
+|日志关键字|含义|
+|--|--|
+|`[MemDebug] alloc seq=...`|一次 Device 分配的抽样记录：序号、size、space、device、分配前 HBM free/total|
+|`[MemDebug] ... HBM free=...`|关键路径上的 HBM 余量快照（如 `copyVectorToDevice_*`、`DeviceMemArena::Grow`、`IndexIVFRaBitQ_resize`）|
+|`[MemDebug] aclrtMalloc FAILED ...`|分配失败：当前请求 size/space/device、错误码、当时 HBM free/total|
+|`dumping last N alloc records`|失败前最近最多 64 条分配记录（oldest→newest），用于定位耗尽显存的连续分配|
+
+**典型排查流程：**
+
+1. 复现 OOM / `aclrtMalloc` 失败场景前设置 `ASCENDFAISS_MEM_DEBUG=1`。
+2. 在失败日志中查看 `HBM_free` 是否已接近 0，以及 `size` / `space`（`DEVICE` 或 `DEVICE_HUGEPAGE`）。
+3. 根据 dump 的最近分配记录，对照业务阶段（索引上传、list resize、arena grow）缩小泄漏或峰值分配点。
+4. 需要更密采样时增大频率：`export ASCENDFAISS_MEM_DEBUG_EVERY=1`（每笔分配都打印，日志量很大）。

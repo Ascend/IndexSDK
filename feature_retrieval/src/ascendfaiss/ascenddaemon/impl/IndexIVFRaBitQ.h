@@ -20,6 +20,7 @@
 #define ASCEND_INDEXIVFRABITQ_INCLUDED
 #include "ascenddaemon/impl/IndexIVF.h"
 #include "ascenddaemon/utils/AscendOperator.h"
+#include "ascenddaemon/utils/DeviceMemArena.h"
 #include "common/threadpool/AscendThreadPool.h"
 
 namespace ascend
@@ -195,8 +196,11 @@ class IndexIVFRaBitQ : public IndexIVF
     void moveVectorForward(int listId, idx_t srcIdx, idx_t dstIdx);
     void releaseUnusageSpace(int listId, size_t oldTotal, size_t remove);
     size_t removeIds(const ascend::IDSelector &sel);
+    void initListStorage();
 
    protected:
+    // Declared first so it is destroyed after list DeviceVectors that reference it.
+    std::shared_ptr<DeviceMemArena> listArena_;
     MetricType metric;                                                  // metric type
     std::unique_ptr<DeviceVector<float>> originCentroidsOnDevice;       // 原始聚类中心
     std::unique_ptr<DeviceVector<float>> LUTMatrixOnDevice;             // LUT 计算常值矩阵

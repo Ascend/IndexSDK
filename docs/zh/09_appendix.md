@@ -32,6 +32,17 @@
 |IVFRABITQ\_DEBUG\_L1\_PROBE|设为 `1` 打印 probe 列表；`stats` 打印 tile 分布；`full` 含 golden 对比与完整统计。|
 |IVFRABITQ\_VERIFY\_L1\_DIST|设为非 `0` 值时，在 L1 search 阶段对比 CPU golden 与 NPU 距离/probe。|
 
+### Device 内存调试环境变量<a name="ascendfaiss-mem-debug-env"></a>
+
+以下环境变量用于排查 Device HBM 分配失败（如 `aclrtMalloc` OOM）、索引上传/扩容过程中的显存占用变化。**默认不设置**（关闭），对生产路径零开销。详细用法与日志解读参见《[Device 内存调试](./08_common_operations.md#ascendfaiss-mem-debug)》。
+
+**表 3** Device 内存调试环境变量
+
+|环境变量名|说明|
+|--|--|
+|ASCENDFAISS\_MEM\_DEBUG|设为非空且非 `0`/`false`/`off`（大小写不敏感）时开启内存调试：抽样打印分配与 HBM 余量，分配失败时向 stderr dump 最近分配记录。|
+|ASCENDFAISS\_MEM\_DEBUG\_EVERY|抽样周期 N（正整数，默认 `64`）：每第 N 次分配，以及 size ≤ 4096 的分配会打印明细；无效值回退为 `64`。仅在 `ASCENDFAISS_MEM_DEBUG` 开启时生效。|
+
 ## 代码参考<a name="ZH-CN_TOPIC_0000001456375372"></a>
 
 ### 简介<a name="ZH-CN_TOPIC_0000001456375408"></a>

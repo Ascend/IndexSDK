@@ -16,25 +16,34 @@
  * -------------------------------------------------------------------------
  */
 
-
 #ifndef ASCEND_DEVICEVECTOR_INCLUDED
 #define ASCEND_DEVICEVECTOR_INCLUDED
 
-#include <vector>
 #include <memory>
-#include "ascenddaemon/utils/MemorySpace.h"
+#include <vector>
+
+#include "ArenaDevMemStrategy.h"
 #include "DevVecMemStrategyIntf.h"
-#include "PureDevMemStrategy.h"
+#include "DeviceMemArena.h"
 #include "HeteroMemStrategy.h"
+#include "PureDevMemStrategy.h"
+#include "ascenddaemon/utils/MemorySpace.h"
 
-namespace ascend {
+namespace ascend
+{
 
-template<typename T, typename P = ExpandPolicy>
-class DeviceVector {
-public:
+template <typename T, typename P = ExpandPolicy>
+class DeviceVector
+{
+   public:
     explicit DeviceVector(MemorySpace space = MemorySpace::DEVICE)
     {
         memStrategy = std::make_unique<PureDevMemStrategy<T, P>>(space);
+    }
+
+    explicit DeviceVector(std::shared_ptr<DeviceMemArena> arena)
+    {
+        memStrategy = std::make_unique<ArenaDevMemStrategy<T, P>>(std::move(arena));
     }
 
     explicit DeviceVector(std::shared_ptr<HmmIntf> hmm)
@@ -44,72 +53,33 @@ public:
 
     ~DeviceVector() {}
 
-    void clear()
-    {
-        memStrategy->Clear();
-    }
+    void clear() { memStrategy->Clear(); }
 
-    size_t size() const
-    {
-        return memStrategy->Size();
-    }
+    size_t size() const { return memStrategy->Size(); }
 
-    size_t capacity() const
-    {
-        return memStrategy->Capacity();
-    }
+    size_t capacity() const { return memStrategy->Capacity(); }
 
-    T* data() const
-    {
-        return memStrategy->Data();
-    }
+    T* data() const { return memStrategy->Data(); }
 
-    T& operator[](size_t pos)
-    {
-        return (*memStrategy)[pos];
-    }
+    T& operator[](size_t pos) { return (*memStrategy)[pos]; }
 
-    const T& operator[](size_t pos) const
-    {
-        return (*memStrategy)[pos];
-    }
+    const T& operator[](size_t pos) const { return (*memStrategy)[pos]; }
 
-    std::vector<T> copyToStlVector() const
-    {
-        return memStrategy->CopyToStlVector();
-    }
+    std::vector<T> copyToStlVector() const { return memStrategy->CopyToStlVector(); }
 
-    void append(const T* d, size_t n, bool reserveExact = false)
-    {
-        memStrategy->Append(d, n, reserveExact);
-    }
+    void append(const T* d, size_t n, bool reserveExact = false) { memStrategy->Append(d, n, reserveExact); }
 
-    void resize(size_t newSize, bool reserveExact = false)
-    {
-        memStrategy->Resize(newSize, reserveExact);
-    }
+    void resize(size_t newSize, bool reserveExact = false) { memStrategy->Resize(newSize, reserveExact); }
 
-    size_t reclaim(bool exact)
-    {
-        return memStrategy->Reclaim(exact);
-    }
+    size_t reclaim(bool exact) { return memStrategy->Reclaim(exact); }
 
-    void reserve(size_t newCapacity)
-    {
-        memStrategy->Reserve(newCapacity);
-    }
+    void reserve(size_t newCapacity) { memStrategy->Reserve(newCapacity); }
 
-    void pushData(bool dataChanged = true)
-    {
-        memStrategy->PushData(dataChanged);
-    }
+    void pushData(bool dataChanged = true) { memStrategy->PushData(dataChanged); }
 
-    std::shared_ptr<AscendHMO> getHmo() const
-    {
-        return memStrategy->GetHmo();
-    }
+    std::shared_ptr<AscendHMO> getHmo() const { return memStrategy->GetHmo(); }
 
-private:
+   private:
     std::unique_ptr<DevVecMemStrategyIntf<T>> memStrategy;
 };
 

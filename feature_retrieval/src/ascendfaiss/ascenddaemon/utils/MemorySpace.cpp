@@ -16,33 +16,59 @@
  * -------------------------------------------------------------------------
  */
 
-
 #include "ascenddaemon/utils/MemorySpace.h"
+
+#include "acl/acl.h"
+#include "ascenddaemon/utils/MemDebug.h"
 #include "common/utils/AscendAssert.h"
 #include "common/utils/SocUtils.h"
 
-#include "acl/acl.h"
-
-namespace ascend {
+namespace ascend
+{
 const size_t BYTE_OFFSET = 32;
 
-void AllocMemorySpaceV(MemorySpace space, void** const p, size_t size)
+namespace
 {
-    switch (space) {
-        case MemorySpace::DEVICE: {
-            aclError err = aclrtMalloc(p, size, ACL_MEM_MALLOC_NORMAL_ONLY);
+void AllocWithDebug(MemorySpace space, void **const p, size_t size, aclrtMemMallocPolicy policy)
+{
+    int deviceId = -1;
+    (void)aclrtGetDevice(&deviceId);
 
-            ASCEND_THROW_IF_NOT_FMT(err == ACL_ERROR_NONE,
-                                    "failed to aclrtMalloc %zu bytes (error %d)\n",
-                                    size, (int)err);
+    size_t freeBefore = 0;
+    size_t totalBefore = 0;
+    if (MemDebugEnabled())
+    {
+        (void)QueryHbm(&freeBefore, &totalBefore);
+        (void)NoteAlloc(space, size, deviceId, freeBefore, totalBefore);
+    }
+
+    aclError err = aclrtMalloc(p, size, policy);
+    if (err != ACL_ERROR_NONE)
+    {
+        if (MemDebugEnabled())
+        {
+            DumpAllocRingOnFailure(space, size, static_cast<int>(err), deviceId);
+        }
+        ASCEND_THROW_FMT(
+            "failed to aclrtMalloc %zu bytes (error %d) space=%s device=%d "
+            "HBM_free_before=%zu HBM_total_before=%zu\n",
+            size, static_cast<int>(err), MemorySpaceName(space), deviceId, freeBefore, totalBefore);
+    }
+}
+}  // namespace
+
+void AllocMemorySpaceV(MemorySpace space, void **const p, size_t size)
+{
+    switch (space)
+    {
+        case MemorySpace::DEVICE:
+        {
+            AllocWithDebug(space, p, size, ACL_MEM_MALLOC_NORMAL_ONLY);
             break;
         }
-        case MemorySpace::DEVICE_HUGEPAGE: {
-            aclError err = aclrtMalloc(p, size, ACL_MEM_MALLOC_HUGE_FIRST);
-
-            ASCEND_THROW_IF_NOT_FMT(err == ACL_ERROR_NONE,
-                                    "failed to aclrtMalloc %zu bytes (error %d)\n",
-                                    size, (int)err);
+        case MemorySpace::DEVICE_HUGEPAGE:
+        {
+            AllocWithDebug(space, p, size, ACL_MEM_MALLOC_HUGE_FIRST);
             break;
         }
         default:
@@ -50,8 +76,5 @@ void AllocMemorySpaceV(MemorySpace space, void** const p, size_t size)
     }
 }
 
-void FreeMemorySpace(MemorySpace, void *p)
-{
-    (void) aclrtFree(p);
-}
+void FreeMemorySpace(MemorySpace, void *p) { (void)aclrtFree(p); }
 }  // namespace ascend

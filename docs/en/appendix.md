@@ -20,6 +20,17 @@ The program uses the following environment variables when it reads them. Do not 
 |TMPDIR|Temporary directory.|
 |LANG|Locale.|
 
+### Device Memory Debug Environment Variables<a name="ascendfaiss-mem-debug-env"></a>
+
+The following environment variables help diagnose Device HBM allocation failures (for example, `aclrtMalloc` OOM) and HBM usage changes during index upload or list growth. They are **unset (disabled) by default** and add no overhead on the production path. For usage and log interpretation, see [Device Memory Debugging](./common_operations.md#ascendfaiss-mem-debug).
+
+**Table 2** Device memory debug environment variables
+
+|Environment Variable|Description|
+|--|--|
+|ASCENDFAISS\_MEM\_DEBUG|When set to a non-empty value other than `0`/`false`/`off` (case-insensitive), enables memory debugging: samples allocations and HBM free/total, and on allocation failure dumps recent allocation records to stderr.|
+|ASCENDFAISS\_MEM\_DEBUG\_EVERY|Sampling period N (positive integer, default `64`): prints details every N-th allocation and for allocations with size ≤ 4096; invalid values fall back to `64`. Effective only when `ASCENDFAISS_MEM_DEBUG` is enabled.|
+
 ## Code Reference<a name="ZH-CN_TOPIC_0000001456375372"></a>
 
 ### Introduction<a name="ZH-CN_TOPIC_0000001456375408"></a>

@@ -23,8 +23,10 @@
 #include <algorithm>
 #include <cmath>
 #include <random>
+#include <vector>
 
 #include "ascend/AscendIndexQuantizerImpl.h"
+#include "ascenddaemon/utils/MemDebug.h"
 
 namespace faiss
 {
@@ -316,9 +318,56 @@ void AscendIndexIVFRaBitQImpl::addImpl(int n, const float* x, const idx_t* ids)
 void AscendIndexIVFRaBitQImpl::copyVectorToDevice(int n)
 {
     size_t deviceCnt = indexConfig.deviceList.size();
+    const bool memDebug = ::ascend::MemDebugEnabled();
+    const size_t every = memDebug ? ::ascend::MemDebugEvery() : 0;
+
+    if (memDebug)
+    {
+        std::vector<size_t> hostPerDev(deviceCnt, 0);
+        size_t nonEmpty = 0;
+        for (auto& centroid : assignCounts)
+        {
+            bool any = false;
+            for (size_t d = 0; d < deviceCnt; ++d)
+            {
+                int num = centroid.second.GetAddNum(static_cast<int>(d));
+                hostPerDev[d] += static_cast<size_t>(num);
+                if (num > 0)
+                {
+                    any = true;
+                }
+            }
+            if (any)
+            {
+                ++nonEmpty;
+            }
+        }
+        ::ascend::MemDebugPrintf("[MemDebug] copyVectorToDevice start n=%d nlist=%d nonEmptyLists=%zu devices=%zu\n", n,
+                                 this->nlist, nonEmpty, deviceCnt);
+        for (size_t d = 0; d < deviceCnt; ++d)
+        {
+            int deviceId = indexConfig.deviceList[d];
+            ::ascend::MemDebugPrintf("[MemDebug] copyVectorToDevice hostVecs deviceIdx=%zu deviceId=%d count=%zu\n", d,
+                                     deviceId, hostPerDev[d]);
+            ::ascend::LogHbm("copyVectorToDevice_start", deviceId);
+        }
+    }
+
     auto addFunctor = [&](int idx)
     {
         int deviceId = indexConfig.deviceList[idx];
+        size_t listsDone = 0;
+        size_t vecsUploaded = 0;
+        size_t bytesEst = 0;  // codes(16) + L1(4) + L2(4) + id(8) at dim=128 scales with d
+        const size_t codeBytes = static_cast<size_t>((this->intf_->d + 7) / 8);
+        const size_t perVecBytes = codeBytes + 2 * sizeof(float) + sizeof(ascend_idx_t);
+
+        if (memDebug)
+        {
+            FAISS_THROW_IF_NOT(aclrtSetDevice(deviceId) == ACL_ERROR_NONE);
+            ::ascend::LogHbm("copyVectorToDevice_device_begin", deviceId);
+        }
+
         for (auto& centroid : assignCounts)
         {
             int listId = centroid.first;
@@ -336,10 +385,41 @@ void AscendIndexIVFRaBitQImpl::copyVectorToDevice(int n)
             param.label = idPtr;
             updateIdMapping(idPtr, idx, num);
             indexIVFRaBitQAdd(param);
+
+            if (memDebug)
+            {
+                ++listsDone;
+                vecsUploaded += static_cast<size_t>(num);
+                bytesEst += static_cast<size_t>(num) * perVecBytes;
+                if (every > 0 && (listsDone % every == 0))
+                {
+                    ::ascend::MemDebugPrintf(
+                        "[MemDebug] upload device=%d listId=%d num=%d listsDone=%zu "
+                        "vecsUploaded=%zu bytesEst=%zu\n",
+                        deviceId, listId, num, listsDone, vecsUploaded, bytesEst);
+                    ::ascend::LogHbm("copyVectorToDevice_progress", deviceId);
+                }
+            }
+        }
+
+        if (memDebug)
+        {
+            ::ascend::MemDebugPrintf(
+                "[MemDebug] copyVectorToDevice device=%d finished lists=%zu vecs=%zu bytesEst=%zu\n", deviceId,
+                listsDone, vecsUploaded, bytesEst);
+            ::ascend::LogHbm("copyVectorToDevice_device_end", deviceId);
         }
     };
     CALL_PARALLEL_FUNCTOR(deviceCnt, pool, addFunctor);
     this->intf_->ntotal += n;
+
+    if (memDebug)
+    {
+        for (size_t d = 0; d < deviceCnt; ++d)
+        {
+            ::ascend::LogHbm("copyVectorToDevice_end", indexConfig.deviceList[d]);
+        }
+    }
     APP_LOG_INFO("AscendIndexIVFSQ addImpl operation finished.\n");
 }
 
