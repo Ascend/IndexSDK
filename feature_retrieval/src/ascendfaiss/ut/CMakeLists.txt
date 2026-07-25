@@ -150,6 +150,8 @@ SET(ASCENDFAISS_SRC
     ${ASCEND_PROJECT_HOME}/ascenddaemon/utils/AscendStackMemory.cpp
     ${ASCEND_PROJECT_HOME}/ascenddaemon/utils/AscendUtils.cpp
     ${ASCEND_PROJECT_HOME}/ascenddaemon/utils/MemorySpace.cpp
+    ${ASCEND_PROJECT_HOME}/ascenddaemon/utils/MemDebug.cpp
+    ${ASCEND_PROJECT_HOME}/ascenddaemon/utils/DeviceMemArena.cpp
     ${ASCEND_PROJECT_HOME}/ascenddaemon/utils/Random.cpp
     ${ASCEND_PROJECT_HOME}/ascenddaemon/utils/TopkOp.cpp
     ${ASCEND_PROJECT_HOME}/ascenddaemon/utils/ModelInference.cpp
