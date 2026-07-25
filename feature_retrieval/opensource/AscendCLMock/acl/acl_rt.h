@@ -19,80 +19,94 @@
 #ifndef LIBASCENDCL_ACL_RT_H
 #define LIBASCENDCL_ACL_RT_H
 
-#include <cstdint>
 #include <cstddef>
+#include <cstdint>
+
 #include "acl_base.h"
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
-enum aclrtRunMode {
-    ACL_DEVICE,
-    ACL_HOST,
-};
+    enum aclrtRunMode
+    {
+        ACL_DEVICE,
+        ACL_HOST,
+    };
 
-enum aclrtMemMallocPolicy {
-    ACL_MEM_MALLOC_HUGE_FIRST,
-    ACL_MEM_MALLOC_HUGE_ONLY,
-    ACL_MEM_MALLOC_NORMAL_ONLY,
-    ACL_MEM_MALLOC_HUGE_FIRST_P2P,
-    ACL_MEM_MALLOC_HUGE_ONLY_P2P,
-    ACL_MEM_MALLOC_NORMAL_ONLY_P2P,
-};
+    enum aclrtMemMallocPolicy
+    {
+        ACL_MEM_MALLOC_HUGE_FIRST,
+        ACL_MEM_MALLOC_HUGE_ONLY,
+        ACL_MEM_MALLOC_NORMAL_ONLY,
+        ACL_MEM_MALLOC_HUGE_FIRST_P2P,
+        ACL_MEM_MALLOC_HUGE_ONLY_P2P,
+        ACL_MEM_MALLOC_NORMAL_ONLY_P2P,
+    };
 
-enum aclrtMemcpyKind {
-    ACL_MEMCPY_HOST_TO_HOST,
-    ACL_MEMCPY_HOST_TO_DEVICE,
-    ACL_MEMCPY_DEVICE_TO_HOST,
-    ACL_MEMCPY_DEVICE_TO_DEVICE,
-};
+    enum aclrtMemAttr
+    {
+        ACL_DDR_MEM,
+        ACL_DDR_MEM_HUGE,
+        ACL_DDR_MEM_NORMAL,
+        ACL_HBM_MEM,
+        ACL_HBM_MEM_HUGE,
+        ACL_HBM_MEM_NORMAL,
+    };
 
-typedef enum aclrtCallbackBlockType {
-    ACL_CALLBACK_NO_BLOCK,
-    ACL_CALLBACK_BLOCK,
-} aclrtCallbackBlockType;
+    enum aclrtMemcpyKind
+    {
+        ACL_MEMCPY_HOST_TO_HOST,
+        ACL_MEMCPY_HOST_TO_DEVICE,
+        ACL_MEMCPY_DEVICE_TO_HOST,
+        ACL_MEMCPY_DEVICE_TO_DEVICE,
+    };
 
-typedef void (*aclrtCallback)(void *userData);
+    typedef enum aclrtCallbackBlockType
+    {
+        ACL_CALLBACK_NO_BLOCK,
+        ACL_CALLBACK_BLOCK,
+    } aclrtCallbackBlockType;
 
-aclError aclrtMalloc(void **devPtr, size_t size, aclrtMemMallocPolicy policy);
-aclError aclrtMallocHost(void **hostPtr, size_t size);
-aclError aclrtMemcpy(void *dst, size_t destMax, const void *src, size_t count, aclrtMemcpyKind kind);
-aclError aclrtMemset(void *devPtr, size_t maxCount, int32_t value, size_t count);
-aclError aclrtFree(void *devPtr);
-aclError aclrtFreeHost(void *hostPtr);
-aclError aclrtMemcpyAsync(void *dst,
-                          size_t destMax,
-                          const void *src,
-                          size_t count,
-                          aclrtMemcpyKind kind,
-                          aclrtStream stream);
+    typedef void (*aclrtCallback)(void *userData);
 
-aclError aclrtSetDevice(int32_t deviceId);
-aclError aclrtGetDevice(int32_t *deviceId);
-aclError aclrtResetDevice(int32_t deviceId);
-aclError aclrtGetDeviceCount(uint32_t *count);
+    aclError aclrtMalloc(void **devPtr, size_t size, aclrtMemMallocPolicy policy);
+    aclError aclrtMallocAlign32(void **devPtr, size_t size, aclrtMemMallocPolicy policy);
+    aclError aclrtMallocHost(void **hostPtr, size_t size);
+    aclError aclrtGetMemInfo(aclrtMemAttr attr, size_t *free, size_t *total);
+    aclError aclrtMemcpy(void *dst, size_t destMax, const void *src, size_t count, aclrtMemcpyKind kind);
+    aclError aclrtMemset(void *devPtr, size_t maxCount, int32_t value, size_t count);
+    aclError aclrtFree(void *devPtr);
+    aclError aclrtFreeHost(void *hostPtr);
+    aclError aclrtMemcpyAsync(void *dst, size_t destMax, const void *src, size_t count, aclrtMemcpyKind kind,
+                              aclrtStream stream);
 
-aclError aclrtCreateStream(aclrtStream *stream);
-aclError aclrtDestroyStream(aclrtStream stream);
-aclError aclrtSynchronizeStream(aclrtStream stream);
+    aclError aclrtSetDevice(int32_t deviceId);
+    aclError aclrtGetDevice(int32_t *deviceId);
+    aclError aclrtResetDevice(int32_t deviceId);
+    aclError aclrtGetDeviceCount(uint32_t *count);
 
-aclError aclrtCreateContext(aclrtContext *context, int32_t deviceId);
-aclError aclrtDestroyContext(aclrtContext context);
-aclError aclrtGetCurrentContext(aclrtContext *context);
-aclError aclrtSetCurrentContext(aclrtContext context);
+    aclError aclrtCreateStream(aclrtStream *stream);
+    aclError aclrtDestroyStream(aclrtStream stream);
+    aclError aclrtSynchronizeStream(aclrtStream stream);
 
-aclError aclrtGetRunMode(aclrtRunMode *runMode);
+    aclError aclrtCreateContext(aclrtContext *context, int32_t deviceId);
+    aclError aclrtDestroyContext(aclrtContext context);
+    aclError aclrtGetCurrentContext(aclrtContext *context);
+    aclError aclrtSetCurrentContext(aclrtContext context);
 
-aclError aclrtLaunchCallback(aclrtCallback fn, void *userData, aclrtCallbackBlockType blockType, void *stream);
+    aclError aclrtGetRunMode(aclrtRunMode *runMode);
 
-aclError aclrtProcessReport(int32_t timeout);
-aclError aclrtCreateStreamWithConfig(aclrtStream *stream, uint32_t priority, uint32_t flag);
-aclError aclrtSubscribeReport(uint64_t threadId, aclrtStream stream);
-aclError aclrtUnSubscribeReport(uint64_t threadId, aclrtStream stream);
+    aclError aclrtLaunchCallback(aclrtCallback fn, void *userData, aclrtCallbackBlockType blockType, void *stream);
+
+    aclError aclrtProcessReport(int32_t timeout);
+    aclError aclrtCreateStreamWithConfig(aclrtStream *stream, uint32_t priority, uint32_t flag);
+    aclError aclrtSubscribeReport(uint64_t threadId, aclrtStream stream);
+    aclError aclrtUnSubscribeReport(uint64_t threadId, aclrtStream stream);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif // LIBASCENDCL_ACL_RT_H
+#endif  // LIBASCENDCL_ACL_RT_H
