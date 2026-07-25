@@ -369,7 +369,8 @@ build_install()
     fi
 
     make -j && cmake --install .
-
+    mkdir -p "${PROJECT_ZIP_PATH}"/feature_retrieval/tools/train/
+    cp "${PROJECT_SRC_PATH}"/train/graph_build.py "${PROJECT_ZIP_PATH}"/feature_retrieval/tools/train/
     prepare_zip_src
 
     if [ "${build_ock}" = "true" ]; then

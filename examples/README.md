@@ -25,6 +25,7 @@ cd .. && rm -rf release-1.8.1.tar.gz googletest-release-1.8.1
 |-- TestAscendIReduction.cpp                       # 降维算法NN降维Pcar降维demo
 |-- TestAscendIndexAggressTs.cpp                   # 时空库IP距离，带属性过滤 支持组batch demo
 |-- TestAscendIndexBinaryFlat.cpp                  # 二值化底库特征汉明距离BinaryFlat算法demo
+|-- TestAscendIndexCagra.cpp                       # CAGRA图检索算法demo
 |-- TestAscendIndexCluster.cpp                     # FP32 聚类场景AscendCluster算法demo
 |-- TestAscendIndexFlat.cpp                        # FP32转FP16 Flat算法暴搜demo
 |-- TestAscendIndexGreat.cpp                       # Great近似检索算法demo

@@ -7408,7 +7408,7 @@ AscendIndexCagra是基于Cagra的图检索算法，通过构建近邻图实现�
 </tr>
 <tr id="row_cagra_quantize_11"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.6.1"><p id="p_cagra_quantize_15"><a name="p_cagra_quantize_15"></a><a name="p_cagra_quantize_15"></a>约束说明</p>
 </th>
-<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.6.1 "><a name="ul_cagra_quantize_1"></a><a name="ul_cagra_quantize_1"></a><ul id="ul_cagra_quantize_1"><li>调用QuantizeData前必须先调用Init和Add。</li></ul>
+<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.6.1 "><a name="ul_cagra_quantize_1"></a><a name="ul_cagra_quantize_1"></a><ul id="ul_cagra_quantize_1"><li>调用QuantizeData前必须先调用Init和Add。n∈(0, 4096]。</li></ul>
 </td>
 </tr>
 </tbody>
@@ -7447,7 +7447,7 @@ AscendIndexCagra是基于Cagra的图检索算法，通过构建近邻图实现�
 </tr>
 <tr id="row_cagra_search_11"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.6.1"><p id="p_cagra_search_15"><a name="p_cagra_search_15"></a><a name="p_cagra_search_15"></a>约束说明</p>
 </th>
-<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.6.1 "><a name="ul_cagra_search_1"></a><a name="ul_cagra_search_1"></a><ul id="ul_cagra_search_1"><li>调用Search前必须先调用Init、Add和QuantizeData。</li><li>topK应与Init时设置的topK一致。</li><li>n∈(0, 1e9]。</li><li>topK∈(0, 4096]。</li></ul>
+<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.6.1 "><a name="ul_cagra_search_1"></a><a name="ul_cagra_search_1"></a><ul id="ul_cagra_search_1"><li>调用Search前必须先调用Init、Add和QuantizeData。</li><li>topK应与Init时设置的topK一致。</li><li>n∈(0, 4096]。</li><li>topK∈(0, 4096]。</li></ul>
 </td>
 </tr>
 </tbody>

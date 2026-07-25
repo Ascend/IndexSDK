@@ -33,7 +33,8 @@ const std::vector<int> VALID_DIM = {64, 128, 256, 512};
 const std::vector<int> VALID_GRAPH_DEGREE = {64, 128, 256, 512};
 constexpr int64_t MAX_DATA_NUM = 1000000000L;
 constexpr int MIN_TOPK = 0;
-constexpr int MAX_TOPK = 128;
+constexpr int MAX_TOPK = 4096;
+constexpr int MAX_BATCH_SIZE = 4096;
 }  // namespace
 
 AscendIndexCagra::AscendIndexCagra() { pIndexCagraImpl = nullptr; }
@@ -99,6 +100,8 @@ APP_ERROR AscendIndexCagra::QuantizeData(int n, const float* queryData, int ntot
 {
     std::lock_guard<std::mutex> lock(mtx);
     APPERR_RETURN_IF_NOT_LOG(pIndexCagraImpl != nullptr, APP_ERR_INVALID_PARAM, "pIndexCagraImpl is nullptr");
+    APPERR_RETURN_IF_NOT_FMT(n > 0 && n <= MAX_BATCH_SIZE, APP_ERR_INVALID_PARAM, "n %d, must be in range (0, %d]", n,
+                             MAX_BATCH_SIZE);
     APPERR_RETURN_IF_NOT_LOG(queryData, APP_ERR_INVALID_PARAM, "queryData cannot be nullptr");
     APPERR_RETURN_IF_NOT_LOG(baseData, APP_ERR_INVALID_PARAM, "baseData cannot be nullptr");
     return this->pIndexCagraImpl->QuantizeData(n, queryData, ntotal, baseData);
@@ -108,6 +111,8 @@ APP_ERROR AscendIndexCagra::Search(int n, const float* queryData, int topK, floa
 {
     std::lock_guard<std::mutex> lock(mtx);
     APPERR_RETURN_IF_NOT_LOG(pIndexCagraImpl != nullptr, APP_ERR_INVALID_PARAM, "pIndexCagraImpl is nullptr");
+    APPERR_RETURN_IF_NOT_FMT(n > 0 && n <= MAX_BATCH_SIZE, APP_ERR_INVALID_PARAM, "n %d, must be in range (0, %d]", n,
+                             MAX_BATCH_SIZE);
     APPERR_RETURN_IF_NOT_FMT(topK > MIN_TOPK && topK <= MAX_TOPK, APP_ERR_INVALID_PARAM,
                              "topK %d, must be in range (%d, %d]", topK, MIN_TOPK, MAX_TOPK);
     APPERR_RETURN_IF_NOT_LOG(queryData, APP_ERR_INVALID_PARAM, "queryData cannot be nullptr");
