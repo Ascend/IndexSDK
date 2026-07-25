@@ -169,6 +169,8 @@ SET(ASCENDFAISS_HOST_SRC
     ${CMAKE_CURRENT_LIST_DIR}/../ascenddaemon/utils/DistComputeOpsManager.cpp
     ${CMAKE_CURRENT_LIST_DIR}/../ascenddaemon/utils/ThreadSafeDistComputeOpsManager.cpp
     ${CMAKE_CURRENT_LIST_DIR}/../ascenddaemon/utils/MemorySpace.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/../ascenddaemon/utils/MemDebug.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/../ascenddaemon/utils/DeviceMemArena.cpp
     ${CMAKE_CURRENT_LIST_DIR}/../ascenddaemon/utils/Random.cpp
     ${CMAKE_CURRENT_LIST_DIR}/../ascenddaemon/utils/TopkOp.cpp
     ${CMAKE_CURRENT_LIST_DIR}/../ascenddaemon/utils/ModelInference.cpp

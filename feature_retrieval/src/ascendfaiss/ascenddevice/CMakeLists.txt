@@ -12,6 +12,8 @@ FILE(GLOB TARGET_DEVICE_SRC
     ${PROJECT_SRC_ROOT}/ascenddaemon/utils/DistComputeOpsManager.cpp
     ${PROJECT_SRC_ROOT}/ascenddaemon/utils/ThreadSafeDistComputeOpsManager.cpp
     ${PROJECT_SRC_ROOT}/ascenddaemon/utils/MemorySpace.cpp
+    ${PROJECT_SRC_ROOT}/ascenddaemon/utils/MemDebug.cpp
+    ${PROJECT_SRC_ROOT}/ascenddaemon/utils/DeviceMemArena.cpp
     ${PROJECT_SRC_ROOT}/ascenddaemon/utils/TopkOp.cpp
     ${PROJECT_SRC_ROOT}/ascenddaemon/utils/AscendMemory.cpp
     ${PROJECT_SRC_ROOT}/ascenddaemon/utils/AscendUtils.cpp

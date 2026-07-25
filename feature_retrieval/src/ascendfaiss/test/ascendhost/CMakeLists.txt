@@ -48,6 +48,8 @@ set(ASCENDFAISS_HOST_SRC
     "${MXINDEX_SRC_ROOT_DIR}/ascenddaemon/utils/ThreadSafeDistComputeOpsManager.cpp"
     "${MXINDEX_SRC_ROOT_DIR}/ascenddaemon/utils/DistComputeOpsManager.cpp"
     "${MXINDEX_SRC_ROOT_DIR}/ascenddaemon/utils/MemorySpace.cpp"
+    "${MXINDEX_SRC_ROOT_DIR}/ascenddaemon/utils/MemDebug.cpp"
+    "${MXINDEX_SRC_ROOT_DIR}/ascenddaemon/utils/DeviceMemArena.cpp"
     "${MXINDEX_SRC_ROOT_DIR}/ascenddaemon/utils/TopkOp.cpp"
     "${MXINDEX_SRC_ROOT_DIR}/ascendhost/src/index/IndexFlatIPAicpu.cpp"
     "${MXINDEX_SRC_ROOT_DIR}/ascendhost/src/index/IndexIVFSQIPAicpu.cpp"
