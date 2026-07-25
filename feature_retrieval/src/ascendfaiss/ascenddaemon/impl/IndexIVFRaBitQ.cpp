@@ -31,6 +31,7 @@
 #include "ascenddaemon/impl/AuxIndexStructures.h"
 #include "ascenddaemon/utils/CoarseCenterVerify.h"
 #include "ascenddaemon/utils/Limits.h"
+#include "ascenddaemon/utils/MemDebug.h"
 #include "common/utils/CommonUtils.h"
 #include "common/utils/LogUtils.h"
 #include "common/utils/OpLauncher.h"
@@ -141,12 +142,8 @@ IndexIVFRaBitQ::IndexIVFRaBitQ(int numList, int dim, int nprobes, const std::str
     isTrained = false;
     searchBatchSizes = {64, 32, 16, 8, 4, 2, 1};  // supported batch size
     listVecNum = std::vector<size_t>(numList, 0);
-    baseFp32.resize(numList);
-    for (size_t i = 0; i < numList; i++)
-    {
-        IndexL1OnDevice.emplace_back(CREATE_UNIQUE_PTR(DeviceVector<float>, MemorySpace::DEVICE_HUGEPAGE));
-        IndexL2OnDevice.emplace_back(CREATE_UNIQUE_PTR(DeviceVector<float>, MemorySpace::DEVICE_HUGEPAGE));
-    }
+    listArena_ = std::make_shared<DeviceMemArena>();
+    initListStorage();
     pBaseFp32 = reinterpret_cast<uint8_t *>(0xffffffffffffffff);  // 基地址初始化为最大的无效值 0xffffffffffffffff
     pIndexL2 = reinterpret_cast<float *>(0xffffffffffffffff);  // 基地址初始化为最大的无效值 0xffffffffffffffff
     pIndexL1 = reinterpret_cast<float *>(0xffffffffffffffff);  // 基地址初始化为最大的无效值 0xffffffffffffffff
@@ -188,11 +185,53 @@ IndexIVFRaBitQ::IndexIVFRaBitQ(int numList, int dim, int nprobes, const std::str
     ASCEND_THROW_IF_NOT_MSG(ret == APP_ERR_OK, "resetQueryLUTOp failed!");
 }
 
-IndexIVFRaBitQ::~IndexIVFRaBitQ() {}
+void IndexIVFRaBitQ::initListStorage()
+{
+    ASCEND_THROW_IF_NOT_MSG(listArena_ != nullptr, "listArena_ is null");
+
+    deviceListData.clear();
+    deviceListIndices.clear();
+    IndexL1OnDevice.clear();
+    IndexL2OnDevice.clear();
+    baseFp32.clear();
+    baseFp32.resize(static_cast<size_t>(numLists));
+
+    for (int i = 0; i < numLists; ++i)
+    {
+        deviceListData.emplace_back(CREATE_UNIQUE_PTR(DeviceVector<unsigned char>, listArena_));
+        deviceListIndices.emplace_back(CREATE_UNIQUE_PTR(DeviceVector<idx_t>, listArena_));
+        IndexL1OnDevice.emplace_back(CREATE_UNIQUE_PTR(DeviceVector<float>, listArena_));
+        IndexL2OnDevice.emplace_back(CREATE_UNIQUE_PTR(DeviceVector<float>, listArena_));
+    }
+
+    pListBase = nullptr;
+    if (!deviceListData.empty())
+    {
+        pListBase = deviceListData[0]->data();
+        for (int i = 1; i < numLists; ++i)
+        {
+            uint8_t *ptr = deviceListData[i]->data();
+            if (ptr != nullptr && (pListBase == nullptr || ptr < pListBase))
+            {
+                pListBase = ptr;
+            }
+        }
+    }
+}
+
+IndexIVFRaBitQ::~IndexIVFRaBitQ()
+{
+    // Drop list vectors that reference listArena_ before the arena member is destroyed.
+    // Base IndexIVF would otherwise destroy deviceList* after listArena_.
+    deviceListData.clear();
+    deviceListIndices.clear();
+    IndexL1OnDevice.clear();
+    IndexL2OnDevice.clear();
+    baseFp32.clear();
+}
 
 APP_ERROR IndexIVFRaBitQ::reset()
 {
-    IndexIVF::reset();
     for (size_t i = 0; i < baseFp32.size(); i++)
     {
         baseFp32[i].clear();
@@ -200,6 +239,26 @@ APP_ERROR IndexIVFRaBitQ::reset()
     baseFp32.clear();
     IndexL1OnDevice.clear();
     IndexL2OnDevice.clear();
+    deviceListData.clear();
+    deviceListIndices.clear();
+
+    if (listArena_ != nullptr)
+    {
+        listArena_->Reset();
+    }
+    else
+    {
+        listArena_ = std::make_shared<DeviceMemArena>();
+    }
+    initListStorage();
+    listVecNum.assign(static_cast<size_t>(numLists), 0);
+    maxListLength = 0;
+    this->ntotal = 0;
+
+    pBaseFp32 = reinterpret_cast<uint8_t *>(0xffffffffffffffff);
+    pIndexL2 = reinterpret_cast<float *>(0xffffffffffffffff);
+    pIndexL1 = reinterpret_cast<float *>(0xffffffffffffffff);
+
     if (centroidsOnDevice != nullptr)
     {
         centroidsOnDevice->clear();
@@ -247,7 +306,7 @@ APP_ERROR IndexIVFRaBitQ::resize(int listId, size_t numVecs)
         size_t tailBlkId = blockList.empty() ? 0 : blockList.size() - 1;
         if (blockList.empty())
         {
-            blockList.emplace_back(CREATE_UNIQUE_PTR(DeviceVector<uint8_t>, MemorySpace::DEVICE_HUGEPAGE));
+            blockList.emplace_back(CREATE_UNIQUE_PTR(DeviceVector<uint8_t>, listArena_));
             tailBlkId = 0;
         }
 
@@ -263,7 +322,7 @@ APP_ERROR IndexIVFRaBitQ::resize(int listId, size_t numVecs)
         }
         if (currentBlockRemaining == 0)
         {
-            blockList.emplace_back(CREATE_UNIQUE_PTR(DeviceVector<uint8_t>, MemorySpace::DEVICE_HUGEPAGE));
+            blockList.emplace_back(CREATE_UNIQUE_PTR(DeviceVector<uint8_t>, listArena_));
             tailBlkId = blockList.size() - 1;
             currentBlockRemaining = static_cast<size_t>(blockSize);
         }
@@ -273,6 +332,26 @@ APP_ERROR IndexIVFRaBitQ::resize(int listId, size_t numVecs)
         currentVecNum += vecsToAdd;
         remainingVecs -= vecsToAdd;
         pBaseFp32 = blockList.at(tailBlkId)->data() < pBaseFp32 ? blockList.at(tailBlkId)->data() : pBaseFp32;
+    }
+
+    if (MemDebugEnabled())
+    {
+        const size_t newTotal = listVecNum[listId] + numVecs;
+        const size_t codePart = static_cast<size_t>((dims + 7) / 8);
+        const size_t codeBytes = newTotal * codePart;
+        const size_t factorBytes = newTotal * sizeof(float);  // per L1 or L2
+        const size_t idBytes = newTotal * sizeof(idx_t);
+        static std::atomic<uint64_t> resizeLogSeq{0};
+        uint64_t seq = resizeLogSeq.fetch_add(1, std::memory_order_relaxed) + 1;
+        size_t every = MemDebugEvery();
+        if (every > 0 && (seq % every == 0 || numVecs >= 100000))
+        {
+            MemDebugPrintf(
+                "[MemDebug] IndexIVFRaBitQ::resize listId=%d add=%zu newLen=%zu codeBlocks=%zu "
+                "codeBytes=%zu L1Bytes=%zu L2Bytes=%zu idBytes~=%zu\n",
+                listId, numVecs, newTotal, blockList.size(), codeBytes, factorBytes, factorBytes, idBytes);
+            LogHbm("IndexIVFRaBitQ_resize", -1);
+        }
     }
     return APP_ERR_OK;
 }
@@ -510,6 +589,18 @@ APP_ERROR IndexIVFRaBitQ::addVectors(int listId, size_t numVecs, const float *co
     APPERR_RETURN_IF_NOT_FMT(listId >= 0 && listId < numLists, APP_ERR_INVALID_PARAM,
                              "the listId is %d, out of numLists(%d)", listId, numLists);
     APPERR_RETURN_IF(numVecs == 0, APP_ERR_OK);
+    if (MemDebugEnabled())
+    {
+        static std::atomic<uint64_t> addLogSeq{0};
+        uint64_t seq = addLogSeq.fetch_add(1, std::memory_order_relaxed) + 1;
+        size_t every = MemDebugEvery();
+        if (every > 0 && (seq % every == 0 || numVecs >= 100000))
+        {
+            MemDebugPrintf("[MemDebug] IndexIVFRaBitQ::addVectors listId=%d numVecs=%zu prevLen=%zu\n", listId, numVecs,
+                           listVecNum[listId]);
+            LogHbm("IndexIVFRaBitQ_addVectors_before", -1);
+        }
+    }
     APPERR_RETURN_IF_NOT_LOG(APP_ERR_OK == resize(listId, numVecs), APP_ERR_INNER_ERROR, "resize base failed!");
     std::vector<uint64_t> offsetHost;
     std::vector<uint64_t> indexl2offsetHost;
