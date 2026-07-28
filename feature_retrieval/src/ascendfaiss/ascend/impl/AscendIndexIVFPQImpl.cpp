@@ -148,7 +148,11 @@ const size_t ADD_VEC_SIZE = UNIT_VEC_SIZE * KB;
 
 AscendIndexIVFPQImpl::AscendIndexIVFPQImpl(AscendIndexIVFPQ* intf, int dims, int nlist, int msubs, int nbits,
                                            faiss::MetricType metric, AscendIndexIVFPQConfig config)
-    : AscendIndexIVFImpl(intf, dims, metric, nlist, config), intf_(intf), msubs(msubs), nbits(nbits)
+    : AscendIndexIVFImpl(intf, dims, metric, nlist, config),
+      intf_(intf),
+      msubs(msubs),
+      nbits(nbits),
+      ivfPQConfig(config)
 {
     checkParams();
     initCoarseClustering();
@@ -923,7 +927,7 @@ void AscendIndexIVFPQImpl::trainPQCodeBook(idx_t n, const float* x)
     FAISS_THROW_IF_NOT_MSG(pQuantizerImpl->cpuQuantizer->is_trained, "Coarse quantizer not trained");
 
     const int pqTrainSize = computeTrainTotalSize(static_cast<int>(this->pq.ksub), static_cast<int>(n),
-                                                  ivfConfig.trainSamplesPerList, ivfConfig.maxTrainSamples);
+                                                  ivfPQConfig.trainSamplesPerList, ivfPQConfig.maxTrainSamples);
     std::vector<size_t> sampleIndices;
     if (ivfConfig.useKmeansPP)
     {
@@ -938,7 +942,7 @@ void AscendIndexIVFPQImpl::trainPQCodeBook(idx_t n, const float* x)
         APP_LOG_INFO("IVFPQ trainPQCodeBook: CPU path using full n=%ld vectors\n", static_cast<long>(n));
     }
     const int trainCount = ivfConfig.useKmeansPP ? pqTrainSize : static_cast<int>(n);
-    const int pqNiter = ivfConfig.pqNiter >= 0 ? ivfConfig.pqNiter : this->ivfConfig.cp.niter;
+    const int pqNiter = ivfPQConfig.pqNiter >= 0 ? ivfPQConfig.pqNiter : this->ivfConfig.cp.niter;
 
     auto extract_start = std::chrono::high_resolution_clock::now();
     std::vector<std::vector<float>> subspaceData;
@@ -1137,9 +1141,9 @@ void AscendIndexIVFPQImpl::train(idx_t n, const float* x)
     }
     else
     {
-        const int totalSize = computeTrainTotalSize(this->nlist, static_cast<int>(n), ivfConfig.trainSamplesPerList,
-                                                    ivfConfig.maxTrainSamples);
-        const bool useDistributed = ivfConfig.useDistributedCoarse && indexConfig.deviceList.size() > 1;
+        const int totalSize = computeTrainTotalSize(this->nlist, static_cast<int>(n), ivfPQConfig.trainSamplesPerList,
+                                                    ivfPQConfig.maxTrainSamples);
+        const bool useDistributed = ivfPQConfig.useDistributedCoarse && indexConfig.deviceList.size() > 1;
         APP_LOG_INFO(
             "IVFPQ Coarse quantizer: AscendClustering, n=%ld, sampled=%d, d=%d, nlist=%d, device=%d, distributed=%d\n",
             static_cast<long>(n), totalSize, this->intf_->d, this->nlist, indexConfig.deviceList[0],

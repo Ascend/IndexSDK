@@ -21,6 +21,7 @@ This section describes API changes, including additions, modifications, deletion
 
 |Class Name/API Prototype|Change Type|Change Description|Version|
 |--|--|--|--|
+|`AscendIndexIVFConfig` / `AscendIndexIVFPQConfig`|Modified|Move large-nlist training fields (`trainSamplesPerList`, `maxTrainSamples`, `pqNiter`, `useDistributedCoarse`) from `AscendIndexIVFConfig` to the end of `AscendIndexIVFPQConfig`, restoring derived IVF config POD layout (IVFFlat / IVFSQ / IVFRaBitQ). Fixes #133.|26.2.0|
 |The [Init](./full_retrieval.md#init) `AscendIndexCluster`|Modified|The `resourceSize` variable in the `Init` API of the `AscendIndexCluster` algorithm uses the default value 128 MB.|6.0.RC2|
 |Constructor of `AscendIndexBinaryFlat`|Modified|The `AscendIndexBinaryFlat` constructor adds the `usedFloat` parameter, which improves the performance of the retrieval mode that stores binary features and uses float features for retrieval, namely, the `search` API.|6.0.RC2|
 |The [search](./approximate_retrieval.md#search) `AscendIndexBinaryFlat`|Added|`AscendIndexBinaryFlat` adds support for the retrieval mode in which binary features are stored and float features are used for retrieval.|6.0.RC2|

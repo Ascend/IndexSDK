@@ -21,6 +21,7 @@
 
 |类名/API原型|变更类别|变更说明|变更版本|
 |--|--|--|--|
+|`AscendIndexIVFConfig` / `AscendIndexIVFPQConfig`|修改|将 large-nlist 训练相关字段（`trainSamplesPerList`、`maxTrainSamples`、`pqNiter`、`useDistributedCoarse`）从 `AscendIndexIVFConfig` 下沉到 `AscendIndexIVFPQConfig` 末尾，恢复派生 IVF config（IVFFlat / IVFSQ / IVFRaBitQ）的公开 POD 布局。Fixes #133。|26.2.0|
 |AscendIndexCluster的[Init](./01_full_retrieval.md#init接口)|修改|AscendIndexCluster算法Init接口resourceSize变量使用默认值128MB。|6.0.RC2|
 |AscendIndexBinaryFlat的AscendIndexBinaryFlat构造函数|修改|AscendIndexBinaryFlat构造函数新增参数usedFloat，用于设置入库为二进制、检索特征为float类型的检索方式（search接口）的性能提升。|6.0.RC2|
 |AscendIndexBinaryFlat的[search接口](./02_approximate_retrieval.md#search接口)|新增|AscendIndexBinaryFlat新增入库特征为二进制特征，检索特征为float类型的检索方式。|6.0.RC2|
