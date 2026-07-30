@@ -63,7 +63,7 @@ uint64_t getActualRngSeed(int seed)
                        : static_cast<uint64_t>(std::chrono::high_resolution_clock::now().time_since_epoch().count());
 }
 
-void sampleTrainData(const float* x, int n, int dim, int totalSize, int seed, std::vector<float>& trainData)
+void sampleTrainData(const float *x, int n, int dim, int totalSize, int seed, std::vector<float> &trainData)
 {
     const size_t dimSz = static_cast<size_t>(dim);
     const size_t totalSizeSz = static_cast<size_t>(totalSize);
@@ -84,15 +84,15 @@ void sampleTrainData(const float* x, int n, int dim, int totalSize, int seed, st
     for (int i = 0; i < totalSize; i++)
     {
         const size_t srcIdx = indices[static_cast<size_t>(i)];
-        const float* src = x + srcIdx * dimSz;
-        float* dst = trainData.data() + static_cast<size_t>(i) * dimSz;
+        const float *src = x + srcIdx * dimSz;
+        float *dst = trainData.data() + static_cast<size_t>(i) * dimSz;
         auto ret = memcpy_s(dst, dimSz * sizeof(float), src, dimSz * sizeof(float));
         FAISS_THROW_IF_NOT_FMT(ret == EOK, "trainData sample memcpy_s failed %d", ret);
     }
     APP_LOG_INFO("IVFPQ sampleTrainData: shuffled %d vectors from input n=%d\n", totalSize, n);
 }
 
-void buildSampleIndices(int n, int totalSize, int seed, std::vector<size_t>& sampleIndices)
+void buildSampleIndices(int n, int totalSize, int seed, std::vector<size_t> &sampleIndices)
 {
     sampleIndices.resize(static_cast<size_t>(totalSize));
     if (totalSize >= n)
@@ -111,7 +111,7 @@ void buildSampleIndices(int n, int totalSize, int seed, std::vector<size_t>& sam
     }
 }
 
-long long elapsedMs(const std::chrono::high_resolution_clock::time_point& start)
+long long elapsedMs(const std::chrono::high_resolution_clock::time_point &start)
 {
     return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start)
         .count();
@@ -146,7 +146,7 @@ const size_t ADD_PAGE_SIZE = (UNIT_PAGE_SIZE * KB * KB - RETAIN_SIZE);
 const size_t UNIT_VEC_SIZE = 5120;
 const size_t ADD_VEC_SIZE = UNIT_VEC_SIZE * KB;
 
-AscendIndexIVFPQImpl::AscendIndexIVFPQImpl(AscendIndexIVFPQ* intf, int dims, int nlist, int msubs, int nbits,
+AscendIndexIVFPQImpl::AscendIndexIVFPQImpl(AscendIndexIVFPQ *intf, int dims, int nlist, int msubs, int nbits,
                                            faiss::MetricType metric, AscendIndexIVFPQConfig config)
     : AscendIndexIVFImpl(intf, dims, metric, nlist, config),
       intf_(intf),
@@ -182,7 +182,7 @@ void AscendIndexIVFPQImpl::initCoarseClustering()
 
 AscendIndexIVFPQImpl::~AscendIndexIVFPQImpl() {}
 
-void AscendIndexIVFPQImpl::copyFromCentroids(const faiss::IndexIVFPQ* index)
+void AscendIndexIVFPQImpl::copyFromCentroids(const faiss::IndexIVFPQ *index)
 {
     // copy centroids from index
     APP_LOG_INFO("Uploading centroids to devices...\n");
@@ -193,7 +193,7 @@ void AscendIndexIVFPQImpl::copyFromCentroids(const faiss::IndexIVFPQ* index)
     updateCoarseCenter(centroids_buffer);
 }
 
-void AscendIndexIVFPQImpl::copyFromCodebook(const faiss::IndexIVFPQ* index)
+void AscendIndexIVFPQImpl::copyFromCodebook(const faiss::IndexIVFPQ *index)
 {
     // copy codebook from index
     APP_LOG_INFO("Uploading PQ codebook to devices...\n");
@@ -204,7 +204,7 @@ void AscendIndexIVFPQImpl::copyFromCodebook(const faiss::IndexIVFPQ* index)
     this->pq.ksub = 1 << index->pq.nbits;
     this->pq.dsub = index->d / index->pq.M;
 
-    const float* codeBook_data = index->pq.centroids.data();
+    const float *codeBook_data = index->pq.centroids.data();
     const size_t codebook_size = this->pq.M * this->pq.ksub * this->pq.dsub;
     this->pq.codeBook.assign(codeBook_data, codeBook_data + codebook_size);
     FAISS_THROW_IF_NOT_FMT(pq.M > 0, "invalid msubs: %zu", pq.M);
@@ -227,7 +227,7 @@ void AscendIndexIVFPQImpl::copyFromCodebook(const faiss::IndexIVFPQ* index)
                            index->code_size, code_size);
 }
 
-void AscendIndexIVFPQImpl::copyFromPQCodes(const faiss::IndexIVFPQ* index)
+void AscendIndexIVFPQImpl::copyFromPQCodes(const faiss::IndexIVFPQ *index)
 {
     // copy pqcode from index
     APP_LOG_INFO("Uploading inverted lists data to devices...\n");
@@ -239,7 +239,7 @@ void AscendIndexIVFPQImpl::copyFromPQCodes(const faiss::IndexIVFPQ* index)
         deviceAddNumMap[i].resize(indexConfig.deviceList.size(), 0);
     }
 
-    const faiss::InvertedLists* invlists = index->invlists;
+    const faiss::InvertedLists *invlists = index->invlists;
     FAISS_THROW_IF_NOT_MSG(invlists != nullptr, "Source index has no inverted lists");
 
     size_t deviceCount = indexConfig.deviceList.size();
@@ -260,11 +260,11 @@ void AscendIndexIVFPQImpl::copyFromPQCodes(const faiss::IndexIVFPQ* index)
         for (size_t devIdx = 0; devIdx < deviceCount; devIdx++)
         {
             int deviceId = indexConfig.deviceList[devIdx];
-            for (const auto& [listNo, listSize] : deviceAssignments[devIdx])
+            for (const auto &[listNo, listSize] : deviceAssignments[devIdx])
             {
                 if (listSize == 0) continue;
 
-                const faiss::idx_t* srcIds = invlists->get_ids(listNo);
+                const faiss::idx_t *srcIds = invlists->get_ids(listNo);
                 for (size_t i = 0; i < listSize; i++)
                 {
                     idx_t id = srcIds[i];
@@ -298,33 +298,43 @@ void AscendIndexIVFPQImpl::copyFromPQCodes(const faiss::IndexIVFPQ* index)
 }
 
 std::vector<std::vector<std::pair<size_t, size_t>>> AscendIndexIVFPQImpl::assignListsToDevices(
-    const faiss::InvertedLists* invlists, size_t deviceCount)
+    const faiss::InvertedLists *invlists, size_t deviceCount)
 {
     std::vector<std::vector<std::pair<size_t, size_t>>> deviceAssignments(deviceCount);
+    std::vector<size_t> deviceVectorCounts(deviceCount, 0);
+    std::vector<size_t> deviceListCounts(deviceCount, 0);
+    if (deviceCount == 0)
+    {
+        return deviceAssignments;
+    }
+
     for (size_t listNo = 0; listNo < static_cast<size_t>(nlist); listNo++)
     {
         size_t listSize = invlists->list_size(listNo);
         if (listSize == 0) continue;
 
-        size_t selectedDevice = 0;
-        size_t minCount = static_cast<size_t>(deviceAddNumMap[listNo][0]);
-        for (size_t devIdx = 1; devIdx < deviceCount; devIdx++)
-        {
-            if (static_cast<size_t>(deviceAddNumMap[listNo][devIdx]) < minCount)
-            {
-                minCount = static_cast<size_t>(deviceAddNumMap[listNo][devIdx]);
-                selectedDevice = devIdx;
-            }
-        }
+        // TODO: Consider global vector-count balancing with a min-heap if list sizes are highly skewed.
+        size_t selectedDevice = listNo % deviceCount;
         deviceAssignments[selectedDevice].emplace_back(listNo, listSize);
         deviceAddNumMap[listNo][selectedDevice] += static_cast<int>(listSize);
+        deviceVectorCounts[selectedDevice] += listSize;
+        deviceListCounts[selectedDevice]++;
+    }
+
+    for (size_t devIdx = 0; devIdx < deviceCount; devIdx++)
+    {
+        if (!indexConfig.deviceList.empty())
+        {
+            APP_LOG_INFO("IVFPQ copyFrom list assignment device=%d lists=%zu vectors=%zu\n",
+                         indexConfig.deviceList[devIdx], deviceListCounts[devIdx], deviceVectorCounts[devIdx]);
+        }
     }
 
     return deviceAssignments;
 }
 
 void AscendIndexIVFPQImpl::uploadToDevicesParallel(
-    const std::vector<std::vector<std::pair<size_t, size_t>>>& deviceAssignments, const faiss::InvertedLists* invlists)
+    const std::vector<std::vector<std::pair<size_t, size_t>>> &deviceAssignments, const faiss::InvertedLists *invlists)
 {
     auto uploadFunctor = [&](int devIdx)
     {
@@ -336,18 +346,18 @@ void AscendIndexIVFPQImpl::uploadToDevicesParallel(
         }
 
         size_t totalForDevice = 0;
-        const auto& assignments = deviceAssignments[devIdx];
+        const auto &assignments = deviceAssignments[devIdx];
 
-        for (const auto& [listNo, listSize] : assignments)
+        for (const auto &[listNo, listSize] : assignments)
         {
             if (listSize == 0) continue;
 
-            const uint8_t* srcCodes = invlists->get_codes(listNo);
-            const faiss::idx_t* srcIds = invlists->get_ids(listNo);
+            const uint8_t *srcCodes = invlists->get_codes(listNo);
+            const faiss::idx_t *srcIds = invlists->get_ids(listNo);
             IndexParam<uint8_t, float, ascend_idx_t> param(deviceId, listSize, 0, 0);
             param.listId = listNo;
             param.query = srcCodes;
-            param.label = const_cast<ascend_idx_t*>(reinterpret_cast<const ascend_idx_t*>(srcIds));
+            param.label = const_cast<ascend_idx_t *>(reinterpret_cast<const ascend_idx_t *>(srcIds));
             indexIVFPQAdd(param);
             totalForDevice += listSize;
 
@@ -360,7 +370,7 @@ void AscendIndexIVFPQImpl::uploadToDevicesParallel(
     CALL_PARALLEL_FUNCTOR(indexConfig.deviceList.size(), pool, uploadFunctor);
 }
 
-void AscendIndexIVFPQImpl::copyFrom(const faiss::IndexIVFPQ* index)
+void AscendIndexIVFPQImpl::copyFrom(const faiss::IndexIVFPQ *index)
 {
     auto lock = ::ascend::AscendMultiThreadManager::GetWriteLock(mtx);
     APP_LOG_INFO("AscendIndexIVFPQ copyFrom operation started.\n");
@@ -394,12 +404,12 @@ void AscendIndexIVFPQImpl::copyFrom(const faiss::IndexIVFPQ* index)
     APP_LOG_INFO("AscendIndexIVFPQ copyFrom operation finished.\n");
 }
 
-void AscendIndexIVFPQImpl::copyToPQCodes(faiss::IndexIVFPQ* index) const
+void AscendIndexIVFPQImpl::copyToPQCodes(faiss::IndexIVFPQ *index) const
 {
     // copy pqcode to index
     index->code_size = pq.M;
 
-    InvertedLists* ivf = new ArrayInvertedLists(nlist, index->code_size);
+    InvertedLists *ivf = new ArrayInvertedLists(nlist, index->code_size);
     index->replace_invlists(ivf, true);
 
     if (this->intf_->is_trained)
@@ -417,7 +427,7 @@ void AscendIndexIVFPQImpl::copyToPQCodes(faiss::IndexIVFPQ* index) const
     }
 }
 
-void AscendIndexIVFPQImpl::copyTo(faiss::IndexIVFPQ* index) const
+void AscendIndexIVFPQImpl::copyTo(faiss::IndexIVFPQ *index) const
 {
     auto lock = ::ascend::AscendMultiThreadManager::GetReadLock(mtx);
     APP_LOG_INFO("AscendIndexIVFPQ copyTo operation started.\n");
@@ -438,7 +448,7 @@ void AscendIndexIVFPQImpl::copyTo(faiss::IndexIVFPQ* index) const
     index->pq.nbits = pq.nbits;
     index->pq.dsub = pq.dim / pq.M;
     index->pq.ksub = pq.ksub;
-    faiss::IndexFlat* quantizer = nullptr;
+    faiss::IndexFlat *quantizer = nullptr;
     if (this->intf_->metric_type == faiss::METRIC_INNER_PRODUCT)
     {
         quantizer = new faiss::IndexFlatIP(this->intf_->d);
@@ -504,7 +514,7 @@ void AscendIndexIVFPQImpl::initProductQuantizer()
     APP_LOG_INFO("AscendIndexIVFPQImpl initProductQuantizer operation finished\n");
 }
 
-std::vector<idx_t> AscendIndexIVFPQImpl::update(idx_t n, const float* x, const idx_t* ids)
+std::vector<idx_t> AscendIndexIVFPQImpl::update(idx_t n, const float *x, const idx_t *ids)
 {
     FAISS_THROW_IF_NOT_MSG(x != nullptr, "vector list is nullptr!");
     FAISS_THROW_IF_NOT_MSG(ids != nullptr, "vector ID list is nullptr!");
@@ -539,7 +549,7 @@ std::vector<idx_t> AscendIndexIVFPQImpl::update(idx_t n, const float* x, const i
             continue;
         }
         existIds.push_back(id);
-        const float* vector = x + i * this->intf_->d;
+        const float *vector = x + i * this->intf_->d;
         existVectors.insert(existVectors.end(), vector, vector + this->intf_->d);
         existNum++;
     }
@@ -563,19 +573,19 @@ std::vector<idx_t> AscendIndexIVFPQImpl::update(idx_t n, const float* x, const i
     return noExistIds;
 }
 
-void AscendIndexIVFPQImpl::addL1(int n, const float* x, std::vector<int64_t>& assign)
+void AscendIndexIVFPQImpl::addL1(int n, const float *x, std::vector<int64_t> &assign)
 {
     auto l1_start = std::chrono::high_resolution_clock::now();
     if (ivfConfig.useKmeansPP)
     {
         const size_t deviceCnt = indexConfig.deviceList.size();
         FAISS_THROW_IF_NOT_MSG(deviceCnt > 0, "device list is empty");
-        auto assignOnDevice = [&](size_t deviceIdx, int count, size_t offset, std::vector<int64_t>& outAssign)
+        auto assignOnDevice = [&](size_t deviceIdx, int count, size_t offset, std::vector<int64_t> &outAssign)
         {
             auto pIndex = getActualIndex(indexConfig.deviceList[deviceIdx]);
             FAISS_THROW_IF_NOT_MSG(pIndex != nullptr, "device is invalid");
             auto ret = pIndex->assignCentroid(this->nlist, this->intf_->d, count, centroidsOnHost,
-                                              const_cast<float*>(x + offset * this->intf_->d), outAssign, true);
+                                              const_cast<float *>(x + offset * this->intf_->d), outAssign, true);
             FAISS_THROW_IF_NOT_FMT(ret == ::ascend::APP_ERR_OK, "failed to assign centroids from device %d, ret: %d",
                                    indexConfig.deviceList[deviceIdx], ret);
         };
@@ -634,15 +644,15 @@ void AscendIndexIVFPQImpl::addL1(int n, const float* x, std::vector<int64_t>& as
     }
 }
 
-void AscendIndexIVFPQImpl::addL2(int n, const float* x, std::vector<uint8_t>& pqCodes)
+void AscendIndexIVFPQImpl::addL2(int n, const float *x, std::vector<uint8_t> &pqCodes)
 {
     const auto encodeStart = std::chrono::high_resolution_clock::now();
     const size_t codeSize = pq.M;
 #pragma omp parallel for
     for (int i = 0; i < n; i++)
     {
-        const float* vector = x + static_cast<size_t>(i) * intf_->d;
-        uint8_t* code = pqCodes.data() + static_cast<size_t>(i) * codeSize;
+        const float *vector = x + static_cast<size_t>(i) * intf_->d;
+        uint8_t *code = pqCodes.data() + static_cast<size_t>(i) * codeSize;
         encodeSingleVectorPQ(vector, code);
     }
     if (this->intf_->verbose)
@@ -654,7 +664,7 @@ void AscendIndexIVFPQImpl::addL2(int n, const float* x, std::vector<uint8_t>& pq
     }
 }
 
-void AscendIndexIVFPQImpl::addImpl(int n, const float* x, const idx_t* ids)
+void AscendIndexIVFPQImpl::addImpl(int n, const float *x, const idx_t *ids)
 {
     APP_LOG_INFO("AscendIndexIVFPQImpl addImpl operation started: n=%d.\n", n);
     this->intf_->metric_type = faiss::METRIC_L2;
@@ -729,7 +739,7 @@ void AscendIndexIVFPQImpl::copyVectorToDevice(int n)
     auto addFunctor = [&](int idx)
     {
         int deviceId = indexConfig.deviceList[idx];
-        for (auto& centroid : assignCounts)
+        for (auto &centroid : assignCounts)
         {
             int listId = centroid.first;
             int num = centroid.second.GetAddNum(idx);
@@ -737,8 +747,8 @@ void AscendIndexIVFPQImpl::copyVectorToDevice(int n)
             {
                 continue;
             }
-            uint8_t* pqCodePtr = nullptr;
-            ascend_idx_t* idPtr = nullptr;
+            uint8_t *pqCodePtr = nullptr;
+            ascend_idx_t *idPtr = nullptr;
 
             centroid.second.GetCodeAndIdPtr(idx, &pqCodePtr, &idPtr);
             IndexParam<uint8_t, float, ascend_idx_t> param(deviceId, num, 0, 0);
@@ -774,7 +784,7 @@ size_t AscendIndexIVFPQImpl::getAddPagedSize(int n) const
     return std::min(static_cast<size_t>(n), maxNumVecsForPageSize);
 }
 
-void AscendIndexIVFPQImpl::addPaged(int n, const float* x, const idx_t* ids)
+void AscendIndexIVFPQImpl::addPaged(int n, const float *x, const idx_t *ids)
 {
     const auto addStart = std::chrono::high_resolution_clock::now();
     APP_LOG_INFO("AscendIndexIVFPQImpl addPaged operation started.\n");
@@ -822,29 +832,29 @@ void AscendIndexIVFPQImpl::addPaged(int n, const float* x, const idx_t* ids)
     APP_LOG_INFO("AscendIndexIVFPQImpl addPaged operation finished.\n");
 }
 
-void AscendIndexIVFPQImpl::indexIVFPQAdd(IndexParam<uint8_t, float, ascend_idx_t>& param)
+void AscendIndexIVFPQImpl::indexIVFPQAdd(IndexParam<uint8_t, float, ascend_idx_t> &param)
 {
     auto pIndex = getActualIndex(param.deviceId);
     using namespace ::ascend;
 
-    const uint8_t* pqCodes = param.query;
-    const ascend_idx_t* ids = param.label;
+    const uint8_t *pqCodes = param.query;
+    const ascend_idx_t *ids = param.label;
 
-    auto ret = pIndex->addPQCodes(param.listId, param.n, pqCodes, static_cast<const ::ascend::Index::idx_t*>(ids));
+    auto ret = pIndex->addPQCodes(param.listId, param.n, pqCodes, static_cast<const ::ascend::Index::idx_t *>(ids));
 
     FAISS_THROW_IF_NOT_FMT(ret == APP_ERR_OK, "failed to add to ivf PQ, ret: %d", ret);
 }
 
-void AscendIndexIVFPQImpl::encodeSingleVectorPQ(const float* vector, uint8_t* pqCode) const
+void AscendIndexIVFPQImpl::encodeSingleVectorPQ(const float *vector, uint8_t *pqCode) const
 {
     for (size_t m = 0; m < pq.M; m++)
     {
-        const float* subVector = vector + m * this->pq.dsub;
+        const float *subVector = vector + m * this->pq.dsub;
         pqCode[m] = findCentroidInSubQuantizer(m, subVector);
     }
 }
 
-uint8_t AscendIndexIVFPQImpl::findCentroidInSubQuantizer(size_t subqIdx, const float* subVector) const
+uint8_t AscendIndexIVFPQImpl::findCentroidInSubQuantizer(size_t subqIdx, const float *subVector) const
 {
     if (subVector == nullptr || subqIdx >= this->pq.M)
     {
@@ -853,10 +863,10 @@ uint8_t AscendIndexIVFPQImpl::findCentroidInSubQuantizer(size_t subqIdx, const f
 
     float minDist = std::numeric_limits<float>::max();
     uint8_t findCentroid = 0;
-    const float* subCodebook = this->pq.codeBook.data() + subqIdx * this->pq.ksub * this->pq.dsub;
+    const float *subCodebook = this->pq.codeBook.data() + subqIdx * this->pq.ksub * this->pq.dsub;
     for (size_t k = 0; k < this->pq.ksub; k++)
     {
-        const float* centroid = subCodebook + k * this->pq.dsub;
+        const float *centroid = subCodebook + k * this->pq.dsub;
         float dist = calDistance(subVector, centroid, this->pq.dsub);
         if (dist < minDist)
         {
@@ -868,7 +878,7 @@ uint8_t AscendIndexIVFPQImpl::findCentroidInSubQuantizer(size_t subqIdx, const f
     return findCentroid;
 }
 
-float AscendIndexIVFPQImpl::calDistance(const float* a, const float* b, size_t dim) const
+float AscendIndexIVFPQImpl::calDistance(const float *a, const float *b, size_t dim) const
 {
     float dist = 0.0;
     for (size_t i = 0; i < dim; i++)
@@ -893,8 +903,8 @@ std::shared_ptr<::ascend::Index> AscendIndexIVFPQImpl::createIndex(int deviceId)
     return index;
 }
 
-void AscendIndexIVFPQImpl::extractAllSubspaces(int nSampled, const std::vector<size_t>& sampleIndices, const float* x,
-                                               std::vector<std::vector<float>>& subspaceData)
+void AscendIndexIVFPQImpl::extractAllSubspaces(int nSampled, const std::vector<size_t> &sampleIndices, const float *x,
+                                               std::vector<std::vector<float>> &subspaceData)
 {
     const idx_t dim = static_cast<idx_t>(this->pq.dim);
     const idx_t dsub = static_cast<idx_t>(this->pq.dsub);
@@ -908,17 +918,17 @@ void AscendIndexIVFPQImpl::extractAllSubspaces(int nSampled, const std::vector<s
     for (int i = 0; i < nSampled; i++)
     {
         const idx_t srcRow = static_cast<idx_t>(sampleIndices[static_cast<size_t>(i)]);
-        const float* row = x + srcRow * dim;
+        const float *row = x + srcRow * dim;
         for (size_t m = 0; m < this->pq.M; m++)
         {
-            const float* sub_vec = row + static_cast<idx_t>(m) * dsub;
-            float* dst = subspaceData[m].data() + static_cast<idx_t>(i) * dsub;
+            const float *sub_vec = row + static_cast<idx_t>(m) * dsub;
+            float *dst = subspaceData[m].data() + static_cast<idx_t>(i) * dsub;
             std::copy(sub_vec, sub_vec + dsub, dst);
         }
     }
 }
 
-void AscendIndexIVFPQImpl::trainPQCodeBook(idx_t n, const float* x)
+void AscendIndexIVFPQImpl::trainPQCodeBook(idx_t n, const float *x)
 {
     auto pq_start = std::chrono::high_resolution_clock::now();
     APP_LOG_INFO("Training PQ codebook with %ld vectors\n", n);
@@ -967,7 +977,7 @@ void AscendIndexIVFPQImpl::trainPQCodeBook(idx_t n, const float* x)
         {
             futures.emplace_back(GetPool()->Enqueue(trainFunctor, m));
         }
-        for (auto& future : futures)
+        for (auto &future : futures)
         {
             future.get();
         }
@@ -991,7 +1001,7 @@ void AscendIndexIVFPQImpl::trainPQCodeBook(idx_t n, const float* x)
     APP_LOG_INFO("IVFPQ trainPQCodeBook finished, elapsed=%lld ms\n", static_cast<long long>(elapsedMs(pq_start)));
 }
 
-void AscendIndexIVFPQImpl::trainSubQuantizer(size_t m, int nSampled, const std::vector<float>& subspace_data,
+void AscendIndexIVFPQImpl::trainSubQuantizer(size_t m, int nSampled, const std::vector<float> &subspace_data,
                                              int deviceId, int pqNiter)
 {
     FAISS_THROW_IF_NOT_MSG(nSampled >= static_cast<int>(this->pq.ksub),
@@ -1011,7 +1021,7 @@ void AscendIndexIVFPQImpl::trainSubQuantizer(size_t m, int nSampled, const std::
                          static_cast<long long>(elapsedMs(train_start)));
             savePQCodeBook(m, localCentroids);
         }
-        catch (std::exception& e)
+        catch (std::exception &e)
         {
             FAISS_THROW_FMT("IVFPQ NPU training failed for sub-quantizer %zu: %s", m, e.what());
         }
@@ -1037,13 +1047,13 @@ void AscendIndexIVFPQImpl::trainSubQuantizer(size_t m, int nSampled, const std::
     APP_LOG_DEBUG("Sub-quantizer %zu: trained with %d vectors\n", m, nSampled);
 }
 
-void AscendIndexIVFPQImpl::savePQCodeBook(size_t m, const std::vector<float>& centroids)
+void AscendIndexIVFPQImpl::savePQCodeBook(size_t m, const std::vector<float> &centroids)
 {
     FAISS_THROW_IF_NOT_FMT(centroids.size() == this->pq.ksub * this->pq.dsub,
                            "centroids size error: expect %zu, actual %zu\n", this->pq.ksub * this->pq.dsub,
                            centroids.size());
     FAISS_THROW_IF_NOT_FMT(m < this->pq.M, "sub-quantizer index out of range: %zu", m);
-    float* dst = this->pq.codeBook.data() + m * this->pq.ksub * this->pq.dsub;
+    float *dst = this->pq.codeBook.data() + m * this->pq.ksub * this->pq.dsub;
     std::copy(centroids.begin(), centroids.end(), dst);
 }
 
@@ -1059,7 +1069,7 @@ void AscendIndexIVFPQImpl::updatePQCodeBook()
     for (int deviceId : indexConfig.deviceList)
     {
         auto pIndex = getActualIndex(deviceId);
-        float* device_ptr = pIndex->codeBookOnDevice->data();
+        float *device_ptr = pIndex->codeBookOnDevice->data();
 
         auto ret =
             aclrtMemcpy(device_ptr, codebookBytes, this->pq.codeBook.data(), codebookBytes, ACL_MEMCPY_HOST_TO_DEVICE);
@@ -1070,7 +1080,7 @@ void AscendIndexIVFPQImpl::updatePQCodeBook()
                  deviceCnt, static_cast<long long>(elapsedMs(upload_start)));
 }
 
-void AscendIndexIVFPQImpl::updateCoarseCenter(std::vector<float>& centerData)
+void AscendIndexIVFPQImpl::updateCoarseCenter(std::vector<float> &centerData)
 {
     std::vector<float> centroidsSqrSum(nlist, 0.0f);
     for (int i = 0; i < nlist; i++)
@@ -1100,7 +1110,7 @@ void AscendIndexIVFPQImpl::updateCoarseCenter(std::vector<float>& centerData)
     }
 }
 
-void AscendIndexIVFPQImpl::train(idx_t n, const float* x)
+void AscendIndexIVFPQImpl::train(idx_t n, const float *x)
 {
     auto train_total_start = std::chrono::high_resolution_clock::now();
     APP_LOG_INFO("AscendIndexIVFPQ start to train with %ld vector(s).\n", n);
@@ -1210,8 +1220,8 @@ void AscendIndexIVFPQImpl::train(idx_t n, const float* x)
     APP_LOG_INFO("IVFPQ train total finished, elapsed=%lld ms\n", static_cast<long long>(elapsedMs(train_total_start)));
 }
 
-void AscendIndexIVFPQImpl::indexTrainImpl(int n, const float* x, int dim, int nlist, int deviceId,
-                                          std::vector<float>& centroidsOut, bool dataAlreadySampled, int niterOverride)
+void AscendIndexIVFPQImpl::indexTrainImpl(int n, const float *x, int dim, int nlist, int deviceId,
+                                          std::vector<float> &centroidsOut, bool dataAlreadySampled, int niterOverride)
 {
     if (n <= 0 || x == nullptr)
     {
@@ -1249,7 +1259,7 @@ void AscendIndexIVFPQImpl::indexTrainImpl(int n, const float* x, int dim, int nl
                  elapsedMs(train_start));
 }
 
-void AscendIndexIVFPQImpl::indexSearch(IndexParam<float, float, ascend_idx_t>& param) const
+void AscendIndexIVFPQImpl::indexSearch(IndexParam<float, float, ascend_idx_t> &param) const
 {
     auto pIndex = getActualIndex(param.deviceId);
     auto ret = pIndex->searchImpl(param.n, param.query, param.k, param.distance, param.label);
@@ -1257,7 +1267,7 @@ void AscendIndexIVFPQImpl::indexSearch(IndexParam<float, float, ascend_idx_t>& p
                            param.deviceId, ret);
 }
 
-void AscendIndexIVFPQImpl::searchImpl(int n, const float* x, int k, float* distances, idx_t* labels) const
+void AscendIndexIVFPQImpl::searchImpl(int n, const float *x, int k, float *distances, idx_t *labels) const
 {
     APP_LOG_INFO("AscendIndex searchImpl operation started: n=%d, k=%d.\n", n, k);
     size_t deviceCnt = indexConfig.deviceList.size();
@@ -1277,7 +1287,7 @@ void AscendIndexIVFPQImpl::searchImpl(int n, const float* x, int k, float* dista
     searchPostProcess(deviceCnt, dist, label, n, k, distances, labels);
 }
 
-void AscendIndexIVFPQImpl::deleteImpl(int n, const idx_t* ids)
+void AscendIndexIVFPQImpl::deleteImpl(int n, const idx_t *ids)
 {
     APP_LOG_INFO("AscendIndexIVFPQImpl deleteImpl operation started: n=%d.\n", n);
 
@@ -1300,11 +1310,11 @@ void AscendIndexIVFPQImpl::deleteImpl(int n, const idx_t* ids)
         }
     }
 
-    for (auto& entry : deviceListIdMap)
+    for (auto &entry : deviceListIdMap)
     {
         int deviceId = entry.first.first;
         idx_t listId = entry.first.second;
-        auto& deleteIds = entry.second;
+        auto &deleteIds = entry.second;
 
         if (deleteIds.empty())
         {
@@ -1325,14 +1335,14 @@ void AscendIndexIVFPQImpl::deleteImpl(int n, const idx_t* ids)
     APP_LOG_INFO("AscendIndexIVFPQImpl deleteImpl operation finished.\n");
 }
 
-void AscendIndexIVFPQImpl::deleteFromIVFPQ(IndexParam<void, void, ascend_idx_t>& param)
+void AscendIndexIVFPQImpl::deleteFromIVFPQ(IndexParam<void, void, ascend_idx_t> &param)
 {
     auto pIndex = getActualIndex(param.deviceId);
     using namespace ::ascend;
 
-    const ascend_idx_t* ids = param.label;
+    const ascend_idx_t *ids = param.label;
 
-    auto ret = pIndex->deletePQCodes(param.listId, param.n, static_cast<const ::ascend::Index::idx_t*>(ids));
+    auto ret = pIndex->deletePQCodes(param.listId, param.n, static_cast<const ::ascend::Index::idx_t *>(ids));
 
     FAISS_THROW_IF_NOT_FMT(ret == APP_ERR_OK, "failed to delete from ivf PQ, ret: %d", ret);
 }
@@ -1372,7 +1382,7 @@ int AscendIndexIVFPQImpl::findDeviceId(idx_t id)
     return fallbackDeviceId;
 }
 
-void AscendIndexIVFPQImpl::updateIdMapping(const std::vector<idx_t>& ids, const std::vector<idx_t>& listIds)
+void AscendIndexIVFPQImpl::updateIdMapping(const std::vector<idx_t> &ids, const std::vector<idx_t> &listIds)
 {
     std::lock_guard<std::mutex> lock(mapMutex);
 
@@ -1394,7 +1404,7 @@ void AscendIndexIVFPQImpl::updateIdMapping(const std::vector<idx_t>& ids, const 
     APP_LOG_DEBUG("Updated batch mapping for %zu IDs\n", ids.size());
 }
 
-void AscendIndexIVFPQImpl::removeIdMapping(const std::vector<idx_t>& ids)
+void AscendIndexIVFPQImpl::removeIdMapping(const std::vector<idx_t> &ids)
 {
     std::lock_guard<std::mutex> lock(mapMutex);
 

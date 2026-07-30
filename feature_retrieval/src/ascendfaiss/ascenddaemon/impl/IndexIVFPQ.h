@@ -172,8 +172,8 @@ class IndexIVFPQ : public IndexIVF
     APP_ERROR searchImplL1(AscendTensor<float, DIMS_2> &queries, AscendTensor<int64_t, DIMS_2> &l1TopNprobeIndicesHost,
                            AscendTensor<float, DIMS_3, size_t> &l2SubspaceDistsDev);
     APP_ERROR searchImplL3(AscendTensor<int64_t, DIMS_2> &l1TopNprobeIndicesHost,
-                           AscendTensor<float, DIMS_3, size_t> &l2SubspaceDistsDev, int k, float *distances,
-                           idx_t *labels);
+                           AscendTensor<float, DIMS_3, size_t> &l2SubspaceDistsDev, int probeCount, int k,
+                           float *distances, idx_t *labels);
 
     void runL1TopkOp(AscendTensor<float, DIMS_2> &dists, AscendTensor<float, DIMS_2> &vmdists,
                      AscendTensor<uint32_t, DIMS_2> &sizes, AscendTensor<uint16_t, DIMS_2> &flags,
@@ -209,18 +209,19 @@ class IndexIVFPQ : public IndexIVF
         AscendTensor<uint64_t, DIMS_1, size_t> &labelBase, aclrtStream &stream);
     int getL3SearchBatchCap() const;
     void fillDisOpInputDataByBlockPQ(size_t qIdx, size_t tIdx, size_t segIdx, size_t segNum, size_t coreNum,
-                                     size_t ivfpqBlockSize, AscendTensor<int64_t, DIMS_3, size_t> &baseSizeHostVec,
+                                     size_t probeCount, size_t ivfpqBlockSize,
+                                     AscendTensor<int64_t, DIMS_3, size_t> &baseSizeHostVec,
                                      AscendTensor<int64_t, DIMS_3, size_t> &offsetHostVec,
                                      AscendTensor<int64_t, DIMS_3, size_t> &labeloffsetHostVec,
                                      AscendTensor<int64_t, DIMS_2> &l1TopNprobeIndicesHost);
-    APP_ERROR fillDisOpInputDataPQ(int k, size_t batch, size_t tileNum, size_t segNum, size_t coreNum,
-                                   AscendTensor<int64_t, DIMS_3, size_t> &offset,
+    APP_ERROR fillDisOpInputDataPQ(int k, size_t batch, size_t probeCount, size_t tileNum, size_t segNum,
+                                   size_t coreNum, AscendTensor<int64_t, DIMS_3, size_t> &offset,
                                    AscendTensor<int64_t, DIMS_3, size_t> &baseSize,
                                    AscendTensor<int64_t, DIMS_1> &attrs,
                                    AscendTensor<int64_t, DIMS_3, size_t> &labelOffset,
                                    AscendTensor<int64_t, DIMS_2> &l1TopNprobeIndicesHost);
 
-    size_t getMaxListNum(size_t batch, AscendTensor<int64_t, DIMS_2> &l1TopNprobeIndicesHost) const;
+    size_t getMaxListNum(size_t batch, size_t probeCount, AscendTensor<int64_t, DIMS_2> &l1TopNprobeIndicesHost) const;
     void initializeCodeBook(int M, int nbits, int dsubs);
 
     static uint64_t getActualRngSeed(const int seed);

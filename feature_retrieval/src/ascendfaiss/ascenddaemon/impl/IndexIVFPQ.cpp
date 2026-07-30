@@ -1966,8 +1966,8 @@ int IndexIVFPQ::getL3SearchBatchCap() const
     return best;
 }
 
-APP_ERROR IndexIVFPQ::fillDisOpInputDataPQ(int k, size_t batch, size_t tileNum, size_t segNum, size_t coreNum,
-                                           AscendTensor<int64_t, DIMS_3, size_t> &offset,
+APP_ERROR IndexIVFPQ::fillDisOpInputDataPQ(int k, size_t batch, size_t probeCount, size_t tileNum, size_t segNum,
+                                           size_t coreNum, AscendTensor<int64_t, DIMS_3, size_t> &offset,
                                            AscendTensor<int64_t, DIMS_3, size_t> &baseSize,
                                            AscendTensor<int64_t, DIMS_1> &attrs,
                                            AscendTensor<int64_t, DIMS_3, size_t> &labelOffset,
@@ -1988,8 +1988,8 @@ APP_ERROR IndexIVFPQ::fillDisOpInputDataPQ(int k, size_t batch, size_t tileNum, 
         {
             for (size_t qIdx = 0; qIdx < batch; qIdx++)
             {
-                fillDisOpInputDataByBlockPQ(qIdx, tIdx, segIdx, segNum, coreNum, ivfpqBlockSize, baseSizeHostVec,
-                                            offsetHostVec, labeloffsetHostVec, l1TopNprobeIndicesHost);
+                fillDisOpInputDataByBlockPQ(qIdx, tIdx, segIdx, segNum, coreNum, probeCount, ivfpqBlockSize,
+                                            baseSizeHostVec, offsetHostVec, labeloffsetHostVec, l1TopNprobeIndicesHost);
             }
         }
     }
@@ -2018,7 +2018,7 @@ APP_ERROR IndexIVFPQ::fillDisOpInputDataPQ(int k, size_t batch, size_t tileNum, 
 }
 
 void IndexIVFPQ::fillDisOpInputDataByBlockPQ(size_t qIdx, size_t tIdx, size_t segIdx, size_t segNum, size_t coreNum,
-                                             size_t ivfpqBlockSize,
+                                             size_t probeCount, size_t ivfpqBlockSize,
                                              AscendTensor<int64_t, DIMS_3, size_t> &baseSizeHostVec,
                                              AscendTensor<int64_t, DIMS_3, size_t> &offsetHostVec,
                                              AscendTensor<int64_t, DIMS_3, size_t> &labeloffsetHostVec,
@@ -2037,25 +2037,36 @@ void IndexIVFPQ::fillDisOpInputDataByBlockPQ(size_t qIdx, size_t tIdx, size_t se
 
     for (size_t cIdx = 0; cIdx < coreNum; cIdx++)
     {
-        if (cIdx + tIdx * coreNum >= static_cast<size_t>(nprobe))
-        {
-            continue;
-        }
-        int64_t listId = l1TopNprobeIndicesHost[qIdx][tIdx * coreNum + (segIdx * coreNum + cIdx) / segNum].value();
-        if (listId < 0 || static_cast<size_t>(listId) >= deviceListIndices.size() || !deviceListIndices[listId])
+        const size_t probId = tIdx * coreNum + (segIdx * coreNum + cIdx) / segNum;
+        if (probId >= probeCount)
         {
             baseSizeHostVec[tIdx][segIdx][qIdx * coreNum + cIdx].value(0);
+            offsetHostVec[tIdx][segIdx][qIdx * coreNum + cIdx].value(0);
+            labeloffsetHostVec[tIdx][segIdx][qIdx * coreNum + cIdx].value(0);
+            continue;
+        }
+        int64_t listId = l1TopNprobeIndicesHost[qIdx][probId].value();
+        if (listId < 0 || static_cast<size_t>(listId) >= deviceListIndices.size() || !deviceListIndices[listId] ||
+            deviceListIndices[listId]->size() == 0 || deviceListIndices[listId]->data() == nullptr ||
+            static_cast<size_t>(listId) >= basePQCoder.size())
+        {
+            baseSizeHostVec[tIdx][segIdx][qIdx * coreNum + cIdx].value(0);
+            offsetHostVec[tIdx][segIdx][qIdx * coreNum + cIdx].value(0);
+            labeloffsetHostVec[tIdx][segIdx][qIdx * coreNum + cIdx].value(0);
             continue;
         }
         size_t listNum = deviceListIndices[listId]->size();
         size_t proccessLen =
             (segIdx * ivfpqBlockSize >= listNum) ? 0 : std::min(listNum - segIdx * ivfpqBlockSize, ivfpqBlockSize);
-        baseSizeHostVec[tIdx][segIdx][qIdx * coreNum + cIdx].value(static_cast<int64_t>(proccessLen));
         if (proccessLen == 0 || segIdx >= basePQCoder[listId].size() || labelBasePtr == nullptr ||
             deviceListIndices[listId]->data() == nullptr)
         {
+            baseSizeHostVec[tIdx][segIdx][qIdx * coreNum + cIdx].value(0);
+            offsetHostVec[tIdx][segIdx][qIdx * coreNum + cIdx].value(0);
+            labeloffsetHostVec[tIdx][segIdx][qIdx * coreNum + cIdx].value(0);
             continue;
         }
+        baseSizeHostVec[tIdx][segIdx][qIdx * coreNum + cIdx].value(static_cast<int64_t>(proccessLen));
 
         int64_t idAddrDevice = reinterpret_cast<int64_t>(deviceListIndices[listId]->data() +
                                                          ((segIdx * coreNum + cIdx) % segNum) * ivfpqBlockSize);
@@ -2068,14 +2079,21 @@ void IndexIVFPQ::fillDisOpInputDataByBlockPQ(size_t qIdx, size_t tIdx, size_t se
     }
 }
 
-size_t IndexIVFPQ::getMaxListNum(size_t batch, AscendTensor<int64_t, DIMS_2> &l1TopNprobeIndicesHost) const
+size_t IndexIVFPQ::getMaxListNum(size_t batch, size_t probeCount,
+                                 AscendTensor<int64_t, DIMS_2> &l1TopNprobeIndicesHost) const
 {
     size_t maxLen = 0;
     for (size_t qIdx = 0; qIdx < batch; qIdx++)
     {
-        for (size_t probId = 0; probId < static_cast<size_t>(nprobe); probId++)
+        for (size_t probId = 0; probId < probeCount; probId++)
         {
             int64_t listId = l1TopNprobeIndicesHost[qIdx][probId].value();
+            if (listId < 0 || static_cast<size_t>(listId) >= deviceListIndices.size() || !deviceListIndices[listId] ||
+                deviceListIndices[listId]->size() == 0 || deviceListIndices[listId]->data() == nullptr ||
+                static_cast<size_t>(listId) >= basePQCoder.size())
+            {
+                continue;
+            }
             size_t listNum = deviceListIndices[listId]->size();
             maxLen = maxLen > listNum ? maxLen : listNum;
         }
@@ -2146,8 +2164,8 @@ APP_ERROR IndexIVFPQ::searchImplL1(AscendTensor<float, DIMS_2> &queries,
 }
 
 APP_ERROR IndexIVFPQ::searchImplL3(AscendTensor<int64_t, DIMS_2> &l1TopNprobeIndicesHost,
-                                   AscendTensor<float, DIMS_3, size_t> &l2SubspaceDistsDev, int k, float *distances,
-                                   idx_t *labels)
+                                   AscendTensor<float, DIMS_3, size_t> &l2SubspaceDistsDev, int probeCount, int k,
+                                   float *distances, idx_t *labels)
 {
     auto ret = ensureL2L3SearchOps();
     APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, ret, "ensureL2L3SearchOps failed %d", ret);
@@ -2159,14 +2177,64 @@ APP_ERROR IndexIVFPQ::searchImplL3(AscendTensor<int64_t, DIMS_2> &l1TopNprobeInd
     auto streamAicpu = streamAicpuPtr->GetStream();
 
     size_t batch = static_cast<size_t>(l2SubspaceDistsDev.getSize(0));
-    size_t tileNum = static_cast<size_t>(utils::divUp(nprobe, blockNum));
+    std::vector<uint8_t> queryHasLocalList(batch, 0);
+    std::vector<std::vector<int64_t>> localListIds(batch);
+    size_t localProbeCount = 0;
+    for (size_t qIdx = 0; qIdx < batch; qIdx++)
+    {
+        for (size_t probId = 0; probId < static_cast<size_t>(probeCount); probId++)
+        {
+            int64_t listId = l1TopNprobeIndicesHost[qIdx][probId].value();
+            if (listId >= 0 && static_cast<size_t>(listId) < deviceListIndices.size() && deviceListIndices[listId] &&
+                deviceListIndices[listId]->size() > 0 && deviceListIndices[listId]->data() != nullptr &&
+                static_cast<size_t>(listId) < basePQCoder.size())
+            {
+                queryHasLocalList[qIdx] = 1;
+                localListIds[qIdx].push_back(listId);
+            }
+        }
+        localProbeCount = std::max(localProbeCount, localListIds[qIdx].size());
+    }
+
+    // No vectors in any probed list on this device (common with large nlist + sharding).
+    if (localProbeCount == 0)
+    {
+        for (size_t i = 0; i < batch; i++)
+        {
+            for (int j = 0; j < k; j++)
+            {
+                distances[i * static_cast<size_t>(k) + static_cast<size_t>(j)] = std::numeric_limits<float>::max();
+                labels[i * static_cast<size_t>(k) + static_cast<size_t>(j)] = -1;
+            }
+        }
+        return APP_ERR_OK;
+    }
+    auto fillNoLocalResult = [&](size_t qIdx)
+    {
+        for (int j = 0; j < k; j++)
+        {
+            labels[qIdx * static_cast<size_t>(k) + static_cast<size_t>(j)] = -1;
+            distances[qIdx * static_cast<size_t>(k) + static_cast<size_t>(j)] = std::numeric_limits<float>::max();
+        }
+    };
+
+    std::vector<int64_t> localTopNprobeIndicesVec(batch * localProbeCount, -1);
+    AscendTensor<int64_t, DIMS_2> localTopNprobeIndicesHost(localTopNprobeIndicesVec.data(), {batch, localProbeCount});
+    for (size_t qIdx = 0; qIdx < batch; qIdx++)
+    {
+        for (size_t probId = 0; probId < localListIds[qIdx].size(); probId++)
+        {
+            localTopNprobeIndicesHost[qIdx][probId].value(localListIds[qIdx][probId]);
+        }
+    }
+
+    size_t tileNum = static_cast<size_t>(utils::divUp(localProbeCount, static_cast<size_t>(blockNum)));
     size_t coreNum = static_cast<size_t>(blockNum);
-    size_t maxLen = getMaxListNum(batch, l1TopNprobeIndicesHost);
+    size_t maxLen = getMaxListNum(batch, localProbeCount, localTopNprobeIndicesHost);
     size_t ivfpqBlockSize = static_cast<size_t>(IVF_PQ_BLOCK_SIZE);
     size_t segNum = utils::divUp(maxLen, ivfpqBlockSize);
     size_t kAligned = static_cast<size_t>(MAX_TOPK);
 
-    // No vectors in any probed list on this device (common with large nlist + sharding).
     if (maxLen == 0 || segNum == 0)
     {
         for (size_t i = 0; i < batch; i++)
@@ -2199,6 +2267,9 @@ APP_ERROR IndexIVFPQ::searchImplL3(AscendTensor<int64_t, DIMS_2> &l1TopNprobeInd
     AscendTensor<uint64_t, DIMS_1, size_t> labelBase(reinterpret_cast<uint64_t *>(labelBasePtr),
                                                      {static_cast<size_t>(M)});
     AscendTensor<int64_t, DIMS_3, size_t> labelOffset(mem, {tileNum, segNum, batch * coreNum}, stream);
+    (void)offset.zero();
+    (void)baseSize.zero();
+    (void)labelOffset.zero();
 
     AscendTensor<int32_t, DIMS_3, size_t> topkIndex(mem, {1, 1, batch * coreNum * kAligned}, stream);
     AscendTensor<float, DIMS_3, size_t> topkValue(mem, {1, 1, batch * coreNum * kAligned}, stream);
@@ -2210,8 +2281,8 @@ APP_ERROR IndexIVFPQ::searchImplL3(AscendTensor<int64_t, DIMS_2> &l1TopNprobeInd
     AscendTensor<int64_t, DIMS_1> attrs(mem, {aicpu::TOPK_IVFPQ_L3_ATTR_IDX_COUNT}, stream);
     AscendTensor<int32_t, DIMS_1, size_t> topk(mem, {kAligned}, stream);
 
-    fillDisOpInputDataPQ(k, batch, tileNum, segNum, coreNum, offset, baseSize, attrs, labelOffset,
-                         l1TopNprobeIndicesHost);
+    fillDisOpInputDataPQ(k, batch, localProbeCount, tileNum, segNum, coreNum, offset, baseSize, attrs, labelOffset,
+                         localTopNprobeIndicesHost);
 
     AscendTensor<float, DIMS_2, size_t> outDist(mem, {batch, static_cast<size_t>(k)}, stream);
     AscendTensor<idx_t, DIMS_2, size_t> outLabel(mem, {batch, static_cast<size_t>(k)}, stream);
@@ -2238,6 +2309,11 @@ APP_ERROR IndexIVFPQ::searchImplL3(AscendTensor<int64_t, DIMS_2> &l1TopNprobeInd
         {
             for (int j = 0; j < k; j++)
             {
+                if (queryHasLocalList[static_cast<size_t>(i)] == 0)
+                {
+                    fillNoLocalResult(static_cast<size_t>(i));
+                    break;
+                }
                 labels[i * k + j] = topkIndexFinalHost[i * kAligned + j];
                 distances[i * k + j] = topkValueFinalHost[i * kAligned + j];
             }
@@ -2260,6 +2336,15 @@ APP_ERROR IndexIVFPQ::searchImplL3(AscendTensor<int64_t, DIMS_2> &l1TopNprobeInd
     ret = aclrtMemcpy(labels, batch * k * sizeof(idx_t), outLabel.data(), outLabel.getSizeInBytes(),
                       ACL_MEMCPY_DEVICE_TO_HOST);
     APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, APP_ERR_INNER_ERROR, "copy outLabel to host failed %d", ret);
+    // Some queries in the same batch may have no local probed list even when
+    // other queries do. Normalize those rows after the AICPU merge output.
+    for (size_t i = 0; i < batch; i++)
+    {
+        if (queryHasLocalList[i] == 0)
+        {
+            fillNoLocalResult(i);
+        }
+    }
     return APP_ERR_OK;
 }
 
@@ -2280,7 +2365,7 @@ APP_ERROR IndexIVFPQ::searchWithBatch(int n, const float *x, int k, float *dista
     ret = searchImplL1(queries, l1TopNprobeIndicesHost, l2SubspaceDistsDev);
     APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, ret, "IVFPQ L1 search failed! %d", ret);
 
-    ret = searchImplL3(l1TopNprobeIndicesHost, l2SubspaceDistsDev, k, distances, labels);
+    ret = searchImplL3(l1TopNprobeIndicesHost, l2SubspaceDistsDev, nprobe, k, distances, labels);
     APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, ret, "IVFPQ L3 search failed! %d", ret);
     return ACL_SUCCESS;
 }
