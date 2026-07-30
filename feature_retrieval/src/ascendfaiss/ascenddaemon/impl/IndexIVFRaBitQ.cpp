@@ -120,9 +120,33 @@ void VerifyL1DistAndProbes(int numLists, int dims, int nprobe, const float *npuD
     fprintf(stderr, "[IVFRaBitQ] L1 probe overlap q0: nprobe=%d overlap=%d jaccard=%.3f cpu_tile2=%d\n", nprobe,
             overlap, static_cast<double>(overlap) / static_cast<double>(nprobe), cpuTile2);
 }
+
+size_t ExpandCapacity(size_t need, size_t hardCap)
+{
+    ExpandPolicy expand;
+    size_t cap = expand(need);
+    if (hardCap > 0 && cap > hardCap)
+    {
+        cap = hardCap;
+    }
+    if (cap < need)
+    {
+        cap = need;
+    }
+    return cap;
+}
+
+void ReserveExpanded(DeviceVector<uint8_t> &vec, size_t needBytes, size_t hardCapBytes)
+{
+    if (needBytes <= vec.capacity())
+    {
+        return;
+    }
+    const size_t capBytes = ExpandCapacity(needBytes, hardCapBytes);
+    vec.reserve(capBytes);
+}
 }  // namespace
 
-const int KB = 1024;
 const int IVF_RABITQ_BLOCK_SIZE = 16384 * 2;
 const int SCAN_BIT = 8;
 const int LUT_NUM = std::pow(2, SCAN_BIT);
@@ -293,12 +317,18 @@ APP_ERROR IndexIVFRaBitQ::resize(int listId, size_t numVecs)
         return APP_ERR_OK;
     }
     size_t currentVecNum = listVecNum[listId];
-    IndexL2OnDevice[listId]->resize(currentVecNum + numVecs, 0);
+    const size_t chunk = static_cast<size_t>(blockSize);
+    const size_t newLen = currentVecNum + numVecs;
+    // Geometric ExpandPolicy growth: O(log N) reallocs / list (linear arena abandon),
+    // without reserving a full 32K block on the first small add to a sparse list.
+    IndexL2OnDevice[listId]->resize(newLen, false);
     pIndexL2 = IndexL2OnDevice[listId]->data() < pIndexL2 ? IndexL2OnDevice[listId]->data() : pIndexL2;
-    IndexL1OnDevice[listId]->resize(currentVecNum + numVecs, 0);
+    IndexL1OnDevice[listId]->resize(newLen, false);
     pIndexL1 = IndexL1OnDevice[listId]->data() < pIndexL1 ? IndexL1OnDevice[listId]->data() : pIndexL1;
 
     auto &blockList = baseFp32[listId];
+    const size_t codePart = static_cast<size_t>((dims + 7) / 8);
+    const size_t blockCapBytes = chunk * codePart;
 
     size_t remainingVecs = numVecs;
     while (remainingVecs > 0)
@@ -310,7 +340,7 @@ APP_ERROR IndexIVFRaBitQ::resize(int listId, size_t numVecs)
             tailBlkId = 0;
         }
 
-        size_t currentBlockUsed = currentVecNum % static_cast<size_t>(blockSize);
+        size_t currentBlockUsed = currentVecNum % chunk;
         size_t currentBlockRemaining;
         if (currentVecNum > 0 && currentBlockUsed == 0)
         {
@@ -318,17 +348,19 @@ APP_ERROR IndexIVFRaBitQ::resize(int listId, size_t numVecs)
         }
         else
         {
-            currentBlockRemaining = static_cast<size_t>(blockSize) - currentBlockUsed;
+            currentBlockRemaining = chunk - currentBlockUsed;
         }
         if (currentBlockRemaining == 0)
         {
             blockList.emplace_back(CREATE_UNIQUE_PTR(DeviceVector<uint8_t>, listArena_));
             tailBlkId = blockList.size() - 1;
-            currentBlockRemaining = static_cast<size_t>(blockSize);
+            currentBlockRemaining = chunk;
         }
         size_t vecsToAdd = std::min(remainingVecs, currentBlockRemaining);
-        size_t newSize = (currentVecNum % static_cast<size_t>(blockSize)) + vecsToAdd;
-        blockList[tailBlkId]->resize(newSize * ((dims + 7) / 8), true);
+        size_t newSize = (currentVecNum % chunk) + vecsToAdd;
+        const size_t needBytes = newSize * codePart;
+        ReserveExpanded(*blockList[tailBlkId], needBytes, blockCapBytes);
+        blockList[tailBlkId]->resize(needBytes, true);
         currentVecNum += vecsToAdd;
         remainingVecs -= vecsToAdd;
         pBaseFp32 = blockList.at(tailBlkId)->data() < pBaseFp32 ? blockList.at(tailBlkId)->data() : pBaseFp32;
@@ -337,7 +369,6 @@ APP_ERROR IndexIVFRaBitQ::resize(int listId, size_t numVecs)
     if (MemDebugEnabled())
     {
         const size_t newTotal = listVecNum[listId] + numVecs;
-        const size_t codePart = static_cast<size_t>((dims + 7) / 8);
         const size_t codeBytes = newTotal * codePart;
         const size_t factorBytes = newTotal * sizeof(float);  // per L1 or L2
         const size_t idBytes = newTotal * sizeof(idx_t);
@@ -348,8 +379,11 @@ APP_ERROR IndexIVFRaBitQ::resize(int listId, size_t numVecs)
         {
             MemDebugPrintf(
                 "[MemDebug] IndexIVFRaBitQ::resize listId=%d add=%zu newLen=%zu codeBlocks=%zu "
-                "codeBytes=%zu L1Bytes=%zu L2Bytes=%zu idBytes~=%zu\n",
-                listId, numVecs, newTotal, blockList.size(), codeBytes, factorBytes, factorBytes, idBytes);
+                "codeBytes=%zu L1Bytes=%zu L2Bytes=%zu idBytes~=%zu arenaReserved=%zu slabs=%zu "
+                "L1cap=%zu L2cap=%zu\n",
+                listId, numVecs, newTotal, blockList.size(), codeBytes, factorBytes, factorBytes, idBytes,
+                listArena_ ? listArena_->TotalReservedBytes() : 0, listArena_ ? listArena_->SlabCount() : 0,
+                IndexL1OnDevice[listId]->capacity(), IndexL2OnDevice[listId]->capacity());
             LogHbm("IndexIVFRaBitQ_resize", -1);
         }
     }
@@ -386,9 +420,9 @@ void IndexIVFRaBitQ::uploadLUTMatrix()
 
 APP_ERROR IndexIVFRaBitQ::updateCoarseCenterImpl(std::vector<float> &centerData)
 {
-    APPERR_RETURN_IF_NOT_FMT(centerData.size() == dims * numLists, APP_ERR_INVALID_PARAM,
-                             "the centerData size is %d, not dims(%d) * numLists(%d) %d", centerData.size(), dims,
-                             numLists, dims * numLists);
+    APPERR_RETURN_IF_NOT_FMT(centerData.size() == static_cast<size_t>(dims) * static_cast<size_t>(numLists),
+                             APP_ERR_INVALID_PARAM, "the centerData size is %d, not dims(%d) * numLists(%d) %d",
+                             centerData.size(), dims, numLists, dims * numLists);
 
     using coarseCenterVerify::IsVerifyEnabled;
     using coarseCenterVerify::LogHostSampleRows;
@@ -561,7 +595,7 @@ size_t IndexIVFRaBitQ::addTiling(int listId, size_t numVecs, std::vector<uint64_
     offsetHost[0] =
         (reinterpret_cast<uint64_t>(baseFp32[listId].at(blockIdx)->data() + offsetInBlock * ((dims + 7) / 8)) -
          reinterpret_cast<uint64_t>(pBaseFp32));
-    for (int i = 1; i < tileNum - 1; i++)
+    for (size_t i = 1; i + 1 < tileNum; i++)
     {
         baseSizeHost[i] = blockSize;
         indexl2offsetHost[i] = indexl2offsetHost[i - 1] + baseSizeHost[i - 1];
@@ -619,7 +653,7 @@ APP_ERROR IndexIVFRaBitQ::addVectors(int listId, size_t numVecs, const float *co
     AscendTensor<float, DIMS_1> indexL2Vec(mem, {blockSize}, stream);
     std::vector<int32_t> vectorSize(1, 0);
     uint64_t codesOffset = 0;
-    for (int i = 0; i < tileNum; i++)
+    for (size_t i = 0; i < tileNum; i++)
     {
         // 原始索引向量传到npu
         auto ret = aclrtMemcpy(indexOriginVec.data(), baseSizeHost[i] * dims * sizeof(float), codes + codesOffset,
@@ -649,7 +683,22 @@ APP_ERROR IndexIVFRaBitQ::addVectors(int listId, size_t numVecs, const float *co
     maxListLength = utils::roundUp(maxListLength, CUBE_ALIGN);
     listVecNum[listId] += numVecs;
     IndexIVF::ntotal += numVecs;
-    deviceListIndices[listId]->append(indices, numVecs, true);
+    // ExpandPolicy growth (reserveExact=false): avoid exact-append abandon and blockSize over-reserve.
+    deviceListIndices[listId]->append(indices, numVecs, false);
+    if (MemDebugEnabled() && listArena_ != nullptr)
+    {
+        static std::atomic<uint64_t> afterAddLogSeq{0};
+        uint64_t seq = afterAddLogSeq.fetch_add(1, std::memory_order_relaxed) + 1;
+        size_t every = MemDebugEvery();
+        if (every > 0 && (seq % every == 0 || numVecs >= 100000))
+        {
+            MemDebugPrintf(
+                "[MemDebug] IndexIVFRaBitQ::addVectors done listId=%d numVecs=%zu listLen=%zu "
+                "arenaReserved=%zu slabs=%zu\n",
+                listId, numVecs, listVecNum[listId], listArena_->TotalReservedBytes(), listArena_->SlabCount());
+            LogHbm("IndexIVFRaBitQ_addVectors_after", -1);
+        }
+    }
     return APP_ERR_OK;
 }
 
@@ -1190,7 +1239,7 @@ void IndexIVFRaBitQ::fillDisOpInputDataByBlock(
     for (size_t qIdx = 0; qIdx < batch; qIdx++)
     {
         int64_t blockNumPerQ = 0;
-        for (size_t tIdx = 0; tIdx < nprobe; tIdx++)
+        for (size_t tIdx = 0; tIdx < static_cast<size_t>(nprobe); tIdx++)
         {
             int64_t listId = l1TopNprobeIndicesHost[qIdx][tIdx].value();
             float centerl2 = l1TopNprobeDistsHost[qIdx][tIdx].value();
@@ -1346,6 +1395,7 @@ void IndexIVFRaBitQ::callL2DistanceOp(
     AscendTensor<uint8_t, DIMS_2, size_t> &codeVec, AscendTensor<float, DIMS_1, size_t> &Indexl2,
     AscendTensor<float, DIMS_1, size_t> &Indexl1, aclrtStream &stream)
 {
+    VALUE_UNUSED(batch);
     size_t ivfRabitqBlockSize = static_cast<size_t>(IVF_RABITQ_BLOCK_SIZE);
     size_t iterNum = (totalBlockNum + coreNum - 1) / coreNum;
     for (size_t iter = 0; iter < iterNum; iter++)
@@ -1459,8 +1509,8 @@ APP_ERROR IndexIVFRaBitQ::searchImplL2(AscendTensor<float, DIMS_2> &queries, Asc
     AscendTensor<uint32_t, DIMS_2, size_t> centroidsid(mem, {iterNum, coreNum}, stream);
     AscendTensor<float, DIMS_2, size_t> centroidsl2(mem, {iterNum, coreNum}, stream);
     AscendTensor<uint32_t, DIMS_2, size_t> baseSize(mem, {iterNum, coreNum}, stream);
-    AscendTensor<float, DIMS_2, size_t> centroidsLutVec(CentroidLUTOnDevice->data(),
-                                                        {static_cast<size_t>(numLists * dims / SCAN_BIT), LUT_NUM});
+    AscendTensor<float, DIMS_2, size_t> centroidsLutVec(
+        CentroidLUTOnDevice->data(), {static_cast<size_t>(numLists * dims / SCAN_BIT), static_cast<size_t>(LUT_NUM)});
     AscendTensor<uint8_t, DIMS_2, size_t> codeVec(pBaseFp32, {ivfRabitqBlockSize, static_cast<size_t>(dims / 8)});
     AscendTensor<float, DIMS_1, size_t> Indexl2(pIndexL2, {ivfRabitqBlockSize});
     AscendTensor<float, DIMS_1, size_t> Indexl1(pIndexL1, {ivfRabitqBlockSize});
@@ -1800,7 +1850,6 @@ APP_ERROR IndexIVFRaBitQ::addEncodedVectors(int listId, size_t numVecs, const ui
     std::vector<uint32_t> baseSizeHost;
     size_t tileNum = addTiling(listId, numVecs, offsetHost, indexl2offsetHost, baseSizeHost);
 
-    auto &mem = resources.getMemoryManager();
     auto streamPtr = resources.getDefaultStream();
     auto stream = streamPtr->GetStream();
 
@@ -1852,7 +1901,7 @@ APP_ERROR IndexIVFRaBitQ::addEncodedVectors(int listId, size_t numVecs, const ui
     listVecNum[listId] += numVecs;
     IndexIVF::ntotal += numVecs;
 
-    deviceListIndices[listId]->append(indices, numVecs, true);
+    deviceListIndices[listId]->append(indices, numVecs, false);
 
     return APP_ERR_OK;
 }
@@ -1905,7 +1954,7 @@ void fvec_L2sqr_by_idx(float *__restrict dis, const float *x, const float *y, co
                        size_t nx, size_t ny)
 {
 #pragma omp parallel for
-    for (int64_t j = 0; j < nx; j++)
+    for (size_t j = 0; j < nx; j++)
     {
         const idx_t *__restrict idsj = ids + j * ny;
         const float *xj = x + j * d;
@@ -2159,6 +2208,7 @@ APP_ERROR IndexIVFRaBitQ::removeIds(size_t numVecs, const idx_t *indices)
         }
         removeCntAll += removeCnt;
     }
+    VALUE_UNUSED(removeCntAll);
     return APP_ERR_OK;
 }
 

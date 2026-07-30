@@ -27,8 +27,9 @@
 namespace ascend
 {
 
-// DeviceVector strategy that bump-allocates from a shared DeviceMemArena.
-// Old blocks are abandoned on grow (reclaimed on arena Reset), matching add-heavy IVF.
+// DeviceVector strategy backed by a shared DeviceMemArena.
+// Replaced blocks are returned after a successful copy so repeated growth does
+// not retain every historical allocation.
 template <typename T, typename P>
 class ArenaDevMemStrategy : public DevVecMemStrategyIntf<T>
 {
@@ -45,7 +46,10 @@ class ArenaDevMemStrategy : public DevVecMemStrategyIntf<T>
 
     void Clear() override
     {
-        // Do not return memory to the driver; arena Reset reclaims slabs.
+        if (dataPtr_ != nullptr)
+        {
+            arena_->Deallocate(dataPtr_);
+        }
         dataPtr_ = nullptr;
         num_ = 0;
         vecCapacity_ = 0;
@@ -95,13 +99,8 @@ class ArenaDevMemStrategy : public DevVecMemStrategyIntf<T>
             return;
         }
 
-        size_t reserveSize = num_ + n;
-        if (!reserveExact)
-        {
-            reserveSize = expandPolicy_(reserveSize);
-        }
+        EnsureCapacity(num_ + n, reserveExact);
 
-        Reserve(reserveSize);
         ASCEND_THROW_IF_NOT((num_ * sizeof(T)) < MEMCPY_S_THRESHOLD);
         auto ret = aclrtMemcpy(dataPtr_ + num_, n * sizeof(T), d, n * sizeof(T), ACL_MEMCPY_HOST_TO_DEVICE);
         ASCEND_THROW_IF_NOT_FMT(ret == ACL_SUCCESS, "Mem operator error %d", static_cast<int>(ret));
@@ -112,14 +111,7 @@ class ArenaDevMemStrategy : public DevVecMemStrategyIntf<T>
     {
         if (num_ < newSize)
         {
-            if (reserveExact)
-            {
-                Reserve(newSize);
-            }
-            else
-            {
-                Reserve(expandPolicy_(newSize));
-            }
+            EnsureCapacity(newSize, reserveExact);
         }
         num_ = newSize;
     }
@@ -158,6 +150,15 @@ class ArenaDevMemStrategy : public DevVecMemStrategyIntf<T>
     }
 
    private:
+    void EnsureCapacity(size_t requiredSize, bool reserveExact)
+    {
+        if (requiredSize > vecCapacity_)
+        {
+            const size_t reserveSize = reserveExact ? requiredSize : expandPolicy_(requiredSize);
+            Reserve(reserveSize);
+        }
+    }
+
     void Realloc(size_t newCapacity)
     {
         ASCEND_THROW_IF_NOT(num_ <= newCapacity);
@@ -165,6 +166,10 @@ class ArenaDevMemStrategy : public DevVecMemStrategyIntf<T>
 
         if (newCapacity == 0)
         {
+            if (dataPtr_ != nullptr)
+            {
+                arena_->Deallocate(dataPtr_);
+            }
             dataPtr_ = nullptr;
             vecCapacity_ = 0;
             return;
@@ -178,13 +183,21 @@ class ArenaDevMemStrategy : public DevVecMemStrategyIntf<T>
 #ifdef HOSTCPU
             auto ret =
                 aclrtMemcpy(newData, newCapacity * sizeof(T), dataPtr_, num_ * sizeof(T), ACL_MEMCPY_DEVICE_TO_DEVICE);
-            ASCEND_THROW_IF_NOT_FMT(ret == ACL_SUCCESS, "aclrtMemcpy operator error %d", ret);
+            if (ret != ACL_SUCCESS)
+            {
+                arena_->Deallocate(newData);
+                ASCEND_THROW_FMT("aclrtMemcpy operator error %d", ret);
+            }
 #else
             auto ret = memcpy_s(newData, newCapacity * sizeof(T), dataPtr_, num_ * sizeof(T));
-            ASCEND_THROW_IF_NOT_FMT(ret == EOK, "memcpy_s operator error %d", static_cast<int>(ret));
+            if (ret != EOK)
+            {
+                arena_->Deallocate(newData);
+                ASCEND_THROW_FMT("memcpy_s operator error %d", static_cast<int>(ret));
+            }
 #endif
+            arena_->Deallocate(dataPtr_);
         }
-        // Intentionally do not free the old bump block; reclaimed on arena Reset.
 
         dataPtr_ = newData;
         vecCapacity_ = newCapacity;

@@ -90,7 +90,9 @@ cd .. && rm -rf release-1.8.1.tar.gz googletest-release-1.8.1
     ```
 
     > [!NOTE]
-    > 编译 TestAscendIndexIVFRabitQ.cpp 需要安装 faiss1.14.1。
+    > 编译 TestAscendIndexIVFRabitQ.cpp / TestAscendIndexIVFRaBitQSmallAdd.cpp / TestAscendIndexIVFRaBitQBoundary.cpp 需要安装 faiss1.14.1。
+    >
+    > 小批量入库样例：`./TestAscendIndexIVFRaBitQSmallAdd [ntotal] [nlist] [batch] [nprobe]`，默认 `100000 1024 64 32`。排查显存可设 `ASCENDFAISS_MEM_DEBUG=1`。
 
 3. 设置环境变量与生成算子
 
