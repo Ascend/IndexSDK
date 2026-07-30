@@ -18,9 +18,13 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <map>
+#include <memory>
+#include <numeric>
 #include <vector>
 
+#include "DeviceMemArena.h"
 #include "DeviceVector.h"
 
 using namespace testing;
@@ -249,6 +253,60 @@ TEST_F(TestDeviceVector, memcpySChunked_count_exceeds_capacity)
     uint8_t dst[8] = {};
     uint8_t src[16] = {};
     EXPECT_EQ(memcpySChunked(dst, sizeof(dst), src, sizeof(src)), ERANGE);
+}
+
+TEST_F(TestDeviceVector, arena_reuses_reallocated_blocks)
+{
+    // Repeated growth used to retain every old block. Capacity is now honoured,
+    // and replaced blocks coalesce for reuse, keeping slab growth bounded.
+    constexpr size_t kSteps = 4096;
+    auto arena = std::make_shared<DeviceMemArena>(4096);
+    DeviceVector<uint8_t> codes(arena);
+
+    for (size_t n = 1; n <= kSteps; ++n)
+    {
+        codes.resize(n, false);
+    }
+
+    EXPECT_EQ(codes.size(), kSteps);
+    EXPECT_LT(arena->SlabCount(), 16u);
+    EXPECT_LT(arena->TotalReservedBytes(), kSteps * 16);
+}
+
+TEST_F(TestDeviceVector, arena_append_uses_existing_capacity)
+{
+    auto arena = std::make_shared<DeviceMemArena>(4096);
+    DeviceVector<uint8_t> values(arena);
+    std::vector<uint8_t> initial(100, 1);
+    const uint8_t extra = 2;
+
+    values.append(initial.data(), initial.size(), false);
+    ASSERT_GT(values.capacity(), values.size());
+    auto *dataBefore = values.data();
+    const size_t capacityBefore = values.capacity();
+    const size_t reservedBefore = arena->TotalReservedBytes();
+
+    while (values.size() < capacityBefore)
+    {
+        values.append(&extra, 1, false);
+        EXPECT_EQ(values.data(), dataBefore);
+    }
+    EXPECT_EQ(arena->TotalReservedBytes(), reservedBefore);
+}
+
+TEST_F(TestDeviceVector, arena_realloc_preserves_data)
+{
+    auto arena = std::make_shared<DeviceMemArena>(1024);
+    DeviceVector<uint8_t> values(arena);
+    std::vector<uint8_t> input(128);
+    std::iota(input.begin(), input.end(), static_cast<uint8_t>(0));
+
+    values.append(input.data(), input.size(), true);
+    values.resize(4096, true);
+    auto output = values.copyToStlVector();
+
+    ASSERT_EQ(output.size(), 4096u);
+    EXPECT_TRUE(std::equal(input.begin(), input.end(), output.begin()));
 }
 
 TEST_F(TestDeviceVector, aclrtMemcpyChunked_normal_and_invalid)
