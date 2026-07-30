@@ -167,6 +167,8 @@ class AscendIndexIVFPQImpl : public AscendIndexIVFImpl
    private:
     AscendIndexIVFPQConfig ivfPQConfig;
 
+    bool queryParallelSearchReady = false;
+
     std::unordered_map<idx_t, idx_t> idToListMap;
     std::unordered_map<idx_t, int> idToDeviceMap;
 

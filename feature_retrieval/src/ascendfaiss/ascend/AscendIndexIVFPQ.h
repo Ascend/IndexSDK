@@ -60,6 +60,11 @@ struct AscendIndexIVFPQConfig : public AscendIndexIVFConfig
     // configured. Intended for large nlist / large training-sample workloads;
     // the distributed path clusters in fp16 across all devices.
     bool useDistributedCoarse = false;
+
+    // Only effective after copyFrom loads a pre-trained CPU IVFPQ index.
+    // When enabled on multi-device indexes, each device stores a full copy of
+    // the inverted lists and search splits queries across devices.
+    bool enableQueryParallelSearch = false;
 };
 
 class AscendIndexIVFPQImpl;
