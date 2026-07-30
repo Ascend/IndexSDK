@@ -231,6 +231,7 @@ void AscendIndexIVFPQImpl::copyFromPQCodes(const faiss::IndexIVFPQ *index)
 {
     // copy pqcode from index
     APP_LOG_INFO("Uploading inverted lists data to devices...\n");
+    queryParallelSearchReady = false;
 
     deviceAddNumMap.clear();
     deviceAddNumMap.resize(index->nlist);
@@ -288,8 +289,11 @@ void AscendIndexIVFPQImpl::copyFromPQCodes(const faiss::IndexIVFPQ *index)
         }
     }
 
-    FAISS_THROW_IF_NOT_FMT(totalUploaded == totalVectors, "Copied vector count mismatch. Expected: %zu, Actual: %zu",
-                           totalVectors, totalUploaded);
+    const size_t expectedUploaded =
+        (ivfPQConfig.enableQueryParallelSearch && deviceCount > 1) ? totalVectors * deviceCount : totalVectors;
+    FAISS_THROW_IF_NOT_FMT(totalUploaded == expectedUploaded,
+                           "Copied vector count mismatch. Expected: %zu, Actual: %zu", expectedUploaded, totalUploaded);
+    queryParallelSearchReady = ivfPQConfig.enableQueryParallelSearch && deviceCount > 1;
 
     APP_LOG_INFO(
         "AscendIndexIVFPQ copyFrom operation finished. "
@@ -311,7 +315,22 @@ std::vector<std::vector<std::pair<size_t, size_t>>> AscendIndexIVFPQImpl::assign
     for (size_t listNo = 0; listNo < static_cast<size_t>(nlist); listNo++)
     {
         size_t listSize = invlists->list_size(listNo);
-        if (listSize == 0) continue;
+        if (listSize == 0)
+        {
+            continue;
+        }
+
+        if (ivfPQConfig.enableQueryParallelSearch && deviceCount > 1)
+        {
+            for (size_t devIdx = 0; devIdx < deviceCount; devIdx++)
+            {
+                deviceAssignments[devIdx].emplace_back(listNo, listSize);
+                deviceAddNumMap[listNo][devIdx] += static_cast<int>(listSize);
+                deviceVectorCounts[devIdx] += listSize;
+                deviceListCounts[devIdx]++;
+            }
+            continue;
+        }
 
         // TODO: Consider global vector-count balancing with a min-heap if list sizes are highly skewed.
         size_t selectedDevice = listNo % deviceCount;
@@ -374,6 +393,7 @@ void AscendIndexIVFPQImpl::copyFrom(const faiss::IndexIVFPQ *index)
 {
     auto lock = ::ascend::AscendMultiThreadManager::GetWriteLock(mtx);
     APP_LOG_INFO("AscendIndexIVFPQ copyFrom operation started.\n");
+    queryParallelSearchReady = false;
 
     FAISS_THROW_IF_NOT_MSG(index != nullptr, "index is nullptr.");
     FAISS_THROW_IF_NOT_MSG(index->is_trained, "Source index is not trained");
@@ -414,7 +434,10 @@ void AscendIndexIVFPQImpl::copyToPQCodes(faiss::IndexIVFPQ *index) const
 
     if (this->intf_->is_trained)
     {
-        for (size_t i = 0; i < indexConfig.deviceList.size(); i++)
+        // Query-parallel mode keeps a full copy on each device, so reading one replica is enough.
+        const size_t deviceNum = queryParallelSearchReady ? std::min<size_t>(indexConfig.deviceList.size(), 1)
+                                                          : indexConfig.deviceList.size();
+        for (size_t i = 0; i < deviceNum; i++)
         {
             int deviceId = indexConfig.deviceList[i];
             indexIVFFastGetListCodes(deviceId, nlist, ivf);
@@ -523,7 +546,11 @@ std::vector<idx_t> AscendIndexIVFPQImpl::update(idx_t n, const float *x, const i
                            "vector list size is not match!");
     FAISS_THROW_IF_NOT_MSG(static_cast<size_t>(n) == std::distance(ids, ids + n), "vector ID list size is not match!");
     FAISS_THROW_IF_NOT_MSG(this->intf_->is_trained, "AscendIndexIVFPQ is not trained!");
+    FAISS_THROW_IF_NOT_MSG(!ivfPQConfig.enableQueryParallelSearch,
+                           "enableQueryParallelSearch only supports copyFrom-loaded IVFPQ index search");
     APP_LOG_INFO("AscendIndexIVFPQImpl update operation started: n=%ld.\n", n);
+    // Defensive reset in case this path becomes reachable after future config changes.
+    queryParallelSearchReady = false;
     std::lock_guard<std::mutex> lock(mapMutex);
 
     std::vector<idx_t> noExistIds;
@@ -667,6 +694,10 @@ void AscendIndexIVFPQImpl::addL2(int n, const float *x, std::vector<uint8_t> &pq
 void AscendIndexIVFPQImpl::addImpl(int n, const float *x, const idx_t *ids)
 {
     APP_LOG_INFO("AscendIndexIVFPQImpl addImpl operation started: n=%d.\n", n);
+    FAISS_THROW_IF_NOT_MSG(!ivfPQConfig.enableQueryParallelSearch,
+                           "enableQueryParallelSearch only supports copyFrom-loaded IVFPQ index search");
+    // Defensive reset in case this path becomes reachable after future config changes.
+    queryParallelSearchReady = false;
     this->intf_->metric_type = faiss::METRIC_L2;
     size_t deviceCnt = indexConfig.deviceList.size();
     std::vector<int64_t> assign(n);
@@ -1271,6 +1302,31 @@ void AscendIndexIVFPQImpl::searchImpl(int n, const float *x, int k, float *dista
 {
     APP_LOG_INFO("AscendIndex searchImpl operation started: n=%d, k=%d.\n", n, k);
     size_t deviceCnt = indexConfig.deviceList.size();
+    if (queryParallelSearchReady && deviceCnt > 1)
+    {
+        auto searchFunctor = [&](int idx)
+        {
+            const size_t devIdx = static_cast<size_t>(idx);
+            const size_t base = static_cast<size_t>(n) / deviceCnt;
+            const size_t remainder = static_cast<size_t>(n) % deviceCnt;
+            const size_t count = base + (devIdx < remainder ? 1 : 0);
+            const size_t offset = devIdx * base + std::min(devIdx, remainder);
+            if (count == 0)
+            {
+                return;
+            }
+
+            int deviceId = indexConfig.deviceList[devIdx];
+            IndexParam<float, float, ascend_idx_t> param(deviceId, static_cast<int>(count), this->intf_->d, k);
+            param.query = x + offset * static_cast<size_t>(this->intf_->d);
+            param.distance = distances + offset * static_cast<size_t>(k);
+            param.label = reinterpret_cast<ascend_idx_t *>(labels + offset * static_cast<size_t>(k));
+            indexSearch(param);
+        };
+        CALL_PARALLEL_FUNCTOR(deviceCnt, pool, searchFunctor);
+        return;
+    }
+
     std::vector<std::vector<float>> dist(deviceCnt, std::vector<float>(n * k, 0));
     std::vector<std::vector<ascend_idx_t>> label(deviceCnt, std::vector<ascend_idx_t>(n * k, 0));
 
@@ -1290,6 +1346,10 @@ void AscendIndexIVFPQImpl::searchImpl(int n, const float *x, int k, float *dista
 void AscendIndexIVFPQImpl::deleteImpl(int n, const idx_t *ids)
 {
     APP_LOG_INFO("AscendIndexIVFPQImpl deleteImpl operation started: n=%d.\n", n);
+    FAISS_THROW_IF_NOT_MSG(!ivfPQConfig.enableQueryParallelSearch,
+                           "enableQueryParallelSearch only supports copyFrom-loaded IVFPQ index search");
+    // Defensive reset in case this path becomes reachable after future config changes.
+    queryParallelSearchReady = false;
 
     // Group by (deviceId, listId) pair
     std::map<std::pair<int, idx_t>, std::vector<idx_t>> deviceListIdMap;
