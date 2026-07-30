@@ -1128,7 +1128,7 @@ void AscendIndexIVFRaBitQImpl::copyTo(faiss::IndexIVFRaBitQ* index) const
         totalCopied += totalLen;
     }
 
-    index->invlists = newInvlists;
+    index->replace_invlists(newInvlists, true);
     index->own_fields = true;
 
     FAISS_THROW_IF_NOT_FMT(totalCopied == intf_->ntotal, "Total vectors mismatch: expected %d, got %d", intf_->ntotal,
