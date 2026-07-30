@@ -16,42 +16,47 @@
  * -------------------------------------------------------------------------
  */
 
-
-#include <cstdio>
 #include <algorithm>
+#include <cstdio>
 #include <type_traits>
-#include "kernel_tiling/kernel_tiling.h"
+
 #include "kernel_operator.h"
+#include "kernel_tiling/kernel_tiling.h"
 #include "lib/matmul_intf.h"
 #include "op_kernel_common.h"
 
 using namespace AscendC;
 using namespace matmul;
 
-namespace {
+namespace
+{
 constexpr uint32_t BUFFER_NUM = 1;
 constexpr uint32_t BLOCK_BYTE_SIZE = 32;
 constexpr uint32_t MIN_BATCH = 64;
 constexpr uint32_t CORE_PROC_CODE_GRAIN = 256;
 constexpr uint32_t CODE_SIZE = 16384 * Utils::CUBE_ALIGN;
 constexpr uint32_t CODE_BATCH_SIZE = (CODE_SIZE + MIN_BATCH - 1) / MIN_BATCH;
-}
+}  // namespace
 
-namespace IndexOps {
+namespace IndexOps
+{
 // 后续如果DistFlatL2Kernel 需要支持更多类型 可以参考如下通过特化新的类型来完成
 template <typename T>
-struct TraitsUpgradeType {
+struct TraitsUpgradeType
+{
     using type = T;
 };
 
 template <>
-struct TraitsUpgradeType<half> {
+struct TraitsUpgradeType<half>
+{
     using type = float;
 };
 
 template <typename DataType>
-class DistanceFlatL2 {
-public:
+class DistanceFlatL2
+{
+   public:
     // L2计算过程中涉及到精度抬升 这个表示抬升得精度类型
     using UpGradeDataType = typename TraitsUpgradeType<DataType>::type;
 
@@ -62,7 +67,7 @@ public:
 
     __aicore__ inline void process();
 
-private:
+   private:
     __aicore__ inline void processEachQueryLoop(uint32_t queryLoopIdx);
 
     __aicore__ inline void processEachCodeLoop(uint32_t queryLoopIdx, uint32_t codeLoopIdx, uint32_t queryProcNum,
@@ -119,7 +124,7 @@ private:
     __aicore__ inline void DoMask(uint32_t queryLoopIdx, uint32_t codeLoopIdx, uint32_t queryProcNum,
                                   uint32_t codeProcNum, LocalTensor<half> &l2DistanceLocal);
 
-private:
+   private:
     using MatMulTypeQueryA = MatmulType<TPosition::GM, CubeFormat::ND, DataType>;
     using MatMulTypeCode = MatmulType<TPosition::GM, CubeFormat::ND, DataType, true>;
     using MatMulTypeIp = MatmulType<TPosition::GM, CubeFormat::ND, UpGradeDataType>;
@@ -154,41 +159,41 @@ private:
     // query range:48 36 32 30 24 18 16 12 8 6 4 2 1
     // code range: (0, 16384]
     // shape info
-    uint32_t codeSize{ 0 };
-    uint32_t querySize{ 0 };
-    uint32_t dimSize{ 0 };
+    uint32_t codeSize{0};
+    uint32_t querySize{0};
+    uint32_t dimSize{0};
 
     // core info
-    uint32_t usedCoreNum{ 0 };
-    uint32_t coreId{ 0 };
-    uint32_t coreNum{ 0 };
-    uint32_t corePorcCodeSize{ 0 };
-    uint32_t coreProcCodeOffset{ 0 };
+    uint32_t usedCoreNum{0};
+    uint32_t coreId{0};
+    uint32_t coreNum{0};
+    uint32_t corePorcCodeSize{0};
+    uint32_t coreProcCodeOffset{0};
 
     // tiling args
-    uint32_t querySizeEachLoop{ 0 };
-    uint32_t querySizeLastLoop{ 0 };
-    uint32_t queryAlign{ 0 };
-    uint32_t queryLoopTimes{ 0 };
-    uint32_t queryCopyOutOffset{ 0 };
-    uint32_t queryCopyOutBatchOffset{ 0 };
-    uint32_t codeSizeEachLoop{ 0 };
-    uint32_t codeSizeLastLoop{ 0 };
-    uint32_t codeLoopTimes{ 0 };
-    uint32_t codeBatchSize{ 0 };
-    uint32_t codeCopyOutBatchOffset{ 0 };
+    uint32_t querySizeEachLoop{0};
+    uint32_t querySizeLastLoop{0};
+    uint32_t queryAlign{0};
+    uint32_t queryLoopTimes{0};
+    uint32_t queryCopyOutOffset{0};
+    uint32_t queryCopyOutBatchOffset{0};
+    uint32_t codeSizeEachLoop{0};
+    uint32_t codeSizeLastLoop{0};
+    uint32_t codeLoopTimes{0};
+    uint32_t codeBatchSize{0};
+    uint32_t codeCopyOutBatchOffset{0};
 
-    uint32_t maskLenEachLoop {0};
-    uint32_t maskBlockOffset {0};
-    uint32_t maskLen {0};
-    uint32_t maskFlag {0};
-    uint32_t selectLoopTime {0};
-    uint8_t selectRemainder {0};
+    uint32_t maskLenEachLoop{0};
+    uint32_t maskBlockOffset{0};
+    uint32_t maskLen{0};
+    uint32_t maskFlag{0};
+    uint32_t selectLoopTime{0};
+    uint8_t selectRemainder{0};
 
     TCubeTiling cubeTilingIp;
     TCubeTiling cubeTilingL2Norm;
 
-    const DistanceFlatL2TilingData *__restrict pTilingDevice{ nullptr };
+    const DistanceFlatL2TilingData *__restrict pTilingDevice{nullptr};
 };
 
 template <typename DataType>
@@ -227,18 +232,26 @@ __aicore__ inline void DistanceFlatL2<DataType>::InitCoreProcInfo()
     uint32_t taskpaddingNumEachCore = taskNumEachCore + 1;
     uint32_t paddingIdx = taskNum % usedCoreNum;
 
-    if (coreId >= usedCoreNum) {
+    if (coreId >= usedCoreNum)
+    {
         corePorcCodeSize = 0;
-    } else if (coreId != (usedCoreNum - 1)) {
-        if (coreId < paddingIdx) {
+    }
+    else if (coreId != (usedCoreNum - 1))
+    {
+        if (coreId < paddingIdx)
+        {
             corePorcCodeSize = taskpaddingNumEachCore * CORE_PROC_CODE_GRAIN;
             coreProcCodeOffset = (coreId * taskpaddingNumEachCore) * CORE_PROC_CODE_GRAIN;
-        } else {
+        }
+        else
+        {
             corePorcCodeSize = taskNumEachCore * CORE_PROC_CODE_GRAIN;
             coreProcCodeOffset =
                 (paddingIdx * taskpaddingNumEachCore + (coreId - paddingIdx) * taskNumEachCore) * CORE_PROC_CODE_GRAIN;
         }
-    } else {
+    }
+    else
+    {
         coreProcCodeOffset =
             (paddingIdx * taskpaddingNumEachCore + (coreId - paddingIdx) * taskNumEachCore) * CORE_PROC_CODE_GRAIN;
         corePorcCodeSize = codeSize - coreProcCodeOffset;
@@ -261,7 +274,8 @@ __aicore__ inline void DistanceFlatL2<DataType>::InitGlobalTensor(GM_ADDR inputQ
 
     GM_ADDR workSpace = GetSysWorkSpacePtr();
     GM_ADDR userWorkSpace = GetUserWorkspace(workSpace);
-    if (userWorkSpace == nullptr) {
+    if (userWorkSpace == nullptr)
+    {
         return;
     }
     innerProductGloabal.SetGlobalBuffer((__gm__ UpGradeDataType *)userWorkSpace +
@@ -299,7 +313,8 @@ __aicore__ inline void DistanceFlatL2<DataType>::InitTilingArgs()
 template <typename DataType>
 __aicore__ inline void DistanceFlatL2<DataType>::InitMemoryQueue()
 {
-    if (corePorcCodeSize != 0) {
+    if (corePorcCodeSize != 0)
+    {
         pipe.InitBuffer(queryDotQueryQue, BUFFER_NUM, queryAlign * queryAlign * sizeof(UpGradeDataType));
         pipe.InitBuffer(queryL2NormQue, BUFFER_NUM, queryAlign * sizeof(UpGradeDataType));
         pipe.InitBuffer(codeInQue, BUFFER_NUM, codeSizeEachLoop * dimSize * sizeof(DataType));
@@ -310,7 +325,9 @@ __aicore__ inline void DistanceFlatL2<DataType>::InitMemoryQueue()
         pipe.InitBuffer(l2DistanceLocalQue, BUFFER_NUM, querySizeEachLoop * codeSizeEachLoop * sizeof(UpGradeDataType));
         pipe.InitBuffer(l2DistanceMinQue, BUFFER_NUM, codeBatchSize * querySizeEachLoop * 2 * sizeof(DataType));
         pipe.InitBuffer(maskQue, BUFFER_NUM, querySizeEachLoop * maskLenEachLoop * sizeof(uint8_t));
-    } else {
+    }
+    else
+    {
         constexpr uint32_t defaultByteSize = BLOCK_BYTE_SIZE;
         pipe.InitBuffer(queryDotQueryQue, BUFFER_NUM, defaultByteSize);
         pipe.InitBuffer(queryL2NormQue, BUFFER_NUM, defaultByteSize);
@@ -328,8 +345,7 @@ __aicore__ inline void DistanceFlatL2<DataType>::InitMemoryQueue()
 template <typename DataType>
 __aicore__ inline void DistanceFlatL2<DataType>::Init(GM_ADDR inputQueries, GM_ADDR mask, GM_ADDR inputCodes,
                                                       GM_ADDR inputL2PreNorm, GM_ADDR inputActualSize,
-                                                      GM_ADDR outputL2Dist, GM_ADDR outputL2DistMin,
-                                                      GM_ADDR outputflag,
+                                                      GM_ADDR outputL2Dist, GM_ADDR outputL2DistMin, GM_ADDR outputflag,
                                                       const DistanceFlatL2TilingData *__restrict tiling)
 {
     pTilingDevice = tiling;
@@ -362,7 +378,8 @@ __aicore__ inline void DistanceFlatL2<DataType>::ComputeL2NormSum(uint32_t query
     set_flag(PIPE_V, PIPE_S, EVENT_ID0);
 
     wait_flag(PIPE_V, PIPE_S, EVENT_ID0);
-    for (auto i = 0; i < queryProcNum; i++) {
+    for (auto i = 0; i < queryProcNum; i++)
+    {
         auto querySquare = queryL2NormLocal.GetValue(i);
         set_flag(PIPE_S, PIPE_V, EVENT_ID0);
 
@@ -377,7 +394,8 @@ __aicore__ inline void DistanceFlatL2<DataType>::ComputeL2NormSum(uint32_t query
 template <typename DataType>
 __aicore__ inline void DistanceFlatL2<DataType>::ComputeInnerProduct(uint32_t codeLoopIdx, bool isTail)
 {
-    if (isTail) {
+    if (isTail)
+    {
         matmulObjIp.SetTail(querySizeLastLoop, codeSizeEachLoop, dimSize);
     }
 
@@ -417,18 +435,22 @@ __aicore__ inline void DistanceFlatL2<DataType>::ComputeL2DistanceMin(uint32_t q
     Duplicate(l2DistanceLocalMin, zero, codeBatchSize * queryProcNum * 2);
     // 可以被MIN_BATCH整除部分
     constexpr auto srcRepStride = MIN_BATCH * sizeof(DataType) / BLOCK_BYTE_SIZE;
-    if (codeProcNum / MIN_BATCH != 0) {
-        for (auto i = 0; i < queryProcNum; i++) {
+    if (codeProcNum / MIN_BATCH != 0)
+    {
+        for (auto i = 0; i < queryProcNum; i++)
+        {
             WholeReduceMin(l2DistanceLocalMin[i * codeBatchSize * 2], l2DistanceLocal[i * codeSizeEachLoop], MIN_BATCH,
                            codeProcNum / MIN_BATCH, 1, 1, srcRepStride);
         }
     }
 
-    pipe_barrier(PIPE_V);
+    PipeBarrier<PIPE_V>();
 
     // 不可以被MIN_BATCH整除部分
-    if (codeProcNum % MIN_BATCH != 0) {
-        for (auto i = 0; i < queryProcNum; i++) {
+    if (codeProcNum % MIN_BATCH != 0)
+    {
+        for (auto i = 0; i < queryProcNum; i++)
+        {
             WholeReduceMin(l2DistanceLocalMin[(i * codeBatchSize + codeProcNum / MIN_BATCH) * 2],
                            l2DistanceLocal[i * codeSizeEachLoop + codeProcNum / MIN_BATCH * MIN_BATCH],
                            codeProcNum % MIN_BATCH, 1, 1, 1, srcRepStride);
@@ -484,49 +506,44 @@ __aicore__ inline void DistanceFlatL2<DataType>::SetFlagReady()
 }
 
 template <typename DataType>
-__aicore__ inline void DistanceFlatL2<DataType>::DoMask(uint32_t queryLoopIdx,
-                                                        uint32_t codeLoopIdx,
-                                                        uint32_t queryProcNum,
-                                                        uint32_t codeProcNum,
+__aicore__ inline void DistanceFlatL2<DataType>::DoMask(uint32_t queryLoopIdx, uint32_t codeLoopIdx,
+                                                        uint32_t queryProcNum, uint32_t codeProcNum,
                                                         LocalTensor<half> &l2DistanceLocal)
 {
-    if (maskFlag == 0) {
+    if (maskFlag == 0)
+    {
         return;
     }
     auto maskLocal = maskQue.AllocTensor<uint8_t>();
     // 本次算子已经计算好的query的对应的mask偏移:queryLoopIdx * querySizeEachLoop * maskLen
     // 本次算子已经计算好的code的对应的mask偏移:codeLoopIdx * codeSizeEachLoop / Utils::MASK_BIT_NUM
     uint64_t maskOffset = queryLoopIdx * querySizeEachLoop * static_cast<uint64_t>(maskLen) +
-        codeLoopIdx * codeSizeEachLoop / Utils::MASK_BIT_NUM;
+                          codeLoopIdx * codeSizeEachLoop / Utils::MASK_BIT_NUM;
 
-    for (uint32_t i = 0; i < queryProcNum; i++) {
+    for (uint32_t i = 0; i < queryProcNum; i++)
+    {
         DataCopy(maskLocal[i * maskLenEachLoop], maskGlobal[i * static_cast<uint64_t>(maskLen) + maskOffset],
-            maskLenEachLoop);
+                 maskLenEachLoop);
     }
     maskQue.EnQue(maskLocal);
     maskLocal = maskQue.DeQue<uint8_t>();
     // dstBlkStride,src0BlkStride,src1BlkStride 1
     // dstRepStride,src0RepStride,src1RepStride 8
-    BinaryRepeatParams param {
-        1,
-        1,
-        1,
-        8,
-        8,
-        8
-    };
+    BinaryRepeatParams param{1, 1, 1, 8, 8, 8};
 
     const uint32_t distOffset = Utils::SELECT_REPEAT_TIME * Utils::VIC_HALF_FULL_MASK;
     const uint32_t maskRepateOffset = distOffset / Utils::MASK_BIT_NUM;
-    for (uint32_t i = 0; i < selectLoopTime; i++) {
+    for (uint32_t i = 0; i < selectLoopTime; i++)
+    {
         Select(l2DistanceLocal[i * distOffset], maskLocal[i * maskRepateOffset], l2DistanceLocal[i * distOffset],
-            Utils::HALF_MAX, SELMODE::VSEL_TENSOR_SCALAR_MODE, Utils::VIC_HALF_FULL_MASK, Utils::SELECT_REPEAT_TIME,
-            param);
+               Utils::HALF_MAX, SELMODE::VSEL_TENSOR_SCALAR_MODE, Utils::VIC_HALF_FULL_MASK, Utils::SELECT_REPEAT_TIME,
+               param);
     }
-    if (selectRemainder != 0) {
+    if (selectRemainder != 0)
+    {
         Select(l2DistanceLocal[selectLoopTime * distOffset], maskLocal[selectLoopTime * maskRepateOffset],
-            l2DistanceLocal[selectLoopTime * distOffset], Utils::HALF_MAX, SELMODE::VSEL_TENSOR_SCALAR_MODE,
-            Utils::VIC_HALF_FULL_MASK, selectRemainder, param);
+               l2DistanceLocal[selectLoopTime * distOffset], Utils::HALF_MAX, SELMODE::VSEL_TENSOR_SCALAR_MODE,
+               Utils::VIC_HALF_FULL_MASK, selectRemainder, param);
     }
 
     maskQue.FreeTensor(maskLocal);
@@ -577,7 +594,8 @@ __aicore__ inline void DistanceFlatL2<DataType>::ComputeQueryL2Norm(uint32_t que
                                                                     bool isTail)
 {
     auto queryDotQueryLocal = queryDotQueryQue.AllocTensor<UpGradeDataType>();
-    if (isTail) {
+    if (isTail)
+    {
         matmulObjL2Norm.SetTail(querySizeLastLoop, querySizeLastLoop, dimSize);
     }
 
@@ -591,7 +609,8 @@ __aicore__ inline void DistanceFlatL2<DataType>::ComputeQueryL2Norm(uint32_t que
         set_flag(PIPE_MTE2, PIPE_S, EVENT_ID0);
 
         wait_flag(PIPE_MTE2, PIPE_S, EVENT_ID0);
-        for (auto i = 0; i < queryProcNum; i++) {
+        for (auto i = 0; i < queryProcNum; i++)
+        {
             auto querySquareSum = queryDotQueryLocal.GetValue(i * querySizeEachLoop + i);
             queryL2NormLocal.SetValue(i, querySquareSum);
         }
@@ -621,7 +640,8 @@ __aicore__ inline void DistanceFlatL2<DataType>::processEachQueryLoop(uint32_t q
     ComputeQueryL2Norm(queryOffset, queryProcNum, queryL2NormLocal, isQueryTail);
 
     matmulObjIp.SetTensorA(querysGlobal[queryOffset]);
-    for (auto codeLoopIdx = 0; codeLoopIdx < codeLoopTimes; codeLoopIdx++) {
+    for (auto codeLoopIdx = 0; codeLoopIdx < codeLoopTimes; codeLoopIdx++)
+    {
         processEachCodeLoop(queryLoopIdx, codeLoopIdx, queryProcNum, isQueryTail, queryL2NormLocal);
     }
 
@@ -632,11 +652,13 @@ template <typename DataType>
 __aicore__ inline void DistanceFlatL2<DataType>::process()
 {
     REGIST_MATMUL_OBJ(&pipe, GetSysWorkSpacePtr(), matmulObjIp, matmulObjL2Norm);
-    if (corePorcCodeSize != 0) {
+    if (corePorcCodeSize != 0)
+    {
         matmulObjIp.Init(&cubeTilingIp);
         matmulObjL2Norm.Init(&cubeTilingL2Norm);
 
-        for (auto queryLoopIdx = 0; queryLoopIdx < queryLoopTimes; queryLoopIdx++) {
+        for (auto queryLoopIdx = 0; queryLoopIdx < queryLoopTimes; queryLoopIdx++)
+        {
             processEachQueryLoop(queryLoopIdx);
         }
 
@@ -645,13 +667,14 @@ __aicore__ inline void DistanceFlatL2<DataType>::process()
     }
     SetFlagReady();
 }
-}
+}  // namespace IndexOps
 
 extern "C" __global__ __aicore__ void distance_flat_l2(GM_ADDR queries, GM_ADDR mask, GM_ADDR codes, GM_ADDR l2PreNorm,
                                                        GM_ADDR actualNum, GM_ADDR l2Distance, GM_ADDR l2DistanceMin,
                                                        GM_ADDR flag, GM_ADDR workspace, GM_ADDR tiling)
 {
-    if (workspace == nullptr) {
+    if (workspace == nullptr)
+    {
         return;
     }
 
@@ -659,7 +682,8 @@ extern "C" __global__ __aicore__ void distance_flat_l2(GM_ADDR queries, GM_ADDR 
     const DistanceFlatL2TilingData *__restrict pTilingDevice = &tiling_data;
 
     IndexOps::DistanceFlatL2<half> op;
-    if ASCEND_IS_AIV {
+    if ASCEND_IS_AIV
+    {
         op.Init(queries, mask, codes, l2PreNorm, actualNum, l2Distance, l2DistanceMin, flag, pTilingDevice);
     }
     op.process();
