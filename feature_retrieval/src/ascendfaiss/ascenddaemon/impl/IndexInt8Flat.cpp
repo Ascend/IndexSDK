@@ -160,6 +160,10 @@ IndexInt8Flat<P>::IndexInt8Flat(int dim, MetricType metric, int64_t resourceSize
     {
         searchBatchSizes = {128, 112, 96, 80, 64, 48, 36, 32, 24, 18, 16, 12, 8, 6, 4, 2, 1};
     }
+    else if (faiss::ascend::SocUtils::GetInstance().IsAscendA5() && (metric == METRIC_INNER_PRODUCT))
+    {
+        searchBatchSizes = {128, 112, 96, 80, 64, 48, 36, 32, 24, 18, 16, 12, 8, 6, 4, 2, 1};
+    }
     else
     {
         searchBatchSizes = {64, 48, 36, 32, 24, 18, 16, 12, 8, 6, 4, 2, 1};
@@ -178,8 +182,13 @@ IndexInt8Flat<P>::IndexInt8Flat(int dim, MetricType metric, int64_t resourceSize
     burstsOfBlock = (this->codeBlockSize + BURST_LEN - 1) / BURST_LEN * 2;
 
     this->int8L2Norm = CREATE_UNIQUE_PTR(Int8L2Norm, dim);  // int8L2Norm is inited by child class
-    flagNum = faiss::ascend::SocUtils::GetInstance().IsAscend910B() ? CORE_NUM : FLAG_NUM;
-    isNeedCleanMinDist = faiss::ascend::SocUtils::GetInstance().IsAscend910B();
+    flagNum = FLAG_NUM;
+    isNeedCleanMinDist = false;
+    if (faiss::ascend::SocUtils::GetInstance().IsAscendA5() || faiss::ascend::SocUtils::GetInstance().IsAscend910B())
+    {
+        flagNum = CORE_NUM;
+        isNeedCleanMinDist = true;
+    }
 }
 
 template <typename P>

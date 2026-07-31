@@ -201,7 +201,9 @@ class AscendcDistanceInt8CosMaxsWithMask : public OpDef
 
         this->AICore().SetTiling(optiling::TilingFunc);
 
-        this->AICore().AddConfig("ascend910b").AddConfig("ascend910_93");
+        this->AICore().AddConfig("ascend910b");
+        this->AICore().AddConfig("ascend910_93");
+        this->AICore().AddConfig("ascend950");
     }
 };
 

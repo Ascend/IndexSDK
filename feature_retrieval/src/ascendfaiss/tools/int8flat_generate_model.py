@@ -378,7 +378,7 @@ def generate_ascendc_distance_int8_cos_maxs_with_mask_json(core_num, search_page
     utils.generate_op_config(ascendc_dist_int8_flat_cos_obj, file_path)
 
 
-def generate_910b_int8_offline_model(args, config_path, core_num, soc_version, code_num_list):
+def generate_ascendc_int8_offline_model(args, config_path, core_num, soc_version, code_num_list):
     map_args = []
     dim = args.dim
     process_id = args.process_id
@@ -518,7 +518,7 @@ def generate_int8_offline_model():
     work_dir = "."
     config_path = utils.get_config_path(work_dir)
 
-    if args.npu_type.find('910') != -1:
+    if '910' in args.npu_type or '950' in args.npu_type:
         valid_code_num_list = CODE_NUM_LIST
         if "-code" in sys.argv:
             code_num = args.code_num
@@ -527,7 +527,7 @@ def generate_int8_offline_model():
                 code_num,
             ]
 
-        generate_910b_int8_offline_model(args, config_path, core_num, soc_version, valid_code_num_list)
+        generate_ascendc_int8_offline_model(args, config_path, core_num, soc_version, valid_code_num_list)
         return
 
     map_args = []

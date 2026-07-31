@@ -261,7 +261,7 @@ def add_npu_type_arg(parser):
         'npu_type',
         "310P",
         str,
-        "NPU type, 310P / 910B1 / 910B2 / 910B3 / 910B4 / 910_{NPU Name}. 310P by default",
+        "NPU type, 310P / 910B1 / 910B2 / 910B3 / 910B4 / 910_{NPU Name} / Ascend950PR. 310P by default",
     )
 
 
