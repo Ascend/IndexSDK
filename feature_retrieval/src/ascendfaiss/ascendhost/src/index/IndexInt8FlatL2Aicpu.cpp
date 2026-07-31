@@ -16,18 +16,22 @@
  * -------------------------------------------------------------------------
  */
 
-#include<algorithm>
+#include "index/IndexInt8FlatL2Aicpu.h"
+
+#include <algorithm>
+
 #include "ascenddaemon/utils/AscendTensor.h"
 #include "ascenddaemon/utils/Limits.h"
 #include "common/utils/CommonUtils.h"
 #include "ops/cpukernel/impl/utils/kernel_shared_def.h"
-#include "index/IndexInt8FlatL2Aicpu.h"
 
-namespace ascend {
-namespace {
+namespace ascend
+{
+namespace
+{
 const int BURST_LEN = 64;
 const int PAGE_BLOCKS = 32;
-}
+}  // namespace
 
 IndexInt8FlatL2Aicpu::IndexInt8FlatL2Aicpu(int dim, int64_t resourceSize, int blockSize)
     : IndexInt8Flat<int32_t>(dim, MetricType::METRIC_L2, resourceSize, blockSize)
@@ -62,14 +66,14 @@ APP_ERROR IndexInt8FlatL2Aicpu::addVectors(AscendTensor<int8_t, DIMS_2> &rawData
     return APP_ERR_OK;
 }
 
-void IndexInt8FlatL2Aicpu::runDistCompute(int batch,
-                                          const std::vector<const AscendTensorBase *> &input,
-                                          const std::vector<const AscendTensorBase *> &output,
-                                          aclrtStream stream, uint32_t actualNum) const
+void IndexInt8FlatL2Aicpu::runDistCompute(int batch, const std::vector<const AscendTensorBase *> &input,
+                                          const std::vector<const AscendTensorBase *> &output, aclrtStream stream,
+                                          uint32_t actualNum) const
 {
-    IndexTypeIdx type = actualNum == static_cast<uint32_t>(this->codeBlockSize) ?
-        IndexTypeIdx::ITI_INT8_L2_FULL : IndexTypeIdx::ITI_INT8_L2;
-    if (faiss::ascend::SocUtils::GetInstance().IsAscend910B()) {
+    IndexTypeIdx type = actualNum == static_cast<uint32_t>(this->codeBlockSize) ? IndexTypeIdx::ITI_INT8_L2_FULL
+                                                                                : IndexTypeIdx::ITI_INT8_L2;
+    if (faiss::ascend::SocUtils::GetInstance().IsAscend910B() || faiss::ascend::SocUtils::GetInstance().IsAscendA5())
+    {
         type = IndexTypeIdx::ITI_INT8_L2;
     }
     std::vector<int> keys({batch, dims, codeBlockSize});
@@ -82,39 +86,37 @@ APP_ERROR IndexInt8FlatL2Aicpu::resetDistCompOp(int codeNum)
 {
     std::vector<IndexTypeIdx> distCompOpsIdxs = {IndexTypeIdx::ITI_INT8_L2, IndexTypeIdx::ITI_INT8_L2_FULL};
     std::vector<std::string> distCompOpsNames = {"DistanceInt8L2Mins", "DistanceInt8L2FullMins"};
-    if (faiss::ascend::SocUtils::GetInstance().IsAscend910B()) {
+    if (faiss::ascend::SocUtils::GetInstance().IsAscend910B() || faiss::ascend::SocUtils::GetInstance().IsAscendA5())
+    {
         distCompOpsIdxs.clear();
         distCompOpsIdxs.emplace_back(IndexTypeIdx::ITI_INT8_L2);
 
         distCompOpsNames.clear();
         distCompOpsNames.emplace_back("AscendcDistInt8FlatL2");
     }
-    for (size_t i = 0; i < distCompOpsIdxs.size(); i++) {
-        std::string opTypeName = distCompOpsNames.at(i) ;
+    for (size_t i = 0; i < distCompOpsIdxs.size(); i++)
+    {
+        std::string opTypeName = distCompOpsNames.at(i);
         IndexTypeIdx indexType = distCompOpsIdxs.at(i);
-        for (auto batch : searchBatchSizes) {
-            std::vector<int64_t> queryShape({ batch, dims });
-            std::vector<int64_t> maskShape({ batch, utils::divUp(codeNum, 8) }); // divUp to 8
-            std::vector<int64_t> coarseCentroidsShape({
-                utils::divUp(codeNum, CUBE_ALIGN), utils::divUp(dims, CUBE_ALIGN_INT8), CUBE_ALIGN, CUBE_ALIGN_INT8});
-            std::vector<int64_t> preNormsShape({ codeNum });
-            std::vector<int64_t> sizeShape({ CORE_NUM, SIZE_ALIGN });
-            std::vector<int64_t> distResultShape({ batch, codeNum });
-            std::vector<int64_t> minResultShape({ batch, this->burstsOfBlock });
-            std::vector<int64_t> flagShape({ flagNum, FLAG_SIZE });
+        for (auto batch : searchBatchSizes)
+        {
+            std::vector<int64_t> queryShape({batch, dims});
+            std::vector<int64_t> maskShape({batch, utils::divUp(codeNum, 8)});  // divUp to 8
+            std::vector<int64_t> coarseCentroidsShape(
+                {utils::divUp(codeNum, CUBE_ALIGN), utils::divUp(dims, CUBE_ALIGN_INT8), CUBE_ALIGN, CUBE_ALIGN_INT8});
+            std::vector<int64_t> preNormsShape({codeNum});
+            std::vector<int64_t> sizeShape({CORE_NUM, SIZE_ALIGN});
+            std::vector<int64_t> distResultShape({batch, codeNum});
+            std::vector<int64_t> minResultShape({batch, this->burstsOfBlock});
+            std::vector<int64_t> flagShape({flagNum, FLAG_SIZE});
 
-            std::vector<std::pair<aclDataType, std::vector<int64_t>>> input {
-                { ACL_INT8, queryShape },
-                { ACL_UINT8, maskShape },
-                { ACL_INT8, coarseCentroidsShape },
-                { ACL_INT32, preNormsShape },
-                { ACL_UINT32, sizeShape }
-            };
-            std::vector<std::pair<aclDataType, std::vector<int64_t>>> output {
-                { ACL_FLOAT16, distResultShape },
-                { ACL_FLOAT16, minResultShape },
-                { ACL_UINT16, flagShape }
-            };
+            std::vector<std::pair<aclDataType, std::vector<int64_t>>> input{{ACL_INT8, queryShape},
+                                                                            {ACL_UINT8, maskShape},
+                                                                            {ACL_INT8, coarseCentroidsShape},
+                                                                            {ACL_INT32, preNormsShape},
+                                                                            {ACL_UINT32, sizeShape}};
+            std::vector<std::pair<aclDataType, std::vector<int64_t>>> output{
+                {ACL_FLOAT16, distResultShape}, {ACL_FLOAT16, minResultShape}, {ACL_UINT16, flagShape}};
             std::vector<int> keys({batch, dims, codeBlockSize});
             OpsMngKey opsKey(keys);
             auto ret = DistComputeOpsManager::getInstance().resetOp(opTypeName, indexType, opsKey, input, output);
@@ -127,9 +129,9 @@ APP_ERROR IndexInt8FlatL2Aicpu::resetDistCompOp(int codeNum)
 
 void IndexInt8FlatL2Aicpu::initSearchResult(int indexesSize, int n, int k, float16_t *distances, idx_t *labels)
 {
-    AscendTensor<float16_t, DIMS_3> outDistances(distances, { indexesSize, n, k });
-    AscendTensor<idx_t, DIMS_3> outIndices(labels, { indexesSize, n, k });
+    AscendTensor<float16_t, DIMS_3> outDistances(distances, {indexesSize, n, k});
+    AscendTensor<idx_t, DIMS_3> outIndices(labels, {indexesSize, n, k});
     outDistances.initValue(Limits<float16_t>::getMax());
     outIndices.initValue(std::numeric_limits<idx_t>::max());
 }
-} // namespace ascend
+}  // namespace ascend
