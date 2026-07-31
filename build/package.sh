@@ -20,8 +20,8 @@ set -e
 readonly CUR_DIR=$(dirname "$(readlink -f "$0")")
 readonly TOP_DIR=${CUR_DIR}/..
 readonly NAME="mxindex"
-readonly SDK_VERSION=$(sed -n 's/^version:[[:space:]]*//p' "${TOP_DIR}"/../ci/config/config.ini)
-readonly SDK_VERSION_INFO=$(sed -n 's/^version:[[:space:]]*//p' "${TOP_DIR}"/../ci/config/config.ini)
+readonly SDK_VERSION=26.2.0.beta.1
+readonly SDK_VERSION_INFO=26.2.0.beta.1
 
 linux_type=$(uname -i)
 if [ "${linux_type}" == "aarch64" ];then
