@@ -962,7 +962,7 @@ protected:
 
 ## 学术研究
 
-- RabitQ 论文: [Rapid and Accurate Binary Quantization](https://arxiv.org/abs/2405.12456)
+- RabitQ 论文: [Rapid and Accurate Binary Quantization](https://arxiv.org/abs/2405.12497)
 
 # 6. 未解决问题
 
@@ -977,7 +977,7 @@ protected:
 - [Faiss 官方文档](https://github.com/facebookresearch/faiss)
 - [IndexSDK 用户指南](../../zh/05_user_guide.md)
 - [Ascend NPU 开发文档](https://www.hiascend.com/document)
-- [RabitQ 论文](https://arxiv.org/abs/2405.12456)
+- [RabitQ 论文](https://arxiv.org/abs/2405.12497)
 
 ### 术语表
 
