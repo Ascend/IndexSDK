@@ -23,9 +23,9 @@
 
    | 芯片型号 | 拉取命令 |
    |---------|---------|
-   | 310P | `docker pull swr.cn-south-1.myhuaweicloud.com/ascendhub/indexsdk:26.0.0-310p-ubuntu22.04-py3.11` |
-   | A3 | `docker pull swr.cn-south-1.myhuaweicloud.com/ascendhub/indexsdk:26.0.0-a3-ubuntu22.04-py3.11` |
-   | 910b | `docker pull swr.cn-south-1.myhuaweicloud.com/ascendhub/indexsdk:26.0.0-910b-ubuntu22.04-py3.11` |
+   | 310P | `docker pull swr.cn-south-1.myhuaweicloud.com/ascendhub/indexsdk:26.1.0-cann9.1.0-310p-ubuntu22.04-py3.11` |
+   | A3 | `docker pull swr.cn-south-1.myhuaweicloud.com/ascendhub/indexsdk:26.1.0-cann9.1.0-a3-ubuntu22.04-py3.11` |
+   | 910b | `docker pull swr.cn-south-1.myhuaweicloud.com/ascendhub/indexsdk:26.1.0-cann9.1.0-910b-ubuntu22.04-py3.11` |
 
 ### 1.2 环境预检查
 
@@ -40,7 +40,7 @@
 
 - 驱动与工具链挂载：将宿主机上的驱动文件和工具链目录（如 /usr/local/Ascend/driver 和 /usr/local/bin/npu-smi）以只读方式挂载到容器中，保证容器内的运行环境与宿主机一致。以下样例代码中，/dev/davinci0 表示挂载0号设备。
 
-- 说明：-ti 后接对应的镜像标签，例如：-it swr.cn-south-1.myhuaweicloud.com/ascendhub/indexsdk:26.0.0-910b-ubuntu22.04-py3.11
+- 说明：-ti 后接对应的镜像标签，例如：-it swr.cn-south-1.myhuaweicloud.com/ascendhub/indexsdk:26.1.0-cann9.1.0-910b-ubuntu22.04-py3.11
 
 ```bash
 docker run \
@@ -54,7 +54,7 @@ docker run \
     -v /usr/local/Ascend/driver/lib64/:/usr/local/Ascend/driver/lib64/ \
     -v /usr/local/Ascend/driver/version.info:/usr/local/Ascend/driver/version.info \
     -v /etc/ascend_install.info:/etc/ascend_install.info \
-    -it swr.cn-south-1.myhuaweicloud.com/ascendhub/indexsdk:26.0.0-910b-ubuntu22.04-py3.11 bash
+    -it swr.cn-south-1.myhuaweicloud.com/ascendhub/indexsdk:26.1.0-cann9.1.0-910b-ubuntu22.04-py3.11 bash
 
 ```
 

@@ -24,23 +24,23 @@ Tag 遵循以下格式：
 
 | 字段         | 示例值                          | 说明             |
 | ------------ | ------------------------------- | ---------------- |
-| `indexsdk版本`   | `26.0.0`              | Index SDK 版本号      |
+| `indexsdk版本`   | `26.1.0`              | Index SDK 版本号      |
 | `芯片系列`   | `950`、`910`、`a3`、`atlas 800`            | 目标芯片系列 |
 | `操作系统`   | `ubuntu22.04`、`openeuler24.03` | 基础操作系统     |
 | `python版本` | `py3.11`    | Python 版本      |
 
-### 2.2 CANN 9.0.0 + 26.0.0 Index SDK镜像
+### 2.2 CANN 9.1.0 + 26.1.0 Index SDK镜像
 
 | Tag                                | Dockerfile                                                   | 镜像内容        |
 | ---------------------------------- | ------------------------------------------------------------ | --------------- |
-| `26.0.0-910b-ubuntu22.04-py3.11`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/Dockerfile.910b.ubuntu) | toolkit + Index SDK |
-| `26.0.0-310p-ubuntu22.04-py3.11`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/Dockerfile.310p.ubuntu)      | toolkit + Index SDK |
-| `26.0.0-a3-ubuntu22.04-py3.11`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/Dockerfile.a3.ubuntu)         | toolkit + Index SDK |
-| `26.0.0-950-ubuntu22.04-py3.11`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/Dockerfile.950.ubuntu)         | toolkit + Index SDK |
-| `26.0.0-910-openeuler24.04-py3.11`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/Dockerfile.910b.openeuler) | toolkit + Index SDK |
-| `26.0.0-310p-openeuler24.04-py3.11`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/Dockerfile.310p.openeuler)      | toolkit + Index SDK |
-| `26.0.0-a3-openeuler24.04-py3.11`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/Dockerfile.a3.openeuler)         | toolkit + Index SDK |
-| `26.0.0-950-openeuler24.04-py3.11`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/Dockerfile.950.openeuler)         | toolkit + Index SDK |
+| `26.1.0-cann9.1.0-910-ubuntu22.04-py3.11`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/Dockerfile.910b.ubuntu) | toolkit + Index SDK |
+| `26.1.0-cann9.1.0-310p-ubuntu22.04-py3.11`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/Dockerfile.310p.ubuntu)      | toolkit + Index SDK |
+| `26.1.0-cann9.1.0-a3-ubuntu22.04-py3.11`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/Dockerfile.a3.ubuntu)         | toolkit + Index SDK |
+| `26.1.0-cann9.1.0-950-ubuntu22.04-py3.11`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/Dockerfile.950.ubuntu)         | toolkit + Index SDK |
+| `26.1.0-cann9.1.0-910-openeuler24.03-py3.11`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/Dockerfile.910b.openeuler) | toolkit + Index SDK |
+| `26.1.0-cann9.1.0-310p-openeuler24.03-py3.11`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/Dockerfile.310p.openeuler)      | toolkit + Index SDK |
+| `26.1.0-cann9.1.0-a3-openeuler24.03-py3.11`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/Dockerfile.a3.openeuler)         | toolkit + Index SDK |
+| `26.1.0-cann9.1.0-950-openeuler24.03-py3.11`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/Dockerfile.950.openeuler)         | toolkit + Index SDK |
 
 ## 3.快速开始
 
@@ -59,7 +59,7 @@ Tag 遵循以下格式：
 
 - 驱动与工具链挂载 ：将宿主机上的驱动文件和工具链目录（如 /usr/local/Ascend/driver 和 /usr/local/bin/npu-smi）以只读方式挂载到容器中，保证容器内的运行环境与宿主机一致。 以下样例代码中，/dev/davinci1 表示挂载 1 号设备。
 
-- -ti后接对应的镜像标签，例如：-it swr.cn-south-1.myhuaweicloud.com/ascendhub/indexsdk:26.0.0-910b-ubuntu22.04-py3.11
+- -ti后接对应的镜像标签，例如：-it swr.cn-south-1.myhuaweicloud.com/ascendhub/indexsdk:26.1.0-cann9.1.0-910b-ubuntu22.04-py3.11
 
 ```bash
 docker run \
