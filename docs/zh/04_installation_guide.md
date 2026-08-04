@@ -238,7 +238,7 @@ Python 安装好后，pip 所需依赖名称、对应版本及获取建议请参
 除了前述依赖外，还需要根据是否需要使用 ILFlat 算法选择安装**开放态场景包**。
 
 - 如不需要，跳过此步骤。
-- 如需要，请先下载 [Ascend-cann-device-sdk 安装包](https://www.hiascend.com/developer/download/community/result?module=cann&cann=9.0.0)。
+- 如需要，请先下载 [Ascend-cann-device-sdk 安装包](https://www.hiascend.com/developer/download/community/result?module=cann&cann=9.1.0)。
 
 ```bash
 unzip Ascend-cann-device-sdk_{version}_linux-{arch}.zip
