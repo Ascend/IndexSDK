@@ -20,7 +20,7 @@ set -e
 readonly ARCH=$(uname -m)
 readonly NPU_MODEL=$(npu-smi info | awk 'NR==7 {print $3}')
 readonly CUR_DIR=$(dirname "$(readlink -f "$0")")
-readonly INDEXSDK_VERSION="26.0.0"
+readonly INDEXSDK_VERSION="26.1.0"
 readonly INDEXSDK_REPO_URL="https://gitcode.com/Ascend/IndexSDK/releases/download/v${INDEXSDK_VERSION}"
 OPENBLAS_INSTALL_PATH="/opt/OpenBLAS"
 FAISS_INSTALL_PATH="/usr/local/faiss"

@@ -1,9 +1,9 @@
 # 基于 IndexSDK 官方 Dockerfile.910b.ubuntu 适配 Dev Container
-ARG CANN_VERSION=9.0.0
+ARG CANN_VERSION=9.1.0
 FROM swr.cn-south-1.myhuaweicloud.com/ascendhub/cann:${CANN_VERSION}-910b-ubuntu22.04-py3.11
 
 ARG PLATFORM=910B
-ARG VERSION=26.0.0
+ARG VERSION=26.1.0
 ARG install_path=/usr/local/faiss
 ARG ASCEND_BASE=/usr/local/Ascend
 ENV DEBIAN_FRONTEND=noninteractive

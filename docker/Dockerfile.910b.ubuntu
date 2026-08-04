@@ -1,4 +1,4 @@
-ARG CANN_VERSION=9.0.0
+ARG CANN_VERSION=9.1.0
 FROM swr.cn-south-1.myhuaweicloud.com/ascendhub/cann:${CANN_VERSION}-910b-ubuntu22.04-py3.11
 
 WORKDIR /tmp
@@ -104,7 +104,7 @@ ENV GLOG_v=2 \
 
 RUN mkdir -p ${MX_INDEX_MODELPATH}
 
-ARG VERSION=26.0.0
+ARG VERSION=26.1.0
 RUN ARCH=$(uname -m) && \
     wget https://gitcode.com/Ascend/IndexSDK/releases/download/v${VERSION}/Ascend-mindxsdk-mxindex_${VERSION}_linux-${ARCH}.run && \
     bash Ascend-mindxsdk-mxindex_${VERSION}_linux-${ARCH}.run --install --platform=${PLATFORM} && \
