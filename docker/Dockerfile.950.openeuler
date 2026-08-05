@@ -1,5 +1,5 @@
 ARG CANN_VERSION=9.1.0
-FROM swr.cn-south-1.myhuaweicloud.com/ascendhub/cann:${CANN_VERSION}-950-openeuler24.03-py3.11
+FROM swr.cn-south-1.myhuaweicloud.com/ascendhub/cann:${CANN_VERSION}-950-openeuler24.03-py3.12
 
 WORKDIR /tmp
 
@@ -92,7 +92,7 @@ ENV GLOG_v=2 \
     ASCEND_OPP_PATH=$TOOLKIT_PATH/opp \
     ASCEND_AICPU_PATH=$TOOLKIT_PATH \
     TBE_IMPL_PATH=$TOOLKIT_PATH/opp/op_impl/built-in/ai_core/tbe \
-    PYTHONPATH=$TBE_IMPL_PATH:/usr/local/python3.11.15/lib/python3.11/site-packages/:$PYTHONPATH \
+    PYTHONPATH=$TBE_IMPL_PATH:/usr/local/python3.12.13/lib/python3.12/site-packages/:$PYTHONPATH \
     ASCEND_HOME=${ASCEND_BASE} \
     MX_INDEX_MODELPATH=/home/Ascend/modelpath \
     LD_LIBRARY_PATH=${ASCEND_BASE}/mxIndex/host/lib:$LD_LIBRARY_PATH
