@@ -1,5 +1,5 @@
 ARG CANN_VERSION=9.1.0
-FROM swr.cn-south-1.myhuaweicloud.com/ascendhub/cann:${CANN_VERSION}-950-ubuntu22.04-py3.11
+FROM swr.cn-south-1.myhuaweicloud.com/ascendhub/cann:${CANN_VERSION}-950-ubuntu22.04-py3.12
 
 WORKDIR /tmp
 
