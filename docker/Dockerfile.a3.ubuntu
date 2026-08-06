@@ -38,6 +38,7 @@ RUN pip3 install -U pip && \
     pip3 install requests && \
     pip3 install attrs && \
     pip3 install psutil && \
+    pip3 install setuptools && \
     pip3 install faiss-cpu==1.13.2 && \
     rm -rf /root/.cache/pip
 
@@ -106,7 +107,7 @@ RUN mkdir -p ${MX_INDEX_MODELPATH}
 ARG VERSION=26.1.0
 RUN ARCH=$(uname -m) && \
     wget https://gitcode.com/Ascend/IndexSDK/releases/download/v${VERSION}/Ascend-mindxsdk-mxindex_${VERSION}_linux-${ARCH}.run && \
-    bash Ascend-mindxsdk-mxindex_${VERSION}_linux-${ARCH}.run --install --platform=${PLATFORM} && \
+    bash Ascend-mindxsdk-mxindex_${VERSION}_linux-${ARCH}.run --install --platform=${PLATFORM} --quiet && \
     cd ${ASCEND_BASE}/mxIndex/ops && ./custom_opp_${ARCH}.run
 
 RUN sed -i '$a\source /usr/local/Ascend/ascend-toolkit/set_env.sh' ~/.bashrc && \
