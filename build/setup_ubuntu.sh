@@ -168,7 +168,7 @@ else
 fi
 echo "[INFO] Installing IndexSDK..."
 chmod +x ${INDEXSDK_PKG}
-./${INDEXSDK_PKG} --install --install-path=${MX_INDEX_INSTALL_PATH} --platform=${PLATFORM}
+./${INDEXSDK_PKG} --install --install-path=${MX_INDEX_INSTALL_PATH} --platform=${PLATFORM} --quiet
 
 echo "export LD_LIBRARY_PATH=${MX_INDEX_INSTALL_PATH}/mxIndex/host/lib:\$LD_LIBRARY_PATH" >> /etc/profile
 echo "[INFO] Deployment completed successfully! Please execute: source /etc/profile"
