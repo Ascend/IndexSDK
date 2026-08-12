@@ -33,14 +33,32 @@ Index SDK是基于Faiss开发的昇腾NPU异构检索加速框架，针对高维
 | [属性过滤](./docs/zh/05_user_guide.md#属性过滤检索) | 支持时空库检索，通过属性过滤器对底库进行筛选，提高检索精度 | [链接](./docs/zh/api/03_attribute_filtering-based_retrieval.md) |
 | [批量检索](./docs/zh/05_user_guide.md#多Index批量检索) | 支持从多个Index库同时执行检索，合并返回TopK结果 | [链接](./docs/zh/api/04_multi-index_batch_retrieval.md) |
 | [其他功能](./docs/zh/05_user_guide.md#其他功能) | 创建降维对象、提供NPU与CPU之间的索引数据拷贝等功能 | [链接](./docs/zh/api/05_more_functions.md) |
+| [未使用接口](./docs/zh/api/06_unused_apis.md#未使用接口) | 列出当前仅供内部调用、后续将废弃且不建议用户使用的接口。 | [链接](./docs/zh/api/06_unused_apis.md)|
+| [接口调用返回值参考](./docs/zh/api/07_return_code_reference.md#接口调用返回值参考) | 提供 Device 侧接口调用返回码及含义说明，便于定位 ACL、参数、索引初始化、超时等错误。 | [链接](./docs/zh/api/07_return_code_reference.md)|
 
 ## 🚀 快速入门
 
 Index SDK提供了一个简单的样例，帮助用户快速体验Index SDK检索流程。详情可参考《[快速入门](./docs/zh/03_quick_start.md)》。
 
-## 📦 环境部署
+## 📦 安装指南
 
 Index SDK 支持离线安装、镜像安装、源码安装三种方式，详情可查看《[安装指南](./docs/zh/04_installation_guide.md)》。
+
+## 📘 使用指南
+
+Index SDK是基于Faiss开发的昇腾NPU异构检索加速框架，面向高维空间中的海量数据检索场景，帮助开发者快速构建高性能检索系统。具体操作请参考：《[使用指导](./docs/zh/05_user_guide.md)》。
+
+## 🗺️ Roadmap
+
+[Roadmap（2026Q3）](https://gitcode.com/Ascend/IndexSDK/issues/126)
+
+## 🔀 版本维护策略
+
+| 版本 | 维护策略 | 当前状态 | 发布日期 | 后续状态 | EOL日期 |
+| --- | --- | --- | --- | --- | --- |
+| master | 长期支持 | 开发 | 在研分支，不发布 | - | - |
+| v26.0.0 | 常规分支 | 维护 | 2026-04-25 | - | - |
+| v26.1.0 | 常规分支 | 维护 | 2026-07-31 | - | - |
 
 ## 🛠️ 贡献指南
 
@@ -49,7 +67,7 @@ Index SDK 支持离线安装、镜像安装、源码安装三种方式，详情�
 ## ⚖️ 相关说明
 
 🔹 《[使用指导](./docs/zh/05_user_guide.md)》<br>
-🔹 《[版本说明](./docs/zh/release_notes.md)》<br>
+🔹 《[版本说明](./docs/zh/release_notes_index.md)》<br>
 🔹 《[许可证声明](LICENSE.md)》<br>
 🔹 《[文档许可证声明](./docs/LICENSE)》<br>
 🔹 《[免责声明](./docs/zh/disclaimer.md)》<br>
