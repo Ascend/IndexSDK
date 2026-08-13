@@ -287,17 +287,32 @@ function build_release_for_gcc()
             exit 1
         fi
         echo "build single faiss package variant ${DEFAULT_FAISS_ABI} with FAISS_HOME=${faiss_home}"
-        build_Retrieval "${gcc_type}" "${faiss_home}" &
+        local retrieval_log=$(mktemp)
+        local vsa_log=$(mktemp)
+        build_Retrieval "${gcc_type}" "${faiss_home}" >"${retrieval_log}" 2>&1 &
         local retrieval_pid=$!
-        build_vsa &
+        build_vsa >"${vsa_log}" 2>&1 &
         local vsa_pid=$!
-        local build_failed=0
-        wait "${retrieval_pid}" || build_failed=1
-        wait "${vsa_pid}" || build_failed=1
-        if [ "${build_failed}" -ne 0 ]; then
-            echo "[ERROR] build_Retrieval or build_vsa failed."
-            exit 1
-        fi
+
+        # Fail fast: 任一任务失败时立即 kill 另一个并退出
+        local pid
+        for pid in "${retrieval_pid}" "${vsa_pid}"; do
+            if ! wait "${pid}"; then
+                if [ "${pid}" = "${retrieval_pid}" ]; then
+                    echo "[ERROR] build_Retrieval failed. Log:"
+                    cat "${retrieval_log}"
+                    kill "${vsa_pid}" 2>/dev/null
+                else
+                    echo "[ERROR] build_vsa failed. Log:"
+                    cat "${vsa_log}"
+                    kill "${retrieval_pid}" 2>/dev/null
+                fi
+                wait 2>/dev/null
+                rm -f "${retrieval_log}" "${vsa_log}"
+                exit 1
+            fi
+        done
+        rm -f "${retrieval_log}" "${vsa_log}"
         build_feature_retrieval "${gcc_type}" "${faiss_home}" "single" "${DEFAULT_FAISS_ABI}" "${DEFAULT_FAISS_ABI}"
     fi
 }

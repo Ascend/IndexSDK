@@ -266,7 +266,7 @@ unzip Ascend-cann-device-sdk_{version}_linux-{arch}.zip
 **安装步骤**
 
 1. 以软件包的安装用户登录安装环境。
-2. 将软件包上传到安装环境的任意路径下（如：`/home/work/FeatureRetrieval`）并进入软件包所在路径。
+2. 将软件包上传到安装环境的任意路径下（如：`/usr/local/Ascend/`）并进入软件包所在路径。
 3. 增加对软件包的可执行权限。
 
     ```bash
@@ -289,11 +289,7 @@ unzip Ascend-cann-device-sdk_{version}_linux-{arch}.zip
     - **若用户未指定安装路径**，软件会默认安装到以下路径：
         - 若使用 root 用户安装，默认安装路径为：`/usr/local/Ascend`。
         - 若使用非 root 用户安装，则默认安装路径为：`${HOME}/Ascend`，${HOME} 指用户目录。
-    - **若用户想指定安装路径**，需要先创建安装路径。以安装路径 `/home/work/FeatureRetrieval` 为例：
-
-        ```bash
-        mkdir -p /home/work/FeatureRetrieval
-        ```
+    - **若用户指定安装路径**，则通过配置--install-path 指定。
 
 6. 执行安装命令。
 
@@ -339,6 +335,12 @@ Index SDK 多版本 run 包在安装时支持选择激活不同 Faiss ABI 版本
 ./Ascend-mindxsdk-mxindex_{version}_linux-{arch}.run --install --install-path=<path> --platform=<npu_type> --faiss-version=1.14
 ```
 
+命令执行后返回如下信息，则表示特征检索包安装成功。
+
+```bash
+Install package successfully.
+```
+
 多版本 run 包安装完成后，软件包会根据 `--faiss-version` 配置以下软链接：
 
 ```bash
@@ -352,26 +354,15 @@ mxIndex/include/ascend -> faiss/ascend
 > run 包只负责提供或切换 Index SDK 业务动态库和头文件，不会安装或替换用户环境中的 libfaiss.so。用户编译、运行应用程序时，需要将对应版本 Faiss 的 include 和 lib 目录加入编译参数和 `LD_LIBRARY_PATH`。使用 IVFRaBitQ/RaBitQ 特性时，应选择 Faiss 1.14.1；使用非 IVFRaBitQ/RaBitQ 特性且需要兼容老环境时，可选择 Faiss 1.10.x。
 > 单版本 run 包只包含一个 Faiss ABI 版本，安装脚本会校验 `--faiss-version` 和包内版本是否一致。如果用户为 Faiss 1.10.x 单版本包指定 `--faiss-version=1.14`，或为 Faiss 1.14.1 单版本包指定 `--faiss-version=1.10`，安装会报错退出。
 
-如果应用程序直接包含 Faiss 头文件或调用 Faiss 接口，例如 `faiss::read_index`、`faiss::write_index` 或 `faiss::IndexIVFRaBitQ`，还需要在编译和运行时显式选择与 `--faiss-version` 一致的 Faiss 版本。以安装路径 `/home/work/FeatureRetrieval` 为例：
+如果应用程序直接包含 Faiss 头文件或调用 Faiss 接口，例如 `faiss::read_index`、`faiss::write_index` 或 `faiss::IndexIVFRaBitQ`，还需要在编译和运行时显式选择与 `--faiss-version` 一致的 Faiss 版本。以安装路径 `/usr/local/Ascend/` 为例：
 
 ```bash
 # 非IVFRaBitQ/RaBitQ业务场景，使用Faiss 1.10.x
-g++ test.cpp -I/home/work/FeatureRetrieval/mxIndex/include -I/usr/local/faiss/faiss1.10.0/include \
-    -L/home/work/FeatureRetrieval/mxIndex/host/lib -L/usr/local/faiss/faiss1.10.0/lib \
-    -lascendfaiss -lascendsearch -lfaiss
-export LD_LIBRARY_PATH=/home/work/FeatureRetrieval/mxIndex/host/lib:/usr/local/faiss/faiss1.10.0/lib:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=/usr/local/Ascend/mxIndex/host/lib:/usr/local/faiss/faiss1.10.0/lib:$LD_LIBRARY_PATH
 
 # IVFRaBitQ/RaBitQ业务场景，使用Faiss 1.14.1
-g++ test.cpp -I/home/work/FeatureRetrieval/mxIndex/include -I/usr/local/faiss/faiss1.14.1/include \
-    -L/home/work/FeatureRetrieval/mxIndex/host/lib -L/usr/local/faiss/faiss1.14.1/lib \
-    -lascendfaiss -lascendsearch -lfaiss
-export LD_LIBRARY_PATH=/home/work/FeatureRetrieval/mxIndex/host/lib:/usr/local/faiss/faiss1.14.1/lib:$LD_LIBRARY_PATH
-```
+export LD_LIBRARY_PATH=/usr/local/Ascend/mxIndex/host/lib:/usr/local/faiss/faiss1.14.1/lib:$LD_LIBRARY_PATH
 
-命令执行后返回如下信息，则表示特征检索包安装成功。
-
-```bash
-Install package successfully.
 ```
 
 ### 镜像安装
