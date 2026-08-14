@@ -1,13 +1,13 @@
-# 为Ascend IndexSDK贡献
+# 为Ascend Index SDK贡献
 
-感谢您考虑为 Ascend IndexSDK 做出贡献！我们欢迎任何形式的贡献，包括错误修复、功能增强、文档改进等，甚至只是反馈。无论您是经验丰富的开发者还是第一次参与开源项目，您的帮助都是非常宝贵的。
+感谢您考虑为 Ascend Index SDK 做出贡献！我们欢迎任何形式的贡献，包括错误修复、功能增强、文档改进等，甚至只是反馈。无论您是经验丰富的开发者还是第一次参与开源项目，您的帮助都是非常宝贵的。
 
 您可以通过多种方式支持本项目：
 
 - 通过[IndexSDK新手任务池](https://gitcode.com/Ascend/IndexSDK/issues/14)参与贡献。
 - 完成社区任务，领取奖励：[昇腾开源软件社区任务](https://www.hiascend.com/developer/activities/details/5dbf59b2dce14f91afb157f5a52f332d#tab0)
 - 审查Pull Request并协助其他贡献者。
-- 传播项目：在博客文章、社交媒体上分享IndexSDK，或给仓库点个⭐。
+- 传播项目：在博客文章、社交媒体上分享Index SDK，或给仓库点个⭐。
 参与贡献前，请先签署开放项目贡献者许可协议（[CLA](https://clasign.osinfra.cn/sign/gitee_ascend-1611222220829317930)），提前了解[《社区行为规范》](https://gitcode.com/Ascend/community/blob/master/docs/contributor/code-of-conduct.md)。
 
 ## 贡献方式

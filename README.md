@@ -13,6 +13,7 @@
 
 <span style="font-size:14px;">
 
+🔹 **[2026.07.31]**：🚀 [Index SDK 26.1.0 Release 版本发布](https://gitcode.com/Ascend/IndexSDK/releases/v26.1.0)<br>
 🔹 **[2026.04.25]**：🚀 [Index SDK 26.0.0 Release 版本发布](https://gitcode.com/Ascend/IndexSDK/releases/v26.0.0)<br>
 🔹 **[2025.12.30]**：🚀 Index SDK 开源发布<br>
 
@@ -33,12 +34,12 @@ Index SDK是基于Faiss开发的昇腾NPU异构检索加速框架，针对高维
 | [属性过滤](./docs/zh/05_user_guide.md#属性过滤检索) | 支持时空库检索，通过属性过滤器对底库进行筛选，提高检索精度 | [链接](./docs/zh/api/03_attribute_filtering-based_retrieval.md) |
 | [批量检索](./docs/zh/05_user_guide.md#多Index批量检索) | 支持从多个Index库同时执行检索，合并返回TopK结果 | [链接](./docs/zh/api/04_multi-index_batch_retrieval.md) |
 | [其他功能](./docs/zh/05_user_guide.md#其他功能) | 创建降维对象、提供NPU与CPU之间的索引数据拷贝等功能 | [链接](./docs/zh/api/05_more_functions.md) |
-| [未使用接口](./docs/zh/api/06_unused_apis.md#未使用接口) | 列出当前仅供内部调用、后续将废弃且不建议用户使用的接口。 | [链接](./docs/zh/api/06_unused_apis.md)|
-| [接口调用返回值参考](./docs/zh/api/07_return_code_reference.md#接口调用返回值参考) | 提供 Device 侧接口调用返回码及含义说明，便于定位 ACL、参数、索引初始化、超时等错误。 | [链接](./docs/zh/api/07_return_code_reference.md)|
+| [未使用接口](./docs/zh/api/06_unused_apis.md#未使用接口) | 列出当前仅供内部调用、后续将废弃且不建议用户使用的接口 | [链接](./docs/zh/api/06_unused_apis.md)|
+| [接口调用返回值参考](./docs/zh/api/07_return_code_reference.md#接口调用返回值参考) | 提供 Device 侧接口调用返回码及含义说明，便于定位 ACL、参数、索引初始化、超时等错误 | [链接](./docs/zh/api/07_return_code_reference.md)|
 
 ## 🚀 快速入门
 
-Index SDK提供了一个简单的样例，帮助用户快速体验Index SDK检索流程。详情可参考《[快速入门](./docs/zh/03_quick_start.md)》。
+Index SDK提供了一个简单的样例，帮助用户快速体验Index SDK检索流程，详情可参考《[快速入门](./docs/zh/03_quick_start.md)》。
 
 ## 📦 安装指南
 
@@ -50,15 +51,15 @@ Index SDK是基于Faiss开发的昇腾NPU异构检索加速框架，面向高维
 
 ## 🗺️ Roadmap
 
-[Roadmap（2026Q3）](https://gitcode.com/Ascend/IndexSDK/issues/126)
+[Roadmap(2026Q3)](https://gitcode.com/Ascend/IndexSDK/issues/126)
 
 ## 🔀 版本维护策略
 
 | 版本 | 维护策略 | 当前状态 | 发布日期 | 后续状态 | EOL日期 |
 | --- | --- | --- | --- | --- | --- |
-| master | 长期支持 | 开发 | 在研分支，不发布 | - | - |
-| v26.0.0 | 常规分支 | 维护 | 2026-04-25 | - | - |
-| v26.1.0 | 常规分支 | 维护 | 2026-07-31 | - | - |
+| master | 长期支持 | 开发 | 在研分支，不发布 | 持续开发 | - |
+| v26.1.0 | 常规分支 | 维护 | 2026-07-31 | 预计2027-01-31起进入无维护状态 | 2027-01-31 |
+| v26.0.0 | 常规分支 | 维护 | 2026-04-25 | 预计2026-10-25起进入无维护状态 | 2026-10-25 |
 
 ## 🛠️ 贡献指南
 
@@ -66,13 +67,11 @@ Index SDK是基于Faiss开发的昇腾NPU异构检索加速框架，面向高维
 
 ## ⚖️ 相关说明
 
-🔹 《[使用指导](./docs/zh/05_user_guide.md)》<br>
 🔹 《[版本说明](./docs/zh/release_notes_index.md)》<br>
 🔹 《[许可证声明](LICENSE.md)》<br>
 🔹 《[文档许可证声明](./docs/LICENSE)》<br>
 🔹 《[免责声明](./docs/zh/disclaimer.md)》<br>
 🔹 《[安全加固](./docs/zh/06_security_hardening.md)》<br>
-🔹 《[附录](./docs/zh/09_appendix.md)》<br>
 🔹 《[第三方开源软件声明](Third_Party_Open_Source_Software_Notice)》
 
 ## 🤝 建议与交流
