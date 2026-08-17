@@ -66,7 +66,22 @@ enum TopkIvfRabitqAttrIdx : int32_t
     TOPK_IVF_RABITQ_ATTR_BLOCK_NUM_IDX,
     TOPK_IVF_RABITQ_ATTR_QUERY_NUM_IDX,
     TOPK_IVF_RABITQ_ATTR_CORE_NUM_IDX,
+    // IDSelector late-filter: mode / device payload ptr / aux0 / aux1 / negate
+    TOPK_IVF_RABITQ_ATTR_SEL_MODE_IDX,
+    TOPK_IVF_RABITQ_ATTR_SEL_PTR_IDX,
+    TOPK_IVF_RABITQ_ATTR_SEL_AUX0_IDX,
+    TOPK_IVF_RABITQ_ATTR_SEL_AUX1_IDX,
+    TOPK_IVF_RABITQ_ATTR_SEL_NEGATE_IDX,
     TOPK_IVF_RABITQ_ATTR_IDX_COUNT,
+};
+
+// Device-side ID filter modes for IVF-RaBitQ L2 TopK (AICPU).
+enum RabitqIdFilterMode : int64_t
+{
+    RABITQ_ID_FILTER_NONE = 0,
+    RABITQ_ID_FILTER_RANGE = 1,   // aux0=imin, aux1=imax (half-open)
+    RABITQ_ID_FILTER_SORTED = 2,  // ptr -> int64[aux0], binary search
+    RABITQ_ID_FILTER_BITMAP = 3,  // ptr -> uint8[aux0/8], aux0 = bit count (multiple of 8)
 };
 
 enum TopkIvfpqL3AttrIdx : int32_t

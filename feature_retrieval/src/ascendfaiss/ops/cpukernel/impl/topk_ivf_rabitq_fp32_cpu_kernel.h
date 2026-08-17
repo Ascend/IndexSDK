@@ -20,6 +20,7 @@
 #define AICPU_TOPK_IVF_FP32_CPU_KERNEL_H
 
 #include "cpu_kernel.h"
+#include "kernel_shared_def.h"
 #include "kernel_tensor.h"
 
 namespace aicpu
@@ -71,6 +72,8 @@ class TopkIvfRabitqfP32CpuKernel : public CpuKernel
     template <typename C>
     void Reorder(int64_t qidx, KernelTensor<float> &outdistsTensor, KernelTensor<int64_t> &outlabelsTensor, C &&cmp);
 
+    bool IsIdSelected(int64_t id) const;
+
    private:
     int64_t nq_ = 0;
     int64_t handleBatch_ = 0;
@@ -80,6 +83,13 @@ class TopkIvfRabitqfP32CpuKernel : public CpuKernel
     int64_t k_ = 0;
     int64_t burstLen_ = 0;
     int64_t core_ = 0;
+
+    int64_t selMode_ = aicpu::RABITQ_ID_FILTER_NONE;
+    int64_t selNegate_ = 0;
+    int64_t selAux0_ = 0;
+    int64_t selAux1_ = 0;
+    const int64_t *selSorted_ = nullptr;
+    const uint8_t *selBitmap_ = nullptr;
 
     std::vector<int64_t> blockOffset_;
 };
