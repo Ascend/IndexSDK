@@ -181,8 +181,49 @@ uint32_t TopkIvfRabitqfP32CpuKernel::CheckInputShapes(const Inputs &inputs)
     k_ = *(attr + TOPK_IVF_RABITQ_ATTR_K_IDX);
     burstLen_ = *(attr + TOPK_IVF_RABITQ_ATTR_BURST_LEN_IDX);
     core_ = *(attr + TOPK_IVF_RABITQ_ATTR_CORE_NUM_IDX);
+    selMode_ = *(attr + TOPK_IVF_RABITQ_ATTR_SEL_MODE_IDX);
+    selNegate_ = *(attr + TOPK_IVF_RABITQ_ATTR_SEL_NEGATE_IDX);
+    selAux0_ = *(attr + TOPK_IVF_RABITQ_ATTR_SEL_AUX0_IDX);
+    selAux1_ = *(attr + TOPK_IVF_RABITQ_ATTR_SEL_AUX1_IDX);
+    const int64_t selPtr = *(attr + TOPK_IVF_RABITQ_ATTR_SEL_PTR_IDX);
+    selSorted_ = nullptr;
+    selBitmap_ = nullptr;
+
     KERNEL_CHECK_TRUE(k_ > 0 && burstLen_ > 0 && asc_ >= 0 && core_ > 0 && nq_ > 0, KERNEL_STATUS_PARAM_INVALID,
                       "Value of asc, k, bustLen, core, nq must ge 0");
+    KERNEL_CHECK_TRUE(selMode_ == RABITQ_ID_FILTER_NONE || selMode_ == RABITQ_ID_FILTER_RANGE ||
+                          selMode_ == RABITQ_ID_FILTER_SORTED || selMode_ == RABITQ_ID_FILTER_BITMAP,
+                      KERNEL_STATUS_PARAM_INVALID, "Unsupported selMode %ld", selMode_);
+    KERNEL_CHECK_TRUE(selNegate_ == 0 || selNegate_ == 1, KERNEL_STATUS_PARAM_INVALID, "selNegate must be 0 or 1");
+
+    switch (selMode_)
+    {
+        case RABITQ_ID_FILTER_NONE:
+        case RABITQ_ID_FILTER_RANGE:
+            break;
+        case RABITQ_ID_FILTER_SORTED:
+            KERNEL_CHECK_TRUE(selAux0_ >= 0, KERNEL_STATUS_PARAM_INVALID, "selAux0 (sorted count) must ge 0");
+            if (selAux0_ > 0)
+            {
+                KERNEL_CHECK_TRUE(selPtr != 0, KERNEL_STATUS_PARAM_INVALID,
+                                  "selPtr must be non-null for sorted filter");
+                selSorted_ = reinterpret_cast<const int64_t *>(selPtr);
+            }
+            break;
+        case RABITQ_ID_FILTER_BITMAP:
+            KERNEL_CHECK_TRUE(selAux0_ >= 0 && selAux0_ % 8 == 0, KERNEL_STATUS_PARAM_INVALID,
+                              "selAux0 (bitmap bit count) must be a multiple of 8");
+            if (selAux0_ > 0)
+            {
+                KERNEL_CHECK_TRUE(selPtr != 0, KERNEL_STATUS_PARAM_INVALID,
+                                  "selPtr must be non-null for bitmap filter");
+                selBitmap_ = reinterpret_cast<const uint8_t *>(selPtr);
+            }
+            break;
+        default:
+            KERNEL_LOG_ERROR("Unsupported selMode %ld", selMode_);
+            return KERNEL_STATUS_PARAM_INVALID;
+    }
 
     return KERNEL_STATUS_OK;
 }
@@ -246,6 +287,45 @@ void TopkIvfRabitqfP32CpuKernel::InitTopkHeap(Outputs &outputs) const
     }
 }
 
+bool TopkIvfRabitqfP32CpuKernel::IsIdSelected(int64_t id) const
+{
+    bool member = false;
+    switch (selMode_)
+    {
+        case RABITQ_ID_FILTER_NONE:
+            return true;
+        case RABITQ_ID_FILTER_RANGE:
+            member = (id >= selAux0_) && (id < selAux1_);
+            break;
+        case RABITQ_ID_FILTER_SORTED:
+            if (selSorted_ == nullptr || selAux0_ <= 0)
+            {
+                member = false;
+            }
+            else
+            {
+                member = std::binary_search(selSorted_, selSorted_ + selAux0_, id);
+            }
+            break;
+        case RABITQ_ID_FILTER_BITMAP:
+            if (selBitmap_ == nullptr || id < 0 || id >= selAux0_)
+            {
+                member = false;
+            }
+            else
+            {
+                const int64_t byteIdx = id >> 3;
+                const int64_t bitIdx = id & 7;
+                member = ((selBitmap_[byteIdx] >> bitIdx) & 1) != 0;
+            }
+            break;
+        default:
+            return false;
+    }
+
+    return selNegate_ != 0 ? !member : member;
+}
+
 template <typename C>
 void TopkIvfRabitqfP32CpuKernel::DoCompute(size_t tcnt, size_t tid, const Inputs &inputs, Outputs &outputs, C &&cmp)
 {
@@ -305,20 +385,26 @@ void TopkIvfRabitqfP32CpuKernel::ComputeQuery(int64_t qidx, int64_t blkidx, Kern
         }
         for (int64_t j = 0; j < burstLen_ && idx < ntotal; ++j, ++idx)
         {
+            const int64_t candId = *(id + idx);
+            if (!IsIdSelected(candId))
+            {
+                continue;
+            }
             if (cmp(outdists[0], indists[idx]))
             {
                 outdists[0] = indists[idx];
-                outlabel[0] = *(id + idx);
+                outlabel[0] = candId;
                 UpdateHeap(outdists, outlabel, k_, 0, cmp);
             }
         }
     }
     while (idx < ntotal)
     {
-        if (cmp(outdists[0], indists[idx]))
+        const int64_t candId = *(id + idx);
+        if (IsIdSelected(candId) && cmp(outdists[0], indists[idx]))
         {
             outdists[0] = indists[idx];
-            outlabel[0] = *(id + idx);
+            outlabel[0] = candId;
             UpdateHeap(outdists, outlabel, k_, 0, cmp);
         }
         ++idx;
