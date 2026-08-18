@@ -82,8 +82,8 @@ class AscendIndexIVFRaBitQImpl : public AscendIndexIVFImpl
     void addPaged(int n, const float *x, const idx_t *ids) override;
     size_t getAddPagedSize(int n) const override;
     void searchImpl(int n, const float *x, int k, float *distances, idx_t *labels) const override;
-    void searchWithSelector(idx_t n, const float *x, idx_t k, float *distances, idx_t *labels,
-                            const IDSelector *sel) const;
+    void searchWithSelector(idx_t n, const float *x, idx_t k, float *distances, idx_t *labels, const IDSelector *sel,
+                            int searchNprobe = -1) const;
 
     // Copy data from a CPU IndexIVFRaBitQ
     void copyFrom(const faiss::IndexIVFRaBitQ *index);
@@ -100,7 +100,8 @@ class AscendIndexIVFRaBitQImpl : public AscendIndexIVFImpl
                            std::vector<std::vector<ascend_idx_t>> &label, idx_t n, idx_t k, float *distances,
                            idx_t *labels) const override;
     void indexSearch(IndexParam<float, float, ascend_idx_t> &param) const;
-    void indexSearch(IndexParam<float, float, ascend_idx_t> &param, const ::ascend::RabitqIdFilterHost *idFilter) const;
+    void indexSearch(IndexParam<float, float, ascend_idx_t> &param, const ::ascend::RabitqIdFilterHost *idFilter,
+                     int searchNprobe = -1) const;
     void checkParams() const;
     std::shared_ptr<::ascend::Index> createIndex(int deviceId) override;
 
@@ -132,7 +133,7 @@ class AscendIndexIVFRaBitQImpl : public AscendIndexIVFImpl
 
    private:
     void searchImplFiltered(int n, const float *x, int k, float *distances, idx_t *labels,
-                            const ::ascend::RabitqIdFilterHost *idFilter) const;
+                            const ::ascend::RabitqIdFilterHost *idFilter, int searchNprobe = -1) const;
 
     AscendIndexIVFRaBitQConfig ivfrabitqConfig;
 

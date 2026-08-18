@@ -6997,7 +6997,7 @@ AscendIndexIVFRaBitQ利用IVF进行加速，是二级近似检索算法。当前
 </tr>
 <tr id="row_ivfrabitq_search_desc"><th class="firstcol" valign="top" width="20.07%" id="mcps1.1.3.2.1"><p id="p_ivfrabitq_search_desc">功能描述</p>
 </th>
-<td class="cellrowborder" valign="top" width="79.93%" headers="mcps1.1.3.2.1 "><p id="p_ivfrabitq_search_desc_body">实现AscendIndexIVFRaBitQ特征向量查询。支持通过Faiss SearchParameters.sel传入IDSelector，在L2 TopK阶段按ID过滤（多卡场景下各卡对本地候选做同一全局ID语义过滤后合并）。</p>
+<td class="cellrowborder" valign="top" width="79.93%" headers="mcps1.1.3.2.1 "><p id="p_ivfrabitq_search_desc_body">实现AscendIndexIVFRaBitQ特征向量查询。支持通过Faiss SearchParameters.sel传入IDSelector，在L2距离计算阶段进行前置过滤，并在L2 TopK阶段按ID做精确过滤兜底（多卡场景下各卡对本地候选做同一全局ID语义过滤后合并）。</p>
 </td>
 </tr>
 <tr id="row_ivfrabitq_search_in"><th class="firstcol" valign="top" width="20.07%" id="mcps1.1.3.3.1"><p id="p_ivfrabitq_search_in">输入</p>
@@ -7005,7 +7005,7 @@ AscendIndexIVFRaBitQ利用IVF进行加速，是二级近似检索算法。当前
 <td class="cellrowborder" valign="top" width="79.93%" headers="mcps1.1.3.3.1 "><p id="p_ivfrabitq_search_n"><strong>idx_t n</strong>：查询特征向量条数。</p>
 <p id="p_ivfrabitq_search_x"><strong>const float *x</strong>：查询特征向量，长度 n*dim。</p>
 <p id="p_ivfrabitq_search_k"><strong>idx_t k</strong>：返回最相似结果个数。</p>
-<p id="p_ivfrabitq_search_params"><strong>const SearchParameters *params</strong>：可选。params-&gt;sel 支持 IDSelectorRange / IDSelectorBatch / IDSelectorArray / IDSelectorBitmap，以及上述类型的 IDSelectorNot。params 为 nullptr 或 sel 为 nullptr 时不做ID过滤。SearchParametersIVF.nprobe 本次不生效，仍使用 index 上的 nprobe。</p>
+<p id="p_ivfrabitq_search_params"><strong>const SearchParameters *params</strong>：可选。params-&gt;sel 支持 IDSelectorRange / IDSelectorBatch / IDSelectorArray / IDSelectorBitmap，以及上述类型的 IDSelectorNot。params 为 nullptr 或 sel 为 nullptr 时不做ID过滤。传入 SearchParametersIVF 时，nprobe 大于1则对本次 search 生效；nprobe 为1按Faiss默认值处理，不覆盖 index 上的 nprobe。</p>
 </td>
 </tr>
 <tr id="row_ivfrabitq_search_out"><th class="firstcol" valign="top" width="20.07%" id="mcps1.1.3.4.1"><p id="p_ivfrabitq_search_out">输出</p>
@@ -7021,7 +7021,7 @@ AscendIndexIVFRaBitQ利用IVF进行加速，是二级近似检索算法。当前
 </tr>
 <tr id="row_ivfrabitq_search_const"><th class="firstcol" valign="top" width="20.07%" id="mcps1.1.3.6.1"><p id="p_ivfrabitq_search_const">约束说明</p>
 </th>
-<td class="cellrowborder" valign="top" width="79.93%" headers="mcps1.1.3.6.1 "><ul id="ul_ivfrabitq_search_const"><li>过滤在AICPU TopK阶段执行（late-filter），不增加持久化底库内存；filter 仅在查询期临时物化。</li><li>多卡检索时同一 IDSelector 按全局ID语义应用到每张卡，再在Host侧合并 top-k。</li><li>高过滤比场景下L2距离仍按 probed lists 全量计算，membership 检查相对廉价。</li></ul>
+<td class="cellrowborder" valign="top" width="79.93%" headers="mcps1.1.3.6.1 "><ul id="ul_ivfrabitq_search_const"><li>过滤仅在查询期临时物化，不增加持久化底库内存。</li><li>L2前置过滤当前支持非SIMT路径；SIMT路径仍由L2 TopK阶段精确过滤兜底。</li><li>多卡检索时同一 IDSelector 按全局ID语义应用到每张卡，再在Host侧合并 top-k。</li><li>升级后需要重新执行 ivfrabitq_generate_model.py 生成IVFRaBitQ算子模型。</li></ul>
 </td>
 </tr>
 </tbody>

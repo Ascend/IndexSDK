@@ -836,6 +836,7 @@ VSTAR检索当前只支持<term>Atlas 推理系列产品</term>，涉及VSTAR业
 <tr id="row44439314393"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.3.1"><p id="p1444316303912"><a name="p1444316303912"></a><a name="p1444316303912"></a>说明</p>
 </th>
 <td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.3.1 "><p id="p144431434393"><a name="p144431434393"></a><a name="p144431434393"></a>执行此命令，用户可以得到一组算子模型文件，用户需要自行修改命令中的参数。例如对于Atlas 800I A2 生成128维，聚类中心nlist1024，L2距离算子：python3 ivfrabitq_generate_model.py -d 128 -c 1024 -t 910B4 -m L2</p>
+<p>升级到支持IDSelector前置过滤的版本后，IVFRaBitQ L2算子输入发生变化，需要重新执行该命令生成算子模型。</p>
 </td>
 </tr>
 <tr id="row19923139133710"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.4.1"><p id="p68850165377"><a name="p68850165377"></a><a name="p68850165377"></a>约束说明</p>

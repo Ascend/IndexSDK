@@ -19,6 +19,8 @@
 #ifndef AICPU_KERNEL_SHARED_DEF_H
 #define AICPU_KERNEL_SHARED_DEF_H
 
+#include <cstdint>
+
 namespace aicpu
 {
 enum TopkFlatAttrIdx : int32_t
@@ -80,9 +82,23 @@ enum TopkIvfRabitqAttrIdx : int32_t
 enum RabitqIdFilterMode : int64_t
 {
     RABITQ_ID_FILTER_NONE = 0,
-    RABITQ_ID_FILTER_RANGE = 1,   // aux0=imin, aux1=imax (half-open)
-    RABITQ_ID_FILTER_SORTED = 2,  // ptr -> int64[aux0], binary search
-    RABITQ_ID_FILTER_BITMAP = 3,  // ptr -> uint8[aux0/8], aux0 = bit count (multiple of 8)
+    RABITQ_ID_FILTER_RANGE = 1,          // aux0=imin, aux1=imax (half-open)
+    RABITQ_ID_FILTER_SORTED = 2,         // ptr -> int64[aux0], binary search
+    RABITQ_ID_FILTER_BITMAP = 3,         // ptr -> uint8[aux0/8], aux0 = bit count (multiple of 8)
+    RABITQ_ID_FILTER_SORTED_PREFIX = 4,  // ptr -> RabitqSortedPrefixPayloadHeader + sorted ids + prefix offsets
+};
+
+constexpr int64_t RABITQ_SORTED_PREFIX_MAGIC = 0x5242515052465831;
+
+struct RabitqSortedPrefixPayloadHeader
+{
+    int64_t magic;
+    int64_t sortedCount;
+    int64_t sortedOffsetBytes;
+    int64_t prefixBits;
+    int64_t prefixShift;
+    int64_t prefixBucketCount;
+    int64_t prefixOffsetBytes;
 };
 
 enum TopkIvfpqL3AttrIdx : int32_t

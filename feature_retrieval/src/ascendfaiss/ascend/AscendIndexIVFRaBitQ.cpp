@@ -18,6 +18,10 @@
 
 #include "AscendIndexIVFRaBitQ.h"
 
+#include <faiss/IndexIVF.h>
+
+#include <limits>
+
 #include "ascend/impl/AscendIndexIVFRaBitQImpl.h"
 
 namespace faiss
@@ -84,7 +88,20 @@ void AscendIndexIVFRaBitQ::search(idx_t n, const float* x, idx_t k, float* dista
 {
     FAISS_THROW_IF_NOT_MSG(impl_ != nullptr, "impl_ is nullptr!");
     const IDSelector* sel = (params != nullptr) ? params->sel : nullptr;
-    impl_->searchWithSelector(n, x, k, distances, labels, sel);
+    int searchNprobe = -1;
+    if (const auto* ivfParams = dynamic_cast<const SearchParametersIVF*>(params))
+    {
+        FAISS_THROW_IF_NOT_MSG(ivfParams->nprobe > 0, "SearchParametersIVF.nprobe must be greater than 0");
+        // Faiss SearchParametersIVF defaults nprobe to 1. Treat the default as "not specified" to avoid silently
+        // changing existing IDSelector searches that relied on the index-level nprobe.
+        if (ivfParams->nprobe != 1)
+        {
+            FAISS_THROW_IF_NOT_MSG(ivfParams->nprobe <= static_cast<size_t>(std::numeric_limits<int>::max()),
+                                   "SearchParametersIVF.nprobe is too large");
+            searchNprobe = static_cast<int>(ivfParams->nprobe);
+        }
+    }
+    impl_->searchWithSelector(n, x, k, distances, labels, sel, searchNprobe);
 }
 }  // namespace ascend
 }  // namespace faiss
