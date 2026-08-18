@@ -181,7 +181,7 @@ uint32_t TopkIvfRabitqfP32CpuKernel::CheckInputShapes(const Inputs &inputs)
     k_ = *(attr + TOPK_IVF_RABITQ_ATTR_K_IDX);
     burstLen_ = *(attr + TOPK_IVF_RABITQ_ATTR_BURST_LEN_IDX);
     core_ = *(attr + TOPK_IVF_RABITQ_ATTR_CORE_NUM_IDX);
-    selMode_ = *(attr + TOPK_IVF_RABITQ_ATTR_SEL_MODE_IDX);
+    selMode_ = static_cast<RabitqIdFilterMode>(*(attr + TOPK_IVF_RABITQ_ATTR_SEL_MODE_IDX));
     selNegate_ = *(attr + TOPK_IVF_RABITQ_ATTR_SEL_NEGATE_IDX);
     selAux0_ = *(attr + TOPK_IVF_RABITQ_ATTR_SEL_AUX0_IDX);
     selAux1_ = *(attr + TOPK_IVF_RABITQ_ATTR_SEL_AUX1_IDX);
@@ -193,7 +193,7 @@ uint32_t TopkIvfRabitqfP32CpuKernel::CheckInputShapes(const Inputs &inputs)
                       "Value of asc, k, bustLen, core, nq must ge 0");
     KERNEL_CHECK_TRUE(selMode_ == RABITQ_ID_FILTER_NONE || selMode_ == RABITQ_ID_FILTER_RANGE ||
                           selMode_ == RABITQ_ID_FILTER_SORTED || selMode_ == RABITQ_ID_FILTER_BITMAP,
-                      KERNEL_STATUS_PARAM_INVALID, "Unsupported selMode %ld", selMode_);
+                      KERNEL_STATUS_PARAM_INVALID, "Unsupported selMode %ld", static_cast<int64_t>(selMode_));
     KERNEL_CHECK_TRUE(selNegate_ == 0 || selNegate_ == 1, KERNEL_STATUS_PARAM_INVALID, "selNegate must be 0 or 1");
 
     switch (selMode_)
@@ -221,7 +221,7 @@ uint32_t TopkIvfRabitqfP32CpuKernel::CheckInputShapes(const Inputs &inputs)
             }
             break;
         default:
-            KERNEL_LOG_ERROR("Unsupported selMode %ld", selMode_);
+            KERNEL_LOG_ERROR("Unsupported selMode %ld", static_cast<int64_t>(selMode_));
             return KERNEL_STATUS_PARAM_INVALID;
     }
 

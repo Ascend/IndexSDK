@@ -49,6 +49,11 @@ class TopkIvfRabitqfP32CpuKernel : public CpuKernel
 
     ~TopkIvfRabitqfP32CpuKernel() override = default;
 
+    TopkIvfRabitqfP32CpuKernel(const TopkIvfRabitqfP32CpuKernel &) = delete;
+    TopkIvfRabitqfP32CpuKernel &operator=(const TopkIvfRabitqfP32CpuKernel &) = delete;
+    TopkIvfRabitqfP32CpuKernel(TopkIvfRabitqfP32CpuKernel &&) = delete;
+    TopkIvfRabitqfP32CpuKernel &operator=(TopkIvfRabitqfP32CpuKernel &&) = delete;
+
     uint32_t Compute(CpuKernelContext &ctx) override;
 
    private:
@@ -84,7 +89,7 @@ class TopkIvfRabitqfP32CpuKernel : public CpuKernel
     int64_t burstLen_ = 0;
     int64_t core_ = 0;
 
-    int64_t selMode_ = aicpu::RABITQ_ID_FILTER_NONE;
+    RabitqIdFilterMode selMode_ = RABITQ_ID_FILTER_NONE;
     int64_t selNegate_ = 0;
     int64_t selAux0_ = 0;
     int64_t selAux1_ = 0;

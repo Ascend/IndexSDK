@@ -58,6 +58,7 @@ enum TopkIvfAttrIdx : int32_t
     TOPK_IVF_ATTR_IDX_COUNT,
 };
 
+// AttrIdx is an int32 index into the AICPU int64 attr vector (same as other Topk*AttrIdx).
 enum TopkIvfRabitqAttrIdx : int32_t
 {
     TOPK_IVF_RABITQ_ATTR_ASC_IDX = 0,
@@ -75,7 +76,7 @@ enum TopkIvfRabitqAttrIdx : int32_t
     TOPK_IVF_RABITQ_ATTR_IDX_COUNT,
 };
 
-// Device-side ID filter modes for IVF-RaBitQ L2 TopK (AICPU).
+// FilterMode is an attr VALUE stored as int64 in the AICPU attr vector.
 enum RabitqIdFilterMode : int64_t
 {
     RABITQ_ID_FILTER_NONE = 0,
