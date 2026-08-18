@@ -40,8 +40,7 @@ struct AscendIndexIVFRaBitQConfig : public AscendIndexIVFConfig
     {
     }
 
-    explicit inline AscendIndexIVFRaBitQConfig(std::initializer_list<int> devices,
-                                               int64_t resourceSize = IVF_DEFAULT_MEM)
+    inline AscendIndexIVFRaBitQConfig(std::initializer_list<int> devices, int64_t resourceSize = IVF_DEFAULT_MEM)
         : AscendIndexIVFConfig(devices, resourceSize),
           useRandomOrthogonalMatrix(true),
           needRefine(false),
@@ -82,10 +81,12 @@ class AscendIndexIVFRaBitQ : public AscendIndexIVF
     AscendIndexIVFRaBitQ(int dims, faiss::MetricType metric, int nlist,
                          AscendIndexIVFRaBitQConfig config = AscendIndexIVFRaBitQConfig());
 
-    virtual ~AscendIndexIVFRaBitQ();
+    ~AscendIndexIVFRaBitQ() override;
 
     AscendIndexIVFRaBitQ(const AscendIndexIVFRaBitQ&) = delete;
     AscendIndexIVFRaBitQ& operator=(const AscendIndexIVFRaBitQ&) = delete;
+    AscendIndexIVFRaBitQ(AscendIndexIVFRaBitQ&&) = delete;
+    AscendIndexIVFRaBitQ& operator=(AscendIndexIVFRaBitQ&&) = delete;
 
     void train(idx_t n, const float* x) override;
 
@@ -100,6 +101,10 @@ class AscendIndexIVFRaBitQ : public AscendIndexIVF
     void remove_ids(size_t n, const idx_t* ids);
 
     std::vector<idx_t> update(idx_t n, const float* x, const idx_t* ids);
+
+    // NOLINTNEXTLINE(google-default-arguments) -- match FAISS Index::search
+    void search(idx_t n, const float* x, idx_t k, float* distances, idx_t* labels,
+                const SearchParameters* params = nullptr) const override;
 
    protected:
     std::shared_ptr<AscendIndexIVFRaBitQImpl> impl_;

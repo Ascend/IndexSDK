@@ -77,5 +77,14 @@ std::vector<idx_t> AscendIndexIVFRaBitQ::update(idx_t n, const float* x, const i
     FAISS_THROW_IF_NOT_MSG(impl_ != nullptr, "impl_ is nullptr!");
     return impl_->update(n, x, ids);
 }
+
+// NOLINTNEXTLINE(google-default-arguments) -- match FAISS Index::search
+void AscendIndexIVFRaBitQ::search(idx_t n, const float* x, idx_t k, float* distances, idx_t* labels,
+                                  const SearchParameters* params) const
+{
+    FAISS_THROW_IF_NOT_MSG(impl_ != nullptr, "impl_ is nullptr!");
+    const IDSelector* sel = (params != nullptr) ? params->sel : nullptr;
+    impl_->searchWithSelector(n, x, k, distances, labels, sel);
+}
 }  // namespace ascend
 }  // namespace faiss
