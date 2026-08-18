@@ -9,8 +9,8 @@ Index SDK 支持[离线安装](#离线安装)、[镜像安装](#镜像安装)、
 **注意事项**
 
 - 对于第三方的开源软件，如果该版本中存在漏洞，需要及时根据开源版本中的对应说明进行修复和更新。
-- （可选）Ascend Docker Runtime 的安装请参考《MindCluster 集群调度用户指南》的“安装 \> 安装部署 \> 手动安装 \> [Ascend Docker Runtime](https://gitcode.com/Ascend/mind-cluster/blob/branch_v26.0.0/docs/zh/scheduling/installation_guide/03_installation/manual_installation/02_ascend_docker_runtime.md)”章节。
-- （可选）Index SDK 已支持虚拟化环境，可在虚拟化环境下进行 Index SDK 的业务部署及运行，具体环境部署操作请参见《MindCluster 集群调度用户指南》的“使用 \> [虚拟化实例特性指南](https://gitcode.com/Ascend/mind-cluster/blob/branch_v26.0.0/docs/zh/scheduling/usage/virtual_instance/menu_virtual_instance.md)”章节。
+- （可选）Ascend Docker Runtime 的安装请参考《MindCluster 集群调度用户指南》的“开发者指南 \> 手动安装部署 \> 安装部署 \> [Ascend Docker Runtime](https://gitcode.com/Ascend/mind-cluster/blob/branch_v26.1.0/docs/zh/scheduling/05_developer_guide/00_installation_deployment/00_manual_installation/02_ascend_docker_runtime.md)”章节。
+- （可选）Index SDK 已支持虚拟化环境，可在虚拟化环境下进行 Index SDK 的业务部署及运行，具体环境部署操作请参见《MindCluster 集群调度用户指南》的“使用 \> [虚拟化实例特性指南](https://gitcode.com/Ascend/mind-cluster/blob/branch_v26.1.0/docs/zh/scheduling/04_usage/02_virtual_instance/menu_virtual_instance.md)”章节。
 
 ## 安装依赖说明
 

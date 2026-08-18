@@ -1,6 +1,6 @@
 # 快速入门
 
-- 本教程以 [Flat](./api/01_full_retrieval.md#ascendindexflat) 索引类型为例，帮助您通过 Docker 容器快速掌握 Index SDK 的基本使用方法。
+- 本教程以 [Flat](./api/01_full_retrieval/08_AscendIndexFlat.md#ascendindexflat) 索引类型为例，帮助您通过 Docker 容器快速掌握 Index SDK 的基本使用方法。
 - 当前步骤1和步骤2默认是在物理机上执行，如果已经在容器中且未装相关依赖，可根据对应操作系统参考一键安装脚本进行依赖安装[openEuler 脚本](../../build/setup_openeuler.sh)、[Ubuntu 脚本](../../build/setup_ubuntu.sh)，然后跳到步骤3继续执行。
 
 ## 前置条件

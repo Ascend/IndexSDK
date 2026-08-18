@@ -94,7 +94,7 @@
         |说明| <li>执行此命令，用户可以得到多组算子模型文件。执行命令前，用户需要更改当前目录下的para_table.xml文件，将所需的参数填入表中。</li><li>1 ≤ pool_size ≤ 32</li>|
 
         > [!NOTE]
-        >算子生成说明表格中的约束说明，代表业务中经常涉及的参数组合，使用其他参数运行异常请参见《[CANN ATC离线模型编译工具用户指南](https://www.hiascend.com/document/detail/zh/canncommercial/900/devaids/atctool/atlasatc_16_0001.html)》。
+        >算子生成说明表格中的约束说明，代表业务中经常涉及的参数组合，使用其他参数运行异常请参见《[CANN ATC离线模型编译工具用户指南](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/910/devaids/atctool/atlasatc_16_0001.html)》。
 
 5. 准备算子模型文件。
 
@@ -128,12 +128,12 @@
 
 |算法（API参考）|算法使用场景|需要生成的算子|样例链接|
 |--|--|--|--|
-|[AscendIndexInt8Flat](./api/01_full_retrieval.md#ascendindexint8flat)|<li>特征类型：int8</li><li>特征维度：64, 128, 256, 384, 512, 768, 1024</li><li>距离类型：L2和IP</li><li>计算精度：高</li><li>Device内存占用：较低</li><li>适应场景：精度要求高的暴力检索场景</li>|<li>[INT8Flat](#int8flat)</li><li>[AICPU](#aicpu)</li>|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexInt8Flat.cpp">链接</a>|
-|[AscendIndexFlat](./api/01_full_retrieval.md#ascendindexflat)|<li>特征类型：FP32、FP16</li><li>特征维度：32, 64, 128, 256, 384, 512, 768, 1024, 1408, 1536, 2048, 3072, 3584, 4096</li><li>距离类型：L2和IP</li><li>计算精度：高</li><li>Device内存占用：高</li><li>适应场景：精度要求高的暴力检索场景；IP距离推荐在dim > 128的场景下使用。</li>|<li>[Flat](#flat)</li><li>[AICPU](#aicpu)</li>|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexFlat.cpp">链接</a>|
-|[AscendIndexSQ](./api/01_full_retrieval.md#ascendindexsq)|<li>特征类型：FP32</li><li>特征维度：64, 128, 256, 384, 512, 768</li><li>距离类型：L2和IP</li><li>计算精度：高</li><li>Device内存占用：较低（已量化为int8）</li><li>适应场景：精度要求较高的暴力检索场景</li>|<li>[SQ8](#sq8)</li><li>[AICPU](#aicpu)</li>|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexSQ.cpp">链接</a>|
-|[AscendIndexCluster](./api/01_full_retrieval.md#ascendindexcluster)|<li>特征类型：FP32</li><li>特征维度：32, 64, 128, 256, 384, 512</li><li>距离类型：IP</li><li>计算精度：高</li><li>Device内存占用：较高</li><li>适应场景：只计算距离的聚类场景</li><li>仅支持<term>Atlas 推理系列产品</term></li>|<li>[Flat](#flat)</li><li>[AICPU](#aicpu)</li>|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexCluster.cpp">链接</a>|
-|[IndexIL](./api/01_full_retrieval.md#indexil)|需要运行在Device上，安装部署复杂，暂不推荐使用|<li>[Flat](#flat)</li>|参考[IndexILFlat](./api/01_full_retrieval.md#indexilflat)|
-|[AscendIndexILFlat](./api/01_full_retrieval.md#ascendindexilflat)|<li>特征类型：FP16、FP32</li><li>特征维度：32, 64, 128, 256, 384, 512</li><li>距离类型：IP</li><li>计算精度：高</li><li>Device内存占用：较高</li><li>适应场景：只计算距离的聚类场景</li><li>仅支持<term>Atlas 推理系列产品</term></li>|<li>[Flat](#flat)</li><li>[AICPU](#aicpu)</li>|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/tree/master/IndexSDK">链接</a>|
+|[AscendIndexInt8Flat](./api/01_full_retrieval/06_AscendIndexInt8Flat.md#ascendindexint8flat)|<li>特征类型：int8</li><li>特征维度：64, 128, 256, 384, 512, 768, 1024</li><li>距离类型：L2和IP</li><li>计算精度：高</li><li>Device内存占用：较低</li><li>适应场景：精度要求高的暴力检索场景</li>|<li>[INT8Flat](#int8flat)</li><li>[AICPU](#aicpu)</li>|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexInt8Flat.cpp">链接</a>|
+|[AscendIndexFlat](./api/01_full_retrieval/08_AscendIndexFlat.md#ascendindexflat)|<li>特征类型：FP32、FP16</li><li>特征维度：32, 64, 128, 256, 384, 512, 768, 1024, 1408, 1536, 2048, 3072, 3584, 4096</li><li>距离类型：L2和IP</li><li>计算精度：高</li><li>Device内存占用：高</li><li>适应场景：精度要求高的暴力检索场景；IP距离推荐在dim > 128的场景下使用。</li>|<li>[Flat](#flat)</li><li>[AICPU](#aicpu)</li>|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexFlat.cpp">链接</a>|
+|[AscendIndexSQ](./api/01_full_retrieval/11_AscendIndexSQ.md#ascendindexsq)|<li>特征类型：FP32</li><li>特征维度：64, 128, 256, 384, 512, 768</li><li>距离类型：L2和IP</li><li>计算精度：高</li><li>Device内存占用：较低（已量化为int8）</li><li>适应场景：精度要求较高的暴力检索场景</li>|<li>[SQ8](#sq8)</li><li>[AICPU](#aicpu)</li>|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexSQ.cpp">链接</a>|
+|[AscendIndexCluster](./api/01_full_retrieval/02_AscendIndexCluster.md#ascendindexcluster)|<li>特征类型：FP32</li><li>特征维度：32, 64, 128, 256, 384, 512</li><li>距离类型：IP</li><li>计算精度：高</li><li>Device内存占用：较高</li><li>适应场景：只计算距离的聚类场景</li><li>仅支持<term>Atlas 推理系列产品</term></li>|<li>[Flat](#flat)</li><li>[AICPU](#aicpu)</li>|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexCluster.cpp">链接</a>|
+|[IndexIL](./api/01_full_retrieval/13_IndexIL.md#indexil)|需要运行在Device上，安装部署复杂，暂不推荐使用|<li>[Flat](#flat)</li>|参考[IndexILFlat](./api/01_full_retrieval/14_IndexILFlat.md#indexilflat)|
+|[AscendIndexILFlat](./api/01_full_retrieval/15_AscendIndexILFlat.md#ascendindexilflat)|<li>特征类型：FP16、FP32</li><li>特征维度：32, 64, 128, 256, 384, 512</li><li>距离类型：IP</li><li>计算精度：高</li><li>Device内存占用：较高</li><li>适应场景：只计算距离的聚类场景</li><li>仅支持<term>Atlas 推理系列产品</term></li>|<li>[Flat](#flat)</li><li>[AICPU](#aicpu)</li>|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/tree/master/IndexSDK">链接</a>|
 
 ### 近似检索<a name="ZH-CN_TOPIC_0000001698168797"></a>
 
@@ -143,16 +143,16 @@
 
 |算法（API参考）|算法使用场景|需要生成的算子|样例链接|
 |--|--|--|--|
-|[AscendIndexIVFSP](./api/02_approximate_retrieval.md#ascendindexivfsp)|<li>特征类型：FP32</li><li>特征维度：64, 128, 256, 512, 768</li><li>距离类型：L2</li><li>计算精度：中</li><li>Device内存占用：低（压缩特征）</li><li>适应场景：适用于亿级底库（大库容），对性能要求较高，对精度损失有容忍的近似检索场景。</li><li>仅支持<term>Atlas 推理系列产品</term></li>|<li>IVFSP业务算子</li><li>IVFSP AICPU算子</li><li>IVFSP训练算子（仅在需要通过训练生成码本文件时才使用到）</li><br>请参见[IVFSP](#ivfsp)。|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexIVFSP.cpp">链接</a>|
-|[AscendIndexIVFSQ](./api/02_approximate_retrieval.md#ascendindexivfsq)|<li>特征类型：FP32</li><li>特征维度：64, 128, 256, 384, 512</li><li>距离类型：L2和IP</li><li>计算精度：中</li><li>Device内存占用：较低（量化为int8）</li><li>适应场景：IVFSQ算法作为性能-精度调节器，适用于对精度损失有容忍，但是对性能要求比较高的场景。</li>|<li>[IVFSQ8](#ivfsq8)</li><li>[AICPU](#aicpu)</li><li>[FlatAT](#flatat)（仅在参数useKmeansPP设置为true的时候需要生成FlatAT算子）</li>|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexIVFSQ.cpp">链接</a>|
-|[AscendIndexIVFSQT](./api/02_approximate_retrieval.md#ascendindexivfsqt)|<li>特征类型：FP32</li><li>特征维度：256</li><li>距离类型：IP</li><li>计算精度：中</li><li>Device内存占用：低（量化和降维）</li><li>适应场景：AscendIndexIVFSQT包含降维算法的三级检索IVFSQ算法，适用于亿级底库（大库容），对性能要求较高，对精度损失有容忍的近似检索场景。</li>|<li>[IVFSQT](#ivfsqt)</li><li>[FlatAT](#flatat)</li><li>[AICPU](#aicpu)</li><li>[FlatInt8AT](#flatint8at)（在Atlas 推理系列产品上时需要生成）</li>|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexIVFSQT.cpp">链接</a>|
-|[AscendIndexBinaryFlat](./api/02_approximate_retrieval.md#ascendindexbinaryflat)|<li>特征类型：uint8二值化特征</li><li>特征维度：256, 512, 1024</li><li>距离类型：Hamming和IP</li><li>计算精度：高</li><li>Device内存占用：低</li><li>适应场景：AscendIndexBinaryFlat类继承自Faiss的IndexBinary类，用于二值化特征检索。对内存占用要求较低，性能要求较高的场景。</li><li>仅支持Atlas 推理系列产品</li>|<li>[BinaryFlat](#binaryflat)</li><li>[AICPU](#aicpu)</li>|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexBinaryFlat.cpp">链接</a>|
-|[AscendIndexVStar](./api/02_approximate_retrieval.md#ascendindexvstar)|<li>特征类型：FP32</li><li>特征维度：128, 256, 512, 1024</li><li>距离类型：L2</li><li>计算精度：中</li><li>Device内存占用：低（压缩特征）</li><li>适应场景：适用于千万级底库（大库容），对性能要求较高，对精度损失有容忍的近似检索场景。</li><li>仅支持Atlas 推理系列产品</li>|<li>VStar业务算子</li><li>VStar AICPU算子</li><li>VStar训练算子（仅在需要通过训练生成码本文件时才使用到）</li><br>请参见[VSTAR](#vstar)。|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexVStar.cpp">链接</a>|
-|[AscendIndexGreat](./api/02_approximate_retrieval.md#ascendindexgreat)|<li>特征类型：FP32</li><li>特征维度：128, 256, 512, 1024</li><li>距离类型：L2</li><li>计算精度：中</li><li>Device内存占用：低（压缩特征）</li><li>适应场景：适用于千万级底库（大库容），对性能要求较高，对精度损失有容忍的近似检索场景。</li><li>仅支持Atlas 推理系列产品。（当mode为AKMode时，才需要生成算子）</li>|<li>VStar业务算子</li><li>VStar AICPU算子</li><li>VStar训练算子（仅在需要通过训练生成码本文件时才使用到）</li><br>请参见[VSTAR](#vstar)。|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexGreat.cpp">链接</a>|
-|[AscendIndexIVFFlat](./api/02_approximate_retrieval.md#ascendindexivfflat)|<li>特征类型：FP32</li><li>特征维度：128</li><li>距离类型：IP</li><li>计算精度：中</li><li>Device内存占用：中</li><li>适应场景：适用于亿级底库（大库容），对性能要求较高，对精度损失有容忍的近似检索场景。</li><li>仅支持<term>Atlas A2 推理系列产品</term>, <term>Atlas A3 推理系列产品</term>和<term>Ascend 950 系列产品</term></li>|<li>[AICPU](#aicpu)</li><li>[IVFFLAT](#ivfflat)</li>|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexIVFFlat.cpp">链接</a>|
-|[AscendIndexIVFPQ](./api/02_approximate_retrieval.md#ascendindexivfpq)|<li>特征类型：FP32</li><li>特征维度：128</li><li>距离类型：L2</li><li>计算精度：中（近似检索）</li><li>Device内存占用：低（基于PQ编码压缩向量）</li><li>适应场景：适用于亿级底库（大库容），对吞吐和时延要求较高，可接受一定精度损失的近似检索场景。</li><li>仅支持Ascend 950 系列产品</li>|<li>[AICPU](#aicpu)</li><li>[IVFPQ](#ivfpq)</li>|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexIVFPQ.cpp">链接</a>|
-|[AscendIndexIVFRaBitQ](./api/02_approximate_retrieval.md#ascendindexivfrabitq)|<li>特征类型：FP32</li><li>特征维度：128</li><li>距离类型：L2 & IP</li><li>计算精度：中</li><li>Device内存占用：低（压缩特征）</li><li>适应场景：适用于亿级底库（大库容），对性能要求较高，对精度损失有容忍的近似检索场景。</li><li>仅支持<term>Atlas A2 推理系列产品</term>, <term>Atlas A3 推理系列产品</term> 和<term>Ascend 950 系列产品</term></li>|<li>[AICPU](#aicpu)</li><li>[IVFRaBitQ](#ivfrabitq)</li>|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexIVFRabitQ.cpp">链接</a>|
-|[AscendIndexCagra](./api/02_approximate_retrieval.md#ascendindexcagra)|<li>特征类型：FP32</li><li>特征维度：64, 128, 256, 512</li><li>距离类型：L2</li><li>计算精度：中</li><li>Device内存占用：低（RabitQ量化压缩）</li><li>适应场景：基于图检索的近似最近邻搜索，适用于亿级底库（大库容），对性能要求较高，对精度损失有容忍的近似检索场景。</li><li>仅支持<term>Ascend 950 系列产品</term></li>|<li>[Cagra](#cagra)</li>|<a href="../../examples/TestAscendIndexCagra.cpp">链接</a>|
+|[AscendIndexIVFSP](./api/02_approximate_retrieval/05_AscendIndexIVFSP.md#ascendindexivfsp)|<li>特征类型：FP32</li><li>特征维度：64, 128, 256, 512, 768</li><li>距离类型：L2</li><li>计算精度：中</li><li>Device内存占用：低（压缩特征）</li><li>适应场景：适用于亿级底库（大库容），对性能要求较高，对精度损失有容忍的近似检索场景。</li><li>仅支持<term>Atlas 推理系列产品</term></li>|<li>IVFSP业务算子</li><li>IVFSP AICPU算子</li><li>IVFSP训练算子（仅在需要通过训练生成码本文件时才使用到）</li><br>请参见[IVFSP](#ivfsp)。|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexIVFSP.cpp">链接</a>|
+|[AscendIndexIVFSQ](./api/02_approximate_retrieval/07_AscendIndexIVFSQ.md#ascendindexivfsq)|<li>特征类型：FP32</li><li>特征维度：64, 128, 256, 384, 512</li><li>距离类型：L2和IP</li><li>计算精度：中</li><li>Device内存占用：较低（量化为int8）</li><li>适应场景：IVFSQ算法作为性能-精度调节器，适用于对精度损失有容忍，但是对性能要求比较高的场景。</li>|<li>[IVFSQ8](#ivfsq8)</li><li>[AICPU](#aicpu)</li><li>[FlatAT](#flatat)（仅在参数useKmeansPP设置为true的时候需要生成FlatAT算子）</li>|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexIVFSQ.cpp">链接</a>|
+|[AscendIndexIVFSQT](./api/02_approximate_retrieval/09_AscendIndexIVFSQT.md#ascendindexivfsqt)|<li>特征类型：FP32</li><li>特征维度：256</li><li>距离类型：IP</li><li>计算精度：中</li><li>Device内存占用：低（量化和降维）</li><li>适应场景：AscendIndexIVFSQT包含降维算法的三级检索IVFSQ算法，适用于亿级底库（大库容），对性能要求较高，对精度损失有容忍的近似检索场景。</li>|<li>[IVFSQT](#ivfsqt)</li><li>[FlatAT](#flatat)</li><li>[AICPU](#aicpu)</li><li>[FlatInt8AT](#flatint8at)（在Atlas 推理系列产品上时需要生成）</li>|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexIVFSQT.cpp">链接</a>|
+|[AscendIndexBinaryFlat](./api/02_approximate_retrieval/01_AscendIndexBinaryFlat.md#ascendindexbinaryflat)|<li>特征类型：uint8二值化特征</li><li>特征维度：256, 512, 1024</li><li>距离类型：Hamming和IP</li><li>计算精度：高</li><li>Device内存占用：低</li><li>适应场景：AscendIndexBinaryFlat类继承自Faiss的IndexBinary类，用于二值化特征检索。对内存占用要求较低，性能要求较高的场景。</li><li>仅支持Atlas 推理系列产品</li>|<li>[BinaryFlat](#binaryflat)</li><li>[AICPU](#aicpu)</li>|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexBinaryFlat.cpp">链接</a>|
+|[AscendIndexVStar](./api/02_approximate_retrieval/11_AscendIndexVStar.md#ascendindexvstar)|<li>特征类型：FP32</li><li>特征维度：128, 256, 512, 1024</li><li>距离类型：L2</li><li>计算精度：中</li><li>Device内存占用：低（压缩特征）</li><li>适应场景：适用于千万级底库（大库容），对性能要求较高，对精度损失有容忍的近似检索场景。</li><li>仅支持Atlas 推理系列产品</li>|<li>VStar业务算子</li><li>VStar AICPU算子</li><li>VStar训练算子（仅在需要通过训练生成码本文件时才使用到）</li><br>请参见[VSTAR](#vstar)。|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexVStar.cpp">链接</a>|
+|[AscendIndexGreat](./api/02_approximate_retrieval/12_AscendIndexGreat.md#ascendindexgreat)|<li>特征类型：FP32</li><li>特征维度：128, 256, 512, 1024</li><li>距离类型：L2</li><li>计算精度：中</li><li>Device内存占用：低（压缩特征）</li><li>适应场景：适用于千万级底库（大库容），对性能要求较高，对精度损失有容忍的近似检索场景。</li><li>仅支持Atlas 推理系列产品。（当mode为AKMode时，才需要生成算子）</li>|<li>VStar业务算子</li><li>VStar AICPU算子</li><li>VStar训练算子（仅在需要通过训练生成码本文件时才使用到）</li><br>请参见[VSTAR](#vstar)。|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexGreat.cpp">链接</a>|
+|[AscendIndexIVFFlat](./api/02_approximate_retrieval/14_AscendIndexIVFFlat.md#ascendindexivfflat)|<li>特征类型：FP32</li><li>特征维度：128</li><li>距离类型：IP</li><li>计算精度：中</li><li>Device内存占用：中</li><li>适应场景：适用于亿级底库（大库容），对性能要求较高，对精度损失有容忍的近似检索场景。</li><li>仅支持<term>Atlas A2 推理系列产品</term>, <term>Atlas A3 推理系列产品</term>和<term>Ascend 950 系列产品</term></li>|<li>[AICPU](#aicpu)</li><li>[IVFFLAT](#ivfflat)</li>|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexIVFFlat.cpp">链接</a>|
+|[AscendIndexIVFPQ](./api/02_approximate_retrieval/15_AscendIndexIVFPQ.md#ascendindexivfpq)|<li>特征类型：FP32</li><li>特征维度：128</li><li>距离类型：L2</li><li>计算精度：中（近似检索）</li><li>Device内存占用：低（基于PQ编码压缩向量）</li><li>适应场景：适用于亿级底库（大库容），对吞吐和时延要求较高，可接受一定精度损失的近似检索场景。</li><li>仅支持Ascend 950 系列产品</li>|<li>[AICPU](#aicpu)</li><li>[IVFPQ](#ivfpq)</li>|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexIVFPQ.cpp">链接</a>|
+|[AscendIndexIVFRaBitQ](./api/02_approximate_retrieval/16_AscendIndexIVFRaBitQ.md#ascendindexivfrabitq)|<li>特征类型：FP32</li><li>特征维度：128</li><li>距离类型：L2 & IP</li><li>计算精度：中</li><li>Device内存占用：低（压缩特征）</li><li>适应场景：适用于亿级底库（大库容），对性能要求较高，对精度损失有容忍的近似检索场景。</li><li>仅支持<term>Atlas A2 推理系列产品</term>, <term>Atlas A3 推理系列产品</term> 和<term>Ascend 950 系列产品</term></li>|<li>[AICPU](#aicpu)</li><li>[IVFRaBitQ](#ivfrabitq)</li>|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexIVFRabitQ.cpp">链接</a>|
+|[AscendIndexCagra](./api/02_approximate_retrieval/18_AscendIndexCagra.md#ascendindexcagra)|<li>特征类型：FP32</li><li>特征维度：64, 128, 256, 512</li><li>距离类型：L2</li><li>计算精度：中</li><li>Device内存占用：低（RabitQ量化压缩）</li><li>适应场景：基于图检索的近似最近邻搜索，适用于亿级底库（大库容），对性能要求较高，对精度损失有容忍的近似检索场景。</li><li>仅支持<term>Ascend 950 系列产品</term></li>|<li>[Cagra](#cagra)</li>|<a href="../../examples/TestAscendIndexCagra.cpp">链接</a>|
 
 ### 属性过滤检索<a name="ZH-CN_TOPIC_0000001649689168"></a>
 
@@ -162,7 +162,7 @@
 
 |算法（API参考）|算法使用场景|需要生成的算子|样例链接|
 |--|--|--|--|
- |[AscendIndexTS](./api/03_attribute_filtering-based_retrieval.md#ascendindexts)|<li>特征类型：uint8二值化特征、int8、FP32（具体算法不同而不同）</li><li>特征维度：具体算法不同而不同</li><li>距离类型：Hamming、Cos、IP、L2</li><li>计算精度：较高</li><li>Device内存占用：较高</li><li>适应场景：需要过滤属性的时空库场景</li><li>Cos和IP支持<term>Atlas 推理系列产品</term>，<term>Atlas A2 推理系列产品</term>，<term>Atlas A3 推理系列产品</term></li><li>Hamming距离仅支持<term>Atlas 推理系列产品</term></li>|<li>[Mask](#mask)</li><li>[BinaryFlat](#binaryflat)</li><li>[Int8Flat](#int8flat)</li><li>[Flat](#flat)</li><li>[AICPU](#aicpu)</li>|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexTS.cpp">链接</a>|
+ |[AscendIndexTS](./api/03_attribute_filtering-based_retrieval/01_AscendIndexTS.md#ascendindexts)|<li>特征类型：uint8二值化特征、int8、FP32（具体算法不同而不同）</li><li>特征维度：具体算法不同而不同</li><li>距离类型：Hamming、Cos、IP、L2</li><li>计算精度：较高</li><li>Device内存占用：较高</li><li>适应场景：需要过滤属性的时空库场景</li><li>Cos和IP支持<term>Atlas 推理系列产品</term>，<term>Atlas A2 推理系列产品</term>，<term>Atlas A3 推理系列产品</term></li><li>Hamming距离仅支持<term>Atlas 推理系列产品</term></li>|<li>[Mask](#mask)</li><li>[BinaryFlat](#binaryflat)</li><li>[Int8Flat](#int8flat)</li><li>[Flat](#flat)</li><li>[AICPU](#aicpu)</li>|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexTS.cpp">链接</a>|
 
 ### 多Index批量检索<a name="ZH-CN_TOPIC_0000001649848472"></a>
 
@@ -172,13 +172,13 @@
 
 |接口（API参考）|**接口使用场景**|**可以使用本接口的算法**|样例链接|
 |--|--|--|--|
-|[Search](./api/04_multi-index_batch_retrieval.md#searchfaissindex接口)|单Device进行多个Index检索。|<li>[AscendIndexSQ](./api/01_full_retrieval.md#ascendindexsq)</li><li>[AscendIndexFlat](./api/01_full_retrieval.md#ascendindexflat)</li><li>[AscendIndexIVFSP](./api/02_approximate_retrieval.md#ascendindexivfsp)</li>|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendMultiSearch.cpp">链接</a>|
-|[Search](./api/04_multi-index_batch_retrieval.md#searchascendindex接口)|单Device进行多个AscendIndex检索。|<li>[AscendIndexSQ](./api/01_full_retrieval.md#ascendindexsq)</li><li>[AscendIndexFlat](./api/01_full_retrieval.md#ascendindexflat)</li><li>[AscendIndexIVFSP](./api/02_approximate_retrieval.md#ascendindexivfsp)</li>|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendMultiSearch.cpp">链接</a>|
-|[Search](./api/04_multi-index_batch_retrieval.md#searchascendindexint8接口)|单Device进行多个AscendIndexInt8检索。|<li>[AscendIndexInt8Flat](./api/01_full_retrieval.md#ascendindexint8flat)</li>|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendMultiSearch.cpp">链接</a>|
-|[SearchWithFilter](./api/04_multi-index_batch_retrieval.md#searchwithfilterfaissindex单filter接口)|单Device进行多个Index带属性过滤（单filter）检索。|<li>[AscendIndexSQ](./api/01_full_retrieval.md#ascendindexsq)</li><li>[AscendIndexIVFSP](./api/02_approximate_retrieval.md#ascendindexivfsp)</li>|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendMultiSearch.cpp">链接</a>|
-|[SearchWithFilter](./api/04_multi-index_batch_retrieval.md#searchwithfilterascendindex单filter接口)|单Device进行多个AscendIndex带属性过滤（单filter）检索。|<li>[AscendIndexSQ](./api/01_full_retrieval.md#ascendindexsq)</li><li>[AscendIndexIVFSP](./api/02_approximate_retrieval.md#ascendindexivfsp)</li>|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendMultiSearch.cpp">链接</a>|
-|[SearchWithFilter](./api/04_multi-index_batch_retrieval.md#searchwithfilterfaissindex多filter接口)|单Device进行多个Index带过滤属性（多filter）检索。|<li>[AscendIndexSQ](./api/01_full_retrieval.md#ascendindexsq)</li><li>[AscendIndexIVFSP](./api/02_approximate_retrieval.md#ascendindexivfsp)</li>|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendMultiSearch.cpp">链接</a>|
-|[SearchWithFilter](./api/04_multi-index_batch_retrieval.md#searchwithfilterascendindex多filter接口)|单Device进行多个AscendIndex带过滤属性（多filter）检索。|<li>[AscendIndexSQ](./api/01_full_retrieval.md#ascendindexsq)</li><li>[AscendIndexIVFSP](./api/02_approximate_retrieval.md#ascendindexivfsp)</li>|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendMultiSearch.cpp">链接</a>|
+|[Search](./api/04_multi-index_batch_retrieval/01_multi-index_batch_retrieval.md#searchfaissindex接口)|单Device进行多个Index检索。|<li>[AscendIndexSQ](./api/01_full_retrieval/11_AscendIndexSQ.md#ascendindexsq)</li><li>[AscendIndexFlat](./api/01_full_retrieval/08_AscendIndexFlat.md#ascendindexflat)</li><li>[AscendIndexIVFSP](./api/02_approximate_retrieval/05_AscendIndexIVFSP.md#ascendindexivfsp)</li>|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendMultiSearch.cpp">链接</a>|
+|[Search](./api/04_multi-index_batch_retrieval/01_multi-index_batch_retrieval.md#searchascendindex接口)|单Device进行多个AscendIndex检索。|<li>[AscendIndexSQ](./api/01_full_retrieval/11_AscendIndexSQ.md#ascendindexsq)</li><li>[AscendIndexFlat](./api/01_full_retrieval/08_AscendIndexFlat.md#ascendindexflat)</li><li>[AscendIndexIVFSP](./api/02_approximate_retrieval/05_AscendIndexIVFSP.md#ascendindexivfsp)</li>|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendMultiSearch.cpp">链接</a>|
+|[Search](./api/04_multi-index_batch_retrieval/01_multi-index_batch_retrieval.md#searchascendindexint8接口)|单Device进行多个AscendIndexInt8检索。|<li>[AscendIndexInt8Flat](./api/01_full_retrieval/06_AscendIndexInt8Flat.md#ascendindexint8flat)</li>|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendMultiSearch.cpp">链接</a>|
+|[SearchWithFilter](./api/04_multi-index_batch_retrieval/01_multi-index_batch_retrieval.md#searchwithfilterfaissindex单filter接口)|单Device进行多个Index带属性过滤（单filter）检索。|<li>[AscendIndexSQ](./api/01_full_retrieval/11_AscendIndexSQ.md#ascendindexsq)</li><li>[AscendIndexIVFSP](./api/02_approximate_retrieval/05_AscendIndexIVFSP.md#ascendindexivfsp)</li>|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendMultiSearch.cpp">链接</a>|
+|[SearchWithFilter](./api/04_multi-index_batch_retrieval/01_multi-index_batch_retrieval.md#searchwithfilterascendindex单filter接口)|单Device进行多个AscendIndex带属性过滤（单filter）检索。|<li>[AscendIndexSQ](./api/01_full_retrieval/11_AscendIndexSQ.md#ascendindexsq)</li><li>[AscendIndexIVFSP](./api/02_approximate_retrieval/05_AscendIndexIVFSP.md#ascendindexivfsp)</li>|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendMultiSearch.cpp">链接</a>|
+|[SearchWithFilter](./api/04_multi-index_batch_retrieval/01_multi-index_batch_retrieval.md#searchwithfilterfaissindex多filter接口)|单Device进行多个Index带过滤属性（多filter）检索。|<li>[AscendIndexSQ](./api/01_full_retrieval/11_AscendIndexSQ.md#ascendindexsq)</li><li>[AscendIndexIVFSP](./api/02_approximate_retrieval/05_AscendIndexIVFSP.md#ascendindexivfsp)</li>|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendMultiSearch.cpp">链接</a>|
+|[SearchWithFilter](./api/04_multi-index_batch_retrieval/01_multi-index_batch_retrieval.md#searchwithfilterascendindex多filter接口)|单Device进行多个AscendIndex带过滤属性（多filter）检索。|<li>[AscendIndexSQ](./api/01_full_retrieval/11_AscendIndexSQ.md#ascendindexsq)</li><li>[AscendIndexIVFSP](./api/02_approximate_retrieval/05_AscendIndexIVFSP.md#ascendindexivfsp)</li>|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendMultiSearch.cpp">链接</a>|
 
 ### 其他功能<a name="ZH-CN_TOPIC_0000001698088065"></a>
 
@@ -186,9 +186,9 @@
 
 |算法（API参考）|算法需求（性能、场景差异）|如何调用|样例链接|
 |--|--|--|--|
-|[IReduction](./api/05_more_functions.md#ireduction)|IReduction是特征检索组件中降维方法的统一接口，目前支持**PCAR**和**NN**两种降维算法。|通过ReductionConfig初始化，调用CreateReduction创建降维对象，然后进行train和reduce。|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIReduction.cpp">链接</a>|
-|[AscendNNInference](./api/05_more_functions.md#ascendnninference)|通过神经网络进行推理。|通过AscendNNInference创建NN降维对象，然后进行infer降维。|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIReduction.cpp">链接</a>|
-|[AscendCloner](./api/05_more_functions.md#ascendcloner)|Index SDK提供了将NPU上的检索Index资源拷贝到CPU侧Faiss的操作，拷贝过程发生在内存中，原始NPU的Index上加载的数据会被拷贝到CPU侧的内存中，方便用户在CPU上使用相同的底库执行检索。|index_ascend_to_cpu将AscendIndex拷贝生成一个CPU上的Index，index_cpu_to_ascend将CPU上的Index拷贝生成一个AscendIndex。|无|
+|[IReduction](./api/05_more_functions/01_IReduction.md#ireduction)|IReduction是特征检索组件中降维方法的统一接口，目前支持**PCAR**和**NN**两种降维算法。|通过ReductionConfig初始化，调用CreateReduction创建降维对象，然后进行train和reduce。|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIReduction.cpp">链接</a>|
+|[AscendNNInference](./api/05_more_functions/02_AscendNNInference.md#ascendnninference)|通过神经网络进行推理。|通过AscendNNInference创建NN降维对象，然后进行infer降维。|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIReduction.cpp">链接</a>|
+|[AscendCloner](./api/05_more_functions/04_AscendCloner.md#ascendcloner)|Index SDK提供了将NPU上的检索Index资源拷贝到CPU侧Faiss的操作，拷贝过程发生在内存中，原始NPU的Index上加载的数据会被拷贝到CPU侧的内存中，方便用户在CPU上使用相同的底库执行检索。|index_ascend_to_cpu将AscendIndex拷贝生成一个CPU上的Index，index_cpu_to_ascend将CPU上的Index拷贝生成一个AscendIndex。|无|
 
 ## 自定义算子介绍<a name="ZH-CN_TOPIC_0000001456854988"></a>
 
@@ -253,8 +253,8 @@
 - [AscendIndexCluster](#全量检索)
 - [IndexIL](#全量检索)
 - [AscendIndexTS](#属性过滤检索)
-- [Search（单device进行多个Index检索）](./api/04_multi-index_batch_retrieval.md#searchfaissindex接口)
-- [Search（单device进行多个AscendIndex检索）](./api/04_multi-index_batch_retrieval.md#searchascendindex接口)
+- [Search（单device进行多个Index检索）](./api/04_multi-index_batch_retrieval/01_multi-index_batch_retrieval.md#searchfaissindex接口)
+- [Search（单device进行多个AscendIndex检索）](./api/04_multi-index_batch_retrieval/01_multi-index_batch_retrieval.md#searchascendindex接口)
 
 #### SQ8<a name="ZH-CN_TOPIC_0000001506614921"></a>
 
@@ -293,12 +293,12 @@
 **涉及算法<a name="section6413836184719"></a>**
 
 - [AscendIndexSQ](#全量检索)
-- [Search（单device进行多个Index检索）](./api/04_multi-index_batch_retrieval.md#searchfaissindex接口)
-- [Search（单device进行多个AscendIndex检索）](./api/04_multi-index_batch_retrieval.md#searchascendindex接口)
-- [SearchWithFilter（FaissIndex单filter）](./api/04_multi-index_batch_retrieval.md#searchwithfilterfaissindex单filter接口)
-- [SearchWithFilter（AscendIndex单filter）](./api/04_multi-index_batch_retrieval.md#searchwithfilterascendindex单filter接口)
-- [SearchWithFilter（FaissIndex多filter）](./api/04_multi-index_batch_retrieval.md#searchwithfilterfaissindex多filter接口)
-- [SearchWithFilter（AscendIndex多filter）](./api/04_multi-index_batch_retrieval.md#searchwithfilterascendindex多filter接口)
+- [Search（单device进行多个Index检索）](./api/04_multi-index_batch_retrieval/01_multi-index_batch_retrieval.md#searchfaissindex接口)
+- [Search（单device进行多个AscendIndex检索）](./api/04_multi-index_batch_retrieval/01_multi-index_batch_retrieval.md#searchascendindex接口)
+- [SearchWithFilter（FaissIndex单filter）](./api/04_multi-index_batch_retrieval/01_multi-index_batch_retrieval.md#searchwithfilterfaissindex单filter接口)
+- [SearchWithFilter（AscendIndex单filter）](./api/04_multi-index_batch_retrieval/01_multi-index_batch_retrieval.md#searchwithfilterascendindex单filter接口)
+- [SearchWithFilter（FaissIndex多filter）](./api/04_multi-index_batch_retrieval/01_multi-index_batch_retrieval.md#searchwithfilterfaissindex多filter接口)
+- [SearchWithFilter（AscendIndex多filter）](./api/04_multi-index_batch_retrieval/01_multi-index_batch_retrieval.md#searchwithfilterascendindex多filter接口)
 
 #### IVFSQ8<a name="ZH-CN_TOPIC_0000001506614889"></a>
 
@@ -376,7 +376,7 @@
 
 - [AscendIndexInt8Flat](#全量检索)
 - [AscendIndexTS](#属性过滤检索)
-- [Search（单device进行多个AscendIndexInt8检索）](./api/04_multi-index_batch_retrieval.md#searchascendindexint8接口)
+- [Search（单device进行多个AscendIndexInt8检索）](./api/04_multi-index_batch_retrieval/01_multi-index_batch_retrieval.md#searchascendindexint8接口)
 
 #### IVFSQT<a name="ZH-CN_TOPIC_0000001506414677"></a>
 
@@ -546,7 +546,7 @@
 <tr id="row2033244801010"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.2.1"><p id="p4332164821010"><a name="p4332164821010"></a><a name="p4332164821010"></a>参数名称</p>
 </th>
 <td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.2.1 "><p id="p193321480106"><a name="p193321480106"></a><a name="p193321480106"></a>&lt;dim&gt;：二值化特征向量维度，dim ∈ { 256， 512，1024 }，默认值为“512”。</p>
-<p id="p1474218499117"><a name="p1474218499117"></a><a name="p1474218499117"></a>&lt;query_type&gt;：检索类型，默认为<span class="parmvalue" id="parmvalue12920913153"><a name="parmvalue12920913153"></a><a name="parmvalue12920913153"></a>“uint8”</span>，当AscendIndexBinaryFlat算法的<a href="./api/02_approximate_retrieval.md#ZH-CN_TOPIC_0000001456375288">search接口</a>进行性能提升时，需要设置为<span class="parmvalue" id="parmvalue10202131541419"><a name="parmvalue10202131541419"></a><a name="parmvalue10202131541419"></a>“float”</span>。</p>
+<p id="p1474218499117"><a name="p1474218499117"></a><a name="p1474218499117"></a>&lt;query_type&gt;：检索类型，默认为<span class="parmvalue" id="parmvalue12920913153"><a name="parmvalue12920913153"></a><a name="parmvalue12920913153"></a>“uint8”</span>，当AscendIndexBinaryFlat算法的<a href="./api/02_approximate_retrieval/01_AscendIndexBinaryFlat.md#ZH-CN_TOPIC_0000001456375288">search接口</a>进行性能提升时，需要设置为<span class="parmvalue" id="parmvalue10202131541419"><a name="parmvalue10202131541419"></a><a name="parmvalue10202131541419"></a>“float”</span>。</p>
 <p id="p43321548181012"><a name="p43321548181012"></a><a name="p43321548181012"></a>&lt;process_id&gt;：批量生成算子多进程调度的进程ID，默认值为<span class="parmvalue" id="parmvalue12408135012357"><a name="parmvalue12408135012357"></a><a name="parmvalue12408135012357"></a>“0”</span>，无需设置。</p>
 <p id="p670916785418"><a name="p670916785418"></a><a name="p670916785418"></a>&lt;pool_size&gt;：批量生成算子多进程调度的进程池大小，默认为16。</p>
 <p id="p7767123203320"><a name="p7767123203320"></a><a name="p7767123203320"></a>--help | -h：查询帮助信息。</p>
@@ -734,9 +734,9 @@ VSTAR检索当前只支持<term>Atlas 推理系列产品</term>，涉及VSTAR业
 
 **涉及算法<a name="section16686174317488"></a>**
 
-[AscendIndexVStar](./api/02_approximate_retrieval.md#ascendindexvstar)
+[AscendIndexVStar](./api/02_approximate_retrieval/11_AscendIndexVStar.md#ascendindexvstar)
 
-[AscendIndexGreat](./api/02_approximate_retrieval.md#ascendindexgreat)
+[AscendIndexGreat](./api/02_approximate_retrieval/12_AscendIndexGreat.md#ascendindexgreat)
 
 #### IVFFLAT<a name="ZH-CN_TOPIC_0000002478096638"></a>
 
@@ -772,7 +772,7 @@ VSTAR检索当前只支持<term>Atlas 推理系列产品</term>，涉及VSTAR业
 
 **涉及算法<a name="section16686174317488"></a>**
 
-[AscendIndexIVFFlat](./api/02_approximate_retrieval.md#ascendindexivfflat)
+[AscendIndexIVFFlat](./api/02_approximate_retrieval/14_AscendIndexIVFFlat.md#ascendindexivfflat)
 
 #### IVFPQ<a name="ZH-CN_TOPIC_0000002478096638"></a>
 
@@ -811,7 +811,7 @@ VSTAR检索当前只支持<term>Atlas 推理系列产品</term>，涉及VSTAR业
 
 **涉及算法<a name="section16686174317488"></a>**
 
-[AscendIndexIVFPQ](./api/02_approximate_retrieval.md#ascendindexivfpq)
+[AscendIndexIVFPQ](./api/02_approximate_retrieval/15_AscendIndexIVFPQ.md#ascendindexivfpq)
 
 #### IVFRaBitQ<a name="ZH-CN_TOPIC_0000002513317244"></a>
 
@@ -848,7 +848,7 @@ VSTAR检索当前只支持<term>Atlas 推理系列产品</term>，涉及VSTAR业
 
 **涉及算法<a name="section16686174317488"></a>**
 
-[AscendIndexIVFRaBitQ](./api/02_approximate_retrieval.md#ascendindexivfrabitq)
+[AscendIndexIVFRaBitQ](./api/02_approximate_retrieval/16_AscendIndexIVFRaBitQ.md#ascendindexivfrabitq)
 
 **运行时诊断（开发调试）<a name="ivfrabitq-runtime-debug-ref"></a>**
 
@@ -936,7 +936,7 @@ Cagra构图脚本 "graph_build.py" 用于构建CAGRA图检索算法所需的图�
 
 **涉及算法<a name="section_cagra_algo"></a>**
 
-[AscendIndexCagra](./api/02_approximate_retrieval.md#ascendindexcagra)
+[AscendIndexCagra](./api/02_approximate_retrieval/18_AscendIndexCagra.md#ascendindexcagra)
 
 #### VSTAR生成码本文件<a name="ZH-CN_TOPIC_0000002008789068"></a>
 
@@ -1137,7 +1137,7 @@ source /usr/local/Ascend/ascend-toolkit/set_env.sh
 
 Index SDK提供两种训练脚本方式：
 
-- 使用IVFSP算法的[trainCodeBook接口](./api/02_approximate_retrieval.md#traincodebook接口)进行训练（推荐使用该方式）。
+- 使用IVFSP算法的[trainCodeBook接口](./api/02_approximate_retrieval/05_AscendIndexIVFSP.md#traincodebook接口)进行训练（推荐使用该方式）。
 - 使用“ivfsp\_train\_codebook.py”脚本进行训练。训练脚本位于安装目录下的“tools/train”文件夹中，注意Python版本为3.9.11。为了用户执行方便，提供了“ivfsp\_train\_codebook\_example.sh”样例脚本（脚本位于安装目录下的“tools/train”文件夹中），用户可在此文件上根据实际场景修改参数值，然后执行此脚本生成码本文件。
 
 <a name="table48723587152"></a>
