@@ -1,6 +1,6 @@
 # 快速入门
 
-本教程以 [Flat](./api/01_full_retrieval.md#ascendindexflat) 索引类型为例，帮助您通过 Docker 容器快速掌握 Index SDK 的基本使用方法。
+本教程以 [Flat](./api/01_full_retrieval/08_AscendIndexFlat.md#ascendindexflat) 索引类型为例，帮助您通过 Docker 容器快速掌握 Index SDK 的基本使用方法。
 
 ## 前置条件
 
