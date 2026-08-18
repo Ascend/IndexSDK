@@ -18,14 +18,17 @@
 
 #include <faiss/IndexFlat.h>
 #include <faiss/IndexIVFRaBitQ.h>
+#include <faiss/impl/IDSelector.h>
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
 #include <iostream>
 #include <random>
 #include <string>
+#include <vector>
 
 #include "Common.h"
+#include "acl.h"
 #include "common/utils/SocUtils.h"
 #include "faiss/ascend/AscendIndexIVFRaBitQ.h"
 #include "mockcpp/mockcpp.hpp"
@@ -283,6 +286,198 @@ TEST(TestAscendIndexIVFRaBitQ, copyFrom)
     {
         msg = e.what();
         std::cout << "Exception in copyFrom test: " << msg << std::endl;
+    }
+    EXPECT_EQ(msg, "");
+}
+
+TEST(TestAscendIndexIVFRaBitQ, SearchWithIdSelector)
+{
+    const int dim = 128;
+    const int nlist = 1024;
+    const int ntotal = 2000;
+    const int nprobe = 64;
+    const int nq = 5;
+    const int k = 10;
+
+    std::string msg = "";
+    faiss::MetricType type = faiss::METRIC_L2;
+    faiss::ascend::AscendIndexIVFRaBitQConfig conf({0});
+    conf.useKmeansPP = false;
+    std::vector<float> data(ntotal * dim);
+    std::vector<faiss::idx_t> ids(ntotal);
+    generateData(data.data(), ntotal, dim);
+    for (int i = 0; i < ntotal; ++i)
+    {
+        ids[i] = i;
+    }
+    const int trainNum = ntotal > nlist * 40 ? nlist * 40 : ntotal;
+
+    try
+    {
+        faiss::ascend::AscendIndexIVFRaBitQ index(dim, type, nlist, conf);
+        index.setNumProbes(nprobe);
+        index.train(trainNum, data.data());
+        index.add_with_ids(ntotal, data.data(), ids.data());
+
+        std::vector<float> dist(nq * k, 0.0f);
+        std::vector<faiss::idx_t> label(nq * k, -1);
+
+        // Range: keep ids in [0, ntotal/2)
+        {
+            faiss::IDSelectorRange rangeSel(0, ntotal / 2);
+            faiss::SearchParameters params;
+            params.sel = &rangeSel;
+            index.search(nq, data.data(), k, dist.data(), label.data(), &params);
+            int valid = 0;
+            for (int i = 0; i < nq * k; ++i)
+            {
+                if (label[i] < 0)
+                {
+                    continue;
+                }
+                ++valid;
+                EXPECT_LT(label[i], ntotal / 2);
+                EXPECT_GE(label[i], 0);
+            }
+            EXPECT_GT(valid, 0);
+        }
+
+        // Batch: only even ids in [0, 100)
+        {
+            std::vector<faiss::idx_t> allow;
+            for (int i = 0; i < 100; i += 2)
+            {
+                allow.push_back(i);
+            }
+            faiss::IDSelectorBatch batchSel(allow.size(), allow.data());
+            faiss::SearchParameters params;
+            params.sel = &batchSel;
+            index.search(nq, data.data(), k, dist.data(), label.data(), &params);
+            int valid = 0;
+            for (int i = 0; i < nq * k; ++i)
+            {
+                if (label[i] < 0)
+                {
+                    continue;
+                }
+                ++valid;
+                EXPECT_TRUE(batchSel.is_member(label[i]));
+            }
+            EXPECT_GT(valid, 0);
+        }
+
+        // Bitmap: allow first 64 ids
+        {
+            std::vector<uint8_t> bitmap(ntotal / 8 + 1, 0);
+            for (int i = 0; i < 64; ++i)
+            {
+                bitmap[i / 8] |= static_cast<uint8_t>(1u << (i % 8));
+            }
+            faiss::IDSelectorBitmap bitmapSel(bitmap.size(), bitmap.data());
+            faiss::SearchParameters params;
+            params.sel = &bitmapSel;
+            index.search(nq, data.data(), k, dist.data(), label.data(), &params);
+            int valid = 0;
+            for (int i = 0; i < nq * k; ++i)
+            {
+                if (label[i] < 0)
+                {
+                    continue;
+                }
+                ++valid;
+                EXPECT_TRUE(bitmapSel.is_member(label[i]));
+            }
+            EXPECT_GT(valid, 0);
+        }
+
+        // Not(Range): exclude [0, ntotal/2)
+        {
+            faiss::IDSelectorRange rangeSel(0, ntotal / 2);
+            faiss::IDSelectorNot notSel(&rangeSel);
+            faiss::SearchParameters params;
+            params.sel = &notSel;
+            index.search(nq, data.data(), k, dist.data(), label.data(), &params);
+            int valid = 0;
+            for (int i = 0; i < nq * k; ++i)
+            {
+                if (label[i] < 0)
+                {
+                    continue;
+                }
+                ++valid;
+                EXPECT_GE(label[i], ntotal / 2);
+            }
+            EXPECT_GT(valid, 0);
+        }
+    }
+    catch (std::exception& e)
+    {
+        msg = e.what();
+        std::cout << "Exception in SearchWithIdSelector test: " << msg << std::endl;
+    }
+    EXPECT_EQ(msg, "");
+}
+
+TEST(TestAscendIndexIVFRaBitQ, SearchWithIdSelectorMultiDevice)
+{
+    uint32_t deviceCount = 0;
+    auto ret = aclrtGetDeviceCount(&deviceCount);
+    if (ret != ACL_SUCCESS || deviceCount < 2)
+    {
+        GTEST_SKIP() << "Need >=2 devices for multi-card IDSelector test";
+    }
+
+    const int dim = 128;
+    const int nlist = 1024;
+    const int ntotal = 4000;
+    const int nprobe = 64;
+    const int nq = 4;
+    const int k = 10;
+
+    std::string msg = "";
+    faiss::MetricType type = faiss::METRIC_L2;
+    faiss::ascend::AscendIndexIVFRaBitQConfig conf({0, 1});
+    conf.useKmeansPP = false;
+    std::vector<float> data(ntotal * dim);
+    std::vector<faiss::idx_t> ids(ntotal);
+    generateData(data.data(), ntotal, dim);
+    for (int i = 0; i < ntotal; ++i)
+    {
+        ids[i] = i;
+    }
+    const int trainNum = ntotal > nlist * 40 ? nlist * 40 : ntotal;
+
+    try
+    {
+        faiss::ascend::AscendIndexIVFRaBitQ index(dim, type, nlist, conf);
+        index.setNumProbes(nprobe);
+        index.train(trainNum, data.data());
+        index.add_with_ids(ntotal, data.data(), ids.data());
+
+        faiss::IDSelectorRange rangeSel(0, ntotal / 2);
+        faiss::SearchParameters params;
+        params.sel = &rangeSel;
+
+        std::vector<float> dist(nq * k, 0.0f);
+        std::vector<faiss::idx_t> label(nq * k, -1);
+        index.search(nq, data.data(), k, dist.data(), label.data(), &params);
+
+        int valid = 0;
+        for (int i = 0; i < nq * k; ++i)
+        {
+            if (label[i] < 0)
+            {
+                continue;
+            }
+            ++valid;
+            EXPECT_LT(label[i], ntotal / 2);
+        }
+        EXPECT_GT(valid, 0);
+    }
+    catch (std::exception& e)
+    {
+        msg = e.what();
+        std::cout << "Exception in SearchWithIdSelectorMultiDevice test: " << msg << std::endl;
     }
     EXPECT_EQ(msg, "");
 }
