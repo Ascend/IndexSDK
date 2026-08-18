@@ -422,7 +422,6 @@ APP_ERROR IndexIVFRaBitQ::updateCoarseCenterImpl(std::vector<float> &centerData)
                       centerData.data(), dims * numLists * sizeof(float), ACL_MEMCPY_HOST_TO_DEVICE);
     ASCEND_THROW_IF_NOT_FMT(ret == ACL_SUCCESS, "Failed to aclrtMemcpy CoarseCenter, result is: %d\n", ret);
     VerifySamplesD2H("originCentroidsOnDevice", centerData, originCentroidsOnDevice->data(), numLists, dims);
-
     // c = Pcr, ||cr||^2 预计算
     AscendTensor<int32_t, DIMS_1> vectorSizeVec(mem, {1}, stream);
     AscendTensor<float, DIMS_2> centroidsDev(centroidsOnDevice->data(), {numLists, dims});
@@ -439,7 +438,6 @@ APP_ERROR IndexIVFRaBitQ::updateCoarseCenterImpl(std::vector<float> &centerData)
     VerifySamplesD2H("centroidsOnDevice_rotated", centerData, centroidsOnDevice->data(), numLists, dims, false);
     VerifyFullD2H("centroidsOnDevice_rotated_full", centerData, centroidsOnDevice->data(), numLists, dims, false);
     VerifyCentroidL2SamplesD2H("CentroidL2", CentroidL2OnDevice->data(), numLists);
-
     // <x, c> LUT预计算
     AscendTensor<float, DIMS_2> centroidsrotate(centroidsOnDevice->data(), {numLists * dims / SCAN_BIT, SCAN_BIT});
     AscendTensor<float, DIMS_2> lutmatrixDev(LUTMatrixOnDevice->data(), {SCAN_BIT, LUT_NUM});
@@ -1074,6 +1072,8 @@ bool IndexIVFRaBitQ::l2DisOpReset(std::unique_ptr<AscendOperator> &op, int64_t b
     std::vector<int64_t> indexl1Shape({IVF_RABITQ_BLOCK_SIZE});
     std::vector<int64_t> indexesl2offsetShape({CORE_NUM});
     std::vector<int64_t> indexesl1offsetShape({CORE_NUM});
+    std::vector<int64_t> idsShape({CORE_NUM});
+    std::vector<int64_t> distFilterAttrShape({5});
     std::vector<int64_t> distResultShape({CORE_NUM, IVF_RABITQ_BLOCK_SIZE});
     std::vector<int64_t> mixResultShape(
         {CORE_NUM, (IVF_RABITQ_BLOCK_SIZE + IVF_RABITQ_BURST_LEN - 1) / IVF_RABITQ_BURST_LEN * 2});
@@ -1099,6 +1099,8 @@ bool IndexIVFRaBitQ::l2DisOpReset(std::unique_ptr<AscendOperator> &op, int64_t b
     desc.addInputTensorDesc(ACL_FLOAT, indexl1Shape.size(), indexl1Shape.data(), ACL_FORMAT_ND);
     desc.addInputTensorDesc(ACL_UINT64, indexesl2offsetShape.size(), indexesl2offsetShape.data(), ACL_FORMAT_ND);
     desc.addInputTensorDesc(ACL_UINT64, indexesl1offsetShape.size(), indexesl1offsetShape.data(), ACL_FORMAT_ND);
+    desc.addInputTensorDesc(ACL_INT64, idsShape.size(), idsShape.data(), ACL_FORMAT_ND);
+    desc.addInputTensorDesc(ACL_INT64, distFilterAttrShape.size(), distFilterAttrShape.data(), ACL_FORMAT_ND);
     desc.addOutputTensorDesc(ACL_FLOAT, distResultShape.size(), distResultShape.data(), ACL_FORMAT_ND);
     desc.addOutputTensorDesc(ACL_FLOAT, mixResultShape.size(), mixResultShape.data(), ACL_FORMAT_ND);
     desc.addOutputTensorDesc(ACL_UINT16, flagShapeShape.size(), flagShapeShape.data(), ACL_FORMAT_ND);
@@ -1133,7 +1135,8 @@ void IndexIVFRaBitQ::runL2DistOp(
     AscendTensor<uint8_t, DIMS_2, size_t> &codeVec, AscendTensor<uint64_t, DIMS_1, size_t> &subOffset,
     AscendTensor<uint32_t, DIMS_1, size_t> &subBaseSize, AscendTensor<float, DIMS_1, size_t> &indexl2,
     AscendTensor<float, DIMS_1, size_t> &indexl1, AscendTensor<uint64_t, DIMS_1, size_t> &subIndexl2Offset,
-    AscendTensor<uint64_t, DIMS_1, size_t> &subIndexl1Offset, AscendTensor<float, DIMS_2, size_t> &subDis,
+    AscendTensor<uint64_t, DIMS_1, size_t> &subIndexl1Offset, AscendTensor<int64_t, DIMS_1, size_t> &subIds,
+    AscendTensor<int64_t, DIMS_1> &distFilterAttrs, AscendTensor<float, DIMS_2, size_t> &subDis,
     AscendTensor<float, DIMS_2, size_t> &subVcMaxDis, AscendTensor<uint16_t, DIMS_2, size_t> &subOpFlag,
     aclrtStream stream)
 {
@@ -1160,6 +1163,8 @@ void IndexIVFRaBitQ::runL2DistOp(
     topkOpInput->emplace_back(aclCreateDataBuffer(indexl1.data(), indexl1.getSizeInBytes()));
     topkOpInput->emplace_back(aclCreateDataBuffer(subIndexl2Offset.data(), subIndexl2Offset.getSizeInBytes()));
     topkOpInput->emplace_back(aclCreateDataBuffer(subIndexl1Offset.data(), subIndexl1Offset.getSizeInBytes()));
+    topkOpInput->emplace_back(aclCreateDataBuffer(subIds.data(), subIds.getSizeInBytes()));
+    topkOpInput->emplace_back(aclCreateDataBuffer(distFilterAttrs.data(), distFilterAttrs.getSizeInBytes()));
 
     std::shared_ptr<std::vector<aclDataBuffer *>> topkOpOutput(new std::vector<aclDataBuffer *>(),
                                                                CommonUtils::AclOutputBufferDelete);
@@ -1176,14 +1181,14 @@ void IndexIVFRaBitQ::fillDisOpInputDataByBlock(
     AscendTensor<uint64_t, DIMS_2, size_t> &indexl2OffsetHostVec,
     AscendTensor<uint64_t, DIMS_2, size_t> &indexl1OffsetHostVec, AscendTensor<int64_t, DIMS_2, size_t> &idsHostVec,
     AscendTensor<int64_t, DIMS_1, size_t> &blockNumPerQHostVec, AscendTensor<int64_t, DIMS_2> &l1TopNprobeIndicesHost,
-    AscendTensor<float, DIMS_2> &l1TopNprobeDistsHost)
+    AscendTensor<float, DIMS_2> &l1TopNprobeDistsHost, int effectiveNprobe)
 {
     size_t cIdx = 0;
     size_t iter = 0;
     for (size_t qIdx = 0; qIdx < batch; qIdx++)
     {
         int64_t blockNumPerQ = 0;
-        for (size_t tIdx = 0; tIdx < static_cast<size_t>(nprobe); tIdx++)
+        for (size_t tIdx = 0; tIdx < static_cast<size_t>(effectiveNprobe); tIdx++)
         {
             int64_t listId = l1TopNprobeIndicesHost[qIdx][tIdx].value();
             float centerl2 = l1TopNprobeDistsHost[qIdx][tIdx].value();
@@ -1229,9 +1234,10 @@ APP_ERROR IndexIVFRaBitQ::fillDisOpInputData(
     AscendTensor<float, DIMS_2, size_t> &centroidsl2, AscendTensor<uint32_t, DIMS_2, size_t> &baseSize,
     AscendTensor<int64_t, DIMS_2, size_t> &ids, AscendTensor<int64_t, DIMS_1, size_t> &blockNumPerQ,
     AscendTensor<int64_t, DIMS_1> &attrs, AscendTensor<int64_t, DIMS_2> &l1TopNprobeIndicesHost,
-    AscendTensor<float, DIMS_2> &l1TopNprobeDistsHost, aicpu::RabitqIdFilterMode selMode, int64_t selPtr,
-    int64_t selAux0, int64_t selAux1, int64_t selNegate)
+    AscendTensor<float, DIMS_2> &l1TopNprobeDistsHost, int64_t selMode, int64_t selPtr, int64_t selAux0,
+    int64_t selAux1, int64_t selNegate, int effectiveNprobe)
 {
+    effectiveNprobe = effectiveNprobe > 0 ? effectiveNprobe : nprobe;
     size_t iterNum = (totalBlockNum + coreNum - 1) / coreNum;
     size_t ivfRabitqBlockSize = static_cast<size_t>(IVF_RABITQ_BLOCK_SIZE);
     std::vector<uint64_t> offsetHost(iterNum * coreNum, 0);
@@ -1255,7 +1261,7 @@ APP_ERROR IndexIVFRaBitQ::fillDisOpInputData(
     fillDisOpInputDataByBlock(batch, coreNum, ivfRabitqBlockSize, queryidHostVec, centroidsidHostVec,
                               centroidsl2HostVec, baseSizeHostVec, offsetHostVec, indexl2OffsetHostVec,
                               indexl1OffsetHostVec, idsHostVec, blockNumPerQHostVec, l1TopNprobeIndicesHost,
-                              l1TopNprobeDistsHost);
+                              l1TopNprobeDistsHost, effectiveNprobe);
     auto ret = aclrtMemcpy(offset.data(), offset.getSizeInBytes(), offsetHostVec.data(), offsetHostVec.getSizeInBytes(),
                            ACL_MEMCPY_HOST_TO_DEVICE);
     APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "copy offset to device failed %d", ret);
@@ -1289,8 +1295,8 @@ APP_ERROR IndexIVFRaBitQ::fillDisOpInputData(
 }
 
 APP_ERROR IndexIVFRaBitQ::fillL2TopkOpInputData(int k, size_t batch, size_t coreNum,
-                                                AscendTensor<int64_t, DIMS_1> &attrs, aicpu::RabitqIdFilterMode selMode,
-                                                int64_t selPtr, int64_t selAux0, int64_t selAux1, int64_t selNegate)
+                                                AscendTensor<int64_t, DIMS_1> &attrs, int64_t selMode, int64_t selPtr,
+                                                int64_t selAux0, int64_t selAux1, int64_t selNegate)
 {
     std::vector<int64_t> attrsVec(aicpu::TOPK_IVF_RABITQ_ATTR_IDX_COUNT, 0);
     if (this->metric == MetricType::METRIC_L2)
@@ -1317,11 +1323,12 @@ APP_ERROR IndexIVFRaBitQ::fillL2TopkOpInputData(int k, size_t batch, size_t core
     return APP_ERR_OK;
 }
 
-APP_ERROR IndexIVFRaBitQ::fillL1TopkOpInputData(AscendTensor<int64_t, DIMS_1> &attrsInput)
+APP_ERROR IndexIVFRaBitQ::fillL1TopkOpInputData(AscendTensor<int64_t, DIMS_1> &attrsInput, int effectiveNprobe)
 {
+    effectiveNprobe = effectiveNprobe > 0 ? effectiveNprobe : nprobe;
     std::vector<int64_t> attrs(aicpu::TOPK_FLAT_ATTR_IDX_COUNT);
     attrs[aicpu::TOPK_FLAT_ATTR_ASC_IDX] = 1;
-    attrs[aicpu::TOPK_FLAT_ATTR_K_IDX] = nprobe;
+    attrs[aicpu::TOPK_FLAT_ATTR_K_IDX] = effectiveNprobe;
     attrs[aicpu::TOPK_FLAT_ATTR_BURST_LEN_IDX] = IVF_RABITQ_BURST_LEN;
     attrs[aicpu::TOPK_FLAT_ATTR_BLOCK_NUM_IDX] = 1;
     attrs[aicpu::TOPK_FLAT_ATTR_PAGE_IDX] = 0;
@@ -1344,7 +1351,8 @@ void IndexIVFRaBitQ::callL2DistanceOp(
     AscendTensor<uint64_t, DIMS_2, size_t> &indexl1offset, AscendTensor<uint16_t, DIMS_2, size_t> &opFlag,
     AscendTensor<float, DIMS_2, size_t> &disVec, AscendTensor<float, DIMS_2, size_t> &vcMaxDisVec,
     AscendTensor<uint8_t, DIMS_2, size_t> &codeVec, AscendTensor<float, DIMS_1, size_t> &Indexl2,
-    AscendTensor<float, DIMS_1, size_t> &Indexl1, aclrtStream &stream)
+    AscendTensor<float, DIMS_1, size_t> &Indexl1, AscendTensor<int64_t, DIMS_2, size_t> &ids,
+    AscendTensor<int64_t, DIMS_1> &distFilterAttrs, aclrtStream &stream)
 {
     VALUE_UNUSED(batch);
     size_t ivfRabitqBlockSize = static_cast<size_t>(IVF_RABITQ_BLOCK_SIZE);
@@ -1358,13 +1366,14 @@ void IndexIVFRaBitQ::callL2DistanceOp(
         AscendTensor<uint32_t, DIMS_1, size_t> subBaseSize(baseSize[iter].data(), {coreNum});
         AscendTensor<uint64_t, DIMS_1, size_t> subIndexl2Offset(indexl2offset[iter].data(), {coreNum});
         AscendTensor<uint64_t, DIMS_1, size_t> subIndexl1Offset(indexl1offset[iter].data(), {coreNum});
+        AscendTensor<int64_t, DIMS_1, size_t> subIds(ids[iter].data(), {coreNum});
         AscendTensor<uint16_t, DIMS_2, size_t> subOpFlag(opFlag[iter].data(), {coreNum, 32});
         AscendTensor<float, DIMS_2, size_t> subDis(disVec[iter].data(), {coreNum, ivfRabitqBlockSize});
         AscendTensor<float, DIMS_2, size_t> subVcMaxDis(vcMaxDisVec[iter].data(), {coreNum, vcMaxLen});
 
         runL2DistOp(queryL2Vec, queryLutVec, centroidsLutVec, subQueryid, subCentroidsid, subCentroidsl2, codeVec,
-                    subOffset, subBaseSize, Indexl2, Indexl1, subIndexl2Offset, subIndexl1Offset, subDis, subVcMaxDis,
-                    subOpFlag, stream);
+                    subOffset, subBaseSize, Indexl2, Indexl1, subIndexl2Offset, subIndexl1Offset, subIds,
+                    distFilterAttrs, subDis, subVcMaxDis, subOpFlag, stream);
     }
 }
 
@@ -1397,12 +1406,13 @@ size_t IndexIVFRaBitQ::getMaxListNum(size_t batch, AscendTensor<int64_t, DIMS_2>
 }
 
 size_t IndexIVFRaBitQ::getTotalBlockNum(size_t batch, AscendTensor<int64_t, DIMS_2> &l1TopNprobeIndicesHost, int k,
-                                        float *distances, idx_t *labels) const
+                                        float *distances, idx_t *labels, int effectiveNprobe) const
 {
+    effectiveNprobe = effectiveNprobe > 0 ? effectiveNprobe : nprobe;
     size_t totalBlockNum = 0;
     for (size_t qIdx = 0; qIdx < batch; qIdx++)
     {
-        for (size_t probId = 0; probId < static_cast<size_t>(nprobe); probId++)
+        for (size_t probId = 0; probId < static_cast<size_t>(effectiveNprobe); probId++)
         {
             int64_t listId = l1TopNprobeIndicesHost[qIdx][probId].value();
             size_t blockNum = baseFp32[listId].size();
@@ -1438,8 +1448,9 @@ APP_ERROR IndexIVFRaBitQ::searchImplL2(AscendTensor<float, DIMS_2> &queries, Asc
                                        AscendTensor<float, DIMS_2> &queriesLut,
                                        AscendTensor<int64_t, DIMS_2> &l1TopNprobeIndicesHost,
                                        AscendTensor<float, DIMS_2> &l1TopNprobeDistsHost, int k, float *distances,
-                                       idx_t *labels, const RabitqIdFilterHost *idFilter)
+                                       idx_t *labels, const RabitqIdFilterHost *idFilter, int effectiveNprobe)
 {
+    effectiveNprobe = effectiveNprobe > 0 ? effectiveNprobe : nprobe;
     auto &mem = resources.getMemoryManager();
     auto streamPtr = resources.getDefaultStream();
     auto stream = streamPtr->GetStream();
@@ -1448,7 +1459,7 @@ APP_ERROR IndexIVFRaBitQ::searchImplL2(AscendTensor<float, DIMS_2> &queries, Asc
     size_t batch = static_cast<size_t>(queries.getSize(0));
     size_t coreNum = static_cast<size_t>(CORE_NUM);
     size_t ivfRabitqBlockSize = static_cast<size_t>(IVF_RABITQ_BLOCK_SIZE);
-    size_t totalBlockNum = getTotalBlockNum(batch, l1TopNprobeIndicesHost, k, distances, labels);
+    size_t totalBlockNum = getTotalBlockNum(batch, l1TopNprobeIndicesHost, k, distances, labels, effectiveNprobe);
     APPERR_RETURN_IF_NOT_LOG(totalBlockNum != 0, APP_ERR_OK, "all nprobe cluster is empty by L1 search !!!");
     size_t iterNum = (totalBlockNum + coreNum - 1) / coreNum;
     AscendTensor<uint16_t, DIMS_2, size_t> opFlag(mem, {iterNum, coreNum * 32}, stream);
@@ -1472,33 +1483,48 @@ APP_ERROR IndexIVFRaBitQ::searchImplL2(AscendTensor<float, DIMS_2> &queries, Asc
     AscendTensor<int64_t, DIMS_1, size_t> blocknumPerQ(mem, {batch}, stream);
     AscendTensor<float, DIMS_2, size_t> vcMaxDisVec(mem, {iterNum, coreNum * vcMaxLen}, stream);
     AscendTensor<int64_t, DIMS_1> attrs(mem, {aicpu::TOPK_IVF_RABITQ_ATTR_IDX_COUNT}, stream);
+    AscendTensor<int64_t, DIMS_1> distFilterAttrs(mem, {5}, stream);
 
     aicpu::RabitqIdFilterMode selMode = aicpu::RABITQ_ID_FILTER_NONE;
     int64_t selPtr = 0;
     int64_t selAux0 = 0;
     int64_t selAux1 = 0;
     int64_t selNegate = 0;
+    int64_t distSelMode = aicpu::RABITQ_ID_FILTER_NONE;
+    int64_t distSelPtr = 0;
+    int64_t distSelAux0 = 0;
+    int64_t distSelAux1 = 0;
+    int64_t distSelNegate = 0;
     // Keep payload tensor alive until topk finishes (AICPU reads device pointer).
     AscendTensor<uint8_t, DIMS_1, size_t> filterPayload;
+    AscendTensor<uint8_t, DIMS_1, size_t> distFilterPayload;
     if (idFilter != nullptr && idFilter->mode != aicpu::RABITQ_ID_FILTER_NONE)
     {
         selMode = static_cast<aicpu::RabitqIdFilterMode>(idFilter->mode);
         selNegate = idFilter->negate;
         selAux0 = idFilter->aux0;
         selAux1 = idFilter->aux1;
-        const size_t payloadBytes = idFilter->payloadBytes();
+        const void *src = nullptr;
+        size_t payloadBytes = idFilter->payloadBytes();
+        if (selMode == aicpu::RABITQ_ID_FILTER_SORTED_PREFIX)
+        {
+            selMode = aicpu::RABITQ_ID_FILTER_SORTED;
+            selAux0 = static_cast<int64_t>(idFilter->sortedIds.size());
+            selAux1 = 0;
+            src = idFilter->sortedIds.data();
+            payloadBytes = idFilter->sortedIds.size() * sizeof(int64_t);
+        }
+        else if (selMode == aicpu::RABITQ_ID_FILTER_SORTED)
+        {
+            src = idFilter->sortedIds.data();
+        }
+        else if (selMode == aicpu::RABITQ_ID_FILTER_BITMAP)
+        {
+            src = idFilter->bitmap.data();
+        }
         if (payloadBytes > 0)
         {
             filterPayload = AscendTensor<uint8_t, DIMS_1, size_t>(mem, {payloadBytes}, stream);
-            const void *src = nullptr;
-            if (selMode == aicpu::RABITQ_ID_FILTER_SORTED)
-            {
-                src = idFilter->sortedIds.data();
-            }
-            else if (selMode == aicpu::RABITQ_ID_FILTER_BITMAP)
-            {
-                src = idFilter->bitmap.data();
-            }
             APPERR_RETURN_IF_NOT_LOG(src != nullptr, APP_ERR_INVALID_PARAM, "id filter payload is empty");
             auto retCopy =
                 aclrtMemcpy(filterPayload.data(), payloadBytes, src, payloadBytes, ACL_MEMCPY_HOST_TO_DEVICE);
@@ -1506,11 +1532,53 @@ APP_ERROR IndexIVFRaBitQ::searchImplL2(AscendTensor<float, DIMS_2> &queries, Asc
                                      "copy id filter payload to device failed %d", retCopy);
             selPtr = static_cast<int64_t>(reinterpret_cast<uintptr_t>(filterPayload.data()));
         }
+        distSelNegate = idFilter->negate;
+        distSelAux0 = idFilter->aux0;
+        distSelAux1 = idFilter->aux1;
+        if (idFilter->mode == aicpu::RABITQ_ID_FILTER_BITMAP && selPtr != 0)
+        {
+            distSelMode = aicpu::RABITQ_ID_FILTER_BITMAP;
+            distSelPtr = selPtr;
+        }
+        else if (idFilter->mode == aicpu::RABITQ_ID_FILTER_RANGE)
+        {
+            distSelMode = aicpu::RABITQ_ID_FILTER_RANGE;
+        }
+        else if (idFilter->mode == aicpu::RABITQ_ID_FILTER_SORTED_PREFIX && !idFilter->sortedPrefixPayload.empty())
+        {
+            distSelMode = aicpu::RABITQ_ID_FILTER_SORTED_PREFIX;
+            const size_t distPayloadBytes = idFilter->sortedPrefixPayload.size();
+            distFilterPayload = AscendTensor<uint8_t, DIMS_1, size_t>(mem, {distPayloadBytes}, stream);
+            auto retCopyDist =
+                aclrtMemcpy(distFilterPayload.data(), distPayloadBytes, idFilter->sortedPrefixPayload.data(),
+                            distPayloadBytes, ACL_MEMCPY_HOST_TO_DEVICE);
+            APPERR_RETURN_IF_NOT_FMT(retCopyDist == ACL_SUCCESS, APP_ERR_INNER_ERROR,
+                                     "copy dist id filter payload to device failed %d", retCopyDist);
+            distSelPtr = static_cast<int64_t>(reinterpret_cast<uintptr_t>(distFilterPayload.data()));
+        }
     }
+    const bool enableDistBitmapFilter = (distSelMode == aicpu::RABITQ_ID_FILTER_BITMAP && distSelPtr != 0);
+    const bool enableDistPrefixFilter = (distSelMode == aicpu::RABITQ_ID_FILTER_SORTED_PREFIX && distSelPtr != 0);
+    const bool enableDistRangeFilter = (distSelMode == aicpu::RABITQ_ID_FILTER_RANGE);
+    const bool enableDistPrefilter = enableDistBitmapFilter || enableDistPrefixFilter || enableDistRangeFilter;
+    std::vector<int64_t> distFilterAttrHost(5, 0);
+    if (enableDistPrefilter)
+    {
+        distFilterAttrHost[0] = distSelMode;
+        distFilterAttrHost[1] = distSelPtr;
+        distFilterAttrHost[2] = distSelAux0;
+        distFilterAttrHost[3] = distSelAux1;
+        distFilterAttrHost[4] = distSelNegate;
+    }
+    auto retCopyDistFilterAttrs =
+        aclrtMemcpy(distFilterAttrs.data(), distFilterAttrs.getSizeInBytes(), distFilterAttrHost.data(),
+                    distFilterAttrHost.size() * sizeof(int64_t), ACL_MEMCPY_HOST_TO_DEVICE);
+    APPERR_RETURN_IF_NOT_FMT(retCopyDistFilterAttrs == ACL_SUCCESS, APP_ERR_INNER_ERROR,
+                             "copy dist filter attrs to device failed %d", retCopyDistFilterAttrs);
 
     fillDisOpInputData(k, batch, totalBlockNum, coreNum, offset, indexl2offset, indexl1offset, queryid, centroidsid,
                        centroidsl2, baseSize, ids, blocknumPerQ, attrs, l1TopNprobeIndicesHost, l1TopNprobeDistsHost,
-                       selMode, selPtr, selAux0, selAux1, selNegate);
+                       selMode, selPtr, selAux0, selAux1, selNegate, effectiveNprobe);
     AscendTensor<float, DIMS_2, size_t> outDist(mem, {batch, static_cast<size_t>(k)}, stream);
     AscendTensor<idx_t, DIMS_2, size_t> outLabel(mem, {batch, static_cast<size_t>(k)}, stream);
     auto ret = synchronizeStream(stream);
@@ -1518,7 +1586,7 @@ APP_ERROR IndexIVFRaBitQ::searchImplL2(AscendTensor<float, DIMS_2> &queries, Asc
     runL2TopkOp(batch, disVec, vcMaxDisVec, ids, baseSize, blocknumPerQ, opFlag, attrs, outDist, outLabel, streamAicpu);
     callL2DistanceOp(batch, totalBlockNum, coreNum, vcMaxLen, queryL2, queriesLut, centroidsLutVec, queryid,
                      centroidsid, centroidsl2, offset, baseSize, indexl2offset, indexl1offset, opFlag, disVec,
-                     vcMaxDisVec, codeVec, Indexl2, Indexl1, stream);
+                     vcMaxDisVec, codeVec, Indexl2, Indexl1, ids, distFilterAttrs, stream);
     ret = synchronizeStream(stream);
     APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "synchronizeStream default stream: %i\n", ret);
     ret = synchronizeStream(streamAicpu);
@@ -1535,8 +1603,9 @@ APP_ERROR IndexIVFRaBitQ::searchImplL2(AscendTensor<float, DIMS_2> &queries, Asc
 APP_ERROR IndexIVFRaBitQ::searchImplL1(AscendTensor<float, DIMS_2> &queries, AscendTensor<float, DIMS_2> &rotateQueries,
                                        AscendTensor<float, DIMS_1> &queryL2, AscendTensor<float, DIMS_2> &queriesLut,
                                        AscendTensor<int64_t, DIMS_2> &l1TopNprobeIndicesHost,
-                                       AscendTensor<float, DIMS_2> &l1TopNprobeDistsHost)
+                                       AscendTensor<float, DIMS_2> &l1TopNprobeDistsHost, int effectiveNprobe)
 {
+    effectiveNprobe = effectiveNprobe > 0 ? effectiveNprobe : nprobe;
     auto &mem = resources.getMemoryManager();
     auto streamPtr = resources.getDefaultStream();
     auto stream = streamPtr->GetStream();
@@ -1561,9 +1630,9 @@ APP_ERROR IndexIVFRaBitQ::searchImplL1(AscendTensor<float, DIMS_2> &queries, Asc
     AscendTensor<uint16_t, DIMS_2> opFlag(mem, {CORE_NUM, FLAG_SIZE}, stream);
     opFlag.zero();
     AscendTensor<int64_t, DIMS_1> attrsInput(mem, {aicpu::TOPK_FLAT_ATTR_IDX_COUNT}, stream);
-    fillL1TopkOpInputData(attrsInput);
-    AscendTensor<float, DIMS_2> l1TopNprobeDists(mem, {n, nprobe}, stream);
-    AscendTensor<int64_t, DIMS_2> l1TopNprobeIndices(mem, {n, nprobe}, stream);
+    fillL1TopkOpInputData(attrsInput, effectiveNprobe);
+    AscendTensor<float, DIMS_2> l1TopNprobeDists(mem, {n, effectiveNprobe}, stream);
+    AscendTensor<int64_t, DIMS_2> l1TopNprobeIndices(mem, {n, effectiveNprobe}, stream);
     ret = synchronizeStream(stream);
     APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "synchronizeStream default stream: %i\n", ret);
     // run l1 distance calculation
@@ -1599,7 +1668,7 @@ APP_ERROR IndexIVFRaBitQ::searchImplL1(AscendTensor<float, DIMS_2> &queries, Asc
         int inTile2 = 0;
         int minId = numLists;
         int maxId = 0;
-        for (int t = 0; t < nprobe; ++t)
+        for (int t = 0; t < effectiveNprobe; ++t)
         {
             const int64_t id = l1TopNprobeIndicesHost[0][t].value();
             if (id < tile1Max)
@@ -1613,13 +1682,13 @@ APP_ERROR IndexIVFRaBitQ::searchImplL1(AscendTensor<float, DIMS_2> &queries, Asc
             minId = std::min(minId, static_cast<int>(id));
             maxId = std::max(maxId, static_cast<int>(id));
         }
-        fprintf(stderr, "[IVFRaBitQ] L1 probe stats q0: nprobe=%d in[0,%d)=%d in[%d,%d)=%d min=%d max=%d\n", nprobe,
-                tile1Max, inTile1, tile1Max, numLists, inTile2, minId, maxId);
+        fprintf(stderr, "[IVFRaBitQ] L1 probe stats q0: nprobe=%d in[0,%d)=%d in[%d,%d)=%d min=%d max=%d\n",
+                effectiveNprobe, tile1Max, inTile1, tile1Max, numLists, inTile2, minId, maxId);
     };
 
     if (l1ProbeDebug)
     {
-        const int probeDump = std::min(nprobe, 8);
+        const int probeDump = std::min(effectiveNprobe, 8);
         fprintf(stderr, "[IVFRaBitQ] L1 probes nlist=%d n=%d first %d probes q0:", numLists, n, probeDump);
         for (int t = 0; t < probeDump; ++t)
         {
@@ -1648,20 +1717,19 @@ APP_ERROR IndexIVFRaBitQ::searchImplL1(AscendTensor<float, DIMS_2> &queries, Asc
                           centroidsDev.getSizeInBytes(), ACL_MEMCPY_DEVICE_TO_HOST);
         APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "L1 verify centroids D2H failed %d", ret);
 
-        std::vector<int64_t> npuProbeIds(static_cast<size_t>(nprobe));
-        for (int t = 0; t < nprobe; ++t)
+        std::vector<int64_t> npuProbeIds(static_cast<size_t>(effectiveNprobe));
+        for (int t = 0; t < effectiveNprobe; ++t)
         {
             npuProbeIds[static_cast<size_t>(t)] = l1TopNprobeIndicesHost[0][t].value();
         }
-        VerifyL1DistAndProbes(numLists, dims, nprobe, npuDists.data(), rotateQuery.data(), rotateCentroids.data(),
-                              npuProbeIds.data());
+        VerifyL1DistAndProbes(numLists, dims, effectiveNprobe, npuDists.data(), rotateQuery.data(),
+                              rotateCentroids.data(), npuProbeIds.data());
 
         if (probeFull)
         {
             dumpProbeStats();
         }
     }
-
     // <x, q> LUT预计算
     AscendTensor<float, DIMS_2> queriesfastscan(rotateQueries.data(), {n * dims / SCAN_BIT, SCAN_BIT});
     AscendTensor<float, DIMS_2> lutmatrixDev(LUTMatrixOnDevice->data(), {SCAN_BIT, LUT_NUM});
@@ -1673,8 +1741,10 @@ APP_ERROR IndexIVFRaBitQ::searchImplL1(AscendTensor<float, DIMS_2> &queries, Asc
 }
 
 APP_ERROR IndexIVFRaBitQ::searchWithBatch(int n, const float *x, int k, float *distances, idx_t *labels,
-                                          const float *srcIndexes, const RabitqIdFilterHost *idFilter)
+                                          const float *srcIndexes, const RabitqIdFilterHost *idFilter,
+                                          int effectiveNprobe)
 {
+    effectiveNprobe = effectiveNprobe > 0 ? effectiveNprobe : nprobe;
     auto &mem = resources.getMemoryManager();
     auto streamPtr = resources.getDefaultStream();
     auto stream = streamPtr->GetStream();
@@ -1685,25 +1755,26 @@ APP_ERROR IndexIVFRaBitQ::searchWithBatch(int n, const float *x, int k, float *d
     auto ret =
         aclrtMemcpy(queries.data(), queries.getSizeInBytes(), x, n * dims * sizeof(float), ACL_MEMCPY_HOST_TO_DEVICE);
     APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "copy query error %d", ret);
-    std::vector<int64_t> l1TopNprobeIndicesVec(n * nprobe, 0);
-    AscendTensor<int64_t, DIMS_2> l1TopNprobeIndicesHost(l1TopNprobeIndicesVec.data(), {n, nprobe});
-    std::vector<float> l1TopNprobeDistsVec(n * nprobe, 0);
-    AscendTensor<float, DIMS_2> l1TopNprobeDistsHost(l1TopNprobeDistsVec.data(), {n, nprobe});
+    std::vector<int64_t> l1TopNprobeIndicesVec(n * effectiveNprobe, 0);
+    AscendTensor<int64_t, DIMS_2> l1TopNprobeIndicesHost(l1TopNprobeIndicesVec.data(), {n, effectiveNprobe});
+    std::vector<float> l1TopNprobeDistsVec(n * effectiveNprobe, 0);
+    AscendTensor<float, DIMS_2> l1TopNprobeDistsHost(l1TopNprobeDistsVec.data(), {n, effectiveNprobe});
 
-    ret = searchImplL1(queries, rotateQueries, queryL2, queriesLut, l1TopNprobeIndicesHost, l1TopNprobeDistsHost);
+    ret = searchImplL1(queries, rotateQueries, queryL2, queriesLut, l1TopNprobeIndicesHost, l1TopNprobeDistsHost,
+                       effectiveNprobe);
     APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, ret, "ivfrabitq L1 search failed! %d", ret);
 
     if (srcIndexes == nullptr)
     {
         ret = searchImplL2(rotateQueries, queryL2, queriesLut, l1TopNprobeIndicesHost, l1TopNprobeDistsHost, k,
-                           distances, labels, idFilter);
+                           distances, labels, idFilter, effectiveNprobe);
         APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, ret, "ivfrabitq L2 search failed! %d", ret);
         return APP_ERR_OK;
     }
     std::vector<float> topkdist(n * k, 0);
     std::vector<idx_t> topklabel(n * k, 0);
     ret = searchImplL2(rotateQueries, queryL2, queriesLut, l1TopNprobeIndicesHost, l1TopNprobeDistsHost, k,
-                       topkdist.data(), topklabel.data(), idFilter);
+                       topkdist.data(), topklabel.data(), idFilter, effectiveNprobe);
     APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, ret, "ivfrabitq L2 search failed! %d", ret);
     refine(n, x, k, distances, labels, topkdist.data(), topklabel.data(), srcIndexes);
     return APP_ERR_OK;
@@ -1726,7 +1797,6 @@ APP_ERROR IndexIVFRaBitQ::getListIds(int listId, std::vector<int64_t> &ids) cons
     {
         return APP_ERR_OK;
     }
-
     // deviceListIndices[listId] 是 DeviceVector<ascend_idx_t>*
     auto &idVec = deviceListIndices[listId];
     APPERR_RETURN_IF_NOT(idVec != nullptr, APP_ERR_INNER_ERROR);
@@ -1736,7 +1806,6 @@ APP_ERROR IndexIVFRaBitQ::getListIds(int listId, std::vector<int64_t> &ids) cons
                            ACL_MEMCPY_DEVICE_TO_HOST);
     APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "aclrtMemcpy failed for list %d IDs, ret=%d",
                              listId, ret);
-
     // 转换为 faiss::idx_t
     for (size_t i = 0; i < len; ++i)
     {
@@ -1766,7 +1835,6 @@ APP_ERROR IndexIVFRaBitQ::getListRawCodes(int listId, std::vector<uint8_t> &rawC
     auto retSync = synchronizeStream(stream);
     APPERR_RETURN_IF_NOT_LOG(retSync == ACL_SUCCESS, APP_ERR_INNER_ERROR,
                              "synchronizeStream failed before getListRawCodes");
-
     // 拷贝压缩码部分（baseFp32）
     const auto &blocks = baseFp32[listId];
     size_t codePartBytesPerVec = utils::divUp(dims, 8);
@@ -1789,7 +1857,6 @@ APP_ERROR IndexIVFRaBitQ::getListRawCodes(int listId, std::vector<uint8_t> &rawC
     }
     APPERR_RETURN_IF_NOT_FMT(copied == codePartTotal, APP_ERR_INNER_ERROR,
                              "Copied %zu bytes, expected %zu for code part", copied, codePartTotal);
-
     // 拷贝 L2 因子（IndexL2OnDevice）
     size_t l2Offset = codePartTotal;
     size_t l2Bytes = numVecs * sizeof(float);
@@ -1797,7 +1864,6 @@ APP_ERROR IndexIVFRaBitQ::getListRawCodes(int listId, std::vector<uint8_t> &rawC
                            ACL_MEMCPY_DEVICE_TO_HOST);
     APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR,
                              "aclrtMemcpy failed for L2 factors of list %d, ret=%d", listId, ret);
-
     // 拷贝 L1 因子（IndexL1OnDevice）
     size_t l1Offset = l2Offset + l2Bytes;
     size_t l1Bytes = numVecs * sizeof(float);
@@ -1855,21 +1921,18 @@ APP_ERROR IndexIVFRaBitQ::addEncodedVectors(int listId, size_t numVecs, const ui
         size_t tileVecs = baseSizeHost[i];
         size_t tileCodeBytes = tileVecs * codePartBytes;
         size_t tileFactorBytes = tileVecs * factorBytes;
-
         // 拷贝压缩码到 baseFp32 对应块
         uint8_t *codeBlockPtr = reinterpret_cast<uint8_t *>(reinterpret_cast<uint64_t>(pBaseFp32) + offsetHost[i]);
         auto ret = aclrtMemcpy(codeBlockPtr, tileCodeBytes, allCodesPtr + vecOffset * codePartBytes, tileCodeBytes,
                                ACL_MEMCPY_HOST_TO_DEVICE);
         APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR,
                                  "copy codes failed for list %d tile %zu, ret=%d", listId, i, ret);
-
         // 拷贝 L2 因子到 IndexL2OnDevice
         float *l2Ptr = IndexL2OnDevice[listId]->data() + indexl2offsetHost[i];
         ret = aclrtMemcpy(l2Ptr, tileFactorBytes, allL2Ptr + vecOffset * factorBytes, tileFactorBytes,
                           ACL_MEMCPY_HOST_TO_DEVICE);
         APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR,
                                  "copy L2 factors failed for list %d tile %zu, ret=%d", listId, i, ret);
-
         // 拷贝 L1 因子到 IndexL1OnDevice
         float *l1Ptr = IndexL1OnDevice[listId]->data() + indexl2offsetHost[i];
         ret = aclrtMemcpy(l1Ptr, tileFactorBytes, allL1Ptr + vecOffset * factorBytes, tileFactorBytes,
@@ -1996,12 +2059,15 @@ void IndexIVFRaBitQ::refine(int n, const float *x, int k, float *distances, idx_
 }
 
 APP_ERROR IndexIVFRaBitQ::searchImpl(int n, const float *x, int k, float *distances, idx_t *labels,
-                                     const float *srcIndexes, const RabitqIdFilterHost *idFilter)
+                                     const float *srcIndexes, const RabitqIdFilterHost *idFilter, int searchNprobe)
 {
+    const int effectiveNprobe = searchNprobe > 0 ? searchNprobe : nprobe;
+    APPERR_RETURN_IF_NOT_FMT(effectiveNprobe > 0 && effectiveNprobe <= numLists, APP_ERR_INVALID_PARAM,
+                             "invalid search nprobe %d, numLists %d", effectiveNprobe, numLists);
     APP_ERROR ret = APP_ERR_OK;
     if (n == 1 || searchBatchSizes.empty())
     {
-        return searchWithBatch(n, x, k, distances, labels, srcIndexes, idFilter);
+        return searchWithBatch(n, x, k, distances, labels, srcIndexes, idFilter, effectiveNprobe);
     }
     size_t size = searchBatchSizes.size();
     int64_t searched = 0;
@@ -2014,7 +2080,7 @@ APP_ERROR IndexIVFRaBitQ::searchImpl(int n, const float *x, int k, float *distan
             for (int64_t j = 0; j < page; j++)
             {
                 ret = searchWithBatch(batchSize, x + searched * dims, k, distances + searched * k,
-                                      labels + searched * k, srcIndexes, idFilter);
+                                      labels + searched * k, srcIndexes, idFilter, effectiveNprobe);
                 APPERR_RETURN_IF(ret, ret);
                 searched += batchSize;
             }
@@ -2022,7 +2088,8 @@ APP_ERROR IndexIVFRaBitQ::searchImpl(int n, const float *x, int k, float *distan
     }
     for (int64_t i = searched; i < n; i++)
     {
-        ret = searchWithBatch(1, x + i * dims, k, distances + i * k, labels + i * k, srcIndexes, idFilter);
+        ret = searchWithBatch(1, x + i * dims, k, distances + i * k, labels + i * k, srcIndexes, idFilter,
+                              effectiveNprobe);
         APPERR_RETURN_IF(ret, ret);
     }
     return APP_ERR_OK;
