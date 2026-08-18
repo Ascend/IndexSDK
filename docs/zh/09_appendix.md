@@ -100,7 +100,7 @@ int main(int argc, char **argv)
 
 ### IndexILFlat<a name="ZH-CN_TOPIC_0000001506334833"></a>
 
-IndexILFlat为纯Device侧检索方案，利用昇腾AI处理器和AI Core等资源进行各个接口的使能。程序需要在Host侧编译生成二进制文件，然后将二进制文件和相关运行时依赖部署到Device侧。部署请参见下方使用指导，接口使用约束请参考[IndexILFlat](./api/01_full_retrieval.md#indexilflat接口)。
+IndexILFlat为纯Device侧检索方案，利用昇腾AI处理器和AI Core等资源进行各个接口的使能。程序需要在Host侧编译生成二进制文件，然后将二进制文件和相关运行时依赖部署到Device侧。部署请参见下方使用指导，接口使用约束请参考[IndexILFlat](./api/01_full_retrieval/14_IndexILFlat.md#indexilflat接口)。
 
 **参考用例代码<a id="section15454820982"></a>**
 

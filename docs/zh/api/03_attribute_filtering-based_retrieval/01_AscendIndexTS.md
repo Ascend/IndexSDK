@@ -1,18 +1,16 @@
-# 属性过滤检索<a name="ZH-CN_TOPIC_0000001482844454"></a>
+# AscendIndexTS<a name="ZH-CN_TOPIC_0000001507640105"></a>
 
-## AscendIndexTS<a name="ZH-CN_TOPIC_0000001507640105"></a>
-
-### 功能介绍<a name="ZH-CN_TOPIC_0000001507879785"></a>
+## 功能介绍<a name="ZH-CN_TOPIC_0000001507879785"></a>
 
 时空库功能类接口。添加底库特征时，每条特征可以配置一个属性FeatureAttr，执行检索功能时每一批query向量可以配置一个过滤器AttrFilter，该过滤器首先对全量的底库进行筛选并与符合条件的向量进行比对。
 
 当前支持以下算法：
 
-- 二值化特征检索（汉明距离）：使用前需要手动生成[BinaryFlat](../05_user_guide.md#binaryflat)、[Mask](../05_user_guide.md#mask)算子并移动到对应的“modelpath”目录中。
-- Int8Flat（cos距离）、FP16Flat（IP距离）、Int8Flat（L2距离）：使用前需要手动生成[Mask](../05_user_guide.md#mask)算子并移动到对应的“modelpath”目录中。
+- 二值化特征检索（汉明距离）：使用前需要手动生成[BinaryFlat](../../05_user_guide.md#binaryflat)、[Mask](../../05_user_guide.md#mask)算子并移动到对应的“modelpath”目录中。
+- Int8Flat（cos距离）、FP16Flat（IP距离）、Int8Flat（L2距离）：使用前需要手动生成[Mask](../../05_user_guide.md#mask)算子并移动到对应的“modelpath”目录中。
 - 支持多线程并发调用，需要设置“MX\_INDEX\_MULTITHREAD”环境变量为1，即export MX\_INDEX\_MULTITHREAD=1，设置为其他值或者不设置，则表示不开启多线程功能。当前的特征检索内部会使用OMP做性能加速，OMP不支持与其他多线程机制混用。反复创建新线程使用OMP会导致内存持续累加，因此建议使用固定的线程来运行检索任务。
 
-### AddFeature接口<a name="ZH-CN_TOPIC_0000001458360182"></a>
+## AddFeature接口<a name="ZH-CN_TOPIC_0000001458360182"></a>
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.01%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
@@ -29,7 +27,7 @@
 </th>
 <td class="cellrowborder" valign="top" width="79.99000000000001%" headers="mcps1.1.3.3.1 "><p id="p1994144463213"><a name="p1994144463213"></a><a name="p1994144463213"></a><strong id="b125611612173311"><a name="b125611612173311"></a><a name="b125611612173311"></a>int64_t count</strong>：待添加的特征数量。</p>
 <p id="p874812810555"><a name="p874812810555"></a><a name="p874812810555"></a><strong id="b17401300315"><a name="b17401300315"></a><a name="b17401300315"></a>const void *features</strong>：待添加的特征，汉明距离为uint8_t类型的数据，Int8Flat为int8_t类型；FP16Flat距离为float类型。</p>
-<p id="p661314244382"><a name="p661314244382"></a><a name="p661314244382"></a><strong id="b1733711363162"><a name="b1733711363162"></a><a name="b1733711363162"></a>const FeatureAttr *attributes</strong>：待添加的特征属性，具体请参见<a href="#ZH-CN_TOPIC_0000001507967381">FeatureAttr</a>。</p>
+<p id="p661314244382"><a name="p661314244382"></a><a name="p661314244382"></a><strong id="b1733711363162"><a name="b1733711363162"></a><a name="b1733711363162"></a>const FeatureAttr *attributes</strong>：待添加的特征属性，具体请参见<a href="./05_FeatureAttr.md#ZH-CN_TOPIC_0000001507967381">FeatureAttr</a>。</p>
 <p id="p32462050775"><a name="p32462050775"></a><a name="p32462050775"></a><strong id="b11413152220159"><a name="b11413152220159"></a><a name="b11413152220159"></a>const int64_t *labels</strong>：待添加的特征Label，使用上需要保证Label在Index实例中的唯一性。</p>
 <p id="p1087211592617"><a name="p1087211592617"></a><a name="p1087211592617"></a><strong id="b1387213364459"><a name="b1387213364459"></a><a name="b1387213364459"></a>const uint8_t *customAttr</strong>：待添加的用户自定义特征属性。</p>
 </td>
@@ -55,7 +53,7 @@
 > [!NOTE]
 >AddFeature不能与AddWithExtraVal接口混用。
 
-### AddFeatureByIndice接口<a name="ZH-CN_TOPIC_0000002411433020"></a>
+## AddFeatureByIndice接口<a name="ZH-CN_TOPIC_0000002411433020"></a>
 
 > [!NOTE]
 >
@@ -101,7 +99,7 @@
 </tbody>
 </table>
 
-### AddWithExtraVal接口<a name="ZH-CN_TOPIC_0000001976650872"></a>
+## AddWithExtraVal接口<a name="ZH-CN_TOPIC_0000001976650872"></a>
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.03%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
@@ -118,9 +116,9 @@
 </th>
 <td class="cellrowborder" valign="top" width="79.97%" headers="mcps1.1.3.3.1 "><p id="p1994144463213"><a name="p1994144463213"></a><a name="p1994144463213"></a><strong id="b125611612173311"><a name="b125611612173311"></a><a name="b125611612173311"></a>int64_t count</strong>：待添加的特征数量。</p>
 <p id="p874812810555"><a name="p874812810555"></a><a name="p874812810555"></a><strong id="b17401300315"><a name="b17401300315"></a><a name="b17401300315"></a>const void *features</strong>：待添加的特征，汉明距离为uint8_t类型的数据，Int8Flat为int8_t类型。</p>
-<p id="p661314244382"><a name="p661314244382"></a><a name="p661314244382"></a><strong id="b1733711363162"><a name="b1733711363162"></a><a name="b1733711363162"></a>const FeatureAttr *attributes</strong>：待添加的特征属性，具体请参见<a href="#ZH-CN_TOPIC_0000001507967381">FeatureAttr</a>。</p>
+<p id="p661314244382"><a name="p661314244382"></a><a name="p661314244382"></a><strong id="b1733711363162"><a name="b1733711363162"></a><a name="b1733711363162"></a>const FeatureAttr *attributes</strong>：待添加的特征属性，具体请参见<a href="./05_FeatureAttr.md#ZH-CN_TOPIC_0000001507967381">FeatureAttr</a>。</p>
 <p id="p32462050775"><a name="p32462050775"></a><a name="p32462050775"></a><strong id="b11413152220159"><a name="b11413152220159"></a><a name="b11413152220159"></a>const int64_t *labels</strong>：待添加的特征Label，使用上需要保证Label在Index实例中的唯一性。</p>
-<p id="p14651655103714"><a name="p14651655103714"></a><a name="p14651655103714"></a><strong id="b48516115382"><a name="b48516115382"></a><a name="b48516115382"></a>const ExtraValAttr *extraVal</strong>：待添加的附加特征属性，具体请参见<a href="#ZH-CN_TOPIC_0000002013198657">ExtraValAttr</a>。</p>
+<p id="p14651655103714"><a name="p14651655103714"></a><a name="p14651655103714"></a><strong id="b48516115382"><a name="b48516115382"></a><a name="b48516115382"></a>const ExtraValAttr *extraVal</strong>：待添加的附加特征属性，具体请参见<a href="./03_ExtraValAttr.md#ZH-CN_TOPIC_0000002013198657">ExtraValAttr</a>。</p>
 <p id="p1087211592617"><a name="p1087211592617"></a><a name="p1087211592617"></a><strong id="b9522152852710"><a name="b9522152852710"></a><a name="b9522152852710"></a>const uint8_t *customAttr</strong>：待添加的用户自定义特征属性。</p>
 </td>
 </tr>
@@ -142,7 +140,7 @@
 </tbody>
 </table>
 
-### AscendIndexTS接口<a name="ZH-CN_TOPIC_0000001458200394"></a>
+## AscendIndexTS接口<a name="ZH-CN_TOPIC_0000001458200394"></a>
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
@@ -212,7 +210,7 @@
 </tbody>
 </table>
 
-### \~AscendIndexTS接口<a name="ZH-CN_TOPIC_0000001507760865"></a>
+## \~AscendIndexTS接口<a name="ZH-CN_TOPIC_0000001507760865"></a>
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
@@ -248,7 +246,7 @@
 </tbody>
 </table>
 
-### DeleteFeatureByLabel接口<a name="ZH-CN_TOPIC_0000001458200398"></a>
+## DeleteFeatureByLabel接口<a name="ZH-CN_TOPIC_0000001458200398"></a>
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.03%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
@@ -285,7 +283,7 @@
 </tbody>
 </table>
 
-### DeleteFeatureByToken接口<a id="ZH-CN_TOPIC_0000001458680018"></a>
+## DeleteFeatureByToken接口<a id="ZH-CN_TOPIC_0000001458680018"></a>
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.03%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
@@ -322,7 +320,7 @@
 </tbody>
 </table>
 
-### FastDeleteFeatureByIndice接口<a name="ZH-CN_TOPIC_0000002445152089"></a>
+## FastDeleteFeatureByIndice接口<a name="ZH-CN_TOPIC_0000002445152089"></a>
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.03%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
@@ -359,7 +357,7 @@
 </tbody>
 </table>
 
-### FastDeleteFeatureByRange接口<a name="ZH-CN_TOPIC_0000002445960745"></a>
+## FastDeleteFeatureByRange接口<a name="ZH-CN_TOPIC_0000002445960745"></a>
 
 <a name="table18950829154115"></a>
 <table><tbody><tr id="row12950172911415"><th class="firstcol" valign="top" width="20.03%" id="mcps1.1.3.1.1"><p id="p1950162910415"><a name="p1950162910415"></a><a name="p1950162910415"></a>API定义</p>
@@ -396,7 +394,7 @@
 </tbody>
 </table>
 
-### GetBaseByRange接口<a name="ZH-CN_TOPIC_0000001818301380"></a>
+## GetBaseByRange接口<a name="ZH-CN_TOPIC_0000001818301380"></a>
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="19.919999999999998%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
@@ -435,7 +433,7 @@
 </tbody>
 </table>
 
-### GetBaseByRangeWithExtraVal接口<a name="ZH-CN_TOPIC_0000001976495686"></a>
+## GetBaseByRangeWithExtraVal接口<a name="ZH-CN_TOPIC_0000001976495686"></a>
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="19.919999999999998%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
@@ -475,7 +473,7 @@
 </tbody>
 </table>
 
-### GetBaseMask接口<a name="ZH-CN_TOPIC_0000002445112157"></a>
+## GetBaseMask接口<a name="ZH-CN_TOPIC_0000002445112157"></a>
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.03%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
@@ -511,7 +509,7 @@
 </tbody>
 </table>
 
-### GetCustomAttrByBlockId接口<a name="ZH-CN_TOPIC_0000001736682593"></a>
+## GetCustomAttrByBlockId接口<a name="ZH-CN_TOPIC_0000001736682593"></a>
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.03%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
@@ -548,7 +546,7 @@
 </tbody>
 </table>
 
-### GetExtraValAttrByLabel接口<a name="ZH-CN_TOPIC_0000001976655414"></a>
+## GetExtraValAttrByLabel接口<a name="ZH-CN_TOPIC_0000001976655414"></a>
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.03%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
@@ -585,7 +583,7 @@
 </tbody>
 </table>
 
-### GetFeatureAttrByLabel接口<a name="ZH-CN_TOPIC_0000001594544301"></a>
+## GetFeatureAttrByLabel接口<a name="ZH-CN_TOPIC_0000001594544301"></a>
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.03%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
@@ -622,7 +620,7 @@
 </tbody>
 </table>
 
-### GetFeatureByIndice接口<a name="ZH-CN_TOPIC_0000002411592888"></a>
+## GetFeatureByIndice接口<a name="ZH-CN_TOPIC_0000002411592888"></a>
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.01%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
@@ -662,7 +660,7 @@
 </tbody>
 </table>
 
-### GetFeatureByLabel接口<a name="ZH-CN_TOPIC_0000001507879789"></a>
+## GetFeatureByLabel接口<a name="ZH-CN_TOPIC_0000001507879789"></a>
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.03%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
@@ -699,7 +697,7 @@
 </tbody>
 </table>
 
-### GetFeatureNum接口<a name="ZH-CN_TOPIC_0000001544946953"></a>
+## GetFeatureNum接口<a name="ZH-CN_TOPIC_0000001544946953"></a>
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.03%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
@@ -735,7 +733,7 @@
 </tbody>
 </table>
 
-### Init接口<a id="ZH-CN_TOPIC_0000001458680014"></a>
+## Init接口<a id="ZH-CN_TOPIC_0000001458680014"></a>
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.03%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
@@ -780,7 +778,7 @@
 </tbody>
 </table>
 
-### InitWithExtraVal接口<a id="ZH-CN_TOPIC_0000002013206217"></a>
+## InitWithExtraVal接口<a id="ZH-CN_TOPIC_0000002013206217"></a>
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.03%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
@@ -826,7 +824,7 @@
 </tbody>
 </table>
 
-### InitWithQuantify接口<a name="ZH-CN_TOPIC_0000002458673509"></a>
+## InitWithQuantify接口<a name="ZH-CN_TOPIC_0000002458673509"></a>
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.03%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
@@ -869,7 +867,7 @@
 </tbody>
 </table>
 
-### operator = 接口<a name="ZH-CN_TOPIC_0000001507959881"></a>
+## operator = 接口<a name="ZH-CN_TOPIC_0000001507959881"></a>
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
@@ -905,7 +903,7 @@
 </tbody>
 </table>
 
-### Search接口<a name="ZH-CN_TOPIC_0000001507640109"></a>
+## Search接口<a name="ZH-CN_TOPIC_0000001507640109"></a>
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.03%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
@@ -922,7 +920,7 @@
 </th>
 <td class="cellrowborder" valign="top" width="79.97%" headers="mcps1.1.3.3.1 "><p id="p2360715171619"><a name="p2360715171619"></a><a name="p2360715171619"></a><strong id="b125611612173311"><a name="b125611612173311"></a><a name="b125611612173311"></a>uint32_t count</strong>：待比较的特征数量。</p>
 <p id="p874812810555"><a name="p874812810555"></a><a name="p874812810555"></a><strong id="b17401300315"><a name="b17401300315"></a><a name="b17401300315"></a>const void *features</strong>：待比较的特征，汉明距离为uint8_t类型的数据，Int8Flat为int8_t类型，FP16Flat为float类型。</p>
-<p id="p661314244382"><a name="p661314244382"></a><a name="p661314244382"></a><strong id="b161793465431"><a name="b161793465431"></a><a name="b161793465431"></a>const AttrFilter *attrFilter</strong>：属性过滤信息，具体请参见<a href="#ZH-CN_TOPIC_0000001458687398">AttrFilter</a>。</p>
+<p id="p661314244382"><a name="p661314244382"></a><a name="p661314244382"></a><strong id="b161793465431"><a name="b161793465431"></a><a name="b161793465431"></a>const AttrFilter *attrFilter</strong>：属性过滤信息，具体请参见<a href="./02_AttrFilter.md#ZH-CN_TOPIC_0000001458687398">AttrFilter</a>。</p>
 <p id="p638962561711"><a name="p638962561711"></a><a name="p638962561711"></a><strong id="b72082417127"><a name="b72082417127"></a><a name="b72082417127"></a>bool shareAttrFilter</strong>：不同query是否共享一个mask。</p>
 <p id="p263216178448"><a name="p263216178448"></a><a name="p263216178448"></a><strong id="b9237122811443"><a name="b9237122811443"></a><a name="b9237122811443"></a>uint32_t topk</strong>：计算余弦距离后需要保存的TopK大小。</p>
 <p id="p198449441221"><a name="p198449441221"></a><a name="p198449441221"></a><strong id="b194349562317"><a name="b194349562317"></a><a name="b194349562317"></a>bool enableTimeFilter</strong>：时间戳属性过滤开关，默认为<span class="parmvalue" id="parmvalue6379218248"><a name="parmvalue6379218248"></a><a name="parmvalue6379218248"></a>“true”</span>，当<strong id="b12428111462413"><a name="b12428111462413"></a><a name="b12428111462413"></a>enableTimeFilter = false</strong>时，不进行时间戳属性的过滤。</p>
@@ -948,7 +946,7 @@
 </tbody>
 </table>
 
-### SearchWithExtraMask接口<a name="ZH-CN_TOPIC_0000001494506850"></a>
+## SearchWithExtraMask接口<a name="ZH-CN_TOPIC_0000001494506850"></a>
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.03%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
@@ -965,7 +963,7 @@
 </th>
 <td class="cellrowborder" valign="top" width="79.97%" headers="mcps1.1.3.3.1 "><p id="p2360715171619"><a name="p2360715171619"></a><a name="p2360715171619"></a><strong id="b125611612173311"><a name="b125611612173311"></a><a name="b125611612173311"></a>uint32_t count</strong>：待比较的特征数量。</p>
 <p id="p874812810555"><a name="p874812810555"></a><a name="p874812810555"></a><strong id="b17401300315"><a name="b17401300315"></a><a name="b17401300315"></a>const void *features</strong>：待比较的特征，汉明距离为uint8_t类型的数据，Int8Flat为int8_t类型，FP16Flat为float类型。</p>
-<p id="p661314244382"><a name="p661314244382"></a><a name="p661314244382"></a><strong id="b161793465431"><a name="b161793465431"></a><a name="b161793465431"></a>const AttrFilter *attrFilter</strong>：属性过滤信息，具体请参见<a href="#ZH-CN_TOPIC_0000001458687398">AttrFilter</a>。</p>
+<p id="p661314244382"><a name="p661314244382"></a><a name="p661314244382"></a><strong id="b161793465431"><a name="b161793465431"></a><a name="b161793465431"></a>const AttrFilter *attrFilter</strong>：属性过滤信息，具体请参见<a href="./02_AttrFilter.md#ZH-CN_TOPIC_0000001458687398">AttrFilter</a>。</p>
 <p id="p638962561711"><a name="p638962561711"></a><a name="p638962561711"></a><strong id="b72082417127"><a name="b72082417127"></a><a name="b72082417127"></a>bool shareAttrFilter</strong>：同一个query是否共享一个Mask。</p>
 <p id="p263216178448"><a name="p263216178448"></a><a name="p263216178448"></a><strong id="b9237122811443"><a name="b9237122811443"></a><a name="b9237122811443"></a>uint32_t topk</strong>：计算余弦距离后需要保存的TopK大小。</p>
 <p id="p1792132311"><a name="p1792132311"></a><a name="p1792132311"></a><strong id="b10193171182320"><a name="b10193171182320"></a><a name="b10193171182320"></a>const uint8_t *extraMask</strong>：外部输入的额外的过滤Mask，以bit为单位，0和1分别代表过滤或者选中该条特征。</p>
@@ -994,7 +992,7 @@
 </tbody>
 </table>
 
-### SearchWithExtraMask带额外相似度接口<a name="ZH-CN_TOPIC_0000002373091106"></a>
+## SearchWithExtraMask带额外相似度接口<a name="ZH-CN_TOPIC_0000002373091106"></a>
 
 <a name="table197013362381"></a>
 <table><tbody><tr id="row597023693810"><th class="firstcol" valign="top" width="20.03%" id="mcps1.1.3.1.1"><p id="p199703365385"><a name="p199703365385"></a><a name="p199703365385"></a>API定义</p>
@@ -1011,7 +1009,7 @@
 </th>
 <td class="cellrowborder" valign="top" width="79.97%" headers="mcps1.1.3.3.1 "><p id="p119701036143819"><a name="p119701036143819"></a><a name="p119701036143819"></a><strong id="b1897053618384"><a name="b1897053618384"></a><a name="b1897053618384"></a>uint32_t count</strong>：待比较的特征数量。</p>
 <p id="p1697015367382"><a name="p1697015367382"></a><a name="p1697015367382"></a><strong id="b49704363384"><a name="b49704363384"></a><a name="b49704363384"></a>const void *features</strong>：待比较的特征，汉明距离为uint8_t类型的数据，Int8Flat为int8_t类型，FP16Flat为float类型。</p>
-<p id="p12970173633811"><a name="p12970173633811"></a><a name="p12970173633811"></a><strong id="b2097015361386"><a name="b2097015361386"></a><a name="b2097015361386"></a>const AttrFilter *attrFilter</strong>：属性过滤信息，具体请参见<a href="#ZH-CN_TOPIC_0000001458687398">AttrFilter</a>。</p>
+<p id="p12970173633811"><a name="p12970173633811"></a><a name="p12970173633811"></a><strong id="b2097015361386"><a name="b2097015361386"></a><a name="b2097015361386"></a>const AttrFilter *attrFilter</strong>：属性过滤信息，具体请参见<a href="./02_AttrFilter.md#ZH-CN_TOPIC_0000001458687398">AttrFilter</a>。</p>
 <p id="p18970193617382"><a name="p18970193617382"></a><a name="p18970193617382"></a><strong id="b16970133693819"><a name="b16970133693819"></a><a name="b16970133693819"></a>bool shareAttrFilter</strong>：同一个query是否共享一个Mask。</p>
 <p id="p497013613389"><a name="p497013613389"></a><a name="p497013613389"></a><strong id="b3970123613810"><a name="b3970123613810"></a><a name="b3970123613810"></a>uint32_t topk</strong>：计算余弦距离后需要保存的TopK大小。</p>
 <p id="p119709368387"><a name="p119709368387"></a><a name="p119709368387"></a><strong id="b109708366381"><a name="b109708366381"></a><a name="b109708366381"></a>const uint8_t *extraMask</strong>：外部输入的额外的过滤Mask，以bit为单位，0和1分别代表过滤或者选中该条特征。</p>
@@ -1041,7 +1039,7 @@
 </tbody>
 </table>
 
-### SearchWithExtraVal接口<a name="ZH-CN_TOPIC_0000002013215285"></a>
+## SearchWithExtraVal接口<a name="ZH-CN_TOPIC_0000002013215285"></a>
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.03%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
@@ -1058,10 +1056,10 @@
 </th>
 <td class="cellrowborder" valign="top" width="79.97%" headers="mcps1.1.3.3.1 "><p id="p2360715171619"><a name="p2360715171619"></a><a name="p2360715171619"></a><strong id="b125611612173311"><a name="b125611612173311"></a><a name="b125611612173311"></a>uint32_t count</strong>：待比较的特征数量。</p>
 <p id="p874812810555"><a name="p874812810555"></a><a name="p874812810555"></a><strong id="b17401300315"><a name="b17401300315"></a><a name="b17401300315"></a>const void *features</strong>：待比较的特征，汉明距离为uint8_t类型的数据，Int8Flat为int8_t类型。当前仅支持Int8Flat（包括异构内存场景）和汉明距离。</p>
-<p id="p661314244382"><a name="p661314244382"></a><a name="p661314244382"></a><strong id="b161793465431"><a name="b161793465431"></a><a name="b161793465431"></a>const AttrFilter *attrFilter</strong>：属性过滤信息，具体请参见<a href="#ZH-CN_TOPIC_0000001458687398">AttrFilter</a>。</p>
+<p id="p661314244382"><a name="p661314244382"></a><a name="p661314244382"></a><strong id="b161793465431"><a name="b161793465431"></a><a name="b161793465431"></a>const AttrFilter *attrFilter</strong>：属性过滤信息，具体请参见<a href="./02_AttrFilter.md#ZH-CN_TOPIC_0000001458687398">AttrFilter</a>。</p>
 <p id="p638962561711"><a name="p638962561711"></a><a name="p638962561711"></a><strong id="b72082417127"><a name="b72082417127"></a><a name="b72082417127"></a>bool shareAttrFilter</strong>：附加属性暂仅支持“false”，不同query非共享一个mask。</p>
 <p id="p263216178448"><a name="p263216178448"></a><a name="p263216178448"></a><strong id="b9237122811443"><a name="b9237122811443"></a><a name="b9237122811443"></a>uint32_t topk</strong>：计算余弦距离后需要保存的TopK大小。</p>
-<p id="p576645315463"><a name="p576645315463"></a><a name="p576645315463"></a><strong id="b1599945784610"><a name="b1599945784610"></a><a name="b1599945784610"></a>const ExtraValFilter *extraValFilter</strong>：附加属性过滤信息，具体请见<a href="#ZH-CN_TOPIC_0000002013200765">ExtraValFilter</a>。</p>
+<p id="p576645315463"><a name="p576645315463"></a><a name="p576645315463"></a><strong id="b1599945784610"><a name="b1599945784610"></a><a name="b1599945784610"></a>const ExtraValFilter *extraValFilter</strong>：附加属性过滤信息，具体请见<a href="./04_ExtraValFilter.md#ZH-CN_TOPIC_0000002013200765">ExtraValFilter</a>。</p>
 <p id="p198449441221"><a name="p198449441221"></a><a name="p198449441221"></a><strong id="b194349562317"><a name="b194349562317"></a><a name="b194349562317"></a>bool enableTimeFilter</strong>：时间戳属性过滤开关，默认为<span class="parmvalue" id="parmvalue6379218248"><a name="parmvalue6379218248"></a><a name="parmvalue6379218248"></a>“true”</span>，当<strong id="b12428111462413"><a name="b12428111462413"></a><a name="b12428111462413"></a>enableTimeFilter = false</strong>时，不进行时间戳属性的过滤。</p>
 </td>
 </tr>
@@ -1089,7 +1087,7 @@
 >
 > SearchWithExtraVal不能与Search接口混用。
 
-### SetHeteroParam接口<a name="ZH-CN_TOPIC_0000001630850578"></a>
+## SetHeteroParam接口<a name="ZH-CN_TOPIC_0000001630850578"></a>
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.02%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
@@ -1127,7 +1125,7 @@
 </tbody>
 </table>
 
-### SetSaveHostMemory接口<a name="ZH-CN_TOPIC_0000002106649489"></a>
+## SetSaveHostMemory接口<a name="ZH-CN_TOPIC_0000002106649489"></a>
 
 <a name="table7235918388"></a>
 <table><tbody><tr id="row1721359113814"><th class="firstcol" valign="top" width="20.1%" id="mcps1.1.3.1.1"><p id="p12559123810"><a name="p12559123810"></a><a name="p12559123810"></a>API定义</p>
@@ -1162,86 +1160,3 @@
 </tr>
 </tbody>
 </table>
-
-## AttrFilter<a id="ZH-CN_TOPIC_0000001458687398"></a>
-
-### 功能介绍<a name="ZH-CN_TOPIC_0000001507967265"></a>
-
-特征属性过滤器，该结构体需要结合AscendIndexTS实例来使用，在特征检索时作为输入参数。
-
-调用检索接口的所有query向量共享同一个过滤器，该过滤器会和底库中的每一个底库特征对应的属性进行匹配，可以比较的信息例如：时间、token ID。
-
-匹配成功的底库特征会参与接下来的检索流程，即向量距离比对与TopK排序等。
-
-不支持多线程并发调用，因此在多线程的场景中需要用户在使用前加锁，否则检索接口可能导致异常。并且不支持不同线程间共享一个Device。当前的特征检索内部会使用OMP做性能加速，OMP不支持与其他多线程机制混用。反复创建新线程使用OMP会导致内存持续累加，因此建议使用固定的线程来运行检索任务。
-
-### timesEnd接口<a name="ZH-CN_TOPIC_0000001458367566"></a>
-
-int32_t：过滤时间段的结束时间。
-
-### timesStart接口<a name="ZH-CN_TOPIC_0000001507647493"></a>
-
-int32_t：过滤时间段的开始时间。
-
-### tokenBitSet接口<a name="ZH-CN_TOPIC_0000001507887177"></a>
-
-uint8\_t\*：特征token ID的列表，每个uint8\_t成员从低位到高位，按位记录token信息，1代表选中，0代表token未选中。
-
-例如：一个过滤器的token列表包含两个非零的uint8_t成员：\[7, 15, 0, 0, ……, 0\]，非零成员的二进制表示为00000111、00001111，则它们表达的有效token ID为：0，1，2，8，9，10，11。
-
-> [!NOTE]
->“tokenBitSet”长度应为“tokenBitSetLen”，否则可能出现越界读写错误并引起程序崩溃。
-
-### tokenBitSetLen接口<a name="ZH-CN_TOPIC_0000001458687402"></a>
-
-uint32_t：指定过滤器AttrFilter中tokenBitSet字段的长度。
-
-## ExtraValAttr<a id="ZH-CN_TOPIC_0000002013198657"></a>
-
-### 功能介绍<a name="ZH-CN_TOPIC_0000002013039153"></a>
-
-附加属性信息，入库时和特征向量一起添加。该结构体需要结合AscendIndexTS实例来使用。
-
-不支持多线程并发调用，因此在多线程的场景中需要用户在使用前加锁，否则检索接口可能导致异常。并且不支持不同线程间共享一个Device。
-
-### val接口<a name="ZH-CN_TOPIC_0000001976479160"></a>
-
-int16_t：记录当前特征的附加属性信息，用二进制表示，“1”代表“是”，“0”代表“否”。
-
-## ExtraValFilter<a id="ZH-CN_TOPIC_0000002013200765"></a>
-
-### 功能介绍<a name="ZH-CN_TOPIC_0000001976640904"></a>
-
-附加属性过滤器，该结构体需要结合AscendIndexTS实例来使用，在特征检索时作为输入参数。
-
-不支持多线程并发调用，因此在多线程的场景中需要用户在使用前加锁，否则检索接口可能导致异常。并且不支持不同线程间共享一个Device。
-
-### filterVal接口<a name="ZH-CN_TOPIC_0000001976481180"></a>
-
-int16_t：待查询的附加属性，用二进制表示，“1”表示保留附加属性，“0”表示过滤附加属性。
-
-### matchVal接口<a name="ZH-CN_TOPIC_0000002013041289"></a>
-
-int16_t：附加属性查询模式，分为模式0和模式1。
-
-- 对于模式0，匹配条件为：**`(ExtraValAttr::val & ExtraValFilter::filterVal) == ExtraValFilter::filterVal`**
-- 对于模式1，匹配条件为：**`(ExtraValAttr::val & ExtraValFilter::filterVal) > 0`**
-
-## FeatureAttr<a id="ZH-CN_TOPIC_0000001507967381"></a>
-
-### 功能介绍<a name="ZH-CN_TOPIC_0000001458367674"></a>
-
-特征属性信息，入库时和特征向量一起添加。该结构体需要结合AscendIndexTS实例来使用。
-
-不支持多线程并发调用，因此在多线程的场景中需要用户在使用前加锁，否则检索接口可能导致异常。并且不支持不同线程间共享一个Device。
-
-### time接口<a name="ZH-CN_TOPIC_0000001507647601"></a>
-
-int32_t：记录当前特征的时间信息，以时间戳（秒级）形式表示。
-
-> [!NOTE]
->由于昇腾硬件限制，只能处理int32类型数据，因此用户需要保证当前时间戳不会超过int32的最大值，建议在实际操作时，将当前实际时间戳减去固定的一个历史时间戳，然后再存入。
-
-### tokenId接口<a name="ZH-CN_TOPIC_0000001507887269"></a>
-
-uint32_t：特征token ID，一个token ID对应多个特征，一个特征对应一个token ID，需要小于用户初始化AscendIndexTS时传入的tokenNum的值。

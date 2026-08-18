@@ -29,13 +29,13 @@ Index SDK是基于Faiss开发的昇腾NPU异构检索加速框架，针对高维
 
 | 功能 | 描述 | 接口 |
 | --- | --- | --- |
-| [全量检索](./docs/zh/05_user_guide.md#全量检索) | 支持Flat、Int8Flat等索引类型，对大规模数据集进行精确检索 | [链接](./docs/zh/api/01_full_retrieval.md) |
-| [近似检索](./docs/zh/05_user_guide.md#近似检索) | 支持IVF、二值化检索等索引类型，提供高效的近似检索能力 | [链接](./docs/zh/api/02_approximate_retrieval.md) |
-| [属性过滤](./docs/zh/05_user_guide.md#属性过滤检索) | 支持时空库检索，通过属性过滤器对底库进行筛选，提高检索精度 | [链接](./docs/zh/api/03_attribute_filtering-based_retrieval.md) |
-| [批量检索](./docs/zh/05_user_guide.md#多Index批量检索) | 支持从多个Index库同时执行检索，合并返回TopK结果 | [链接](./docs/zh/api/04_multi-index_batch_retrieval.md) |
-| [其他功能](./docs/zh/05_user_guide.md#其他功能) | 创建降维对象、提供NPU与CPU之间的索引数据拷贝等功能 | [链接](./docs/zh/api/05_more_functions.md) |
-| [未使用接口](./docs/zh/api/06_unused_apis.md#未使用接口) | 列出当前仅供内部调用、后续将废弃且不建议用户使用的接口 | [链接](./docs/zh/api/06_unused_apis.md)|
-| [接口调用返回值参考](./docs/zh/api/07_return_code_reference.md#接口调用返回值参考) | 提供 Device 侧接口调用返回码及含义说明，便于定位 ACL、参数、索引初始化、超时等错误 | [链接](./docs/zh/api/07_return_code_reference.md)|
+| [全量检索](./docs/zh/05_user_guide.md#全量检索) | 支持Flat、Int8Flat等索引类型，对大规模数据集进行精确检索 | [链接](./docs/zh/api/01_full_retrieval/01_AscendIndex.md#ascendindex) |
+| [近似检索](./docs/zh/05_user_guide.md#近似检索) | 支持IVF、二值化检索等索引类型，提供高效的近似检索能力 | [链接](./docs/zh/api/02_approximate_retrieval/01_AscendIndexBinaryFlat.md#ascendindexbinaryflat) |
+| [属性过滤](./docs/zh/05_user_guide.md#属性过滤检索) | 支持时空库检索，通过属性过滤器对底库进行筛选，提高检索精度 | [链接](./docs/zh/api/03_attribute_filtering-based_retrieval/01_AscendIndexTS.md#ascendindexts) |
+| [批量检索](./docs/zh/05_user_guide.md#多Index批量检索) | 支持从多个Index库同时执行检索，合并返回TopK结果 | [链接](./docs/zh/api/04_multi-index_batch_retrieval/01_multi-index_batch_retrieval.md#多index批量检索) |
+| [其他功能](./docs/zh/05_user_guide.md#其他功能) | 创建降维对象、提供NPU与CPU之间的索引数据拷贝等功能 | [链接](./docs/zh/api/05_more_functions/01_IReduction.md#ireduction) |
+| [未使用接口](./docs/zh/api/06_unused_apis/01_unused_apis.md#未使用接口) | 列出当前仅供内部调用、后续将废弃且不建议用户使用的接口 | [链接](./docs/zh/api/06_unused_apis/01_unused_apis.md)|
+| [接口调用返回值参考](./docs/zh/api/07_return_code_reference/01_return_code_reference.md#接口调用返回值参考) | 提供 Device 侧接口调用返回码及含义说明，便于定位 ACL、参数、索引初始化、超时等错误 | [链接](./docs/zh/api/07_return_code_reference/01_return_code_reference.md)|
 
 ## 🚀 快速入门
 
