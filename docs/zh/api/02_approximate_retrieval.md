@@ -6987,6 +6987,46 @@ AscendIndexIVFRaBitQ利用IVF进行加速，是二级近似检索算法。当前
 </tbody>
 </table>
 
+### search接口<a name="ZH-CN_TOPIC_IVFRABITQ_SEARCH"></a>
+
+<a name="table_ivfrabitq_search"></a>
+<table><tbody><tr id="row_ivfrabitq_search_api"><th class="firstcol" valign="top" width="20.07%" id="mcps1.1.3.1.1"><p id="p_ivfrabitq_search_api">API定义</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.93%" headers="mcps1.1.3.1.1 "><p id="p_ivfrabitq_search_sig">void search(idx_t n, const float *x, idx_t k, float *distances, idx_t *labels, const SearchParameters *params = nullptr) const override;</p>
+</td>
+</tr>
+<tr id="row_ivfrabitq_search_desc"><th class="firstcol" valign="top" width="20.07%" id="mcps1.1.3.2.1"><p id="p_ivfrabitq_search_desc">功能描述</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.93%" headers="mcps1.1.3.2.1 "><p id="p_ivfrabitq_search_desc_body">实现AscendIndexIVFRaBitQ特征向量查询。支持通过Faiss SearchParameters.sel传入IDSelector，在L2 TopK阶段按ID过滤（多卡场景下各卡对本地候选做同一全局ID语义过滤后合并）。</p>
+</td>
+</tr>
+<tr id="row_ivfrabitq_search_in"><th class="firstcol" valign="top" width="20.07%" id="mcps1.1.3.3.1"><p id="p_ivfrabitq_search_in">输入</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.93%" headers="mcps1.1.3.3.1 "><p id="p_ivfrabitq_search_n"><strong>idx_t n</strong>：查询特征向量条数。</p>
+<p id="p_ivfrabitq_search_x"><strong>const float *x</strong>：查询特征向量，长度 n*dim。</p>
+<p id="p_ivfrabitq_search_k"><strong>idx_t k</strong>：返回最相似结果个数。</p>
+<p id="p_ivfrabitq_search_params"><strong>const SearchParameters *params</strong>：可选。params-&gt;sel 支持 IDSelectorRange / IDSelectorBatch / IDSelectorArray / IDSelectorBitmap，以及上述类型的 IDSelectorNot。params 为 nullptr 或 sel 为 nullptr 时不做ID过滤。SearchParametersIVF.nprobe 本次不生效，仍使用 index 上的 nprobe。</p>
+</td>
+</tr>
+<tr id="row_ivfrabitq_search_out"><th class="firstcol" valign="top" width="20.07%" id="mcps1.1.3.4.1"><p id="p_ivfrabitq_search_out">输出</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.93%" headers="mcps1.1.3.4.1 "><p id="p_ivfrabitq_search_dist"><strong>float *distances</strong>：距离结果，长度 n*k。</p>
+<p id="p_ivfrabitq_search_lab"><strong>idx_t *labels</strong>：ID结果，长度 n*k；不足 k 个时剩余用 -1 填充。</p>
+</td>
+</tr>
+<tr id="row_ivfrabitq_search_ret"><th class="firstcol" valign="top" width="20.07%" id="mcps1.1.3.5.1"><p id="p_ivfrabitq_search_ret">返回值</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.93%" headers="mcps1.1.3.5.1 "><p id="p_ivfrabitq_search_ret_body">无</p>
+</td>
+</tr>
+<tr id="row_ivfrabitq_search_const"><th class="firstcol" valign="top" width="20.07%" id="mcps1.1.3.6.1"><p id="p_ivfrabitq_search_const">约束说明</p>
+</th>
+<td class="cellrowborder" valign="top" width="79.93%" headers="mcps1.1.3.6.1 "><ul id="ul_ivfrabitq_search_const"><li>过滤在AICPU TopK阶段执行（late-filter），不增加持久化底库内存；filter 仅在查询期临时物化。</li><li>多卡检索时同一 IDSelector 按全局ID语义应用到每张卡，再在Host侧合并 top-k。</li><li>高过滤比场景下L2距离仍按 probed lists 全量计算，membership 检查相对廉价。</li></ul>
+</td>
+</tr>
+</tbody>
+</table>
+
 ### update接口<a name="ZH-CN_TOPIC_0000002566242121"></a>
 
 <a name="table962730101715"></a>
