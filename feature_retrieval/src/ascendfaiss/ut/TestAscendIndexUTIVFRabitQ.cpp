@@ -17,6 +17,7 @@
  */
 
 #include <faiss/IndexFlat.h>
+#include <faiss/IndexIVF.h>
 #include <faiss/IndexIVFRaBitQ.h>
 #include <faiss/impl/IDSelector.h>
 #include <gmock/gmock.h>
@@ -416,6 +417,77 @@ TEST(TestAscendIndexIVFRaBitQ, SearchWithIdSelector)
         std::cout << "Exception in SearchWithIdSelector test: " << msg << std::endl;
     }
     EXPECT_EQ(msg, "");
+}
+
+TEST(TestAscendIndexIVFRaBitQ, SearchParametersIVFNprobe)
+{
+    const int dim = 128;
+    const int nlist = 1024;
+    const int ntotal = 2000;
+    const int defaultNprobe = 64;
+    const int searchNprobe = 32;
+    const int nq = 5;
+    const int k = 10;
+
+    std::string msg = "";
+    faiss::MetricType type = faiss::METRIC_L2;
+    faiss::ascend::AscendIndexIVFRaBitQConfig conf({0});
+    conf.useKmeansPP = false;
+    std::vector<float> data(ntotal * dim);
+    std::vector<faiss::idx_t> ids(ntotal);
+    generateData(data.data(), ntotal, dim);
+    for (int i = 0; i < ntotal; ++i)
+    {
+        ids[i] = i;
+    }
+    const int trainNum = ntotal > nlist * 40 ? nlist * 40 : ntotal;
+
+    try
+    {
+        faiss::ascend::AscendIndexIVFRaBitQ index(dim, type, nlist, conf);
+        index.setNumProbes(defaultNprobe);
+        index.train(trainNum, data.data());
+        index.add_with_ids(ntotal, data.data(), ids.data());
+
+        std::vector<float> dist(nq * k, 0.0f);
+        std::vector<faiss::idx_t> label(nq * k, -1);
+
+        faiss::SearchParametersIVF params;
+        params.nprobe = searchNprobe;
+        index.search(nq, data.data(), k, dist.data(), label.data(), &params);
+
+        EXPECT_EQ(index.getNumProbes(), defaultNprobe);
+    }
+    catch (std::exception& e)
+    {
+        msg = e.what();
+        std::cout << "Exception in SearchParametersIVFNprobe test: " << msg << std::endl;
+    }
+    EXPECT_EQ(msg, "");
+}
+
+TEST(TestAscendIndexIVFRaBitQ, SearchParametersIVFInvalidNprobe)
+{
+    std::string msg = "";
+    try
+    {
+        const int dim = 128;
+        const int nlist = 1024;
+        faiss::ascend::AscendIndexIVFRaBitQConfig conf({0});
+        faiss::ascend::AscendIndexIVFRaBitQ index(dim, faiss::METRIC_L2, nlist, conf);
+        std::vector<float> query(dim, 0.0f);
+        std::vector<float> dist(1, 0.0f);
+        std::vector<faiss::idx_t> label(1, -1);
+
+        faiss::SearchParametersIVF params;
+        params.nprobe = 0;
+        index.search(1, query.data(), 1, dist.data(), label.data(), &params);
+    }
+    catch (std::exception& e)
+    {
+        msg = e.what();
+    }
+    EXPECT_TRUE(msg.find("SearchParametersIVF.nprobe must be greater than 0") != std::string::npos) << "msg: " << msg;
 }
 
 TEST(TestAscendIndexIVFRaBitQ, SearchWithIdSelectorMultiDevice)
