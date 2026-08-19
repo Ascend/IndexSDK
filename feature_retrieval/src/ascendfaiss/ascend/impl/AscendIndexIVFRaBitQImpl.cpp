@@ -710,6 +710,59 @@ int CeilLog2(uint64_t value)
     return bits;
 }
 
+constexpr size_t RABITQ_BITMAP_FILTER_MIN_COUNT = 1000000;
+
+// Materialize a large IDSelectorBatch/Array whitelist as a bitmap when the bitmap
+// size stays within budget (4x the sorted array, at least 256MB, hard-capped at
+// 512MB). Building the bitmap only needs two passes over the ids (find max, set
+// bits), so it also skips the O(n log n) sort and the extra sorted-prefix payload
+// copy. Returns false when the caller should keep the sorted/prefix path (small
+// whitelist, negative ids, or sparse ids with a huge max id).
+template <typename IdIt>
+bool TryBuildBitmapFilter(IdIt begin, IdIt end, size_t count, ::ascend::RabitqIdFilterHost& out)
+{
+    if (count <= RABITQ_BITMAP_FILTER_MIN_COUNT)
+    {
+        return false;
+    }
+
+    int64_t maxId = -1;
+    for (IdIt it = begin; it != end; ++it)
+    {
+        const int64_t id = static_cast<int64_t>(*it);
+        if (id < 0)
+        {
+            return false;  // bitmap cannot represent negative ids
+        }
+        maxId = std::max(maxId, id);
+    }
+
+    const size_t bitmapBytes = (static_cast<size_t>(maxId) + 8) / 8;  // ceil((maxId + 1) / 8)
+    // Allow the bitmap to be moderately larger than the sorted array so whitelists
+    // just above the threshold still take the bitmap path (skipping the sort and
+    // the duplicate payload copy), but hard-cap the host/device allocation so that
+    // sparse/wide ids cannot push the bitmap into the GB range this change fixes.
+    const size_t sortedBytes = count << 3;  // count * sizeof(int64_t)
+    constexpr size_t kMinBitmapBudgetBytes = 256ULL * 1024 * 1024;
+    constexpr size_t kMaxBitmapBytes = 512ULL * 1024 * 1024;
+    const size_t maxBitmapBytes = std::min(std::max(sortedBytes << 2, kMinBitmapBudgetBytes), kMaxBitmapBytes);
+    if (bitmapBytes > maxBitmapBytes)
+    {
+        return false;
+    }
+
+    out.bitmap.assign(bitmapBytes, 0);
+    for (IdIt it = begin; it != end; ++it)
+    {
+        const uint64_t id = static_cast<uint64_t>(*it);  // non-negative: checked in the first pass
+        out.bitmap[static_cast<size_t>(id >> 3)] |= static_cast<uint8_t>(1u << (id & 7));
+    }
+    out.mode = aicpu::RABITQ_ID_FILTER_BITMAP;
+    out.aux0 = static_cast<int64_t>(bitmapBytes << 3);  // bit count, multiple of 8
+    out.aux1 = 0;
+    return true;
+}
+
 void BuildPrefix(const std::vector<int64_t>& sortedIds, int requestedPrefixBits, std::vector<uint32_t>& offsets,
                  int64_t& prefixBits, int64_t& prefixShift, int64_t& prefixBucketCount)
 {
@@ -805,16 +858,22 @@ void MaterializeIdSelector(const IDSelector* sel, ::ascend::RabitqIdFilterHost& 
     }
     else if (const auto* batchSel = dynamic_cast<const IDSelectorBatch*>(inner))
     {
-        out.sortedIds.assign(batchSel->set.begin(), batchSel->set.end());
-        std::sort(out.sortedIds.begin(), out.sortedIds.end());
-        BuildSortedPrefixPayload(out);
+        if (!TryBuildBitmapFilter(batchSel->set.begin(), batchSel->set.end(), batchSel->set.size(), out))
+        {
+            out.sortedIds.assign(batchSel->set.begin(), batchSel->set.end());
+            std::sort(out.sortedIds.begin(), out.sortedIds.end());
+            BuildSortedPrefixPayload(out);
+        }
     }
     else if (const auto* arraySel = dynamic_cast<const IDSelectorArray*>(inner))
     {
         FAISS_THROW_IF_NOT_MSG(arraySel->n == 0 || arraySel->ids != nullptr,
                                "IDSelectorArray.ids cannot be nullptr when n > 0");
-        AppendSortedUnique(out.sortedIds, arraySel->ids, arraySel->n);
-        BuildSortedPrefixPayload(out);
+        if (!TryBuildBitmapFilter(arraySel->ids, arraySel->ids + arraySel->n, arraySel->n, out))
+        {
+            AppendSortedUnique(out.sortedIds, arraySel->ids, arraySel->n);
+            BuildSortedPrefixPayload(out);
+        }
     }
     else if (const auto* bitmapSel = dynamic_cast<const IDSelectorBitmap*>(inner))
     {
