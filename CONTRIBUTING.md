@@ -49,21 +49,26 @@
 
 5. **开发构建验证**：
 
-   1. 请参考[安装指南](./docs/zh/04_installation_guide.md)部署Index SDK开发环境。
+   1. 拉取镜像环境。
+      以910B场景为例，拉取CANN 9.1.0-910b版本镜像：
 
-   2. 进入`build`子目录，执行构建脚本：
+      ```bash
+      docker pull swr.cn-south-1.myhuaweicloud.com/ascendhub/indexsdk:26.1.0-cann9.1.0-910b-ubuntu22.04-py3.12
+      ```
+
+   2. 进入`feature_retrieval/build`子目录，执行构建脚本：
 
       ```bash
       cd build
       bash build.sh
       ```
 
-      构建成功后会在`build/output`下生成`Ascend-mindxsdk-mxindex_{version}_linux-{arch}.run`，可安装此包进行功能验证。
+      构建成功后会在`feature_retrieval/build/output`下生成`Ascend-mindxsdk-mxindex_{version}_linux-{arch}.run`，可安装此包进行功能验证。
 
    3. 在提交代码前，请补充测试用例并确保所有测试通过，本地执行UT：
 
       ```bash
-      cd build
+      cd feature_retrieval/build
       bash build.sh ut
       ```
 
