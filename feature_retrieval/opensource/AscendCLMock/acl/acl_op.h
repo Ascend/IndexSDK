@@ -20,73 +20,73 @@
 #define LIBASCENDCL_ACL_OP_H
 
 #include <map>
+#include <string>
+
 #include "acl_base.h"
 #include "acl_rt.h"
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
-typedef struct aclopHandle aclopHandle;
-typedef struct aclopAttr aclopAttr;
-typedef struct aclopKernelDesc aclopKernelDesc;
+    typedef struct aclopHandle aclopHandle;
+    typedef struct aclopAttr aclopAttr;
+    typedef struct aclopKernelDesc aclopKernelDesc;
 
-typedef void (*aclDataDeallocator)(void *data, size_t length);
+    typedef void (*aclDataDeallocator)(void *data, size_t length);
 
-struct aclopAttr {
-    int attr;
-    std::map<std::string, float> attrs;
-};
+    struct aclopAttr
+    {
+        int attr;
+        std::map<std::string, float> attrs;
+    };
 
-struct aclopHandle {
-    const char *opName{nullptr};
-    int numInputs{0};
-    int numOutPuts{0};
-    aclTensorDesc *inputDesc{nullptr};
-    aclDataBuffer *inputData{nullptr};
-    aclTensorDesc *outputDesc{nullptr};
-    aclDataBuffer *outputData{nullptr};
-    aclopAttr *opAttr{nullptr};
-};
+    struct aclopHandle
+    {
+        const char *opName{nullptr};
+        int numInputs{0};
+        int numOutPuts{0};
+        aclTensorDesc *inputDesc{nullptr};
+        aclDataBuffer *inputData{nullptr};
+        aclTensorDesc *outputDesc{nullptr};
+        aclDataBuffer *outputData{nullptr};
+        aclopAttr *opAttr{nullptr};
+    };
 
-typedef enum aclEngineType {
-    ACL_ENGINE_SYS,
-    ACL_ENGINE_AICORE,
-    ACL_ENGINE_VECTOR,
-} aclopEngineType;
+    typedef enum aclEngineType
+    {
+        ACL_ENGINE_SYS,
+        ACL_ENGINE_AICORE,
+        ACL_ENGINE_VECTOR,
+    } aclopEngineType;
 
-typedef aclError (*aclopCompileFunc)(int numInputs, const aclTensorDesc * const inputDesc[], int numOutputs,
-    const aclTensorDesc * const outputDesc[], const aclopAttr *opAttr, aclopKernelDesc *aclopKernelDesc);
+    typedef aclError (*aclopCompileFunc)(int numInputs, const aclTensorDesc *const inputDesc[], int numOutputs,
+                                         const aclTensorDesc *const outputDesc[], const aclopAttr *opAttr,
+                                         aclopKernelDesc *aclopKernelDesc);
 
-aclopAttr *aclopCreateAttr();
-void aclopDestroyAttr(const aclopAttr *attr);
-aclError aclopSetModelDir(const char *modelDir);
+    aclopAttr *aclopCreateAttr();
+    void aclopDestroyAttr(const aclopAttr *attr);
+    aclError aclopSetModelDir(const char *modelDir);
 
-aclError aclopCreateHandle(const char *opType,
-                           int numInputs,
-                           const aclTensorDesc *const inputDesc[],
-                           int numOutputs,
-                           const aclTensorDesc *const outputDesc[],
-                           const aclopAttr *opAttr,
-                           aclopHandle **handle);
+    aclError aclopCreateHandle(const char *opType, int numInputs, const aclTensorDesc *const inputDesc[],
+                               int numOutputs, const aclTensorDesc *const outputDesc[], const aclopAttr *opAttr,
+                               aclopHandle **handle);
 
-aclError aclopExecWithHandle(aclopHandle *handle,
-                             int numInputs,
-                             const aclDataBuffer *const inputs[],
-                             int numOutputs,
-                             aclDataBuffer *const outputs[],
-                             aclrtStream stream);
+    aclError aclopExecWithHandle(aclopHandle *handle, int numInputs, const aclDataBuffer *const inputs[],
+                                 int numOutputs, aclDataBuffer *const outputs[], aclrtStream stream);
 
-void aclopDestroyHandle(aclopHandle *handle);
+    void aclopDestroyHandle(aclopHandle *handle);
 
-aclError aclopExecuteV2(const char *opType, int numInputs, aclTensorDesc *inputDesc[], aclDataBuffer *inputs[],
-    int numOutputs, aclTensorDesc *outputDesc[], aclDataBuffer *outputs[], aclopAttr *attr, void *stream);
-aclError aclopSetAttrFloat(aclopAttr *attr, const char *attrName, float attrValue);
-aclError aclopSetAttrInt(aclopAttr *attr, const char *attrName, int64_t attrValue);
-aclError aclopSetKernelArgs(aclopKernelDesc *kernelDesc, const char *kernelId, uint32_t blockDim, const void *args,
-    uint32_t argSize);
+    aclError aclopExecuteV2(const char *opType, int numInputs, aclTensorDesc *inputDesc[], aclDataBuffer *inputs[],
+                            int numOutputs, aclTensorDesc *outputDesc[], aclDataBuffer *outputs[], aclopAttr *attr,
+                            void *stream);
+    aclError aclopSetAttrFloat(aclopAttr *attr, const char *attrName, float attrValue);
+    aclError aclopSetAttrInt(aclopAttr *attr, const char *attrName, int64_t attrValue);
+    aclError aclopSetKernelArgs(aclopKernelDesc *kernelDesc, const char *kernelId, uint32_t blockDim, const void *args,
+                                uint32_t argSize);
 #ifdef __cplusplus
 }
 #endif
 
-#endif // LIBASCENDCL_ACL_OP_H
+#endif  // LIBASCENDCL_ACL_OP_H
