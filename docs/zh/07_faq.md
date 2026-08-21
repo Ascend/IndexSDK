@@ -172,7 +172,7 @@ export IGNORE_INFER_ERROR=1
 
 **问题原因<a name="section1275154417319"></a>**
 
-在低版本的OS上存在gcc相关bug，该bug官方说明可参见[链接](https://gcc.gnu.org/bugzilla/show_bug.cgi?id=91938)。
+在低版本的OS上存在gcc相关bug。
 
 **解决方案<a name="section027514410318"></a>**
 
