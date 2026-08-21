@@ -23,17 +23,13 @@ RED="\033[31m"
 END="\033[0m"
 
 dependcy_package_install() {
-    echo -e "${YELLOW} check gdb ${END}"
-    apt-get install -y gdb
-    echo -e "${GREEN} gdb ok ${END}"
-
-    echo -e "${YELLOW} check boost ${END}"
-    apt-get install -y libboost-all-dev
-    echo -e "${GREEN} boost ok ${END}"
-
-    echo -e "${YELLOW} check linux_tools ${END}"
-    apt-get install -y linux-tools-generic linux-tools-common
-    echo -e "${GREEN} perf ok ${END}"
+    echo -e "${YELLOW} check gdb, boost, linux_tools ${END}"
+    apt-get install -y --no-install-recommends \
+        gdb \
+        libboost-all-dev \
+        linux-tools-generic \
+        linux-tools-common
+    echo -e "${GREEN} gdb, boost, perf ok ${END}"
 }
 
 dependcy_package_install

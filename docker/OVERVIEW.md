@@ -26,7 +26,7 @@ Tags follow this pattern:
 | Field            | Example Values                  | Description               |
 | ---------------- | ------------------------------- | ------------------------- |
 | `indexsdk_version` | `26.1.0`   | IndexSDK version              |
-| `chip_series`    | `950`, `910`, `a3`, `atlas 800`            | Target chip family |
+| `chip_series`    | `950`, `910b`, `a3`, `310p`            | Target chip family |
 | `os`             | `ubuntu22.04`, `openeuler24.03` | Base operating system     |
 | `python_version` | `py3.12`    | Python version            |
 
@@ -34,11 +34,11 @@ Tags follow this pattern:
 
 | Tag                                | Dockerfile                                                   | Image Content        |
 | ---------------------------------- | ------------------------------------------------------------ | --------------- |
-| `26.1.0-cann9.1.0-910-ubuntu22.04-py3.12`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/Dockerfile.910b.ubuntu) | toolkit + Index SDK |
+| `26.1.0-cann9.1.0-910b-ubuntu22.04-py3.12`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/Dockerfile.910b.ubuntu) | toolkit + Index SDK |
 | `26.1.0-cann9.1.0-310p-ubuntu22.04-py3.12`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/Dockerfile.310p.ubuntu)      | toolkit + Index SDK |
 | `26.1.0-cann9.1.0-a3-ubuntu22.04-py3.12`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/Dockerfile.a3.ubuntu)         | toolkit + Index SDK |
 | `26.1.0-cann9.1.0-950-ubuntu22.04-py3.12`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/Dockerfile.950.ubuntu)         | toolkit + Index SDK |
-| `26.1.0-cann9.1.0-910-openeuler24.03-py3.12`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/Dockerfile.910b.openeuler) | toolkit + Index SDK |
+| `26.1.0-cann9.1.0-910b-openeuler24.03-py3.12`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/Dockerfile.910b.openeuler) | toolkit + Index SDK |
 | `26.1.0-cann9.1.0-310p-openeuler24.03-py3.12`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/Dockerfile.310p.openeuler)      | toolkit + Index SDK |
 | `26.1.0-cann9.1.0-a3-openeuler24.03-py3.12`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/Dockerfile.a3.openeuler)         | toolkit + Index SDK |
 | `26.1.0-cann9.1.0-950-openeuler24.03-py3.12`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/Dockerfile.950.openeuler)         | toolkit + Index SDK |
@@ -127,20 +127,7 @@ g++ --std=c++11 -fPIC -fPIE -fstack-protector-all -Wall -D_FORTIFY_SOURCE=2 -O3 
 docker build -t {your_repo}/index:latest -f Dockerfile .
 ```
 
----
-
-## 4. Supported Hardware
-
-| Chip Series | Product Examples                | Architecture   |
-| ----------- | ------------------------------- | -------------- |
-| Atlas 350  | Ascend 950                         | ARM64 / x86_64 |
-| Atlas 910  | Atlas 800I A2                   | ARM64 / x86_64 |
-| Atlas A3   | Atlas 800I A3                   | ARM64 / x86_64 |
-| Atlas 300I Pro | Atlas 300I Pro, Atlas 300V Pro  | ARM64 / x86_64 |
-
----
-
-## 5. License
+## 4. License
 
 View the [license information](https://github.com/Ascend/cann-container-image/blob/main/LICENSE) for CANN and MindSeries software included in these images.
 
