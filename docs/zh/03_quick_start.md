@@ -29,8 +29,8 @@
 
 ### 1.2 环境预检查
 
-   - 使用 `npu-smi info` 命令验证 NPU 驱动状态
-   - 检查驱动版本与镜像 CANN 版本匹配性（参考《[固件与驱动](https://www.hiascend.com/hardware/firmware-drivers/community)》文档，如果和当前环境安装的驱动版本不配套，请更新NPU驱动至对应版本，NPU驱动更新指导详见[驱动和固件安装指南](https://support.huawei.com/enterprise/zh/doc/EDOC1100568434/36e8d875?idPath=23710424|251366513|254884019|261408772|252764743)。
+   - 使用 `npu-smi info` 命令验证 NPU 驱动状态。
+   - 检查驱动版本与镜像 CANN 版本匹配性（参考《[固件与驱动](https://www.hiascend.com/hardware/firmware-drivers)》文档），如果和当前环境安装的驱动版本不配套，请更新NPU驱动至对应版本，NPU驱动更新指导详见《[驱动和固件安装指南](https://support.huawei.com/enterprise/zh/doc/EDOC1100568434/36e8d875?idPath=23710424|251366513|254884019|261408772|252764743)》。
 
 ## 步骤 2：运行容器
 
