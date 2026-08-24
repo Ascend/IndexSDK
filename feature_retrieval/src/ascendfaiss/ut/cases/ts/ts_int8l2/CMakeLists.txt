@@ -1,5 +1,5 @@
 # This file is part of the IndexSDK project.
-# Copyright (c) 2025 Huawei Technologies Co.,Ltd.
+# Copyright (c) 2026 Huawei Technologies Co.,Ltd.
 #
 # IndexSDK is licensed under Mulan PSL v2.
 # You can use this software according to the terms and conditions of the Mulan PSL v2.
@@ -9,10 +9,26 @@
 #
 # THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND,
 # EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
-# MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
+# MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.
 # See the Mulan PSL v2 for more details.
 
-add_subdirectory(ts_binaryflat)
-add_subdirectory(ts_int8cos)
-add_subdirectory(ts_flatip)
-add_subdirectory(ts_int8l2)
+cmake_minimum_required(VERSION 3.20)
+
+project(TestAscendUTTSInt8L2)
+
+create_testable_target(${PROJECT_NAME}
+    SOURCE_FILE
+        TestAscendUTTSInt8L2.cpp
+
+    DEPENDS
+        # to be tested
+        ascendfaiss
+
+        # 3rd lib
+        gtest_main
+        gtest
+        ${ASCENDFAISS_LIBRARY}
+
+    INCLUDES
+        ${ASCENDFAISS_INCLUDE}
+)

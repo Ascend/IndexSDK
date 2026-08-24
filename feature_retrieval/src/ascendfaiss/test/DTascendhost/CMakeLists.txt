@@ -158,8 +158,9 @@ FILE(GLOB TEST_SRC_FILES "TestAscendIndex*.cpp")
 FOREACH(FILE_PATH ${TEST_SRC_FILES})
     STRING(REGEX REPLACE ".+/(.+)\\..*" "\\1" FILE_NAME ${FILE_PATH})
 
-    ADD_EXECUTABLE(${FILE_NAME} ${FILE_PATH} ${ASCENDFAISS_HOST_SRC})
-    TARGET_LINK_LIBRARIES(${FILE_NAME} faiss protobuf ascendcl openblas gtest c_sec dl)
+    # Exercise the production library instead of the stale source list above.
+    ADD_EXECUTABLE(${FILE_NAME} ${FILE_PATH})
+    TARGET_LINK_LIBRARIES(${FILE_NAME} ascendfaiss_host faiss protobuf ascendcl openblas gtest c_sec dl)
 
     ADD_TEST(NAME ${FILE_NAME}
         COMMAND ${FILE_NAME} --gtest_output=xml

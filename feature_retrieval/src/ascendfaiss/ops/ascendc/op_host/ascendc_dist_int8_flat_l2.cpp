@@ -25,9 +25,16 @@ using namespace matmul_tiling;
 
 namespace
 {
-constexpr uint32_t QUERY_MAX_SIZE = 48;
+constexpr uint32_t DEFAULT_QUERY_TILE_SIZE = 48;
+constexpr uint32_t DIM_256_QUERY_TILE_SIZE = 64;
+constexpr uint32_t OPTIMIZED_DIM = 256;
 constexpr uint32_t CODE_MAX_SIZE = 256;
-constexpr uint32_t MIN_BATCH = 64;
+
+uint32_t GetQueryTileSize(uint32_t dim, uint32_t querySize)
+{
+    const uint32_t maxTileSize = dim == OPTIMIZED_DIM ? DIM_256_QUERY_TILE_SIZE : DEFAULT_QUERY_TILE_SIZE;
+    return Utils::Min(maxTileSize, querySize);
+}
 }  // namespace
 
 namespace optiling
@@ -74,7 +81,7 @@ static ge::graphStatus TilingSetInputShapeInfo(gert::TilingContext *context, Asc
 static ge::graphStatus TilingSetCubeTiling(gert::TilingContext *context, AscendcDistInt8FlatL2TilingData &tiling)
 {
     uint32_t querySize = tiling.get_querySize();
-    uint32_t querySizeEachLoop = Min(QUERY_MAX_SIZE, querySize);
+    uint32_t querySizeEachLoop = GetQueryTileSize(tiling.get_dim(), querySize);
     uint32_t codeSizeEachLoop = CODE_MAX_SIZE;
 
     uint32_t dim = tiling.get_dim();
@@ -143,7 +150,7 @@ static ge::graphStatus TilingFunc(gert::TilingContext *context)
     context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
 
     uint32_t querySize = tiling.get_querySize();
-    uint32_t querySizeEachLoop = Min(QUERY_MAX_SIZE, querySize);
+    uint32_t querySizeEachLoop = GetQueryTileSize(tiling.get_dim(), querySize);
     const size_t userWorkspaceSize = querySizeEachLoop * CODE_MAX_SIZE * tiling.get_aivNum() * sizeof(int32_t);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     const uint32_t sysWorkspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
