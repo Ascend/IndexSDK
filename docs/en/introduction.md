@@ -121,12 +121,12 @@ openEuler 22.03</li><li>openEuler 24.03</li><li>Ubuntu 18.04</li><li>Ubuntu 20.0
 </tr>
 <tr>
 <td ><term>Atlas A2 inference products</term>
-<br>Note: Atlas A2 inference products support the AscendIndexFlat and AscendIndexInt8Flat algorithms.</td>
+<br>Note: Atlas A2 inference products support the AscendIndexFlat, AscendIndexInt8Flat, AscendIndexTS-FlatIP, AscendIndexTS-Int8Cos, and AscendIndexTS-Int8L2 algorithms.</td>
 <td>Atlas 800I A2 inference server</td>
 <td><li>CentOS 7.6</li><li>openEuler 20.03</li><li>openEuler 22.03</li><li>openEuler 24.03</li><li>Ubuntu 18.04</li><li>Ubuntu 20.04</li><li>Ubuntu 24.04</li><li>EulerOS 2.12</li><li>EulerOS 2.15</li><li>UOS V20</li><li>UOS V25</li><li>KylinOS V10 SP3</li><li>KylinOS V11</li><li>BC-Linux_21.10 U4</li></td>
 </tr>
 <tr>
-<td><term>Atlas A3 inference products</term><br>Note: Currently, only the AscendIndexFlat algorithm is supported.</td>
+<td><term>Atlas A3 inference products</term><br>Note: Currently, the AscendIndexFlat, AscendIndexTS-FlatIP, AscendIndexTS-Int8Cos, and AscendIndexTS-Int8L2 algorithms are supported.</td>
 <td>Atlas 800I A3 SuperNode server</td>
 <td><li>Ubuntu 18.04</li><li>CUlinux 3.0</li><li>KylinOS V10 SP3 2403</li><li>KylinOS V11</li><li>CTyunOS 4</li><li>UOS V25</li></td>
 </tr>

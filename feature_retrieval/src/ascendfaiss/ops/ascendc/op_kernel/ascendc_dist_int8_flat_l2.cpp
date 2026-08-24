@@ -37,6 +37,7 @@ constexpr uint32_t CORE_PROC_CODE_GRAIN = 256;
 constexpr uint8_t IDX_COMP_OFFSET = 1;
 constexpr uint8_t IDX_MASK_LEN = 2;
 constexpr uint8_t IDX_USE_MASK = 3;
+constexpr uint8_t IDX_SHARE_MASK = 4;
 }  // namespace
 
 namespace IndexOps
@@ -177,6 +178,7 @@ class AscendcDistInt8FlatL2
     uint32_t maskBlockOffset{0};
     uint32_t maskLen{0};
     uint32_t useMask{0};
+    uint32_t shareMask{0};
     float scale{0.0};
 };
 
@@ -204,6 +206,7 @@ __aicore__ inline void AscendcDistInt8FlatL2::GetShapeInfo(GM_ADDR actualSize)
     maskBlockOffset = *(reinterpret_cast<__gm__ uint32_t*>(actualSize) + IDX_COMP_OFFSET);
     maskLen = *(reinterpret_cast<__gm__ uint32_t*>(actualSize) + IDX_MASK_LEN);
     useMask = *(reinterpret_cast<__gm__ uint32_t*>(actualSize) + IDX_USE_MASK);
+    shareMask = *(reinterpret_cast<__gm__ uint32_t*>(actualSize) + IDX_SHARE_MASK);
 
     // 数据从uint32_t类型转换为float16类型时，为避免精度丢失，需要在转换时对数据进行缩放
     // 缩放参数m_scale根据dim大小改变，计算公式保持与tik一致，64、128、4数值含义待理清
@@ -542,13 +545,13 @@ __aicore__ inline void AscendcDistInt8FlatL2::DoMask(uint32_t queryLoopIdx, uint
 
     auto maskLocal = maskQue.AllocTensor<uint8_t>();
 
-    uint64_t maskOffset = queryLoopIdx * querySizeEachLoop * static_cast<uint64_t>(maskLen) +
+    uint64_t maskOffset = (shareMask == 0 ? queryLoopIdx * querySizeEachLoop * static_cast<uint64_t>(maskLen) : 0) +
                           codeLoopIdx * codeSizeEachLoop / MASK_BIT_NUM;
 
     for (uint32_t i = 0; i < queryProcNum; i++)
     {
-        DataCopy(maskLocal[i * onceNumMaskLen], maskTensor[i * static_cast<uint64_t>(maskLen) + maskOffset],
-                 onceNumMaskLen);
+        uint64_t queryMaskOffset = (shareMask == 0 ? i * static_cast<uint64_t>(maskLen) : 0);
+        DataCopy(maskLocal[i * onceNumMaskLen], maskTensor[queryMaskOffset + maskOffset], onceNumMaskLen);
     }
     maskQue.EnQue(maskLocal);
     maskLocal = maskQue.DeQue<uint8_t>();
