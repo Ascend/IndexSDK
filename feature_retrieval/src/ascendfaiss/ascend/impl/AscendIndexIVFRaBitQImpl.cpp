@@ -24,6 +24,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <mutex>
 #include <random>
 #include <unordered_set>
 #include <vector>
@@ -31,6 +32,7 @@
 #include "ascend/AscendIndexQuantizerImpl.h"
 #include "ascenddaemon/utils/AscendUtils.h"
 #include "ascenddaemon/utils/MemDebug.h"
+#include "common/utils/CommonUtils.h"
 #include "ops/cpukernel/impl/utils/kernel_shared_def.h"
 
 namespace faiss
@@ -414,6 +416,7 @@ void AscendIndexIVFRaBitQImpl::copyVectorToDevice(int n)
     };
     CALL_PARALLEL_FUNCTOR(deviceCnt, pool, addFunctor);
     this->intf_->ntotal += n;
+    InvalidateFilterCache();
 
     if (memDebug)
     {
@@ -688,18 +691,198 @@ void AscendIndexIVFRaBitQImpl::mergeSearchResult(size_t devices, std::vector<std
 namespace
 {
 
-void AppendSortedUnique(std::vector<int64_t>& out, const int64_t* ids, size_t n)
+constexpr size_t kBitmapMaxBytes = 128ULL * 1024 * 1024;  // 128MB, covers up to ~1.07B IDs
+constexpr size_t kParallelIdThreshold = 65536;
+constexpr int kIdScanMaxThreads = 8;
+
+bool PreferBitmap(int64_t maxId, size_t nIds, bool hasNegative)
+{
+    if (hasNegative || maxId < 0 || nIds == 0)
+    {
+        return false;
+    }
+    const size_t bitmapBytes = static_cast<size_t>(maxId / 8 + 1);
+    const size_t sortedBytes = nIds * sizeof(int64_t);
+    return bitmapBytes <= kBitmapMaxBytes && bitmapBytes <= sortedBytes;
+}
+
+bool OrBitmapBitChecked(uint8_t* bits, size_t nbytes, int64_t id);
+
+void SetBitmapBit(uint8_t* bitmap, size_t nbytes, int64_t id) { (void)OrBitmapBitChecked(bitmap, nbytes, id); }
+
+void InitBitmap(::ascend::RabitqIdFilterHost& out, int64_t maxId)
+{
+    const size_t bitmapBytes = static_cast<size_t>(maxId / 8 + 1);
+    out.mode = aicpu::RABITQ_ID_FILTER_BITMAP;
+    out.aux0 = static_cast<int64_t>(bitmapBytes) * 8;
+    out.bitmapView = nullptr;
+    out.sortedView = nullptr;
+    out.viewBytes = 0;
+    out.bitmap.assign(bitmapBytes, 0);
+}
+
+void AppendSortedUnique(std::vector<int64_t>& out, const idx_t* ids, size_t n)
 {
     out.assign(ids, ids + n);
     std::sort(out.begin(), out.end());
     out.erase(std::unique(out.begin(), out.end()), out.end());
 }
 
-void MaterializeIdSelector(const IDSelector* sel, ::ascend::RabitqIdFilterHost& out)
+int IdScanThreadCount()
+{
+    return std::min(kIdScanMaxThreads, static_cast<int>(::ascend::CommonUtils::GetThreadMaxNums()));
+}
+
+void ScanIdStats(const idx_t* ids, size_t n, int64_t& maxId, bool& hasNegative)
+{
+    maxId = -1;
+    int64_t hasNeg = 0;
+#pragma omp parallel for reduction(max : maxId) reduction(max : hasNeg) if (n >= kParallelIdThreshold) \
+    num_threads(IdScanThreadCount())
+    for (size_t i = 0; i < n; ++i)
+    {
+        hasNeg = std::max(hasNeg, static_cast<int64_t>(ids[i] < 0 ? 1 : 0));
+        maxId = std::max(maxId, ids[i]);
+    }
+    hasNegative = hasNeg != 0;
+}
+
+bool OrBitmapBitChecked(uint8_t* bits, size_t nbytes, int64_t id)
+{
+    if (id < 0)
+    {
+        return false;
+    }
+    const size_t byteIdx = static_cast<size_t>(id) >> 3;
+    if (byteIdx >= nbytes)
+    {
+        return false;
+    }
+    bits[byteIdx] |= static_cast<uint8_t>(1u << (id & 7));
+    return true;
+}
+
+bool FillBitmapChecked(std::vector<uint8_t>& bitmap, const idx_t* ids, size_t n)
+{
+    uint8_t* bits = bitmap.data();
+    const size_t nbytes = bitmap.size();
+    for (size_t i = 0; i < n; ++i)
+    {
+        if (!OrBitmapBitChecked(bits, nbytes, ids[i]))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool FillBitmapCheckedFromSet(std::vector<uint8_t>& bitmap, const std::unordered_set<idx_t>& ids)
+{
+    uint8_t* bits = bitmap.data();
+    const size_t nbytes = bitmap.size();
+    for (idx_t id : ids)
+    {
+        if (!OrBitmapBitChecked(bits, nbytes, id))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+void FillBitmap(std::vector<uint8_t>& bitmap, const idx_t* ids, size_t n)
+{
+    uint8_t* bits = bitmap.data();
+    const size_t nbytes = bitmap.size();
+    for (size_t i = 0; i < n; ++i)
+    {
+        SetBitmapBit(bits, nbytes, ids[i]);
+    }
+}
+
+bool TryMaterializeBitmapByNtotal(::ascend::RabitqIdFilterHost& out, int64_t ntotal, size_t nIds)
+{
+    if (ntotal <= 0 || !PreferBitmap(ntotal - 1, nIds, false))
+    {
+        return false;
+    }
+    InitBitmap(out, ntotal - 1);
+    return true;
+}
+
+void SetSortedFromIds(::ascend::RabitqIdFilterHost& out, const idx_t* ids, size_t n)
+{
+    out.mode = aicpu::RABITQ_ID_FILTER_SORTED;
+    out.sortedView = nullptr;
+    out.bitmapView = nullptr;
+    out.viewBytes = 0;
+    AppendSortedUnique(out.sortedIds, ids, n);
+    out.aux0 = static_cast<int64_t>(out.sortedIds.size());
+}
+
+void MaterializeFromIdsTwoPass(const idx_t* ids, size_t n, ::ascend::RabitqIdFilterHost& out)
+{
+    int64_t maxId = -1;
+    bool hasNegative = false;
+    ScanIdStats(ids, n, maxId, hasNegative);
+    if (PreferBitmap(maxId, n, hasNegative))
+    {
+        InitBitmap(out, maxId);
+        FillBitmap(out.bitmap, ids, n);
+        return;
+    }
+    SetSortedFromIds(out, ids, n);
+}
+
+void MaterializeFromIdSetTwoPass(const std::unordered_set<idx_t>& ids, ::ascend::RabitqIdFilterHost& out)
+{
+    int64_t maxId = -1;
+    bool hasNegative = false;
+    for (idx_t id : ids)
+    {
+        hasNegative = hasNegative || (id < 0);
+        maxId = std::max(maxId, static_cast<int64_t>(id));
+    }
+    if (PreferBitmap(maxId, ids.size(), hasNegative))
+    {
+        InitBitmap(out, maxId);
+        uint8_t* bits = out.bitmap.data();
+        const size_t nbytes = out.bitmap.size();
+        for (idx_t id : ids)
+        {
+            SetBitmapBit(bits, nbytes, id);
+        }
+        return;
+    }
+    std::vector<idx_t> tmp(ids.begin(), ids.end());
+    SetSortedFromIds(out, tmp.data(), tmp.size());
+}
+
+void MaterializeFromIds(const idx_t* ids, size_t n, int64_t ntotal, ::ascend::RabitqIdFilterHost& out)
+{
+    if (TryMaterializeBitmapByNtotal(out, ntotal, n) && FillBitmapChecked(out.bitmap, ids, n))
+    {
+        return;
+    }
+    out.resetKeepCapacity();
+    MaterializeFromIdsTwoPass(ids, n, out);
+}
+
+void MaterializeFromIdSet(const std::unordered_set<idx_t>& ids, int64_t ntotal, ::ascend::RabitqIdFilterHost& out)
+{
+    if (TryMaterializeBitmapByNtotal(out, ntotal, ids.size()) && FillBitmapCheckedFromSet(out.bitmap, ids))
+    {
+        return;
+    }
+    out.resetKeepCapacity();
+    MaterializeFromIdSetTwoPass(ids, out);
+}
+
+void MaterializeIdSelector(const IDSelector* sel, int64_t ntotal, ::ascend::RabitqIdFilterHost& out)
 {
     FAISS_THROW_IF_NOT_MSG(sel != nullptr, "IDSelector cannot be nullptr");
 
-    out = ::ascend::RabitqIdFilterHost{};
+    out.resetKeepCapacity();
     bool negate = false;
     const IDSelector* inner = sel;
     if (const auto* notSel = dynamic_cast<const IDSelectorNot*>(sel))
@@ -718,18 +901,13 @@ void MaterializeIdSelector(const IDSelector* sel, ::ascend::RabitqIdFilterHost& 
     }
     else if (const auto* batchSel = dynamic_cast<const IDSelectorBatch*>(inner))
     {
-        out.mode = aicpu::RABITQ_ID_FILTER_SORTED;
-        out.sortedIds.assign(batchSel->set.begin(), batchSel->set.end());
-        std::sort(out.sortedIds.begin(), out.sortedIds.end());
-        out.aux0 = static_cast<int64_t>(out.sortedIds.size());
+        MaterializeFromIdSet(batchSel->set, ntotal, out);
     }
     else if (const auto* arraySel = dynamic_cast<const IDSelectorArray*>(inner))
     {
         FAISS_THROW_IF_NOT_MSG(arraySel->n == 0 || arraySel->ids != nullptr,
                                "IDSelectorArray.ids cannot be nullptr when n > 0");
-        out.mode = aicpu::RABITQ_ID_FILTER_SORTED;
-        AppendSortedUnique(out.sortedIds, arraySel->ids, arraySel->n);
-        out.aux0 = static_cast<int64_t>(out.sortedIds.size());
+        MaterializeFromIds(arraySel->ids, arraySel->n, ntotal, out);
     }
     else if (const auto* bitmapSel = dynamic_cast<const IDSelectorBitmap*>(inner))
     {
@@ -738,7 +916,8 @@ void MaterializeIdSelector(const IDSelector* sel, ::ascend::RabitqIdFilterHost& 
         // FAISS: n is bitmap byte length; id selected iff id/8 < n.
         out.mode = aicpu::RABITQ_ID_FILTER_BITMAP;
         out.aux0 = static_cast<int64_t>(bitmapSel->n) * 8;
-        out.bitmap.assign(bitmapSel->bitmap, bitmapSel->bitmap + bitmapSel->n);
+        out.bitmapView = bitmapSel->bitmap;
+        out.viewBytes = bitmapSel->n;
     }
     else
     {
@@ -749,6 +928,20 @@ void MaterializeIdSelector(const IDSelector* sel, ::ascend::RabitqIdFilterHost& 
     out.negate = negate ? 1 : 0;
 }
 
+uint64_t Fnv1a64(const void* data, size_t nBytes)
+{
+    constexpr uint64_t kOffset = 14695981039346656037ULL;
+    constexpr uint64_t kPrime = 1099511628211ULL;
+    uint64_t hash = kOffset;
+    const auto* bytes = static_cast<const uint8_t*>(data);
+    for (size_t i = 0; i < nBytes; ++i)
+    {
+        hash ^= bytes[i];
+        hash *= kPrime;
+    }
+    return hash;
+}
+
 }  // namespace
 
 void AscendIndexIVFRaBitQImpl::indexSearch(IndexParam<float, float, ascend_idx_t>& param) const
@@ -757,7 +950,7 @@ void AscendIndexIVFRaBitQImpl::indexSearch(IndexParam<float, float, ascend_idx_t
 }
 
 void AscendIndexIVFRaBitQImpl::indexSearch(IndexParam<float, float, ascend_idx_t>& param,
-                                           const ::ascend::RabitqIdFilterHost* idFilter) const
+                                           const ::ascend::RabitqIdFilterHost* idFilter, int searchNprobe) const
 {
     auto pIndex = getActualIndex(param.deviceId);
     const float* indexPtr = nullptr;
@@ -765,7 +958,8 @@ void AscendIndexIVFRaBitQImpl::indexSearch(IndexParam<float, float, ascend_idx_t
     {
         indexPtr = this->srcIndexes.data();
     }
-    auto ret = pIndex->searchImpl(param.n, param.query, param.k, param.distance, param.label, indexPtr, idFilter);
+    auto ret = pIndex->searchImpl(param.n, param.query, param.k, param.distance, param.label, indexPtr, idFilter,
+                                  searchNprobe);
     FAISS_THROW_IF_NOT_FMT(ret == ::ascend::APP_ERR_OK, "Failed to search index,deviceId is %d, result is: %d\n",
                            param.deviceId, ret);
 }
@@ -776,9 +970,9 @@ void AscendIndexIVFRaBitQImpl::searchImpl(int n, const float* x, int k, float* d
 }
 
 void AscendIndexIVFRaBitQImpl::searchImplFiltered(int n, const float* x, int k, float* distances, idx_t* labels,
-                                                  const ::ascend::RabitqIdFilterHost* idFilter) const
+                                                  const ::ascend::RabitqIdFilterHost* idFilter, int searchNprobe) const
 {
-    APP_LOG_INFO("AscendIndex searchImpl operation started: n=%d, k=%d.\n", n, k);
+    APP_LOG_INFO("AscendIndex searchImpl operation started: n=%d, k=%d, searchNprobe=%d.\n", n, k, searchNprobe);
     size_t deviceCnt = indexConfig.deviceList.size();
     int finalk = k;
     if (ivfrabitqConfig.needRefine)
@@ -795,35 +989,117 @@ void AscendIndexIVFRaBitQImpl::searchImplFiltered(int n, const float* x, int k, 
         param.query = x;
         param.distance = dist[idx].data();
         param.label = label[idx].data();
-        indexSearch(param, idFilter);
+        indexSearch(param, idFilter, searchNprobe);
     };
     CALL_PARALLEL_FUNCTOR(deviceCnt, pool, searchFunctor);
     searchPostProcess(deviceCnt, dist, label, n, finalk, distances, labels);
 }
 
+const ::ascend::RabitqIdFilterHost* AscendIndexIVFRaBitQImpl::getCachedFilter(const IDSelector* sel) const
+{
+    if (sel == nullptr)
+    {
+        return nullptr;
+    }
+    // Caller (searchWithSelector) must hold filterCacheMutex for the rest of the search.
+    const FilterCacheKey key = MakeFilterCacheKey(sel);
+    if (!IsFilterCacheHit(cachedKey, key))
+    {
+        MaterializeIdSelector(sel, intf_->ntotal, cachedFilter);
+        ++cachedFilterGeneration;
+        cachedFilter.generation = cachedFilterGeneration;
+        cachedKey = key;
+    }
+    return &cachedFilter;
+}
+
+AscendIndexIVFRaBitQImpl::FilterCacheKey AscendIndexIVFRaBitQImpl::MakeFilterCacheKey(const IDSelector* sel)
+{
+    FilterCacheKey key;
+    key.selPtr = sel;
+    const IDSelector* inner = sel;
+    if (const auto* notSel = dynamic_cast<const IDSelectorNot*>(sel))
+    {
+        key.negate = 1;
+        inner = notSel->sel;
+        FAISS_THROW_IF_NOT_MSG(inner != nullptr, "IDSelectorNot.sel cannot be nullptr");
+    }
+    if (const auto* arraySel = dynamic_cast<const IDSelectorArray*>(inner))
+    {
+        key.kind = FilterCacheKey::Kind::Array;
+        key.payload = arraySel->ids;
+        key.n = arraySel->n;
+        if (arraySel->ids != nullptr && arraySel->n > 0)
+        {
+            key.contentHash = Fnv1a64(arraySel->ids, arraySel->n * sizeof(idx_t));
+        }
+        return key;
+    }
+    if (const auto* bitmapSel = dynamic_cast<const IDSelectorBitmap*>(inner))
+    {
+        key.kind = FilterCacheKey::Kind::Bitmap;
+        key.payload = bitmapSel->bitmap;
+        key.n = bitmapSel->n;
+        if (bitmapSel->bitmap != nullptr && bitmapSel->n > 0)
+        {
+            key.contentHash = Fnv1a64(bitmapSel->bitmap, bitmapSel->n);
+        }
+        return key;
+    }
+    key.kind = FilterCacheKey::Kind::Object;
+    if (const auto* rangeSel = dynamic_cast<const IDSelectorRange*>(inner))
+    {
+        const int64_t bounds[2] = {static_cast<int64_t>(rangeSel->imin), static_cast<int64_t>(rangeSel->imax)};
+        key.contentHash = Fnv1a64(bounds, sizeof(bounds));
+    }
+    return key;
+}
+
+bool AscendIndexIVFRaBitQImpl::IsFilterCacheHit(const FilterCacheKey& cached, const FilterCacheKey& key)
+{
+    if (cached.kind != key.kind || cached.negate != key.negate || cached.contentHash != key.contentHash)
+    {
+        return false;
+    }
+    if (key.kind == FilterCacheKey::Kind::Object)
+    {
+        return cached.selPtr == key.selPtr;
+    }
+    return cached.payload == key.payload && cached.n == key.n;
+}
+
+void AscendIndexIVFRaBitQImpl::InvalidateFilterCache() const
+{
+    std::lock_guard<std::mutex> guard(filterCacheMutex);
+    cachedKey = FilterCacheKey{};
+    cachedFilter.resetKeepCapacity();
+    ++cachedFilterGeneration;
+    cachedFilter.generation = cachedFilterGeneration;
+}
+
 void AscendIndexIVFRaBitQImpl::searchWithSelector(idx_t n, const float* x, idx_t k, float* distances, idx_t* labels,
-                                                  const IDSelector* sel) const
+                                                  const IDSelector* sel, int searchNprobe) const
 {
     auto lock = ::ascend::AscendMultiThreadManager::GetReadLock(mtx);
-    APP_LOG_INFO("AscendIndexIVFRaBitQ searchWithSelector started: n=%ld, k=%ld, hasSel=%d.\n", n, k,
-                 sel != nullptr ? 1 : 0);
+    APP_LOG_INFO("AscendIndexIVFRaBitQ searchWithSelector started: n=%ld, k=%ld, hasSel=%d, searchNprobe=%d.\n", n, k,
+                 sel != nullptr ? 1 : 0, searchNprobe);
     check(n, x, k, distances, labels);
     FAISS_THROW_IF_NOT_MSG(indexes.size() > 0, "indexes.size must be >0");
 
-    ::ascend::RabitqIdFilterHost filter;
-    const ::ascend::RabitqIdFilterHost* filterPtr = nullptr;
+    std::unique_lock<std::mutex> cacheLock(filterCacheMutex, std::defer_lock);
     if (sel != nullptr)
     {
-        MaterializeIdSelector(sel, filter);
-        filterPtr = &filter;
+        cacheLock.lock();
     }
+    const ::ascend::RabitqIdFilterHost* filterPtr = getCachedFilter(sel);
 
     const size_t tileSize = getSearchPagedSize(static_cast<int>(n), static_cast<int>(k));
     for (size_t i = 0; i < static_cast<size_t>(n); i += tileSize)
     {
         const size_t curNum = std::min(tileSize, static_cast<size_t>(n) - i);
         searchImplFiltered(static_cast<int>(curNum), x + i * static_cast<size_t>(this->intf_->d), static_cast<int>(k),
-                           distances + i * static_cast<size_t>(k), labels + i * static_cast<size_t>(k), filterPtr);
+                           distances + i * static_cast<size_t>(k), labels + i * static_cast<size_t>(k), filterPtr,
+                           searchNprobe);
     }
     APP_LOG_INFO("AscendIndexIVFRaBitQ searchWithSelector finished.\n");
 }
@@ -867,6 +1143,7 @@ void AscendIndexIVFRaBitQImpl::deleteImpl(int n, const idx_t* ids)
     }
 
     this->intf_->ntotal -= deleteNum;
+    InvalidateFilterCache();
     APP_LOG_INFO("AscendIndexIVFRaBitQImpl deleteImpl operation finished.\n");
 }
 

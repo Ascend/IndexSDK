@@ -37,18 +37,49 @@ struct RabitqIdFilterHost
     int64_t aux1 = 0;  // imax
     std::vector<int64_t> sortedIds;
     std::vector<uint8_t> bitmap;
+    const int64_t *sortedView = nullptr;
+    const uint8_t *bitmapView = nullptr;  // user buffer; must stay valid until search returns
+    size_t viewBytes = 0;
+    // Bumped by the host cache on rematerialize; not cleared by resetKeepCapacity().
+    uint64_t generation = 0;
+
+    const void *payloadSrc() const
+    {
+        if (mode == aicpu::RABITQ_ID_FILTER_SORTED)
+        {
+            return sortedView != nullptr ? static_cast<const void *>(sortedView) : sortedIds.data();
+        }
+        if (mode == aicpu::RABITQ_ID_FILTER_BITMAP)
+        {
+            return bitmapView != nullptr ? static_cast<const void *>(bitmapView) : bitmap.data();
+        }
+        return nullptr;
+    }
 
     size_t payloadBytes() const
     {
         if (mode == aicpu::RABITQ_ID_FILTER_SORTED)
         {
-            return sortedIds.size() * sizeof(int64_t);
+            return sortedView != nullptr ? viewBytes : sortedIds.size() * sizeof(int64_t);
         }
         if (mode == aicpu::RABITQ_ID_FILTER_BITMAP)
         {
-            return bitmap.size() * sizeof(uint8_t);
+            return bitmapView != nullptr ? viewBytes : bitmap.size() * sizeof(uint8_t);
         }
         return 0;
+    }
+
+    void resetKeepCapacity()
+    {
+        mode = aicpu::RABITQ_ID_FILTER_NONE;
+        negate = 0;
+        aux0 = 0;
+        aux1 = 0;
+        sortedIds.clear();
+        bitmap.clear();
+        sortedView = nullptr;
+        bitmapView = nullptr;
+        viewBytes = 0;
     }
 };
 

@@ -7005,7 +7005,7 @@ AscendIndexIVFRaBitQ利用IVF进行加速，是二级近似检索算法。当前
 <td class="cellrowborder" valign="top" width="79.93%" headers="mcps1.1.3.3.1 "><p id="p_ivfrabitq_search_n"><strong>idx_t n</strong>：查询特征向量条数。</p>
 <p id="p_ivfrabitq_search_x"><strong>const float *x</strong>：查询特征向量，长度 n*dim。</p>
 <p id="p_ivfrabitq_search_k"><strong>idx_t k</strong>：返回最相似结果个数。</p>
-<p id="p_ivfrabitq_search_params"><strong>const SearchParameters *params</strong>：可选。params-&gt;sel 支持 IDSelectorRange / IDSelectorBatch / IDSelectorArray / IDSelectorBitmap，以及上述类型的 IDSelectorNot。params 为 nullptr 或 sel 为 nullptr 时不做ID过滤。SearchParametersIVF.nprobe 本次不生效，仍使用 index 上的 nprobe。</p>
+<p id="p_ivfrabitq_search_params"><strong>const SearchParameters *params</strong>：可选。params-&gt;sel 支持 IDSelectorRange / IDSelectorBatch / IDSelectorArray / IDSelectorBitmap，以及上述类型的 IDSelectorNot。params 为 nullptr 或 sel 为 nullptr 时不做ID过滤。IDSelectorArray.ids 与 IDSelectorBitmap.bitmap 指向的 buffer 必须在 search 返回前保持有效（Bitmap 为零拷贝）。传入 SearchParametersIVF 时，nprobe 仅对本次查询生效（须 &gt; 0 且 &lt;= nlist），不修改 index 上的 nprobe；基类 SearchParameters 只过滤时仍使用 index 上的 nprobe。Faiss SearchParametersIVF.nprobe 默认值为 1，只过滤时请继续用基类，或显式把 nprobe 设成 index.getNumProbes()。</p>
 </td>
 </tr>
 <tr id="row_ivfrabitq_search_out"><th class="firstcol" valign="top" width="20.07%" id="mcps1.1.3.4.1"><p id="p_ivfrabitq_search_out">输出</p>

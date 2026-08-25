@@ -19,6 +19,7 @@
 #ifndef ASCEND_INDEX_IVFRABITQ_IMPL_INCLUDED
 #define ASCEND_INDEX_IVFRABITQ_IMPL_INCLUDED
 
+#include <cstdint>
 #include <mutex>
 #include <random>
 #include <unordered_map>
@@ -82,8 +83,8 @@ class AscendIndexIVFRaBitQImpl : public AscendIndexIVFImpl
     void addPaged(int n, const float *x, const idx_t *ids) override;
     size_t getAddPagedSize(int n) const override;
     void searchImpl(int n, const float *x, int k, float *distances, idx_t *labels) const override;
-    void searchWithSelector(idx_t n, const float *x, idx_t k, float *distances, idx_t *labels,
-                            const IDSelector *sel) const;
+    void searchWithSelector(idx_t n, const float *x, idx_t k, float *distances, idx_t *labels, const IDSelector *sel,
+                            int searchNprobe = 0) const;
 
     // Copy data from a CPU IndexIVFRaBitQ
     void copyFrom(const faiss::IndexIVFRaBitQ *index);
@@ -100,7 +101,8 @@ class AscendIndexIVFRaBitQImpl : public AscendIndexIVFImpl
                            std::vector<std::vector<ascend_idx_t>> &label, idx_t n, idx_t k, float *distances,
                            idx_t *labels) const override;
     void indexSearch(IndexParam<float, float, ascend_idx_t> &param) const;
-    void indexSearch(IndexParam<float, float, ascend_idx_t> &param, const ::ascend::RabitqIdFilterHost *idFilter) const;
+    void indexSearch(IndexParam<float, float, ascend_idx_t> &param, const ::ascend::RabitqIdFilterHost *idFilter,
+                     int searchNprobe = 0) const;
     void checkParams() const;
     std::shared_ptr<::ascend::Index> createIndex(int deviceId) override;
 
@@ -131,10 +133,37 @@ class AscendIndexIVFRaBitQImpl : public AscendIndexIVFImpl
     std::unique_ptr<::ascend::IndexIVFFlat> assignIndex;  // 复用ivfflat一阶段检索能力加速add过程和npu聚类
 
    private:
+    struct FilterCacheKey
+    {
+        const IDSelector *selPtr = nullptr;
+        const void *payload = nullptr;
+        size_t n = 0;
+        int64_t negate = 0;
+        uint64_t contentHash = 0;
+        enum class Kind
+        {
+            Object = 0,
+            Array,
+            Bitmap
+        };
+        Kind kind = Kind::Object;
+    };
+
     void searchImplFiltered(int n, const float *x, int k, float *distances, idx_t *labels,
-                            const ::ascend::RabitqIdFilterHost *idFilter) const;
+                            const ::ascend::RabitqIdFilterHost *idFilter, int searchNprobe = 0) const;
+
+    const ::ascend::RabitqIdFilterHost *getCachedFilter(const IDSelector *sel) const;
+
+    static FilterCacheKey MakeFilterCacheKey(const IDSelector *sel);
+    static bool IsFilterCacheHit(const FilterCacheKey &cached, const FilterCacheKey &key);
+    void InvalidateFilterCache() const;
 
     AscendIndexIVFRaBitQConfig ivfrabitqConfig;
+
+    mutable std::mutex filterCacheMutex;
+    mutable FilterCacheKey cachedKey;
+    mutable ::ascend::RabitqIdFilterHost cachedFilter;
+    mutable uint64_t cachedFilterGeneration = 0;
 
     std::unordered_map<idx_t, idx_t> idToDeviceMap;
 
