@@ -279,16 +279,6 @@ class DistanceIVFRabitqL2FP32Simt : public OpDef
             .DataType({ge::DT_UINT64})
             .Format({ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND});
-        this->Input("ids")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_INT64})
-            .Format({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND});
-        this->Input("filter_attrs")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_INT64})
-            .Format({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND});
 
         this->Output("result")
             .ParamType(REQUIRED)

@@ -37,14 +37,9 @@ struct RabitqIdFilterHost
     int64_t aux1 = 0;  // imax
     std::vector<int64_t> sortedIds;
     std::vector<uint8_t> bitmap;
-    std::vector<uint8_t> sortedPrefixPayload;
 
     size_t payloadBytes() const
     {
-        if (mode == aicpu::RABITQ_ID_FILTER_SORTED_PREFIX)
-        {
-            return sortedPrefixPayload.size();
-        }
         if (mode == aicpu::RABITQ_ID_FILTER_SORTED)
         {
             return sortedIds.size() * sizeof(int64_t);

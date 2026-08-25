@@ -24,7 +24,6 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
-#include <cstring>
 #include <random>
 #include <unordered_set>
 #include <vector>
@@ -696,145 +695,6 @@ void AppendSortedUnique(std::vector<int64_t>& out, const int64_t* ids, size_t n)
     out.erase(std::unique(out.begin(), out.end()), out.end());
 }
 
-size_t AlignUp(size_t value, size_t align) { return (value + align - 1) / align * align; }
-
-int CeilLog2(uint64_t value)
-{
-    int bits = 0;
-    uint64_t cur = 1;
-    while (cur < value)
-    {
-        cur <<= 1;
-        ++bits;
-    }
-    return bits;
-}
-
-constexpr size_t RABITQ_BITMAP_FILTER_MIN_COUNT = 1000000;
-
-// Materialize a large IDSelectorBatch/Array whitelist as a bitmap when the bitmap
-// size stays within budget (4x the sorted array, at least 256MB, hard-capped at
-// 512MB). Building the bitmap only needs two passes over the ids (find max, set
-// bits), so it also skips the O(n log n) sort and the extra sorted-prefix payload
-// copy. Returns false when the caller should keep the sorted/prefix path (small
-// whitelist, negative ids, or sparse ids with a huge max id).
-template <typename IdIt>
-bool TryBuildBitmapFilter(IdIt begin, IdIt end, size_t count, ::ascend::RabitqIdFilterHost& out)
-{
-    if (count <= RABITQ_BITMAP_FILTER_MIN_COUNT)
-    {
-        return false;
-    }
-
-    int64_t maxId = -1;
-    for (IdIt it = begin; it != end; ++it)
-    {
-        const int64_t id = static_cast<int64_t>(*it);
-        if (id < 0)
-        {
-            return false;  // bitmap cannot represent negative ids
-        }
-        maxId = std::max(maxId, id);
-    }
-
-    const size_t bitmapBytes = (static_cast<size_t>(maxId) + 8) / 8;  // ceil((maxId + 1) / 8)
-    // Allow the bitmap to be moderately larger than the sorted array so whitelists
-    // just above the threshold still take the bitmap path (skipping the sort and
-    // the duplicate payload copy), but hard-cap the host/device allocation so that
-    // sparse/wide ids cannot push the bitmap into the GB range this change fixes.
-    const size_t sortedBytes = count << 3;  // count * sizeof(int64_t)
-    constexpr size_t kMinBitmapBudgetBytes = 256ULL * 1024 * 1024;
-    constexpr size_t kMaxBitmapBytes = 512ULL * 1024 * 1024;
-    const size_t maxBitmapBytes = std::min(std::max(sortedBytes << 2, kMinBitmapBudgetBytes), kMaxBitmapBytes);
-    if (bitmapBytes > maxBitmapBytes)
-    {
-        return false;
-    }
-
-    out.bitmap.assign(bitmapBytes, 0);
-    for (IdIt it = begin; it != end; ++it)
-    {
-        const uint64_t id = static_cast<uint64_t>(*it);  // non-negative: checked in the first pass
-        out.bitmap[static_cast<size_t>(id >> 3)] |= static_cast<uint8_t>(1u << (id & 7));
-    }
-    out.mode = aicpu::RABITQ_ID_FILTER_BITMAP;
-    out.aux0 = static_cast<int64_t>(bitmapBytes << 3);  // bit count, multiple of 8
-    out.aux1 = 0;
-    return true;
-}
-
-void BuildPrefix(const std::vector<int64_t>& sortedIds, int requestedPrefixBits, std::vector<uint32_t>& offsets,
-                 int64_t& prefixBits, int64_t& prefixShift, int64_t& prefixBucketCount)
-{
-    const uint64_t maxId = sortedIds.empty() ? 0 : static_cast<uint64_t>(std::max<int64_t>(0, sortedIds.back()));
-    const int idBits = std::max(1, CeilLog2(maxId + 1));
-    const int countBits = std::max(1, CeilLog2(static_cast<uint64_t>(sortedIds.size() + 1)));
-    prefixBits = std::min<int64_t>({requestedPrefixBits, idBits, countBits});
-    prefixShift = idBits - prefixBits;
-    prefixBucketCount = 1LL << prefixBits;
-    offsets.assign(static_cast<size_t>(prefixBucketCount) + 1, 0);
-
-    size_t pos = 0;
-    for (int64_t bucket = 0; bucket < prefixBucketCount; ++bucket)
-    {
-        offsets[static_cast<size_t>(bucket)] = static_cast<uint32_t>(pos);
-        while (pos < sortedIds.size())
-        {
-            uint64_t prefix = static_cast<uint64_t>(sortedIds[pos]) >> static_cast<uint64_t>(prefixShift);
-            if (prefix != static_cast<uint64_t>(bucket))
-            {
-                break;
-            }
-            ++pos;
-        }
-    }
-    offsets[static_cast<size_t>(prefixBucketCount)] = static_cast<uint32_t>(pos);
-}
-
-void BuildSortedPrefixPayload(::ascend::RabitqIdFilterHost& out)
-{
-    if (out.sortedIds.empty())
-    {
-        out.mode = aicpu::RABITQ_ID_FILTER_SORTED;
-        out.aux0 = 0;
-        return;
-    }
-    if (out.sortedIds.front() < 0)
-    {
-        out.mode = aicpu::RABITQ_ID_FILTER_SORTED;
-        out.aux0 = static_cast<int64_t>(out.sortedIds.size());
-        return;
-    }
-
-    std::vector<uint32_t> prefixOffsets;
-    int64_t prefixBits = 0;
-    int64_t prefixShift = 0;
-    int64_t prefixBucketCount = 0;
-    BuildPrefix(out.sortedIds, 16, prefixOffsets, prefixBits, prefixShift, prefixBucketCount);
-
-    const size_t headerBytes = sizeof(aicpu::RabitqSortedPrefixPayloadHeader);
-    const size_t sortedBytes = out.sortedIds.size() * sizeof(int64_t);
-    const size_t prefixBytes = prefixOffsets.size() * sizeof(uint32_t);
-    const size_t sortedOffset = AlignUp(headerBytes, alignof(int64_t));
-    const size_t prefixOffset = AlignUp(sortedOffset + sortedBytes, alignof(uint32_t));
-
-    out.sortedPrefixPayload.assign(prefixOffset + prefixBytes, 0);
-    auto* header = reinterpret_cast<aicpu::RabitqSortedPrefixPayloadHeader*>(out.sortedPrefixPayload.data());
-    header->magic = aicpu::RABITQ_SORTED_PREFIX_MAGIC;
-    header->sortedCount = static_cast<int64_t>(out.sortedIds.size());
-    header->sortedOffsetBytes = static_cast<int64_t>(sortedOffset);
-    header->prefixBits = prefixBits;
-    header->prefixShift = prefixShift;
-    header->prefixBucketCount = prefixBucketCount;
-    header->prefixOffsetBytes = static_cast<int64_t>(prefixOffset);
-
-    std::memcpy(out.sortedPrefixPayload.data() + sortedOffset, out.sortedIds.data(), sortedBytes);
-    std::memcpy(out.sortedPrefixPayload.data() + prefixOffset, prefixOffsets.data(), prefixBytes);
-    out.mode = aicpu::RABITQ_ID_FILTER_SORTED_PREFIX;
-    out.aux0 = static_cast<int64_t>(out.sortedIds.size());
-    out.aux1 = prefixBucketCount;
-}
-
 void MaterializeIdSelector(const IDSelector* sel, ::ascend::RabitqIdFilterHost& out)
 {
     FAISS_THROW_IF_NOT_MSG(sel != nullptr, "IDSelector cannot be nullptr");
@@ -858,22 +718,18 @@ void MaterializeIdSelector(const IDSelector* sel, ::ascend::RabitqIdFilterHost& 
     }
     else if (const auto* batchSel = dynamic_cast<const IDSelectorBatch*>(inner))
     {
-        if (!TryBuildBitmapFilter(batchSel->set.begin(), batchSel->set.end(), batchSel->set.size(), out))
-        {
-            out.sortedIds.assign(batchSel->set.begin(), batchSel->set.end());
-            std::sort(out.sortedIds.begin(), out.sortedIds.end());
-            BuildSortedPrefixPayload(out);
-        }
+        out.mode = aicpu::RABITQ_ID_FILTER_SORTED;
+        out.sortedIds.assign(batchSel->set.begin(), batchSel->set.end());
+        std::sort(out.sortedIds.begin(), out.sortedIds.end());
+        out.aux0 = static_cast<int64_t>(out.sortedIds.size());
     }
     else if (const auto* arraySel = dynamic_cast<const IDSelectorArray*>(inner))
     {
         FAISS_THROW_IF_NOT_MSG(arraySel->n == 0 || arraySel->ids != nullptr,
                                "IDSelectorArray.ids cannot be nullptr when n > 0");
-        if (!TryBuildBitmapFilter(arraySel->ids, arraySel->ids + arraySel->n, arraySel->n, out))
-        {
-            AppendSortedUnique(out.sortedIds, arraySel->ids, arraySel->n);
-            BuildSortedPrefixPayload(out);
-        }
+        out.mode = aicpu::RABITQ_ID_FILTER_SORTED;
+        AppendSortedUnique(out.sortedIds, arraySel->ids, arraySel->n);
+        out.aux0 = static_cast<int64_t>(out.sortedIds.size());
     }
     else if (const auto* bitmapSel = dynamic_cast<const IDSelectorBitmap*>(inner))
     {
@@ -897,11 +753,11 @@ void MaterializeIdSelector(const IDSelector* sel, ::ascend::RabitqIdFilterHost& 
 
 void AscendIndexIVFRaBitQImpl::indexSearch(IndexParam<float, float, ascend_idx_t>& param) const
 {
-    indexSearch(param, nullptr, -1);
+    indexSearch(param, nullptr);
 }
 
 void AscendIndexIVFRaBitQImpl::indexSearch(IndexParam<float, float, ascend_idx_t>& param,
-                                           const ::ascend::RabitqIdFilterHost* idFilter, int searchNprobe) const
+                                           const ::ascend::RabitqIdFilterHost* idFilter) const
 {
     auto pIndex = getActualIndex(param.deviceId);
     const float* indexPtr = nullptr;
@@ -909,8 +765,7 @@ void AscendIndexIVFRaBitQImpl::indexSearch(IndexParam<float, float, ascend_idx_t
     {
         indexPtr = this->srcIndexes.data();
     }
-    auto ret = pIndex->searchImpl(param.n, param.query, param.k, param.distance, param.label, indexPtr, idFilter,
-                                  searchNprobe);
+    auto ret = pIndex->searchImpl(param.n, param.query, param.k, param.distance, param.label, indexPtr, idFilter);
     FAISS_THROW_IF_NOT_FMT(ret == ::ascend::APP_ERR_OK, "Failed to search index,deviceId is %d, result is: %d\n",
                            param.deviceId, ret);
 }
@@ -921,7 +776,7 @@ void AscendIndexIVFRaBitQImpl::searchImpl(int n, const float* x, int k, float* d
 }
 
 void AscendIndexIVFRaBitQImpl::searchImplFiltered(int n, const float* x, int k, float* distances, idx_t* labels,
-                                                  const ::ascend::RabitqIdFilterHost* idFilter, int searchNprobe) const
+                                                  const ::ascend::RabitqIdFilterHost* idFilter) const
 {
     APP_LOG_INFO("AscendIndex searchImpl operation started: n=%d, k=%d.\n", n, k);
     size_t deviceCnt = indexConfig.deviceList.size();
@@ -940,19 +795,18 @@ void AscendIndexIVFRaBitQImpl::searchImplFiltered(int n, const float* x, int k, 
         param.query = x;
         param.distance = dist[idx].data();
         param.label = label[idx].data();
-        indexSearch(param, idFilter, searchNprobe);
+        indexSearch(param, idFilter);
     };
     CALL_PARALLEL_FUNCTOR(deviceCnt, pool, searchFunctor);
     searchPostProcess(deviceCnt, dist, label, n, finalk, distances, labels);
 }
 
 void AscendIndexIVFRaBitQImpl::searchWithSelector(idx_t n, const float* x, idx_t k, float* distances, idx_t* labels,
-                                                  const IDSelector* sel, int searchNprobe) const
+                                                  const IDSelector* sel) const
 {
     auto lock = ::ascend::AscendMultiThreadManager::GetReadLock(mtx);
-    const int effectiveNprobe = searchNprobe > 0 ? searchNprobe : nprobe;
-    APP_LOG_INFO("AscendIndexIVFRaBitQ searchWithSelector started: n=%ld, k=%ld, hasSel=%d, nprobe=%d.\n", n, k,
-                 sel != nullptr ? 1 : 0, effectiveNprobe);
+    APP_LOG_INFO("AscendIndexIVFRaBitQ searchWithSelector started: n=%ld, k=%ld, hasSel=%d.\n", n, k,
+                 sel != nullptr ? 1 : 0);
     check(n, x, k, distances, labels);
     FAISS_THROW_IF_NOT_MSG(indexes.size() > 0, "indexes.size must be >0");
 
@@ -969,8 +823,7 @@ void AscendIndexIVFRaBitQImpl::searchWithSelector(idx_t n, const float* x, idx_t
     {
         const size_t curNum = std::min(tileSize, static_cast<size_t>(n) - i);
         searchImplFiltered(static_cast<int>(curNum), x + i * static_cast<size_t>(this->intf_->d), static_cast<int>(k),
-                           distances + i * static_cast<size_t>(k), labels + i * static_cast<size_t>(k), filterPtr,
-                           searchNprobe);
+                           distances + i * static_cast<size_t>(k), labels + i * static_cast<size_t>(k), filterPtr);
     }
     APP_LOG_INFO("AscendIndexIVFRaBitQ searchWithSelector finished.\n");
 }
