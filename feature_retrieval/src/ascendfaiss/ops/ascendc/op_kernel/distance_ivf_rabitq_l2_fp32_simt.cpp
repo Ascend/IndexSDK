@@ -110,14 +110,9 @@ class DistanceIVFRabitqL2FP32Simt
     __aicore__ inline void Init(GM_ADDR queryl2, GM_ADDR querylut, GM_ADDR centroidslut, GM_ADDR queryid,
                                 GM_ADDR centroidsid, GM_ADDR centroidsl2, GM_ADDR base, GM_ADDR offset,
                                 GM_ADDR actual_size, GM_ADDR indexl2, GM_ADDR indexl1, GM_ADDR indexl2offset,
-                                GM_ADDR indexl1offset, GM_ADDR ids, GM_ADDR filter_attrs, GM_ADDR result,
-                                GM_ADDR min_result, GM_ADDR flag, GM_ADDR usrWorkspace,
-                                const DistanceIVFRabitqL2FP32SimtTilingData *tiling_data)
+                                GM_ADDR indexl1offset, GM_ADDR result, GM_ADDR min_result, GM_ADDR flag,
+                                GM_ADDR usrWorkspace, const DistanceIVFRabitqL2FP32SimtTilingData *tiling_data)
     {
-        // SIMT keeps IDSelector filtering in the TopK fallback path. L2 prefilter is implemented by the non-SIMT
-        // kernel path.
-        (void)ids;
-        (void)filter_attrs;
         this->blockIdx = get_block_idx();
         tiling_ = *tiling_data;
         this->dimLength = tiling_.dimLength;  // 这个dimLength应该是原向量的dim
@@ -514,15 +509,13 @@ class DistanceIVFRabitqL2FP32Simt
 extern "C" __global__ __aicore__ void distance_ivf_rabitq_l2_fp32_simt(
     GM_ADDR queryl2, GM_ADDR querylut, GM_ADDR centroidslut, GM_ADDR queryid, GM_ADDR centroidsid, GM_ADDR centroidsl2,
     GM_ADDR base, GM_ADDR offset, GM_ADDR actual_size, GM_ADDR indexl2, GM_ADDR indexl1, GM_ADDR indexl2offset,
-    GM_ADDR indexl1offset, GM_ADDR ids, GM_ADDR filter_attrs, GM_ADDR result, GM_ADDR min_result, GM_ADDR flag,
-    GM_ADDR workspace, GM_ADDR tiling)
+    GM_ADDR indexl1offset, GM_ADDR result, GM_ADDR min_result, GM_ADDR flag, GM_ADDR workspace, GM_ADDR tiling)
 {
     GET_TILING_DATA(tiling_data, tiling);
     GM_ADDR usrWorkspace = GetUserWorkspace(workspace);
     TPipe pipe;
     kernels::DistanceIVFRabitqL2FP32Simt<float32_t> op(&pipe);
     op.Init(queryl2, querylut, centroidslut, queryid, centroidsid, centroidsl2, base, offset, actual_size, indexl2,
-            indexl1, indexl2offset, indexl1offset, ids, filter_attrs, result, min_result, flag, usrWorkspace,
-            &tiling_data);
+            indexl1, indexl2offset, indexl1offset, result, min_result, flag, usrWorkspace, &tiling_data);
     op.Process();
 }

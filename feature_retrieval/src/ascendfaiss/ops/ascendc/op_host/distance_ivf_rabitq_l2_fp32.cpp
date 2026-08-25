@@ -46,16 +46,12 @@ static void SetLutAndCodeTilingInfo(gert::TilingContext *context, DistanceIVFRab
     int32_t lutLength = dimLength / 8;
     int32_t lutDimLength = context->GetInputShape(QUERYLUT)->GetStorageShape().GetDim(1);  // 一般为固定值256
 
-    int32_t codeBlockLength = context->GetInputShape(BASE)->GetStorageShape().GetDim(0);
-    const int32_t maskLength = 64;
-    int32_t burstMaskSize = ((codeBlockLength + maskLength - 1) / maskLength) * sizeof(uint64_t);
-
     int32_t lutTileNum = 0;
     int32_t lutTileLength = 0;
     int32_t lastLutTileLength = 0;
 
     int32_t lutTotalSize = lutDimLength * lutLength * FLOAT32_BYTES;
-    int32_t remianSize = (ubSize * 9 / 10) - lutTotalSize - burstMaskSize;
+    int32_t remianSize = (ubSize * 9 / 10) - lutTotalSize;
 
     // idx_calc_que 存放gather偏移，占用内存 dimLength / 8 * INT32_BYTES
     // codes_in_que、codes_half_que、codes_int32_que 存放 code_tile_length 行量化编码，每行占用内存 dimLength / 8 *
@@ -140,9 +136,7 @@ static ge::graphStatus TilingFunc(gert::TilingContext *context)
     tiling.set_codeBlockLength(codeBlockLength);
     uint32_t sysWorkspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
     size_t *currentWorkspace = context->GetWorkspaceSizes(1);
-    const int32_t maskLength = 64;
-    size_t usrSize = static_cast<size_t>(aivNum) *
-                     static_cast<size_t>((codeBlockLength + maskLength - 1) / maskLength) * sizeof(uint64_t);
+    size_t usrSize = 0;
     currentWorkspace[0] = usrSize + sysWorkspaceSize;
     tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
     context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
@@ -276,16 +270,6 @@ class DistanceIVFRabitqL2FP32 : public OpDef
         this->Input("indexl1offset")
             .ParamType(REQUIRED)
             .DataType({ge::DT_UINT64})
-            .Format({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND});
-        this->Input("ids")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_INT64})
-            .Format({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND});
-        this->Input("filter_attrs")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_INT64})
             .Format({ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND});
 
