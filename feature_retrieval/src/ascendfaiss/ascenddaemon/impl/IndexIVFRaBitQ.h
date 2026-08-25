@@ -81,7 +81,7 @@ class IndexIVFRaBitQ : public IndexIVF
         return utils::divUp(blockSize, burstLen) * IVF_RABITQ_BURST_BLOCK_RATIO;
     }
     APP_ERROR searchImpl(int n, const float *x, int k, float *distances, idx_t *labels, const float *srcIndexes,
-                         const RabitqIdFilterHost *idFilter = nullptr);
+                         const RabitqIdFilterHost *idFilter = nullptr, int searchNprobe = 0);
 
     size_t getCodeSize() const;
 
@@ -132,7 +132,7 @@ class IndexIVFRaBitQ : public IndexIVF
     APP_ERROR searchImplL1(AscendTensor<float, DIMS_2> &queries, AscendTensor<float, DIMS_2> &rotateQueries,
                            AscendTensor<float, DIMS_1> &queryL2, AscendTensor<float, DIMS_2> &queriesLut,
                            AscendTensor<int64_t, DIMS_2> &l1TopNprobeIndicesHost,
-                           AscendTensor<float, DIMS_2> &l1TopNprobeDistsHost);
+                           AscendTensor<float, DIMS_2> &l1TopNprobeDistsHost, int probeK);
     void runL1DistOp(int batch, AscendTensor<float, DIMS_2> &queries, AscendTensor<float, DIMS_2> &centroidsDev,
                      AscendTensor<float, DIMS_2> &dists, AscendTensor<float, DIMS_2> &vmdists,
                      AscendTensor<uint16_t, DIMS_2> &opFlag, aclrtStream stream);
@@ -145,7 +145,7 @@ class IndexIVFRaBitQ : public IndexIVF
                            AscendTensor<float, DIMS_2> &l1TopNprobeDistsHost, int k, float *distances, idx_t *labels,
                            const RabitqIdFilterHost *idFilter = nullptr);
     APP_ERROR searchWithBatch(int n, const float *x, int k, float *distances, idx_t *labels, const float *srcIndexes,
-                              const RabitqIdFilterHost *idFilter = nullptr);
+                              const RabitqIdFilterHost *idFilter = nullptr, int searchNprobe = 0);
     void refine(int n, const float *x, int k, float *distances, idx_t *labels, float *topkdist, idx_t *topklabel,
                 const float *srcIndexes);
     void runL2DistOp(AscendTensor<float, DIMS_1> &queryL2Vec, AscendTensor<float, DIMS_2> &subQuerylut,
@@ -181,7 +181,7 @@ class IndexIVFRaBitQ : public IndexIVF
                                     aicpu::RabitqIdFilterMode selMode = aicpu::RABITQ_ID_FILTER_NONE,
                                     int64_t selPtr = 0, int64_t selAux0 = 0, int64_t selAux1 = 0,
                                     int64_t selNegate = 0);
-    APP_ERROR fillL1TopkOpInputData(AscendTensor<int64_t, DIMS_1> &attrsInput);
+    APP_ERROR fillL1TopkOpInputData(AscendTensor<int64_t, DIMS_1> &attrsInput, int probeK);
     void fillDisOpInputDataByBlock(
         size_t batch, size_t coreNum, size_t ivfRabitqBlockSize, AscendTensor<uint32_t, DIMS_2, size_t> &queryidHostVec,
         AscendTensor<uint32_t, DIMS_2, size_t> &centroidsidHostVec,
@@ -206,6 +206,9 @@ class IndexIVFRaBitQ : public IndexIVF
                          idx_t *labels) const;
     size_t getTotalBlockNum(size_t batch, AscendTensor<int64_t, DIMS_2> &l1TopNprobeIndicesHost, int k,
                             float *distances, idx_t *labels) const;
+
+    APP_ERROR EnsureFilterPayloadOnDevice(const RabitqIdFilterHost *idFilter, int64_t &selPtr);
+    void ClearCachedFilterPayload();
 
     void moveVectorForward(int listId, idx_t srcIdx, idx_t dstIdx);
     void releaseUnusageSpace(int listId, size_t oldTotal, size_t remove);
@@ -240,6 +243,15 @@ class IndexIVFRaBitQ : public IndexIVF
     float *pIndexL1;
     std::unique_ptr<DeviceVector<float>> distResultOnDevice;
     size_t distResultSpace;
+
+    std::unique_ptr<DeviceVector<uint8_t>> cachedFilterPayload;
+    const void *cachedFilterSrc = nullptr;
+    size_t cachedFilterBytes = 0;
+    int64_t cachedFilterMode = 0;
+    int64_t cachedFilterNegate = 0;
+    int64_t cachedFilterAux0 = 0;
+    int64_t cachedFilterAux1 = 0;
+    uint64_t cachedFilterGeneration = 0;
 };
 }  // namespace ascend
 

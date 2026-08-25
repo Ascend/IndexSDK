@@ -17,12 +17,15 @@
  */
 
 #include <faiss/IndexFlat.h>
+#include <faiss/IndexIVF.h>
 #include <faiss/IndexIVFRaBitQ.h>
 #include <faiss/impl/IDSelector.h>
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <iostream>
+#include <numeric>
 #include <random>
 #include <string>
 #include <vector>
@@ -418,6 +421,124 @@ TEST(TestAscendIndexIVFRaBitQ, SearchWithIdSelector)
     EXPECT_EQ(msg, "");
 }
 
+TEST(TestAscendIndexIVFRaBitQ, SearchWithIdSelectorSharedPayload)
+{
+    const int dim = 128;
+    const int nlist = 1024;
+    const int ntotal = 2000;
+    const int nprobe = 64;
+    const int nq = 5;
+    const int k = 10;
+
+    std::string msg = "";
+    faiss::ascend::AscendIndexIVFRaBitQConfig conf({0});
+    conf.useKmeansPP = false;
+    std::vector<float> data(ntotal * dim);
+    std::vector<faiss::idx_t> ids(ntotal);
+    generateData(data.data(), ntotal, dim);
+    for (int i = 0; i < ntotal; ++i)
+    {
+        ids[i] = i;
+    }
+    const int trainNum = ntotal > nlist * 40 ? nlist * 40 : ntotal;
+
+    try
+    {
+        faiss::ascend::AscendIndexIVFRaBitQ index(dim, faiss::METRIC_L2, nlist, conf);
+        index.setNumProbes(nprobe);
+        index.train(trainNum, data.data());
+        index.add_with_ids(ntotal, data.data(), ids.data());
+
+        std::vector<faiss::idx_t> keepFirst(ntotal / 2);
+        std::iota(keepFirst.begin(), keepFirst.end(), 0);
+        std::vector<faiss::idx_t> keepSecond(ntotal / 2);
+        std::iota(keepSecond.begin(), keepSecond.end(), ntotal / 2);
+
+        auto checkKeepHalf = [&](faiss::IDSelector& sel, bool firstHalf)
+        {
+            faiss::SearchParameters params;
+            params.sel = &sel;
+            std::vector<float> dist(nq * k, 0.0f);
+            std::vector<faiss::idx_t> label(nq * k, -1);
+            index.search(nq, data.data(), k, dist.data(), label.data(), &params);
+            int valid = 0;
+            for (int i = 0; i < nq * k; ++i)
+            {
+                if (label[i] < 0)
+                {
+                    continue;
+                }
+                ++valid;
+                if (firstHalf)
+                {
+                    EXPECT_LT(label[i], ntotal / 2);
+                }
+                else
+                {
+                    EXPECT_GE(label[i], ntotal / 2);
+                }
+            }
+            EXPECT_GT(valid, 0);
+        };
+
+        {
+            faiss::IDSelectorArray a0(keepFirst.size(), keepFirst.data());
+            faiss::IDSelectorArray a1(keepFirst.size(), keepFirst.data());
+            checkKeepHalf(a0, true);
+            checkKeepHalf(a1, true);
+            faiss::IDSelectorArray a2(keepSecond.size(), keepSecond.data());
+            checkKeepHalf(a2, false);
+        }
+
+        const size_t bitmapBytes = static_cast<size_t>(ntotal + 7) / 8;
+        std::vector<uint8_t> bitmapFirst(bitmapBytes, 0);
+        std::vector<uint8_t> bitmapSecond(bitmapBytes, 0);
+        for (int i = 0; i < ntotal / 2; ++i)
+        {
+            bitmapFirst[static_cast<size_t>(i) / 8] |= static_cast<uint8_t>(1u << (i % 8));
+            const int j = i + ntotal / 2;
+            bitmapSecond[static_cast<size_t>(j) / 8] |= static_cast<uint8_t>(1u << (j % 8));
+        }
+        {
+            faiss::IDSelectorBitmap b0(bitmapFirst.size(), bitmapFirst.data());
+            faiss::IDSelectorBitmap b1(bitmapFirst.size(), bitmapFirst.data());
+            checkKeepHalf(b0, true);
+            checkKeepHalf(b1, true);
+            faiss::IDSelectorBitmap b2(bitmapSecond.size(), bitmapSecond.data());
+            checkKeepHalf(b2, false);
+        }
+
+        {
+            faiss::IDSelectorArray inner(keepFirst.size(), keepFirst.data());
+            faiss::IDSelectorNot n0(&inner);
+            faiss::IDSelectorNot n1(&inner);
+            checkKeepHalf(n0, false);
+            checkKeepHalf(n1, false);
+        }
+
+        {
+            std::vector<faiss::idx_t> idsBuf(keepFirst);
+            faiss::IDSelectorArray mutated(idsBuf.size(), idsBuf.data());
+            checkKeepHalf(mutated, true);
+            std::copy(keepSecond.begin(), keepSecond.end(), idsBuf.begin());
+            checkKeepHalf(mutated, false);
+        }
+        {
+            std::vector<uint8_t> bitmapBuf(bitmapFirst);
+            faiss::IDSelectorBitmap mutated(bitmapBuf.size(), bitmapBuf.data());
+            checkKeepHalf(mutated, true);
+            std::copy(bitmapSecond.begin(), bitmapSecond.end(), bitmapBuf.begin());
+            checkKeepHalf(mutated, false);
+        }
+    }
+    catch (std::exception& e)
+    {
+        msg = e.what();
+        std::cout << "Exception in SearchWithIdSelectorSharedPayload test: " << msg << std::endl;
+    }
+    EXPECT_EQ(msg, "");
+}
+
 TEST(TestAscendIndexIVFRaBitQ, SearchWithIdSelectorMultiDevice)
 {
     uint32_t deviceCount = 0;
@@ -478,6 +599,117 @@ TEST(TestAscendIndexIVFRaBitQ, SearchWithIdSelectorMultiDevice)
     {
         msg = e.what();
         std::cout << "Exception in SearchWithIdSelectorMultiDevice test: " << msg << std::endl;
+    }
+    EXPECT_EQ(msg, "");
+}
+
+TEST(TestAscendIndexIVFRaBitQ, SearchParametersIVFNprobe)
+{
+    const int dim = 128;
+    const int nlist = 1024;
+    const int ntotal = 2000;
+    const int indexNprobe = 64;
+    const int searchNprobe = 32;
+    const int nq = 4;
+    const int k = 10;
+
+    std::string msg = "";
+    faiss::MetricType type = faiss::METRIC_L2;
+    faiss::ascend::AscendIndexIVFRaBitQConfig conf({0});
+    conf.useKmeansPP = false;
+    std::vector<float> data(ntotal * dim);
+    std::vector<faiss::idx_t> ids(ntotal);
+    generateData(data.data(), ntotal, dim);
+    for (int i = 0; i < ntotal; ++i)
+    {
+        ids[i] = i;
+    }
+    const int trainNum = ntotal > nlist * 40 ? nlist * 40 : ntotal;
+
+    try
+    {
+        faiss::ascend::AscendIndexIVFRaBitQ index(dim, type, nlist, conf);
+        index.setNumProbes(indexNprobe);
+        index.train(trainNum, data.data());
+        index.add_with_ids(ntotal, data.data(), ids.data());
+
+        faiss::SearchParametersIVF params;
+        params.nprobe = static_cast<size_t>(searchNprobe);
+        std::vector<float> dist(nq * k, 0.0f);
+        std::vector<faiss::idx_t> label(nq * k, -1);
+        index.search(nq, data.data(), k, dist.data(), label.data(), &params);
+
+        EXPECT_EQ(index.getNumProbes(), indexNprobe);
+        int valid = 0;
+        for (int i = 0; i < nq * k; ++i)
+        {
+            if (label[i] >= 0)
+            {
+                ++valid;
+            }
+        }
+        EXPECT_GT(valid, 0);
+    }
+    catch (std::exception& e)
+    {
+        msg = e.what();
+        std::cout << "Exception in SearchParametersIVFNprobe test: " << msg << std::endl;
+    }
+    EXPECT_EQ(msg, "");
+}
+
+TEST(TestAscendIndexIVFRaBitQ, SearchParametersIVFInvalidNprobe)
+{
+    const int dim = 128;
+    const int nlist = 1024;
+    const int nq = 1;
+    const int k = 10;
+
+    std::string msg = "";
+    faiss::MetricType type = faiss::METRIC_L2;
+    faiss::ascend::AscendIndexIVFRaBitQConfig conf({0});
+    std::vector<float> query(nq * dim, 0.0f);
+    std::vector<float> dist(nq * k, 0.0f);
+    std::vector<faiss::idx_t> label(nq * k, -1);
+
+    try
+    {
+        faiss::ascend::AscendIndexIVFRaBitQ index(dim, type, nlist, conf);
+
+        faiss::SearchParametersIVF zeroParams;
+        zeroParams.nprobe = 0;
+        bool threwZero = false;
+        try
+        {
+            index.search(nq, query.data(), k, dist.data(), label.data(), &zeroParams);
+        }
+        catch (std::exception& e)
+        {
+            threwZero = true;
+            EXPECT_NE(std::string(e.what()).find("nprobe must be greater than 0"), std::string::npos);
+        }
+        EXPECT_TRUE(threwZero);
+        EXPECT_EQ(index.getNumProbes(), 64);
+
+        faiss::SearchParametersIVF overParams;
+        overParams.nprobe = static_cast<size_t>(nlist) + 1;
+        bool threwOver = false;
+        try
+        {
+            index.search(nq, query.data(), k, dist.data(), label.data(), &overParams);
+        }
+        catch (std::exception& e)
+        {
+            threwOver = true;
+            EXPECT_NE(std::string(e.what()).find("nprobe must be <= nlist"), std::string::npos);
+        }
+        EXPECT_TRUE(threwOver);
+        EXPECT_EQ(index.getNumProbes(), 64);
+    }
+    catch (std::exception& e)
+    {
+        msg = e.what();
+        std::cout << "Exception in SearchParametersIVFInvalidNprobe test: " << msg << std::endl;
     }
     EXPECT_EQ(msg, "");
 }

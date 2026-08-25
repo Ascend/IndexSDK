@@ -283,6 +283,66 @@ APP_ERROR IndexIVFRaBitQ::reset()
     {
         distResultOnDevice->clear();
     }
+    ClearCachedFilterPayload();
+    return APP_ERR_OK;
+}
+
+void IndexIVFRaBitQ::ClearCachedFilterPayload()
+{
+    if (cachedFilterPayload != nullptr)
+    {
+        cachedFilterPayload->clear();
+    }
+    cachedFilterSrc = nullptr;
+    cachedFilterBytes = 0;
+    cachedFilterMode = 0;
+    cachedFilterNegate = 0;
+    cachedFilterAux0 = 0;
+    cachedFilterAux1 = 0;
+    cachedFilterGeneration = 0;
+}
+
+APP_ERROR IndexIVFRaBitQ::EnsureFilterPayloadOnDevice(const RabitqIdFilterHost *idFilter, int64_t &selPtr)
+{
+    selPtr = 0;
+    APPERR_RETURN_IF(idFilter == nullptr, APP_ERR_OK);
+    const size_t payloadBytes = idFilter->payloadBytes();
+    APPERR_RETURN_IF(payloadBytes == 0, APP_ERR_OK);
+
+    const void *src = idFilter->payloadSrc();
+    APPERR_RETURN_IF_NOT_LOG(src != nullptr, APP_ERR_INVALID_PARAM, "id filter payload is empty");
+
+    const bool cacheHit = (cachedFilterPayload != nullptr) && (cachedFilterPayload->size() >= payloadBytes) &&
+                          (cachedFilterSrc == src) && (cachedFilterBytes == payloadBytes) &&
+                          (cachedFilterMode == idFilter->mode) && (cachedFilterNegate == idFilter->negate) &&
+                          (cachedFilterAux0 == idFilter->aux0) && (cachedFilterAux1 == idFilter->aux1) &&
+                          (cachedFilterGeneration == idFilter->generation);
+    if (cacheHit)
+    {
+        selPtr = static_cast<int64_t>(reinterpret_cast<uintptr_t>(cachedFilterPayload->data()));
+        return APP_ERR_OK;
+    }
+
+    if (cachedFilterPayload == nullptr)
+    {
+        cachedFilterPayload = std::make_unique<DeviceVector<uint8_t>>();
+    }
+    if (cachedFilterPayload->size() < payloadBytes)
+    {
+        cachedFilterPayload->resize(payloadBytes, true);
+    }
+    auto retCopy = aclrtMemcpy(cachedFilterPayload->data(), payloadBytes, src, payloadBytes, ACL_MEMCPY_HOST_TO_DEVICE);
+    APPERR_RETURN_IF_NOT_FMT(retCopy == ACL_SUCCESS, APP_ERR_INNER_ERROR, "copy id filter payload to device failed %d",
+                             retCopy);
+
+    cachedFilterSrc = src;
+    cachedFilterBytes = payloadBytes;
+    cachedFilterMode = idFilter->mode;
+    cachedFilterNegate = idFilter->negate;
+    cachedFilterAux0 = idFilter->aux0;
+    cachedFilterAux1 = idFilter->aux1;
+    cachedFilterGeneration = idFilter->generation;
+    selPtr = static_cast<int64_t>(reinterpret_cast<uintptr_t>(cachedFilterPayload->data()));
     return APP_ERR_OK;
 }
 
@@ -587,6 +647,7 @@ APP_ERROR IndexIVFRaBitQ::addVectors(int listId, size_t numVecs, const float *co
     APPERR_RETURN_IF_NOT_FMT(listId >= 0 && listId < numLists, APP_ERR_INVALID_PARAM,
                              "the listId is %d, out of numLists(%d)", listId, numLists);
     APPERR_RETURN_IF(numVecs == 0, APP_ERR_OK);
+    ClearCachedFilterPayload();
     if (MemDebugEnabled())
     {
         static std::atomic<uint64_t> addLogSeq{0};
@@ -1183,7 +1244,7 @@ void IndexIVFRaBitQ::fillDisOpInputDataByBlock(
     for (size_t qIdx = 0; qIdx < batch; qIdx++)
     {
         int64_t blockNumPerQ = 0;
-        for (size_t tIdx = 0; tIdx < static_cast<size_t>(nprobe); tIdx++)
+        for (size_t tIdx = 0; tIdx < static_cast<size_t>(l1TopNprobeIndicesHost.getSize(1)); tIdx++)
         {
             int64_t listId = l1TopNprobeIndicesHost[qIdx][tIdx].value();
             float centerl2 = l1TopNprobeDistsHost[qIdx][tIdx].value();
@@ -1317,11 +1378,11 @@ APP_ERROR IndexIVFRaBitQ::fillL2TopkOpInputData(int k, size_t batch, size_t core
     return APP_ERR_OK;
 }
 
-APP_ERROR IndexIVFRaBitQ::fillL1TopkOpInputData(AscendTensor<int64_t, DIMS_1> &attrsInput)
+APP_ERROR IndexIVFRaBitQ::fillL1TopkOpInputData(AscendTensor<int64_t, DIMS_1> &attrsInput, int probeK)
 {
     std::vector<int64_t> attrs(aicpu::TOPK_FLAT_ATTR_IDX_COUNT);
     attrs[aicpu::TOPK_FLAT_ATTR_ASC_IDX] = 1;
-    attrs[aicpu::TOPK_FLAT_ATTR_K_IDX] = nprobe;
+    attrs[aicpu::TOPK_FLAT_ATTR_K_IDX] = probeK;
     attrs[aicpu::TOPK_FLAT_ATTR_BURST_LEN_IDX] = IVF_RABITQ_BURST_LEN;
     attrs[aicpu::TOPK_FLAT_ATTR_BLOCK_NUM_IDX] = 1;
     attrs[aicpu::TOPK_FLAT_ATTR_PAGE_IDX] = 0;
@@ -1374,7 +1435,7 @@ size_t IndexIVFRaBitQ::getMaxListNum(size_t batch, AscendTensor<int64_t, DIMS_2>
     size_t maxLen = 0;
     for (size_t qIdx = 0; qIdx < batch; qIdx++)
     {
-        for (size_t probId = 0; probId < static_cast<size_t>(nprobe); probId++)
+        for (size_t probId = 0; probId < static_cast<size_t>(l1TopNprobeIndicesHost.getSize(1)); probId++)
         {
             int64_t listId = l1TopNprobeIndicesHost[qIdx][probId].value();
             size_t listNum = deviceListIndices[listId]->size();
@@ -1402,7 +1463,7 @@ size_t IndexIVFRaBitQ::getTotalBlockNum(size_t batch, AscendTensor<int64_t, DIMS
     size_t totalBlockNum = 0;
     for (size_t qIdx = 0; qIdx < batch; qIdx++)
     {
-        for (size_t probId = 0; probId < static_cast<size_t>(nprobe); probId++)
+        for (size_t probId = 0; probId < static_cast<size_t>(l1TopNprobeIndicesHost.getSize(1)); probId++)
         {
             int64_t listId = l1TopNprobeIndicesHost[qIdx][probId].value();
             size_t blockNum = baseFp32[listId].size();
@@ -1478,34 +1539,15 @@ APP_ERROR IndexIVFRaBitQ::searchImplL2(AscendTensor<float, DIMS_2> &queries, Asc
     int64_t selAux0 = 0;
     int64_t selAux1 = 0;
     int64_t selNegate = 0;
-    // Keep payload tensor alive until topk finishes (AICPU reads device pointer).
-    AscendTensor<uint8_t, DIMS_1, size_t> filterPayload;
     if (idFilter != nullptr && idFilter->mode != aicpu::RABITQ_ID_FILTER_NONE)
     {
         selMode = static_cast<aicpu::RabitqIdFilterMode>(idFilter->mode);
         selNegate = idFilter->negate;
         selAux0 = idFilter->aux0;
         selAux1 = idFilter->aux1;
-        const size_t payloadBytes = idFilter->payloadBytes();
-        if (payloadBytes > 0)
-        {
-            filterPayload = AscendTensor<uint8_t, DIMS_1, size_t>(mem, {payloadBytes}, stream);
-            const void *src = nullptr;
-            if (selMode == aicpu::RABITQ_ID_FILTER_SORTED)
-            {
-                src = idFilter->sortedIds.data();
-            }
-            else if (selMode == aicpu::RABITQ_ID_FILTER_BITMAP)
-            {
-                src = idFilter->bitmap.data();
-            }
-            APPERR_RETURN_IF_NOT_LOG(src != nullptr, APP_ERR_INVALID_PARAM, "id filter payload is empty");
-            auto retCopy =
-                aclrtMemcpy(filterPayload.data(), payloadBytes, src, payloadBytes, ACL_MEMCPY_HOST_TO_DEVICE);
-            APPERR_RETURN_IF_NOT_FMT(retCopy == ACL_SUCCESS, APP_ERR_INNER_ERROR,
-                                     "copy id filter payload to device failed %d", retCopy);
-            selPtr = static_cast<int64_t>(reinterpret_cast<uintptr_t>(filterPayload.data()));
-        }
+        auto retFilter = EnsureFilterPayloadOnDevice(idFilter, selPtr);
+        APPERR_RETURN_IF_NOT_FMT(retFilter == APP_ERR_OK, retFilter, "ensure id filter payload on device failed %d",
+                                 retFilter);
     }
 
     fillDisOpInputData(k, batch, totalBlockNum, coreNum, offset, indexl2offset, indexl1offset, queryid, centroidsid,
@@ -1535,7 +1577,7 @@ APP_ERROR IndexIVFRaBitQ::searchImplL2(AscendTensor<float, DIMS_2> &queries, Asc
 APP_ERROR IndexIVFRaBitQ::searchImplL1(AscendTensor<float, DIMS_2> &queries, AscendTensor<float, DIMS_2> &rotateQueries,
                                        AscendTensor<float, DIMS_1> &queryL2, AscendTensor<float, DIMS_2> &queriesLut,
                                        AscendTensor<int64_t, DIMS_2> &l1TopNprobeIndicesHost,
-                                       AscendTensor<float, DIMS_2> &l1TopNprobeDistsHost)
+                                       AscendTensor<float, DIMS_2> &l1TopNprobeDistsHost, int probeK)
 {
     auto &mem = resources.getMemoryManager();
     auto streamPtr = resources.getDefaultStream();
@@ -1561,9 +1603,9 @@ APP_ERROR IndexIVFRaBitQ::searchImplL1(AscendTensor<float, DIMS_2> &queries, Asc
     AscendTensor<uint16_t, DIMS_2> opFlag(mem, {CORE_NUM, FLAG_SIZE}, stream);
     opFlag.zero();
     AscendTensor<int64_t, DIMS_1> attrsInput(mem, {aicpu::TOPK_FLAT_ATTR_IDX_COUNT}, stream);
-    fillL1TopkOpInputData(attrsInput);
-    AscendTensor<float, DIMS_2> l1TopNprobeDists(mem, {n, nprobe}, stream);
-    AscendTensor<int64_t, DIMS_2> l1TopNprobeIndices(mem, {n, nprobe}, stream);
+    fillL1TopkOpInputData(attrsInput, probeK);
+    AscendTensor<float, DIMS_2> l1TopNprobeDists(mem, {n, probeK}, stream);
+    AscendTensor<int64_t, DIMS_2> l1TopNprobeIndices(mem, {n, probeK}, stream);
     ret = synchronizeStream(stream);
     APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "synchronizeStream default stream: %i\n", ret);
     // run l1 distance calculation
@@ -1599,7 +1641,7 @@ APP_ERROR IndexIVFRaBitQ::searchImplL1(AscendTensor<float, DIMS_2> &queries, Asc
         int inTile2 = 0;
         int minId = numLists;
         int maxId = 0;
-        for (int t = 0; t < nprobe; ++t)
+        for (int t = 0; t < probeK; ++t)
         {
             const int64_t id = l1TopNprobeIndicesHost[0][t].value();
             if (id < tile1Max)
@@ -1613,13 +1655,13 @@ APP_ERROR IndexIVFRaBitQ::searchImplL1(AscendTensor<float, DIMS_2> &queries, Asc
             minId = std::min(minId, static_cast<int>(id));
             maxId = std::max(maxId, static_cast<int>(id));
         }
-        fprintf(stderr, "[IVFRaBitQ] L1 probe stats q0: nprobe=%d in[0,%d)=%d in[%d,%d)=%d min=%d max=%d\n", nprobe,
+        fprintf(stderr, "[IVFRaBitQ] L1 probe stats q0: nprobe=%d in[0,%d)=%d in[%d,%d)=%d min=%d max=%d\n", probeK,
                 tile1Max, inTile1, tile1Max, numLists, inTile2, minId, maxId);
     };
 
     if (l1ProbeDebug)
     {
-        const int probeDump = std::min(nprobe, 8);
+        const int probeDump = std::min(probeK, 8);
         fprintf(stderr, "[IVFRaBitQ] L1 probes nlist=%d n=%d first %d probes q0:", numLists, n, probeDump);
         for (int t = 0; t < probeDump; ++t)
         {
@@ -1648,12 +1690,12 @@ APP_ERROR IndexIVFRaBitQ::searchImplL1(AscendTensor<float, DIMS_2> &queries, Asc
                           centroidsDev.getSizeInBytes(), ACL_MEMCPY_DEVICE_TO_HOST);
         APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "L1 verify centroids D2H failed %d", ret);
 
-        std::vector<int64_t> npuProbeIds(static_cast<size_t>(nprobe));
-        for (int t = 0; t < nprobe; ++t)
+        std::vector<int64_t> npuProbeIds(static_cast<size_t>(probeK));
+        for (int t = 0; t < probeK; ++t)
         {
             npuProbeIds[static_cast<size_t>(t)] = l1TopNprobeIndicesHost[0][t].value();
         }
-        VerifyL1DistAndProbes(numLists, dims, nprobe, npuDists.data(), rotateQuery.data(), rotateCentroids.data(),
+        VerifyL1DistAndProbes(numLists, dims, probeK, npuDists.data(), rotateQuery.data(), rotateCentroids.data(),
                               npuProbeIds.data());
 
         if (probeFull)
@@ -1673,11 +1715,12 @@ APP_ERROR IndexIVFRaBitQ::searchImplL1(AscendTensor<float, DIMS_2> &queries, Asc
 }
 
 APP_ERROR IndexIVFRaBitQ::searchWithBatch(int n, const float *x, int k, float *distances, idx_t *labels,
-                                          const float *srcIndexes, const RabitqIdFilterHost *idFilter)
+                                          const float *srcIndexes, const RabitqIdFilterHost *idFilter, int searchNprobe)
 {
     auto &mem = resources.getMemoryManager();
     auto streamPtr = resources.getDefaultStream();
     auto stream = streamPtr->GetStream();
+    const int probeK = searchNprobe > 0 ? searchNprobe : nprobe;
     AscendTensor<float, DIMS_2> queries(mem, {n, dims}, stream);
     AscendTensor<float, DIMS_2> rotateQueries(mem, {n, dims}, stream);
     AscendTensor<float, DIMS_1> queryL2(mem, {n}, stream);
@@ -1685,12 +1728,13 @@ APP_ERROR IndexIVFRaBitQ::searchWithBatch(int n, const float *x, int k, float *d
     auto ret =
         aclrtMemcpy(queries.data(), queries.getSizeInBytes(), x, n * dims * sizeof(float), ACL_MEMCPY_HOST_TO_DEVICE);
     APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "copy query error %d", ret);
-    std::vector<int64_t> l1TopNprobeIndicesVec(n * nprobe, 0);
-    AscendTensor<int64_t, DIMS_2> l1TopNprobeIndicesHost(l1TopNprobeIndicesVec.data(), {n, nprobe});
-    std::vector<float> l1TopNprobeDistsVec(n * nprobe, 0);
-    AscendTensor<float, DIMS_2> l1TopNprobeDistsHost(l1TopNprobeDistsVec.data(), {n, nprobe});
+    std::vector<int64_t> l1TopNprobeIndicesVec(n * probeK, 0);
+    AscendTensor<int64_t, DIMS_2> l1TopNprobeIndicesHost(l1TopNprobeIndicesVec.data(), {n, probeK});
+    std::vector<float> l1TopNprobeDistsVec(n * probeK, 0);
+    AscendTensor<float, DIMS_2> l1TopNprobeDistsHost(l1TopNprobeDistsVec.data(), {n, probeK});
 
-    ret = searchImplL1(queries, rotateQueries, queryL2, queriesLut, l1TopNprobeIndicesHost, l1TopNprobeDistsHost);
+    ret =
+        searchImplL1(queries, rotateQueries, queryL2, queriesLut, l1TopNprobeIndicesHost, l1TopNprobeDistsHost, probeK);
     APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, ret, "ivfrabitq L1 search failed! %d", ret);
 
     if (srcIndexes == nullptr)
@@ -1996,12 +2040,12 @@ void IndexIVFRaBitQ::refine(int n, const float *x, int k, float *distances, idx_
 }
 
 APP_ERROR IndexIVFRaBitQ::searchImpl(int n, const float *x, int k, float *distances, idx_t *labels,
-                                     const float *srcIndexes, const RabitqIdFilterHost *idFilter)
+                                     const float *srcIndexes, const RabitqIdFilterHost *idFilter, int searchNprobe)
 {
     APP_ERROR ret = APP_ERR_OK;
     if (n == 1 || searchBatchSizes.empty())
     {
-        return searchWithBatch(n, x, k, distances, labels, srcIndexes, idFilter);
+        return searchWithBatch(n, x, k, distances, labels, srcIndexes, idFilter, searchNprobe);
     }
     size_t size = searchBatchSizes.size();
     int64_t searched = 0;
@@ -2014,7 +2058,7 @@ APP_ERROR IndexIVFRaBitQ::searchImpl(int n, const float *x, int k, float *distan
             for (int64_t j = 0; j < page; j++)
             {
                 ret = searchWithBatch(batchSize, x + searched * dims, k, distances + searched * k,
-                                      labels + searched * k, srcIndexes, idFilter);
+                                      labels + searched * k, srcIndexes, idFilter, searchNprobe);
                 APPERR_RETURN_IF(ret, ret);
                 searched += batchSize;
             }
@@ -2022,7 +2066,8 @@ APP_ERROR IndexIVFRaBitQ::searchImpl(int n, const float *x, int k, float *distan
     }
     for (int64_t i = searched; i < n; i++)
     {
-        ret = searchWithBatch(1, x + i * dims, k, distances + i * k, labels + i * k, srcIndexes, idFilter);
+        ret =
+            searchWithBatch(1, x + i * dims, k, distances + i * k, labels + i * k, srcIndexes, idFilter, searchNprobe);
         APPERR_RETURN_IF(ret, ret);
     }
     return APP_ERR_OK;
@@ -2074,6 +2119,7 @@ void IndexIVFRaBitQ::releaseUnusageSpace(int listId, size_t oldTotal, size_t rem
 
 size_t IndexIVFRaBitQ::removeIds(const ascend::IDSelector &sel)
 {
+    ClearCachedFilterPayload();
     size_t removeCntAll = 0;
 #pragma omp parallel for reduction(+ : removeCntAll) num_threads(CommonUtils::GetThreadMaxNums())
     for (int id = 0; id < numLists; id++)
@@ -2135,6 +2181,7 @@ size_t IndexIVFRaBitQ::removeIds(const ascend::IDSelector &sel)
 
 APP_ERROR IndexIVFRaBitQ::removeIds(size_t numVecs, const idx_t *indices)
 {
+    ClearCachedFilterPayload();
     size_t removeCntAll = 0;
     std::unordered_set<idx_t> deleteSet;
     for (size_t i = 0; i < numVecs; i++)
