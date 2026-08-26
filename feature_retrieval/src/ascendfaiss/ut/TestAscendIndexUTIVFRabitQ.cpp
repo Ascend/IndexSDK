@@ -23,7 +23,6 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
-#include <algorithm>
 #include <iostream>
 #include <numeric>
 #include <random>
@@ -514,21 +513,6 @@ TEST(TestAscendIndexIVFRaBitQ, SearchWithIdSelectorSharedPayload)
             faiss::IDSelectorNot n1(&inner);
             checkKeepHalf(n0, false);
             checkKeepHalf(n1, false);
-        }
-
-        {
-            std::vector<faiss::idx_t> idsBuf(keepFirst);
-            faiss::IDSelectorArray mutated(idsBuf.size(), idsBuf.data());
-            checkKeepHalf(mutated, true);
-            std::copy(keepSecond.begin(), keepSecond.end(), idsBuf.begin());
-            checkKeepHalf(mutated, false);
-        }
-        {
-            std::vector<uint8_t> bitmapBuf(bitmapFirst);
-            faiss::IDSelectorBitmap mutated(bitmapBuf.size(), bitmapBuf.data());
-            checkKeepHalf(mutated, true);
-            std::copy(bitmapSecond.begin(), bitmapSecond.end(), bitmapBuf.begin());
-            checkKeepHalf(mutated, false);
         }
     }
     catch (std::exception& e)

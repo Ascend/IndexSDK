@@ -928,20 +928,6 @@ void MaterializeIdSelector(const IDSelector* sel, int64_t ntotal, ::ascend::Rabi
     out.negate = negate ? 1 : 0;
 }
 
-uint64_t Fnv1a64(const void* data, size_t nBytes)
-{
-    constexpr uint64_t kOffset = 14695981039346656037ULL;
-    constexpr uint64_t kPrime = 1099511628211ULL;
-    uint64_t hash = kOffset;
-    const auto* bytes = static_cast<const uint8_t*>(data);
-    for (size_t i = 0; i < nBytes; ++i)
-    {
-        hash ^= bytes[i];
-        hash *= kPrime;
-    }
-    return hash;
-}
-
 }  // namespace
 
 void AscendIndexIVFRaBitQImpl::indexSearch(IndexParam<float, float, ascend_idx_t>& param) const
@@ -1029,10 +1015,6 @@ AscendIndexIVFRaBitQImpl::FilterCacheKey AscendIndexIVFRaBitQImpl::MakeFilterCac
         key.kind = FilterCacheKey::Kind::Array;
         key.payload = arraySel->ids;
         key.n = arraySel->n;
-        if (arraySel->ids != nullptr && arraySel->n > 0)
-        {
-            key.contentHash = Fnv1a64(arraySel->ids, arraySel->n * sizeof(idx_t));
-        }
         return key;
     }
     if (const auto* bitmapSel = dynamic_cast<const IDSelectorBitmap*>(inner))
@@ -1040,17 +1022,13 @@ AscendIndexIVFRaBitQImpl::FilterCacheKey AscendIndexIVFRaBitQImpl::MakeFilterCac
         key.kind = FilterCacheKey::Kind::Bitmap;
         key.payload = bitmapSel->bitmap;
         key.n = bitmapSel->n;
-        if (bitmapSel->bitmap != nullptr && bitmapSel->n > 0)
-        {
-            key.contentHash = Fnv1a64(bitmapSel->bitmap, bitmapSel->n);
-        }
         return key;
     }
     key.kind = FilterCacheKey::Kind::Object;
     if (const auto* rangeSel = dynamic_cast<const IDSelectorRange*>(inner))
     {
-        const int64_t bounds[2] = {static_cast<int64_t>(rangeSel->imin), static_cast<int64_t>(rangeSel->imax)};
-        key.contentHash = Fnv1a64(bounds, sizeof(bounds));
+        key.contentHash = static_cast<uint64_t>(rangeSel->imin);
+        key.n = static_cast<size_t>(rangeSel->imax);
     }
     return key;
 }
@@ -1063,7 +1041,7 @@ bool AscendIndexIVFRaBitQImpl::IsFilterCacheHit(const FilterCacheKey& cached, co
     }
     if (key.kind == FilterCacheKey::Kind::Object)
     {
-        return cached.selPtr == key.selPtr;
+        return cached.selPtr == key.selPtr && cached.n == key.n;
     }
     return cached.payload == key.payload && cached.n == key.n;
 }

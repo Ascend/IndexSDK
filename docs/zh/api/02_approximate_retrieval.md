@@ -7005,7 +7005,7 @@ AscendIndexIVFRaBitQ利用IVF进行加速，是二级近似检索算法。当前
 <td class="cellrowborder" valign="top" width="79.93%" headers="mcps1.1.3.3.1 "><p id="p_ivfrabitq_search_n"><strong>idx_t n</strong>：查询特征向量条数。</p>
 <p id="p_ivfrabitq_search_x"><strong>const float *x</strong>：查询特征向量，长度 n*dim。</p>
 <p id="p_ivfrabitq_search_k"><strong>idx_t k</strong>：返回最相似结果个数。</p>
-<p id="p_ivfrabitq_search_params"><strong>const SearchParameters *params</strong>：可选。params-&gt;sel 支持 IDSelectorRange / IDSelectorBatch / IDSelectorArray / IDSelectorBitmap，以及上述类型的 IDSelectorNot。params 为 nullptr 或 sel 为 nullptr 时不做ID过滤。IDSelectorArray.ids 与 IDSelectorBitmap.bitmap 指向的 buffer 必须在 search 返回前保持有效（Bitmap 为零拷贝）。传入 SearchParametersIVF 时，nprobe 仅对本次查询生效（须 &gt; 0 且 &lt;= nlist），不修改 index 上的 nprobe；基类 SearchParameters 只过滤时仍使用 index 上的 nprobe。Faiss SearchParametersIVF.nprobe 默认值为 1，只过滤时请继续用基类，或显式把 nprobe 设成 index.getNumProbes()。</p>
+<p id="p_ivfrabitq_search_params"><strong>const SearchParameters *params</strong>：可选。params-&gt;sel 支持 IDSelectorRange / IDSelectorBatch / IDSelectorArray / IDSelectorBitmap，以及上述类型的 IDSelectorNot。params 为 nullptr 或 sel 为 nullptr 时不做ID过滤。IDSelectorArray.ids 与 IDSelectorBitmap.bitmap 指向的 buffer 必须在 search 返回前保持有效（Bitmap 为零拷贝）。Array/Bitmap 缓存按 payload 指针和长度命中，不比对内容；原地改写同一 buffer 不会使缓存失效，换过滤集请换指针。传入 SearchParametersIVF 时，nprobe 仅对本次查询生效（须 &gt; 0 且 &lt;= nlist），不修改 index 上的 nprobe；基类 SearchParameters 只过滤时仍使用 index 上的 nprobe。Faiss SearchParametersIVF.nprobe 默认值为 1，只过滤时请继续用基类，或显式把 nprobe 设成 index.getNumProbes()。</p>
 </td>
 </tr>
 <tr id="row_ivfrabitq_search_out"><th class="firstcol" valign="top" width="20.07%" id="mcps1.1.3.4.1"><p id="p_ivfrabitq_search_out">输出</p>
@@ -7021,7 +7021,7 @@ AscendIndexIVFRaBitQ利用IVF进行加速，是二级近似检索算法。当前
 </tr>
 <tr id="row_ivfrabitq_search_const"><th class="firstcol" valign="top" width="20.07%" id="mcps1.1.3.6.1"><p id="p_ivfrabitq_search_const">约束说明</p>
 </th>
-<td class="cellrowborder" valign="top" width="79.93%" headers="mcps1.1.3.6.1 "><ul id="ul_ivfrabitq_search_const"><li>过滤在AICPU TopK阶段执行（late-filter），不增加持久化底库内存；filter 仅在查询期临时物化。</li><li>多卡检索时同一 IDSelector 按全局ID语义应用到每张卡，再在Host侧合并 top-k。</li><li>高过滤比场景下L2距离仍按 probed lists 全量计算，membership 检查相对廉价。</li></ul>
+<td class="cellrowborder" valign="top" width="79.93%" headers="mcps1.1.3.6.1 "><ul id="ul_ivfrabitq_search_const"><li>过滤在AICPU TopK阶段执行（late-filter），不增加持久化底库内存；filter 仅在查询期临时物化。</li><li>多卡检索时同一 IDSelector 按全局ID语义应用到每张卡，再在Host侧合并 top-k。</li><li>高过滤比场景下L2距离仍按 probed lists 全量计算，membership 检查相对廉价。</li><li>Array/Bitmap 查询期缓存按 buffer 指针与长度命中，不扫描内容；原地修改 ids/bitmap 后仍传入同一指针会复用旧过滤结果。</li></ul>
 </td>
 </tr>
 </tbody>
