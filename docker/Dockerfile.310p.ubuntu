@@ -13,7 +13,8 @@ RUN export DEBIAN_FRONTEND=noninteractive && \
     apt update && \
     apt install --no-install-recommends ca-certificates -y && \
     apt install --no-install-recommends wget vim dos2unix net-tools ssh lsof -y && \
-    apt install --no-install-recommends curl gcc g++ make pkg-config unzip autoconf git patch -y && \
+    apt install --no-install-recommends curl gcc g++ make pkg-config unzip autoconf git patch gdb -y && \
+    apt install --no-install-recommends libboost-all-dev linux-tools-generic linux-tools-common -y && \
     apt install --no-install-recommends libblas3 liblapack3 gfortran openmpi-bin libopenmpi-dev libxml2 -y && \
     apt install --no-install-recommends pciutils liblapack-dev libblas-dev libffi-dev libssl-dev -y && \
     apt install --no-install-recommends zlib1g-dev xz-utils libgmpxx4ldbl -y && \
@@ -92,10 +93,10 @@ RUN rm -rf ./*
 WORKDIR /tmp
 ARG ASCEND_BASE=/usr/local/Ascend
 ARG TOOLKIT_PATH=$ASCEND_BASE/ascend-toolkit/latest
+ARG TBE_IMPL_PATH=$TOOLKIT_PATH/opp/op_impl/built-in/ai_core/tbe
 
 ENV GLOG_v=2 \
     LD_LIBRARY_PATH=${ASCEND_BASE}/mxIndex/host/lib:$TOOLKIT_PATH/runtime/lib64:$LD_LIBRARY_PATH \
-    TBE_IMPL_PATH=$TOOLKIT_PATH/opp/op_impl/built-in/ai_core/tbe \
     PATH=$TOOLKIT_PATH/atc/ccec_compiler/bin:$TOOLKIT_PATH/atc/bin:$PATH \
     ASCEND_OPP_PATH=$TOOLKIT_PATH/opp \
     ASCEND_AICPU_PATH=$TOOLKIT_PATH \
