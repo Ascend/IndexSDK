@@ -24,11 +24,18 @@ END="\033[0m"
 
 dependcy_package_install() {
     echo -e "${YELLOW} check gdb, boost, linux_tools ${END}"
-    apt-get install -y --no-install-recommends \
-        gdb \
-        libboost-all-dev \
-        linux-tools-generic \
-        linux-tools-common
+    if command -v apt-get >/dev/null 2>&1; then
+        apt-get install -y --no-install-recommends \
+            gdb \
+            libboost-all-dev \
+            linux-tools-generic \
+            linux-tools-common
+    elif command -v yum >/dev/null 2>&1; then
+        yum install -y gdb boost-devel perf
+    else
+        echo -e "${RED} unsupported package manager ${END}"
+        exit 1
+    fi
     echo -e "${GREEN} gdb, boost, perf ok ${END}"
 }
 

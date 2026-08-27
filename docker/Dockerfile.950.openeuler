@@ -3,7 +3,7 @@ FROM swr.cn-south-1.myhuaweicloud.com/ascendhub/cann:${CANN_VERSION}-950-openeul
 
 WORKDIR /tmp
 
-ARG PLATFORM=A5
+ARG PLATFORM=Ascend950
 RUN export TZ=Asia/Shanghai && \
     for repo in /etc/yum.repos.d/*.repo; do \
         cp $repo ${repo}.bak; \
@@ -14,10 +14,10 @@ RUN export TZ=Asia/Shanghai && \
     done && \
     yum update -y && \
     yum install -y ca-certificates wget vim dos2unix net-tools openssh-clients lsof \
-        curl gcc gcc-c++ make pkg-config unzip autoconf git patch \
+        curl gcc gcc-c++ make pkg-config unzip autoconf git patch gdb \
         blas lapack gfortran openmpi openmpi-devel libxml2 \
         pciutils lapack-devel blas-devel libffi-devel openssl-devel \
-        zlib-devel xz-devel gmp-devel \
+        zlib-devel xz-devel gmp-devel boost-devel perf \
         perl-Capture-Tiny perl-DateTime perl-TimeDate \
         python3-pip && \
     yum clean all && \
@@ -88,11 +88,11 @@ RUN rm -rf ./*
 WORKDIR /tmp
 ARG ASCEND_BASE=/usr/local/Ascend
 ARG TOOLKIT_PATH=$ASCEND_BASE/ascend-toolkit/latest
+ARG TBE_IMPL_PATH=$TOOLKIT_PATH/opp/op_impl/built-in/ai_core/tbe
 
 ENV GLOG_v=2 \
     ASCEND_OPP_PATH=$TOOLKIT_PATH/opp \
     ASCEND_AICPU_PATH=$TOOLKIT_PATH \
-    TBE_IMPL_PATH=$TOOLKIT_PATH/opp/op_impl/built-in/ai_core/tbe \
     PYTHONPATH=$TBE_IMPL_PATH:/usr/local/python3.12.13/lib/python3.12/site-packages/:$PYTHONPATH \
     ASCEND_HOME=${ASCEND_BASE} \
     MX_INDEX_MODELPATH=/home/Ascend/modelpath \

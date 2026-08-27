@@ -374,6 +374,14 @@ export LD_LIBRARY_PATH=/usr/local/Ascend/mxIndex/host/lib:/usr/local/faiss/faiss
 在进行源码编译安装时，除了前述依赖外，还需要根据是否需要使用 ILFlat 算法选择安装**开放态场景包**。
 
 - 如不需要，请在编译前将 `feature_retrieval/src/ascendfaiss/CMakeLists.txt` 中 `BUILD_ASCENDDEVICE` 选项设为 `OFF`，并注释 38 行 `# ASCEND_MINIOS_HOME`；
+
+```bash
+# 将 BUILD_ASCENDDEVICE 默认值改为 OFF
+sed -i 's/^OPTION(BUILD_ASCENDDEVICE.*/OPTION(BUILD_ASCENDDEVICE "Build ascenddevice" OFF)/' feature_retrieval/src/ascendfaiss/CMakeLists.txt
+# 注释第 38 行 ASCEND_MINIOS_HOME（行首加 #）
+sed -i '38s/^\([[:space:]]*\)ASCEND_MINIOS_HOME/\1# ASCEND_MINIOS_HOME/' feature_retrieval/src/ascendfaiss/CMakeLists.txt
+```
+
 - 如需要，请先下载并安装 AscendMiniOS。
 
 进入 `build` 目录执行以下命令编译：
