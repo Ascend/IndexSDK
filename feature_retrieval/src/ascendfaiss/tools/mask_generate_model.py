@@ -157,6 +157,21 @@ def generate_ascendc_batch_masks_json(max_token_num, batch, file_path):
     utils.generate_op_config(ascendc_batch_masks_json_obj, file_path)
 
 
+def generate_ascendc_batch_val_masks_json(max_token_num, batch, file_path):
+    ascendc_batch_val_masks_json_obj = []
+    generator = OpJsonGenerator("AscendcDistanceBatchValMaskGenerator")
+    generator.add_input("ND", [batch, 8], "int32")
+    generator.add_input("ND", [batch, (max_token_num + 7) // 8 * 2], "uint8")
+    generator.add_input("ND", [_BLOCK_SIZE], "int32")
+    generator.add_input("ND", [_BLOCK_SIZE], "int32")
+    generator.add_input("ND", [_BLOCK_SIZE * 2], "uint8")
+    generator.add_input("ND", [batch, 16], "int16")
+    generator.add_input("ND", [_BLOCK_SIZE], "int16")
+    generator.add_output("ND", [batch, (_BLOCK_SIZE + 7) // 8], "uint8")
+    ascendc_batch_val_masks_json_obj.append(generator.generate_obj())
+    utils.generate_op_config(ascendc_batch_val_masks_json_obj, file_path)
+
+
 def generate_ascendc_batch_extra_masks_json(max_token_num, batch, file_path):
     ascendc_extra_batch_masks_json_obj = []
     generator = OpJsonGenerator("AscendcDistanceBatchMaskGeneratorWithExtra")
@@ -181,6 +196,7 @@ def generate_ascendc_masks_offline_model(args, config_path, soc_version):
 
     ascendc_batch_masks_generate_op_name = "ascendc_batch_masks_generate_op{}_batch{}_pid{}"
     ascendc_batch_extra_masks_generate_op_name = "ascendc_batch_extra_masks_generate_op{}_batch{}_pid{}"
+    ascendc_batch_val_masks_generate_op_name = "ascendc_batch_val_masks_generate_op{}_batch{}_pid{}"
 
     map_args = []
     for batch in batch_sizes:
@@ -196,8 +212,15 @@ def generate_ascendc_masks_offline_model(args, config_path, soc_version):
         extra_file_path = os.path.join(config_path, '{}.json'.format(ascendc_batch_extra_masks_generate_op_name_))
         generate_ascendc_batch_extra_masks_json(max_token_cnt, batch, extra_file_path)
 
+        ascendc_batch_val_masks_generate_op_name_ = ascendc_batch_val_masks_generate_op_name.format(
+            max_token_cnt, batch, process_id
+        )
+        val_file_path = os.path.join(config_path, '{}.json'.format(ascendc_batch_val_masks_generate_op_name_))
+        generate_ascendc_batch_val_masks_json(max_token_cnt, batch, val_file_path)
+
         map_args.append((ascendc_batch_masks_generate_op_name_, soc_version))
         map_args.append((ascendc_batch_extra_masks_generate_op_name_, soc_version))
+        map_args.append((ascendc_batch_val_masks_generate_op_name_, soc_version))
 
     utils.run_generate_model_task(args, map_args)
 

@@ -1306,6 +1306,11 @@ APP_ERROR TSBase::resetBatchValMaskGenerateComputeOp() const
     APP_LOG_INFO("TSBase resetBatchValMaskGenerateComputeOp operation started.\n");
     std::string opTypeName = "DistanceBatchValMaskGenerator";
     IndexTypeIdx indexMaskType = IndexTypeIdx::ITI_MASK_WITH_VAL_GENERATOR;
+    if (faiss::ascend::SocUtils::GetInstance().IsAscend910B())
+    {
+        opTypeName = "AscendcDistanceBatchValMaskGenerator";
+        indexMaskType = IndexTypeIdx::ASCENDC_ITI_MASK_WITH_VAL_GENERATOR;
+    }
 
     for (auto batch : MASK_BATCH)
     {
@@ -1398,6 +1403,10 @@ void TSBase::runBatchMaskValGenerateCompute(int batch, const std::vector<const A
 {
     APP_LOG_INFO("TSBase runBatchMaskValGenerateCompute operation started.\n");
     IndexTypeIdx indexType = IndexTypeIdx::ITI_MASK_WITH_VAL_GENERATOR;
+    if (faiss::ascend::SocUtils::GetInstance().IsAscend910B())
+    {
+        indexType = IndexTypeIdx::ASCENDC_ITI_MASK_WITH_VAL_GENERATOR;
+    }
     std::vector<int> keys({batch, static_cast<int>(tokenNum)});
     OpsMngKey opsKey(keys);
     auto ret = DistComputeOpsManager::getInstance().runOp(indexType, opsKey, input, output, stream);
