@@ -299,23 +299,24 @@ unzip Ascend-cann-device-sdk_{version}_linux-{arch}.zip
 
 详细参数如下：
 
-|参数名称|说明|
-|--|--|
-|--help \| -h|查询帮助信息。|
-|--info|查询包构建信息。|
-|--list|查询文件列表。|
-|--check|查询包完整性。|
-|--quiet \| -q|可选参数，表示静默安装。使用该参数，减少人机交互的信息的打印。|
-|--nox11|废弃接口，无实际作用。|
-|--noexec|解压软件包到当前目录，但不执行安装脚本。配套--extract=\<path>使用，格式为：--noexec --extract=\<path>。|
-|--extract=\<path>|解压软件包中文件到指定目录。可配套--noexec、--install、--upgrade之一参数使用。|
-|--tar arg1 [arg2 ...]|对软件包执行tar命令，使用tar后面的参数作为命令的参数。例如执行--tar xvf命令，解压run安装包的内容到当前目录。|
-|--version|查询安装包Index SDK版本。|
-|--install|特征检索软件包安装操作命令。|
-|--install-path=*\<path>*|（可选）自定义特征检索软件包安装根目录。如未设置，默认安装路径为：若使用 root 用户则为 `/usr/local/Ascend`，若使用非 root 用户则为 `${HOME}/Ascend`。配置的路径必须以/或~开头，路径取值仅支持大小写字母、数字、-_./字符。<br>若不指定，将安装到默认路径下：<ul><li>若使用root用户安装，默认安装路径为：/usr/local/Ascend。</li><li>若使用非root用户安装，则默认安装路径为：\$\{HOME}/Ascend，${HOME}指用户目录。</li></ul>若通过该参数指定了安装目录，该目录其他用户不能有写权限，如果指定普通用户安装，安装目录属主必须为当前安装用户。|
-|--upgrade|特征检索软件包升级操作命令，将特征检索升级到安装包所包含的Index SDK版本。|
-|--platform=*\<npu_type>*|对应昇腾AI处理器类型。<ul><li>使用<term>Atlas 推理系列产品</term>请输入310P。</li><li>使用Atlas 800I A3 超节点服务器请输入“A3”。</li><li>使用<term>Atlas A2 推理系列产品</term>，请在安装昇腾AI处理器的服务器执行npu-smi info命令进行查询，将查询到的“Name”最后一位数字删掉，即是--platform的取值。</li></ul>|
-|--faiss-version=*\<version>*|（可选）多版本run包用于选择安装后激活的Faiss ABI版本；单版本run包用于校验用户选择和包内版本是否一致。支持“1.10”、“1.10.0”、“faiss1.10”、“1.14”、“1.14.1”和“faiss1.14”等取值，默认值为包内默认版本。选择“1.10”时，激活基于Faiss 1.10.x构建的业务动态库和头文件；选择“1.14”时，激活基于Faiss 1.14.1构建的业务动态库和头文件。单版本run包无需设置该参数，如果设置为包内不包含的版本，安装会报错退出。|
+<table><tbody>
+<tr><td width="270" align="center" valign="middle"><strong>参数名称</strong></td><td align="center" valign="middle"><strong>说明</strong></td></tr>
+<tr><td width="270" valign="middle">--help | -h</td><td valign="middle">查询帮助信息。</td></tr>
+<tr><td width="270" valign="middle">--info</td><td valign="middle">查询包构建信息。</td></tr>
+<tr><td width="270" valign="middle">--list</td><td valign="middle">查询文件列表。</td></tr>
+<tr><td width="270" valign="middle">--check</td><td valign="middle">查询包完整性。</td></tr>
+<tr><td width="270" valign="middle">--quiet | -q</td><td valign="middle">可选参数，表示静默安装。使用该参数，减少人机交互的信息的打印。</td></tr>
+<tr><td width="270" valign="middle">--nox11</td><td valign="middle">废弃接口，无实际作用。</td></tr>
+<tr><td width="270" valign="middle">--noexec</td><td valign="middle">解压软件包到当前目录，但不执行安装脚本。配套--extract=&lt;path&gt;使用，格式为：--noexec --extract=&lt;path&gt;。</td></tr>
+<tr><td width="270" valign="middle">--extract=&lt;path&gt;</td><td valign="middle">解压软件包中文件到指定目录。可配套--noexec、--install、--upgrade之一参数使用。</td></tr>
+<tr><td width="270" valign="middle">--tar arg1 [arg2 ...]</td><td valign="middle">对软件包执行tar命令，使用tar后面的参数作为命令的参数。例如执行--tar xvf命令，解压run安装包的内容到当前目录。</td></tr>
+<tr><td width="270" valign="middle">--version</td><td valign="middle">查询安装包Index SDK版本。</td></tr>
+<tr><td width="270" valign="middle">--install</td><td valign="middle">特征检索软件包安装操作命令。</td></tr>
+<tr><td width="270" valign="middle">--install-path=*&lt;path&gt;*</td><td valign="middle">（可选）自定义特征检索软件包安装根目录。如未设置，默认安装路径为：若使用 root 用户则为 <code>/usr/local/Ascend</code>，若使用非 root 用户则为 <code>${HOME}/Ascend</code>。配置的路径必须以/或~开头，路径取值仅支持大小写字母、数字、-_./字符。<br>若不指定，将安装到默认路径下：<br>● 若使用root用户安装，默认安装路径为：/usr/local/Ascend。<br>● 若使用非root用户安装，则默认安装路径为：${HOME}/Ascend，${HOME}指用户目录。若通过该参数指定了安装目录，该目录其他用户不能有写权限，如果指定普通用户安装，安装目录属主必须为当前安装用户。</td></tr>
+<tr><td width="270" valign="middle">--upgrade</td><td valign="middle">特征检索软件包升级操作命令，将特征检索升级到安装包所包含的Index SDK版本。</td></tr>
+<tr><td width="270" valign="middle">--platform=*&lt;npu_type&gt;*</td><td valign="middle">对应昇腾AI处理器类型。<br>● 使用Atlas 推理系列产品请输入310P。<br>● 使用Atlas 800I A3 超节点服务器请输入“A3”。<br>● 使用Atlas A2 推理系列产品，请在安装昇腾AI处理器的服务器执行npu-smi info命令进行查询，将查询到的“Name”最后一位数字删掉，即是--platform的取值。</td></tr>
+<tr><td width="270" valign="middle">--faiss-version=*&lt;version&gt;*</td><td valign="middle">（可选）多版本run包用于选择安装后激活的Faiss ABI版本；单版本run包用于校验用户选择和包内版本是否一致。支持“1.10”、“1.10.0”、“faiss1.10”、“1.14”、“1.14.1”和“faiss1.14”等取值，默认值为包内默认版本。选择“1.10”时，激活基于Faiss 1.10.x构建的业务动态库和头文件；选择“1.14”时，激活基于Faiss 1.14.1构建的业务动态库和头文件。单版本run包无需设置该参数，如果设置为包内不包含的版本，安装会报错退出。</td></tr>
+</tbody></table>
 
 > [!NOTE]
 > 以下参数未展示在 `--help` 参数中，用户请勿直接使用。
@@ -410,12 +411,13 @@ bash build.sh
 ./Ascend-mindxsdk-mxindex_{version}_linux-{arch}.run --upgrade --platform=<npu_type> --install-path=<path>
 ```
 
-| 参数名 | 参数说明 |
-|--|--|
-| --upgrade | 特征检索软件包升级操作命令，将特征检索升级到安装包所包含的 Index SDK 版本。|
-| --platform=*\<npu_type>* | 对应昇腾 AI 处理器类型。<ul><li>使用 Atlas 推理系列产品请输入 `310P`。</li><li>使用 Atlas 800I A3 超节点服务器请输入 `A3`。</li><li>使用 Atlas A2 推理系列产品，请在安装昇腾 AI 处理器的服务器执行 `npu-smi info` 命令进行查询，将查询到的 `Name` 最后一位数字删掉，即是 --platform 的取值。</li></ul> |
-| --install-path=*\<path>* |（可选）自定义特征检索软件包安装根目录。如未设置，默认为 `/usr/local/Ascend`。如使用自定义目录安装，建议在升级操作时使用该参数。|
-| --faiss-version=*\<version>* |（可选）多版本 run 包用于选择升级后激活的 Faiss ABI 版本；单版本 run 包用于校验用户选择和包内版本是否一致。支持“1.10”、“1.10.0”、“faiss1.10”、“1.14”、“1.14.1”和“faiss1.14”等取值，默认值为包内默认版本。如果升级后需要继续使用 IVFRaBitQ/RaBitQ 特性，请使用 Faiss 1.14.1 版本 run 包，或在多版本 run 包中指定“--faiss-version=1.14”。单版本 run 包无需设置该参数，如果设置为包内不包含的版本，升级会报错退出。 |
+<table><tbody>
+<tr><td width="270" align="center" valign="middle"><strong>参数名</strong></td><td align="center" valign="middle"><strong>参数说明</strong></td></tr>
+<tr><td width="270" valign="middle">--upgrade</td><td valign="middle">特征检索软件包升级操作命令，将特征检索升级到安装包所包含的 Index SDK 版本。</td></tr>
+<tr><td width="270" valign="middle">--platform=*&lt;npu_type&gt;*</td><td valign="middle">对应昇腾 AI 处理器类型。<br>● 使用 Atlas 推理系列产品请输入 <code>310P</code>。<br>● 使用 Atlas 800I A3 超节点服务器请输入 <code>A3</code>。<br>● 使用 Atlas A2 推理系列产品，请在安装昇腾 AI 处理器的服务器执行 <code>npu-smi info</code> 命令进行查询，将查询到的 <code>Name</code> 最后一位数字删掉，即是 --platform 的取值。</td></tr>
+<tr><td width="270" valign="middle">--install-path=*&lt;path&gt;*</td><td valign="middle">（可选）自定义特征检索软件包安装根目录。如未设置，默认为 <code>/usr/local/Ascend</code>。如使用自定义目录安装，建议在升级操作时使用该参数。</td></tr>
+<tr><td width="270" valign="middle">--faiss-version=*&lt;version&gt;*</td><td valign="middle">（可选）多版本 run 包用于选择升级后激活的 Faiss ABI 版本；单版本 run 包用于校验用户选择和包内版本是否一致。支持“1.10”、“1.10.0”、“faiss1.10”、“1.14”、“1.14.1”和“faiss1.14”等取值，默认值为包内默认版本。如果升级后需要继续使用 IVFRaBitQ/RaBitQ 特性，请使用 Faiss 1.14.1 版本 run 包，或在多版本 run 包中指定“--faiss-version=1.14”。单版本 run 包无需设置该参数，如果设置为包内不包含的版本，升级会报错退出。</td></tr>
+</tbody></table>
 
 命令执行后返回如下信息，则表示特征检索包升级成功。
 

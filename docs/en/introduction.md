@@ -42,11 +42,12 @@ The software architecture of Index SDK is shown in [Figure 1, software architect
 
 **Table 1** Index SDK module introduction<a id="table3548152713258"></a>
 
-|Module|Description|
-|--|--|
-|Index SDK API layer|Provides Faiss-compatible C++ interfaces. Upper-layer applications can implement feature ingestion, query, deletion, and training functions.|
-|Algorithm logic layer|Implements the logical flow of retrieval algorithms. The currently supported algorithms mainly include brute-force retrieval, approximate retrieval, and attribute-filtering algorithms.|
-|Operator layer|Provides acceleration operators for retrieval algorithms on the Ascend platform, including distance computation operators, TopK sorting operators, and attribute-filtering mask operators.|
+<table><tbody>
+<tr><td width="210" align="center" valign="middle"><strong>Module</strong></td><td align="center" valign="middle"><strong>Description</strong></td></tr>
+<tr><td width="210" valign="middle">Index SDK API layer</td><td valign="middle">Provides Faiss-compatible C++ interfaces. Upper-layer applications can implement feature ingestion, query, deletion, and training functions.</td></tr>
+<tr><td width="210" valign="middle">Algorithm logic layer</td><td valign="middle">Implements the logical flow of retrieval algorithms. The currently supported algorithms mainly include brute-force retrieval, approximate retrieval, and attribute-filtering algorithms.</td></tr>
+<tr><td width="210" valign="middle">Operator layer</td><td valign="middle">Provides acceleration operators for retrieval algorithms on the Ascend platform, including distance computation operators, TopK sorting operators, and attribute-filtering mask operators.</td></tr>
+</tbody></table>
 
 ## Getting Started<a name="ZH-CN_TOPIC_0000001698062121"></a>
 
@@ -82,52 +83,15 @@ As shown in [Figure 1 Index SDK usage process](#fig15421350143413), using Index 
 
 ## Supported Hardware and OSs
 
-<table>
-<tr>
-<th>Product Series</th>
-<th>Product Model</th>
-<th>OSs (64-bit Only)</th>
-</tr>
-<tr>
-<td rowspan="5">Atlas inference products</td>
-<td>Atlas 300I Pro inference card</td>
-<td><li>CentOS 7.6</li><li>openEuler 20.03</li><li>
-openEuler 22.03</li><li>openEuler 24.03</li><li>Ubuntu 18.04</li><li>Ubuntu 20.04</li><li>EulerOS 2.12</li><li>EulerOS 2.15</li><li>KylinOS V10 SP3 2403</li><li>KylinOS V11</li><li>CTyunOS 23.01</li><li>UOS V20</li></td>
-</tr>
-<tr>
-<td>Atlas 300V video analysis card</td>
-<td><li>CentOS 7.6</li><li>openEuler 20.03</li><li>openEuler 22.03</li><li>Ubuntu 18.04</li><li>Ubuntu 20.04</li><li>EulerOS 2.12</li><li>UOS V20</li></td>
-</tr>
-<tr>
-<td>Atlas 300V Pro video analysis card</td>
-<td><li>CentOS 7.6</li><li>openEuler 20.03</li><li>openEuler 22.03</li><li>openEuler 24.03</li><li>Ubuntu 18.04</li><li>Ubuntu 20.04</li><li>EulerOS 2.12</li><li>CTyunOS 23.01</li><li>UOS V20</li></td>
-</tr>
-<tr>
-<td>Atlas 300I Duo inference card</td>
-<td><li>CentOS 7.6</li><li>Ubuntu 18.04</li><li>Ubuntu 20.04</li><li>EulerOS 2.12</li><li>EulerOS 2.15</li><li>KylinOS V10 SP3 2403</li><li>KylinOS V11</li><li>openEuler 24.03</li><li>CTyunOS 23.01</li><li>UOS V20</li><li>UOS V25</li></td>
-</tr>
-<tr>
-<td>Atlas 200I SoC A1 core board</td>
-<td><li>CentOS 7.6</li><li>openEuler 20.03</li><li>EulerOS 2.12</li></td>
-</tr>
-<tr>
-<td rowspan="2">Atlas 200/300/500 inference products</td>
-<td>Atlas 300I inference card (Model 3000)</td>
-<td><li>CentOS 7.6</li><li>openEuler 20.03</li><li>openEuler 22.03</li><li>Ubuntu 18.04</li><li>Ubuntu 20.04</li><li>EulerOS 2.12</li><li>UOS V20</li></td>
-</tr>
-<tr>
-<td>Atlas 300I inference card (Model 3010)</td>
-<td><li>CentOS 7.6</li><li>openEuler 20.03</li><li>openEuler 22.03</li><li>Ubuntu 18.04</li><li>Ubuntu 20.04</li><li>EulerOS 2.12</li><li>UOS V20</li></td>
-</tr>
-<tr>
-<td ><term>Atlas A2 inference products</term>
-<br>Note: Atlas A2 inference products support the AscendIndexFlat and AscendIndexInt8Flat algorithms.</td>
-<td>Atlas 800I A2 inference server</td>
-<td><li>CentOS 7.6</li><li>openEuler 20.03</li><li>openEuler 22.03</li><li>openEuler 24.03</li><li>Ubuntu 18.04</li><li>Ubuntu 20.04</li><li>Ubuntu 24.04</li><li>EulerOS 2.12</li><li>EulerOS 2.15</li><li>UOS V20</li><li>UOS V25</li><li>KylinOS V10 SP3</li><li>KylinOS V11</li><li>BC-Linux_21.10 U4</li></td>
-</tr>
-<tr>
-<td><term>Atlas A3 inference products</term><br>Note: Currently, only the AscendIndexFlat algorithm is supported.</td>
-<td>Atlas 800I A3 SuperNode server</td>
-<td><li>Ubuntu 18.04</li><li>CUlinux 3.0</li><li>KylinOS V10 SP3 2403</li><li>KylinOS V11</li><li>CTyunOS 4</li><li>UOS V25</li></td>
-</tr>
-</table>
+<table><tbody>
+<tr><th valign="middle" width="340">Product Series</th><th valign="middle" width="360">Product Model</th><th valign="middle">OSs (64-bit Only)</th></tr>
+<tr><td rowspan="5" valign="middle" width="340">Atlas inference products</td><td valign="middle" width="360">Atlas 300I Pro inference card</td><td valign="middle">● CentOS 7.6<br>● openEuler 20.03<br>● openEuler 22.03<br>● openEuler 24.03<br>● Ubuntu 18.04<br>● Ubuntu 20.04<br>● EulerOS 2.12<br>● EulerOS 2.15<br>● KylinOS V10 SP3 2403<br>● KylinOS V11<br>● CTyunOS 23.01<br>● UOS V20</td></tr>
+<tr><td valign="middle" width="360">Atlas 300V video analysis card</td><td valign="middle">● CentOS 7.6<br>● openEuler 20.03<br>● openEuler 22.03<br>● Ubuntu 18.04<br>● Ubuntu 20.04<br>● EulerOS 2.12<br>● UOS V20</td></tr>
+<tr><td valign="middle" width="360">Atlas 300V Pro video analysis card</td><td valign="middle">● CentOS 7.6<br>● openEuler 20.03<br>● openEuler 22.03<br>● openEuler 24.03<br>● Ubuntu 18.04<br>● Ubuntu 20.04<br>● EulerOS 2.12<br>● CTyunOS 23.01<br>● UOS V20</td></tr>
+<tr><td valign="middle" width="360">Atlas 300I Duo inference card</td><td valign="middle">● CentOS 7.6<br>● Ubuntu 18.04<br>● Ubuntu 20.04<br>● EulerOS 2.12<br>● EulerOS 2.15<br>● KylinOS V10 SP3 2403<br>● KylinOS V11<br>● openEuler 24.03<br>● CTyunOS 23.01<br>● UOS V20<br>● UOS V25</td></tr>
+<tr><td valign="middle" width="360">Atlas 200I SoC A1 core board</td><td valign="middle">● CentOS 7.6<br>● openEuler 20.03<br>● EulerOS 2.12</td></tr>
+<tr><td rowspan="2" valign="middle" width="340">Atlas 200/300/500 inference products</td><td valign="middle" width="360">Atlas 300I inference card (Model 3000)</td><td valign="middle">● CentOS 7.6<br>● openEuler 20.03<br>● openEuler 22.03<br>● Ubuntu 18.04<br>● Ubuntu 20.04<br>● EulerOS 2.12<br>● UOS V20</td></tr>
+<tr><td valign="middle" width="360">Atlas 300I inference card (Model 3010)</td><td valign="middle">● CentOS 7.6<br>● openEuler 20.03<br>● openEuler 22.03<br>● Ubuntu 18.04<br>● Ubuntu 20.04<br>● EulerOS 2.12<br>● UOS V20</td></tr>
+<tr><td valign="middle" width="340">Atlas A2 inference products <br>Note: Atlas A2 inference products support the AscendIndexFlat and AscendIndexInt8Flat algorithms.</td><td valign="middle" width="360">Atlas 800I A2 inference server</td><td valign="middle">● CentOS 7.6<br>● openEuler 20.03<br>● openEuler 22.03<br>● openEuler 24.03<br>● Ubuntu 18.04<br>● Ubuntu 20.04<br>● Ubuntu 24.04<br>● EulerOS 2.12<br>● EulerOS 2.15<br>● UOS V20<br>● UOS V25<br>● KylinOS V10 SP3<br>● KylinOS V11<br>● BC-Linux_21.10 U4</td></tr>
+<tr><td valign="middle" width="340">Atlas A3 inference products<br>Note: Currently, only the AscendIndexFlat algorithm is supported.</td><td valign="middle" width="360">Atlas 800I A3 SuperNode server</td><td valign="middle">● Ubuntu 18.04<br>● CUlinux 3.0<br>● KylinOS V10 SP3 2403<br>● KylinOS V11<br>● CTyunOS 4<br>● UOS V25</td></tr>
+</tbody></table>

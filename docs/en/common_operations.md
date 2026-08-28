@@ -52,10 +52,11 @@ AscendFaiss provides two **optional** environment variables for diagnosing Devic
 
 **Table 1** Device memory debug environment variables
 
-|Environment Variable|Value|Default|Purpose|
-|--|--|--|--|
-|ASCENDFAISS\_MEM\_DEBUG|Non-empty and not `0` / `false` / `off` (case-insensitive)|Off|Master switch: sample allocations and HBM free/total; on `aclrtMalloc` failure, dump the recent allocation ring buffer|
-|ASCENDFAISS\_MEM\_DEBUG\_EVERY|Positive integer N|`64`|Sampling period: print when `seq % N == 0`, or when `size ≤ 4096`; unset/invalid/0 falls back to `64`|
+<table><tbody>
+<tr><td align="center" valign="middle" width="200"><strong>Environment Variable</strong></td><td align="center" valign="middle"><strong>Value</strong></td><td width="90" align="center" valign="middle"><strong>Default</strong></td><td align="center" valign="middle"><strong>Purpose</strong></td></tr>
+<tr><td valign="middle" width="200">ASCENDFAISS\_MEM\_DEBUG</td><td valign="middle">Non-empty and not <code>0</code> / <code>false</code> / <code>off</code> (case-insensitive)</td><td width="90" align="center" valign="middle">Off</td><td valign="middle">Master switch: sample allocations and HBM free/total; on <code>aclrtMalloc</code> failure, dump the recent allocation ring buffer</td></tr>
+<tr><td valign="middle" width="200">ASCENDFAISS\_MEM\_DEBUG\_EVERY</td><td valign="middle">Positive integer N</td><td width="90" align="center" valign="middle"><code>64</code></td><td valign="middle">Sampling period: print when <code>seq % N == 0</code>, or when <code>size ≤ 4096</code>; unset/invalid/0 falls back to <code>64</code></td></tr>
+</tbody></table>
 
 Disable:
 
@@ -82,12 +83,13 @@ grep '\[MemDebug\]' mem_debug.log
 
 ### Log Interpretation
 
-|Log keyword|Meaning|
-|--|--|
-|`[MemDebug] alloc seq=...`|Sampled Device allocation: sequence, size, space, device, HBM free/total before alloc|
-|`[MemDebug] ... HBM free=...`|HBM free/total snapshot on a key path (for example `copyVectorToDevice_*`, `DeviceMemArena::Grow`, `IndexIVFRaBitQ_resize`)|
-|`[MemDebug] aclrtMalloc FAILED ...`|Allocation failure: requested size/space/device, error code, HBM free/total at failure time|
-|`dumping last N alloc records`|Up to 64 most recent allocations before failure (oldest→newest), used to locate the allocation spike|
+<table><tbody>
+<tr><td align="center" valign="middle" width="330"><strong>Log keyword</strong></td><td align="center" valign="middle"><strong>Meaning</strong></td></tr>
+<tr><td valign="middle" width="330"><code>[MemDebug] alloc seq=...</code></td><td valign="middle">Sampled Device allocation: sequence, size, space, device, HBM free/total before alloc</td></tr>
+<tr><td valign="middle" width="330"><code>[MemDebug] ... HBM free=...</code></td><td valign="middle">HBM free/total snapshot on a key path (for example <code>copyVectorToDevice_*</code>, <code>DeviceMemArena::Grow</code>, <code>IndexIVFRaBitQ_resize</code>)</td></tr>
+<tr><td valign="middle" width="330"><code>[MemDebug] aclrtMalloc FAILED ...</code></td><td valign="middle">Allocation failure: requested size/space/device, error code, HBM free/total at failure time</td></tr>
+<tr><td valign="middle" width="330"><code>dumping last N alloc records</code></td><td valign="middle">Up to 64 most recent allocations before failure (oldest→newest), used to locate the allocation spike</td></tr>
+</tbody></table>
 
 **Typical workflow:**
 

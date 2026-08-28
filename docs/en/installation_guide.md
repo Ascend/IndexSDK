@@ -108,30 +108,13 @@ After Python is installed, the required pip dependency names, recommended versio
 
 **Table 1**  Package List
 
-<table>
-<tr>
-<th>Software Type</th>
-<th>Package Name</th>
-<th>Acquisition Method</th>
-</tr>
-<tr>
-<td>Ascend NPU driver</td>
-<td>Ascend-hdk-xxx-npu-driver_{version}_linux-{arch}.run</td>
-<td rowspan="4">Click the [Get Link](https://www.hiascend.com/developer/download/commercial/result?module=cann) link. In the left-side accessory resources, configure settings in "Edit Resource Selection", filter the matching software packages, confirm the version information, and then obtain the required packages.</td>
-</tr>
-<tr>
-<td>Ascend NPU firmware</td>
-<td>Ascend-hdk-xxx-npu-firmware_{version}.run</td>
-</tr>
-<tr>
-<td>CANN package</td>
-<td>Ascend-cann-toolkit_{version}_linux-{arch}.run<br>CANN 8.5.0 and later also require installation of the matching CANN operator package.</td>
-</tr>
-<tr>
-<td>CANN operator package</td>
-<td>Ascend-cann-{chip_type}-ops_{version}_linux-{arch}.run<br>For CANN versions earlier than 8.5.0, this package is named Ascend-cann-kernels-{chip_type}_{version}_linux-{arch}.run.</td>
-</tr>
-</table>
+<table><tbody>
+<tr><th valign="middle" width="200">Software Type</th><th valign="middle" width="480">Package Name</th><th valign="middle" width="300">Acquisition Method</th></tr>
+<tr><td valign="middle" width="200">Ascend NPU driver</td><td valign="middle" width="480">Ascend-hdk-xxx-npu-driver_{version}_linux-{arch}.run</td><td rowspan="4" valign="middle" width="300">Click the <a href="https://www.hiascend.com/developer/download/commercial/result?module=cann">Get Link</a> link. In the left-side accessory resources, configure settings in &quot;Edit Resource Selection&quot;, filter the matching software packages, confirm the version information, and then obtain the required packages.</td></tr>
+<tr><td valign="middle" width="200">Ascend NPU firmware</td><td valign="middle" width="480">Ascend-hdk-xxx-npu-firmware_{version}.run</td></tr>
+<tr><td valign="middle" width="200">CANN package</td><td valign="middle" width="480">Ascend-cann-toolkit_{version}_linux-{arch}.run<br>CANN 8.5.0 and later also require installation of the matching CANN operator package.</td></tr>
+<tr><td valign="middle" width="200">CANN operator package</td><td valign="middle" width="480">Ascend-cann-{chip_type}-ops_{version}_linux-{arch}.run<br>For CANN versions earlier than 8.5.0, this package is named Ascend-cann-kernels-{chip_type}_{version}_linux-{arch}.run.</td></tr>
+</tbody></table>
 
 > [!NOTE]
 >
@@ -385,162 +368,39 @@ Enterprise customers: [https://support.huawei.com/enterprise/zh/tool/software-di
 6. Obtain the installation command. Select the corresponding option below according to the actual situation to obtain the Index SDK installation command.
 
     **Table 1**  Quick Installation Details
-    <table>
-    <tr>
-    <th>Product Series</th>
-    <th>Product Model</th>
-    <th>CPU Architecture</th>
-    <th>Whether an Installation Path Is Specified</th>
-    <th>Installation Command</th>
-    </tr>
-    <tr>
-    <td rowspan="8">Atlas 200/300/500 inference products</td>
-    <td rowspan="4">Atlas 300I inference card (model 3000)</td>
-    <td rowspan="2">aarch64</td>
-    <td>Yes</td>
-    <td> ./Ascend-mindxsdk-mxindex_7.2.RC1_linux-aarch64.run --install --install-path=/home/work/FeatureRetrieval --platform=310 <br># This command uses `/home/work/FeatureRetrieval` as an example. Replace it as needed.</td>
-    </tr>
-    <tr>
-    <td>No</td>
-    <td> ./Ascend-mindxsdk-mxindex_7.2.RC1_linux-aarch64.run --install --platform=310<br># The installation path defaults to the directory where the command is run.</td>
-    </tr>
-    <tr>
-    <td rowspan="2">x86_64</td>
-    <td>Yes</td>
-    <td> ./Ascend-mindxsdk-mxindex_7.2.RC1_linux-x86_64.run --install --install-path=/home/work/FeatureRetrieval --platform=310 <br># This command uses `/home/work/FeatureRetrieval` as an example. Replace it as needed.</td>
-    </tr>
-    <tr>
-    <td>No</td>
-    <td> ./Ascend-mindxsdk-mxindex_7.2.RC1_linux-x86_64.run --install --platform=310<br># The installation path defaults to the directory where the command is run.</td>
-    </tr>
-    <tr>
-    <td rowspan="20">Atlas inference products</td>
-    <td rowspan="4">Atlas 300I Pro inference card</td>
-    <td rowspan="2">x86_64</td>
-    <td>Yes</td>
-    <td> ./Ascend-mindxsdk-mxindex_7.2.RC1_linux-x86_64.run --install --install-path=/home/work/FeatureRetrieval --platform=310P<br># This command uses `/home/work/FeatureRetrieval` as an example. Replace it as needed.</td>
-    </tr>
-    <tr>
-    <td>No</td>
-    <td> ./Ascend-mindxsdk-mxindex_7.2.RC1_linux-x86_64.run --install --platform=310P<br># The installation path defaults to the directory where the command is run.</td>
-    </tr>
-    <tr>
-    <td rowspan="2">aarch64</td>
-    <td>Yes</td>
-    <td> ./Ascend-mindxsdk-mxindex_7.2.RC1_linux-aarch64.run --install --install-path=/home/work/FeatureRetrieval --platform=310P <br># This command uses `/home/work/FeatureRetrieval` as an example. Replace it as needed.</td>
-    </tr>
-    <tr>
-    <td>No</td>
-    <td> ./Ascend-mindxsdk-mxindex_7.2.RC1_linux-aarch64.run --install --platform=310P<br># The installation path defaults to the directory where the command is run.</td>
-    </tr>
-    <tr>
-    <td rowspan="4">Atlas 300V video analytics card</td>
-    <td rowspan="2">x86_64</td>
-    <td>Yes</td>
-    <td> ./Ascend-mindxsdk-mxindex_7.2.RC1_linux-x86_64.run --install --install-path=/home/work/FeatureRetrieval --platform=310P<br># This command uses `/home/work/FeatureRetrieval` as an example. Replace it as needed.</td>
-    </tr>
-    <tr>
-    <td>No</td>
-    <td> ./Ascend-mindxsdk-mxindex_7.2.RC1_linux-x86_64.run --install --platform=310P<br># The installation path defaults to the directory where the command is run.</td>
-    </tr>
-    <tr>
-    <td rowspan="2">aarch64</td>
-    <td>Yes</td>
-    <td> ./Ascend-mindxsdk-mxindex_7.2.RC1_linux-aarch64.run --install --install-path=/home/work/FeatureRetrieval --platform=310P <br># This command uses `/home/work/FeatureRetrieval` as an example. Replace it as needed.</td>
-    </tr>
-    <tr>
-    <td>No</td>
-    <td> ./Ascend-mindxsdk-mxindex_7.2.RC1_linux-aarch64.run --install --platform=310P<br># The installation path defaults to the directory where the command is run.</td>
-    </tr>
-    <tr>
-    <td rowspan="4">Atlas 300V Pro video analytics card</td>
-    <td rowspan="2">x86_64</td>
-    <td>Yes</td>
-    <td> ./Ascend-mindxsdk-mxindex_7.2.RC1_linux-x86_64.run --install --install-path=/home/work/FeatureRetrieval --platform=310P<br># This command uses `/home/work/FeatureRetrieval` as an example. Replace it as needed.</td>
-    </tr>
-    <tr>
-    <td>No</td>
-    <td> ./Ascend-mindxsdk-mxindex_7.2.RC1_linux-x86_64.run --install --platform=310P<br># The installation path defaults to the directory where the command is run.</td>
-    </tr>
-    <tr>
-    <td rowspan="2">aarch64</td>
-    <td>Yes</td>
-    <td> ./Ascend-mindxsdk-mxindex_7.2.RC1_linux-aarch64.run --install --install-path=/home/work/FeatureRetrieval --platform=310P <br># This command uses `/home/work/FeatureRetrieval` as an example. Replace it as needed.</td>
-    </tr>
-    <tr>
-    <td>No</td>
-    <td> ./Ascend-mindxsdk-mxindex_7.2.RC1_linux-aarch64.run --install --platform=310P<br># The installation path defaults to the directory where the command is run.</td>
-    </tr>
-    <tr>
-    <td rowspan="4">Atlas 300I Duo inference card</td>
-    <td rowspan="2">x86_64</td>
-    <td>Yes</td>
-    <td> ./Ascend-mindxsdk-mxindex_7.2.RC1_linux-x86_64.run --install --install-path=/home/work/FeatureRetrieval --platform=310P<br># This command uses `/home/work/FeatureRetrieval` as an example. Replace it as needed.</td>
-    </tr>
-    <tr>
-    <td>No</td>
-    <td> ./Ascend-mindxsdk-mxindex_7.2.RC1_linux-x86_64.run --install --platform=310P<br># The installation path defaults to the directory where the command is run.</td>
-    </tr>
-    <tr>
-    <td rowspan="2">aarch64</td>
-    <td>Yes</td>
-    <td> ./Ascend-mindxsdk-mxindex_7.2.RC1_linux-aarch64.run --install --install-path=/home/work/FeatureRetrieval --platform=310P <br># This command uses `/home/work/FeatureRetrieval` as an example. Replace it as needed.</td>
-    </tr>
-    <tr>
-    <td>No</td>
-    <td> ./Ascend-mindxsdk-mxindex_7.2.RC1_linux-aarch64.run --install --platform=310P<br># The installation path defaults to the directory where the command is run.</td>
-    </tr>
-    <tr>
-    <td rowspan="4">Atlas 200I SoC A1 core board</td>
-    <td rowspan="2">x86_64</td>
-    <td>Yes</td>
-    <td> ./Ascend-mindxsdk-mxindex_7.2.RC1_linux-x86_64.run --install --install-path=/home/work/FeatureRetrieval --platform=310P<br># This command uses `/home/work/FeatureRetrieval` as an example. Replace it as needed.</td>
-    </tr>
-    <tr>
-    <td>No</td>
-    <td> ./Ascend-mindxsdk-mxindex_7.2.RC1_linux-x86_64.run --install --platform=310P<br># The installation path defaults to the directory where the command is run.</td>
-    </tr>
-    <tr>
-    <td rowspan="2">aarch64</td>
-    <td>Yes</td>
-    <td> ./Ascend-mindxsdk-mxindex_7.2.RC1_linux-aarch64.run --install --install-path=/home/work/FeatureRetrieval --platform=310P <br># This command uses `/home/work/FeatureRetrieval` as an example. Replace it as needed.</td>
-    </tr>
-    <tr>
-    <td>No</td>
-    <td> ./Ascend-mindxsdk-mxindex_7.2.RC1_linux-aarch64.run --install --platform=310P<br># The installation path defaults to the directory where the command is run.</td>
-    </tr>
-    <tr>
-    <td rowspan="4">Atlas A2 inference products</td>
-    <td rowspan="4">Atlas 800I A2 inference server</td>
-    <td rowspan="2">x86_64</td>
-    <td>Yes</td>
-    <td>./Ascend-mindxsdk-mxindex_7.2.RC1_linux-x86_64.run --install --install-path=/home/work/FeatureRetrieval --platform=npu_type<br># This command uses `/home/work/FeatureRetrieval` as an example. Replace it as needed. <i>npu_type</i> indicates the chip name. On a server where the Ascend AI Processor is installed, run `npu-smi info` to query it. Delete the last digit of the queried "Name" value to obtain the value of `npu_type`.</td>
-    </tr>
-    <tr>
-    <td>No</td>
-    <td> ./Ascend-mindxsdk-mxindex_7.2.RC1_linux-x86_64.run --install --platform=npu_type<br># </td>
-    </tr>
-    <tr>
-    <td rowspan="2">aarch64</td>
-    <td>Yes</td>
-    <td> ./Ascend-mindxsdk-mxindex_7.2.RC1_linux-aarch64.run --install --install-path=/home/work/FeatureRetrieval --platform=npu_type <br># This command uses `/home/work/FeatureRetrieval` as an example. Replace it as needed. <i>npu_type</i> indicates the chip name. On a server where the Ascend AI Processor is installed, run `npu-smi info` to query it. Delete the last digit of the queried "Name" value to obtain the value of `npu_type`.</td>
-    </tr>
-    <tr>
-    <td>No</td>
-    <td> ./Ascend-mindxsdk-mxindex_7.2.RC1_linux-aarch64.run --install --platform=npu_type<br># The installation path defaults to the directory where the command is run. <i>npu_type</i> indicates the chip name. On a server where the Ascend AI Processor is installed, run `npu-smi info` to query it. Delete the last digit of the queried "Name" value to obtain the value of `npu_type`.</td>
-    </tr>
-    <tr>
-    <td rowspan="2">Atlas 800I A3 SuperNode server</td>
-    <td rowspan="2">Atlas 800I A3 SuperNode server</td>
-    <td rowspan="2">aarch64</td>
-    <td>Yes</td>
-    <td> ./Ascend-mindxsdk-mxindex_7.2.RC1_linux-aarch64.run --install --install-path=/home/work/FeatureRetrieval --platform=A3<br># This command uses `/home/work/FeatureRetrieval` as an example. Replace it as needed.</td>
-    </tr>
-    <tr>
-    <td>No</td>
-    <td> ./Ascend-mindxsdk-mxindex_7.2.RC1_linux-aarch64.run --install --platform=A3<br># The installation path defaults to the directory where the command is run.</td>
-    </tr>
-    </table>
+    <table><tbody>
+    <tr><th valign="middle" width="340">Product Series</th><th valign="middle" width="360">Product Model</th><th valign="middle" width="170" align="center">CPU Architecture</th><th valign="middle" width="380" align="center">Whether an Installation Path Is Specified</th><th valign="middle" width="460">Installation Command</th></tr>
+    <tr><td rowspan="4" valign="middle" width="340">Atlas 200/300/500 inference products</td><td rowspan="4" valign="middle" width="360">Atlas 300I inference card (model 3000)</td><td rowspan="2" valign="middle" width="170" align="center">aarch64</td><td valign="middle" width="380" align="center">Yes</td><td valign="middle" width="460">./Ascend-mindxsdk-mxindex_7.2.RC1_linux-aarch64.run --install --install-path=/home/work/FeatureRetrieval --platform=310 <br># This command uses `/home/work/FeatureRetrieval` as an example. Replace it as needed.</td></tr>
+    <tr><td valign="middle" width="380" align="center">No</td><td valign="middle" width="460">./Ascend-mindxsdk-mxindex_7.2.RC1_linux-aarch64.run --install --platform=310<br># The installation path defaults to the directory where the command is run.</td></tr>
+    <tr><td rowspan="2" valign="middle" width="170" align="center">x86_64</td><td valign="middle" width="380" align="center">Yes</td><td valign="middle" width="460">./Ascend-mindxsdk-mxindex_7.2.RC1_linux-x86_64.run --install --install-path=/home/work/FeatureRetrieval --platform=310 <br># This command uses `/home/work/FeatureRetrieval` as an example. Replace it as needed.</td></tr>
+    <tr><td valign="middle" width="380" align="center">No</td><td valign="middle" width="460">./Ascend-mindxsdk-mxindex_7.2.RC1_linux-x86_64.run --install --platform=310<br># The installation path defaults to the directory where the command is run.</td></tr>
+    <tr><td rowspan="20" valign="middle" width="340">Atlas inference products</td><td rowspan="4" valign="middle" width="360">Atlas 300I Pro inference card</td><td rowspan="2" valign="middle" width="170" align="center">x86_64</td><td valign="middle" width="380" align="center">Yes</td><td valign="middle" width="460">./Ascend-mindxsdk-mxindex_7.2.RC1_linux-x86_64.run --install --install-path=/home/work/FeatureRetrieval --platform=310P<br># This command uses `/home/work/FeatureRetrieval` as an example. Replace it as needed.</td></tr>
+    <tr><td valign="middle" width="380" align="center">No</td><td valign="middle" width="460">./Ascend-mindxsdk-mxindex_7.2.RC1_linux-x86_64.run --install --platform=310P<br># The installation path defaults to the directory where the command is run.</td></tr>
+    <tr><td rowspan="2" valign="middle" width="170" align="center">aarch64</td><td valign="middle" width="380" align="center">Yes</td><td valign="middle" width="460">./Ascend-mindxsdk-mxindex_7.2.RC1_linux-aarch64.run --install --install-path=/home/work/FeatureRetrieval --platform=310P <br># This command uses `/home/work/FeatureRetrieval` as an example. Replace it as needed.</td></tr>
+    <tr><td valign="middle" width="380" align="center">No</td><td valign="middle" width="460">./Ascend-mindxsdk-mxindex_7.2.RC1_linux-aarch64.run --install --platform=310P<br># The installation path defaults to the directory where the command is run.</td></tr>
+    <tr><td rowspan="4" valign="middle" width="360">Atlas 300V video analytics card</td><td rowspan="2" valign="middle" width="170" align="center">x86_64</td><td valign="middle" width="380" align="center">Yes</td><td valign="middle" width="460">./Ascend-mindxsdk-mxindex_7.2.RC1_linux-x86_64.run --install --install-path=/home/work/FeatureRetrieval --platform=310P<br># This command uses `/home/work/FeatureRetrieval` as an example. Replace it as needed.</td></tr>
+    <tr><td valign="middle" width="380" align="center">No</td><td valign="middle" width="460">./Ascend-mindxsdk-mxindex_7.2.RC1_linux-x86_64.run --install --platform=310P<br># The installation path defaults to the directory where the command is run.</td></tr>
+    <tr><td rowspan="2" valign="middle" width="170" align="center">aarch64</td><td valign="middle" width="380" align="center">Yes</td><td valign="middle" width="460">./Ascend-mindxsdk-mxindex_7.2.RC1_linux-aarch64.run --install --install-path=/home/work/FeatureRetrieval --platform=310P <br># This command uses `/home/work/FeatureRetrieval` as an example. Replace it as needed.</td></tr>
+    <tr><td valign="middle" width="380" align="center">No</td><td valign="middle" width="460">./Ascend-mindxsdk-mxindex_7.2.RC1_linux-aarch64.run --install --platform=310P<br># The installation path defaults to the directory where the command is run.</td></tr>
+    <tr><td rowspan="4" valign="middle" width="360">Atlas 300V Pro video analytics card</td><td rowspan="2" valign="middle" width="170" align="center">x86_64</td><td valign="middle" width="380" align="center">Yes</td><td valign="middle" width="460">./Ascend-mindxsdk-mxindex_7.2.RC1_linux-x86_64.run --install --install-path=/home/work/FeatureRetrieval --platform=310P<br># This command uses `/home/work/FeatureRetrieval` as an example. Replace it as needed.</td></tr>
+    <tr><td valign="middle" width="380" align="center">No</td><td valign="middle" width="460">./Ascend-mindxsdk-mxindex_7.2.RC1_linux-x86_64.run --install --platform=310P<br># The installation path defaults to the directory where the command is run.</td></tr>
+    <tr><td rowspan="2" valign="middle" width="170" align="center">aarch64</td><td valign="middle" width="380" align="center">Yes</td><td valign="middle" width="460">./Ascend-mindxsdk-mxindex_7.2.RC1_linux-aarch64.run --install --install-path=/home/work/FeatureRetrieval --platform=310P <br># This command uses `/home/work/FeatureRetrieval` as an example. Replace it as needed.</td></tr>
+    <tr><td valign="middle" width="380" align="center">No</td><td valign="middle" width="460">./Ascend-mindxsdk-mxindex_7.2.RC1_linux-aarch64.run --install --platform=310P<br># The installation path defaults to the directory where the command is run.</td></tr>
+    <tr><td rowspan="4" valign="middle" width="360">Atlas 300I Duo inference card</td><td rowspan="2" valign="middle" width="170" align="center">x86_64</td><td valign="middle" width="380" align="center">Yes</td><td valign="middle" width="460">./Ascend-mindxsdk-mxindex_7.2.RC1_linux-x86_64.run --install --install-path=/home/work/FeatureRetrieval --platform=310P<br># This command uses `/home/work/FeatureRetrieval` as an example. Replace it as needed.</td></tr>
+    <tr><td valign="middle" width="380" align="center">No</td><td valign="middle" width="460">./Ascend-mindxsdk-mxindex_7.2.RC1_linux-x86_64.run --install --platform=310P<br># The installation path defaults to the directory where the command is run.</td></tr>
+    <tr><td rowspan="2" valign="middle" width="170" align="center">aarch64</td><td valign="middle" width="380" align="center">Yes</td><td valign="middle" width="460">./Ascend-mindxsdk-mxindex_7.2.RC1_linux-aarch64.run --install --install-path=/home/work/FeatureRetrieval --platform=310P <br># This command uses `/home/work/FeatureRetrieval` as an example. Replace it as needed.</td></tr>
+    <tr><td valign="middle" width="380" align="center">No</td><td valign="middle" width="460">./Ascend-mindxsdk-mxindex_7.2.RC1_linux-aarch64.run --install --platform=310P<br># The installation path defaults to the directory where the command is run.</td></tr>
+    <tr><td rowspan="4" valign="middle" width="360">Atlas 200I SoC A1 core board</td><td rowspan="2" valign="middle" width="170" align="center">x86_64</td><td valign="middle" width="380" align="center">Yes</td><td valign="middle" width="460">./Ascend-mindxsdk-mxindex_7.2.RC1_linux-x86_64.run --install --install-path=/home/work/FeatureRetrieval --platform=310P<br># This command uses `/home/work/FeatureRetrieval` as an example. Replace it as needed.</td></tr>
+    <tr><td valign="middle" width="380" align="center">No</td><td valign="middle" width="460">./Ascend-mindxsdk-mxindex_7.2.RC1_linux-x86_64.run --install --platform=310P<br># The installation path defaults to the directory where the command is run.</td></tr>
+    <tr><td rowspan="2" valign="middle" width="170" align="center">aarch64</td><td valign="middle" width="380" align="center">Yes</td><td valign="middle" width="460">./Ascend-mindxsdk-mxindex_7.2.RC1_linux-aarch64.run --install --install-path=/home/work/FeatureRetrieval --platform=310P <br># This command uses `/home/work/FeatureRetrieval` as an example. Replace it as needed.</td></tr>
+    <tr><td valign="middle" width="380" align="center">No</td><td valign="middle" width="460">./Ascend-mindxsdk-mxindex_7.2.RC1_linux-aarch64.run --install --platform=310P<br># The installation path defaults to the directory where the command is run.</td></tr>
+    <tr><td rowspan="4" valign="middle" width="340">Atlas A2 inference products</td><td rowspan="4" valign="middle" width="360">Atlas 800I A2 inference server</td><td rowspan="2" valign="middle" width="170" align="center">x86_64</td><td valign="middle" width="380" align="center">Yes</td><td valign="middle" width="460">./Ascend-mindxsdk-mxindex_7.2.RC1_linux-x86_64.run --install --install-path=/home/work/FeatureRetrieval --platform=npu_type<br># This command uses `/home/work/FeatureRetrieval` as an example. Replace it as needed. npu_type indicates the chip name. On a server where the Ascend AI Processor is installed, run `npu-smi info` to query it. Delete the last digit of the queried &quot;Name&quot; value to obtain the value of `npu_type`.</td></tr>
+    <tr><td valign="middle" width="380" align="center">No</td><td valign="middle" width="460">./Ascend-mindxsdk-mxindex_7.2.RC1_linux-x86_64.run --install --platform=npu_type<br>#</td></tr>
+    <tr><td rowspan="2" valign="middle" width="170" align="center">aarch64</td><td valign="middle" width="380" align="center">Yes</td><td valign="middle" width="460">./Ascend-mindxsdk-mxindex_7.2.RC1_linux-aarch64.run --install --install-path=/home/work/FeatureRetrieval --platform=npu_type <br># This command uses `/home/work/FeatureRetrieval` as an example. Replace it as needed. npu_type indicates the chip name. On a server where the Ascend AI Processor is installed, run `npu-smi info` to query it. Delete the last digit of the queried &quot;Name&quot; value to obtain the value of `npu_type`.</td></tr>
+    <tr><td valign="middle" width="380" align="center">No</td><td valign="middle" width="460">./Ascend-mindxsdk-mxindex_7.2.RC1_linux-aarch64.run --install --platform=npu_type<br># The installation path defaults to the directory where the command is run. npu_type indicates the chip name. On a server where the Ascend AI Processor is installed, run `npu-smi info` to query it. Delete the last digit of the queried &quot;Name&quot; value to obtain the value of `npu_type`.</td></tr>
+    <tr><td rowspan="2" valign="middle" width="340">Atlas 800I A3 SuperNode server</td><td rowspan="2" valign="middle" width="360">Atlas 800I A3 SuperNode server</td><td rowspan="2" valign="middle" width="170" align="center">aarch64</td><td valign="middle" width="380" align="center">Yes</td><td valign="middle" width="460">./Ascend-mindxsdk-mxindex_7.2.RC1_linux-aarch64.run --install --install-path=/home/work/FeatureRetrieval --platform=A3<br># This command uses `/home/work/FeatureRetrieval` as an example. Replace it as needed.</td></tr>
+    <tr><td valign="middle" width="380" align="center">No</td><td valign="middle" width="460">./Ascend-mindxsdk-mxindex_7.2.RC1_linux-aarch64.run --install --platform=A3<br># The installation path defaults to the directory where the command is run.</td></tr>
+    </tbody></table>
 
     The Index SDK run package includes business shared libraries built separately against Faiss 1.10.x and Faiss 1.14.1. During installation, you can use `--faiss-version` to select the default Faiss ABI version to be activated after installation. If this option is not specified, Faiss 1.10.x is activated by default, which is compatible with older business chains.
 
@@ -596,23 +456,24 @@ Enterprise customers: [https://support.huawei.com/enterprise/zh/tool/software-di
 
 **Table 2**  Optional Parameters for the `--install` Command<a id="table7138521890"></a>
 
-|Parameter Name|Description|
-|--|--|
-|--help \| -h|Display help information.|
-|--info|Display package build information.|
-|--list|Display the file list.|
-|--check|Check package integrity.|
-|--quiet\|-q|Optional parameter that enables silent installation. Using this parameter reduces interactive output.|
-|--nox11|Deprecated interface. Has no actual effect.|
-|--noexec|Decompress the package to the current directory without executing the installation script. Use it together with `--extract=<path>`, in the form `--noexec --extract=<path>`.|
-|--extract=\<path>|Extract files in the package to the specified directory. Can be used together with `--noexec`, `--install`, or `--upgrade`.|
-|--tar arg1 [arg2 ...]|Run tar on the package and use the arguments after `tar` as command arguments. For example, `--tar xvf` extracts the contents of the run installation package to the current directory.|
-|--version|Display the Index SDK version of the installation package.|
-|--install|Installation command for the feature retrieval package.|
-|--install-path=*\<path>*|Optional. Customize the root installation directory for the feature retrieval package. If not set, the current directory where you run the command is used by default. The path must start with `/` or `~`, and can contain only letters, digits, `-`, `_`, `.`, and `/`.<br>If not specified, the package is installed to the default path:<li>If installed as root, the default installation path is `/usr/local/Ascend`.</li><li>If installed as a non-root user, the default installation path is `${HOME}/Ascend`, where `${HOME}` is the user directory.</li><br>If this parameter is used to specify the installation directory, other users must not have write permission to that directory. If a regular user is specified for installation, the owner of the installation directory must be the current installation user.|
-|--upgrade|Installation command for upgrading the feature retrieval package, which upgrades feature retrieval to the Index SDK version included in the package.|
-|--platform=*\<npu_type>*|Corresponding Ascend AI Processor type.<li>For Atlas 200/300/500 inference products, enter 310.</li><li>For Atlas inference products, enter 310P.</li><li>For Atlas 800I A3 SuperNode server, enter `A3`.</li><li>For Atlas A2 inference products, run `npu-smi info` on a server where the Ascend AI Processor is installed to query it, then remove the last digit of the queried "Name" value. The result is the value of `--platform`.</li>|
-|--faiss-version=*\<version>*|Optional. Select the default activated Faiss ABI version after installation. Supported values include `1.10`, `1.10.0`, `faiss1.10`, `1.14`, `1.14.1`, and `faiss1.14`. The default value is `1.10`. When `1.10` is selected, the business shared libraries and header files built against Faiss 1.10.x are activated. When `1.14` is selected, the business shared libraries and header files built against Faiss 1.14.1 are activated.|
+<table><tbody>
+<tr><td width="270" align="center" valign="middle"><strong>Parameter Name</strong></td><td align="center" valign="middle"><strong>Description</strong></td></tr>
+<tr><td width="270" valign="middle">--help | -h</td><td valign="middle">Display help information.</td></tr>
+<tr><td width="270" valign="middle">--info</td><td valign="middle">Display package build information.</td></tr>
+<tr><td width="270" valign="middle">--list</td><td valign="middle">Display the file list.</td></tr>
+<tr><td width="270" valign="middle">--check</td><td valign="middle">Check package integrity.</td></tr>
+<tr><td width="270" valign="middle">--quiet|-q</td><td valign="middle">Optional parameter that enables silent installation. Using this parameter reduces interactive output.</td></tr>
+<tr><td width="270" valign="middle">--nox11</td><td valign="middle">Deprecated interface. Has no actual effect.</td></tr>
+<tr><td width="270" valign="middle">--noexec</td><td valign="middle">Decompress the package to the current directory without executing the installation script. Use it together with <code>--extract=&lt;path&gt;</code>, in the form <code>--noexec --extract=&lt;path&gt;</code>.</td></tr>
+<tr><td width="270" valign="middle">--extract=&lt;path&gt;</td><td valign="middle">Extract files in the package to the specified directory. Can be used together with <code>--noexec</code>, <code>--install</code>, or <code>--upgrade</code>.</td></tr>
+<tr><td width="270" valign="middle">--tar arg1 [arg2 ...]</td><td valign="middle">Run tar on the package and use the arguments after <code>tar</code> as command arguments. For example, <code>--tar xvf</code> extracts the contents of the run installation package to the current directory.</td></tr>
+<tr><td width="270" valign="middle">--version</td><td valign="middle">Display the Index SDK version of the installation package.</td></tr>
+<tr><td width="270" valign="middle">--install</td><td valign="middle">Installation command for the feature retrieval package.</td></tr>
+<tr><td width="270" valign="middle">--install-path=*&lt;path&gt;*</td><td valign="middle">Optional. Customize the root installation directory for the feature retrieval package. If not set, the current directory where you run the command is used by default. The path must start with <code>/</code> or <code>~</code>, and can contain only letters, digits, <code>-</code>, <code>_</code>, <code>.</code>, and <code>/</code>.<br>If not specified, the package is installed to the default path:<br>● If installed as root, the default installation path is <code>/usr/local/Ascend</code>.<br>● If installed as a non-root user, the default installation path is <code>${HOME}/Ascend</code>, where <code>${HOME}</code> is the user directory.<br>If this parameter is used to specify the installation directory, other users must not have write permission to that directory. If a regular user is specified for installation, the owner of the installation directory must be the current installation user.</td></tr>
+<tr><td width="270" valign="middle">--upgrade</td><td valign="middle">Installation command for upgrading the feature retrieval package, which upgrades feature retrieval to the Index SDK version included in the package.</td></tr>
+<tr><td width="270" valign="middle">--platform=*&lt;npu_type&gt;*</td><td valign="middle">Corresponding Ascend AI Processor type.<br>● For Atlas 200/300/500 inference products, enter 310.<br>● For Atlas inference products, enter 310P.<br>● For Atlas 800I A3 SuperNode server, enter <code>A3</code>.<br>● For Atlas A2 inference products, run <code>npu-smi info</code> on a server where the Ascend AI Processor is installed to query it, then remove the last digit of the queried &quot;Name&quot; value. The result is the value of <code>--platform</code>.</td></tr>
+<tr><td width="270" valign="middle">--faiss-version=*&lt;version&gt;*</td><td valign="middle">Optional. Select the default activated Faiss ABI version after installation. Supported values include <code>1.10</code>, <code>1.10.0</code>, <code>faiss1.10</code>, <code>1.14</code>, <code>1.14.1</code>, and <code>faiss1.14</code>. The default value is <code>1.10</code>. When <code>1.10</code> is selected, the business shared libraries and header files built against Faiss 1.10.x are activated. When <code>1.14</code> is selected, the business shared libraries and header files built against Faiss 1.14.1 are activated.</td></tr>
+</tbody></table>
 
 > [!NOTE]
 > The following parameters are not shown in `--help`. Do not use them directly.
@@ -640,12 +501,13 @@ Use the following command to upgrade the feature retrieval package. For paramete
 
 **Table 1**  Parameter Names and Descriptions<a id="table121021026102016"></a>
 
-|Parameter Name|Description|
-|--|--|
-|--upgrade|Installation command for upgrading the feature retrieval package, which upgrades feature retrieval to the Index SDK version included in the package.|
-|--platform=*\<npu_type>*|Corresponding Ascend AI Processor type.<li>For Atlas 200/300/500 inference products, enter 310.</li><li>For Atlas inference products, enter 310P.</li><li>For Atlas 800I A3 SuperNode server, enter `A3`.</li><li>For Atlas A2 inference products, run `npu-smi info` on a server where the Ascend AI Processor is installed to query it, then remove the last digit of the queried "Name" value. The result is the value of `--platform`.</li>|
-|--install-path=*\<path>*|Optional. Customize the root installation directory for the feature retrieval package. If not set, the current directory where you run the command is used by default.<br>If a custom directory is used for installation, specify this parameter during upgrade.|
-|--faiss-version=*\<version>*|Optional. Select the default activated Faiss ABI version after upgrade. Supported values include `1.10`, `1.10.0`, `faiss1.10`, `1.14`, `1.14.1`, and `faiss1.14`. The default value is `1.10`. If you need to continue using IVFRaBitQ/RaBitQ after the upgrade, specify `--faiss-version=1.14`.|
+<table><tbody>
+<tr><td width="270" align="center" valign="middle"><strong>Parameter Name</strong></td><td align="center" valign="middle"><strong>Description</strong></td></tr>
+<tr><td width="270" valign="middle">--upgrade</td><td valign="middle">Installation command for upgrading the feature retrieval package, which upgrades feature retrieval to the Index SDK version included in the package.</td></tr>
+<tr><td width="270" valign="middle">--platform=*&lt;npu_type&gt;*</td><td valign="middle">Corresponding Ascend AI Processor type.<br>● For Atlas 200/300/500 inference products, enter 310.<br>● For Atlas inference products, enter 310P.<br>● For Atlas 800I A3 SuperNode server, enter <code>A3</code>.<br>● For Atlas A2 inference products, run <code>npu-smi info</code> on a server where the Ascend AI Processor is installed to query it, then remove the last digit of the queried &quot;Name&quot; value. The result is the value of <code>--platform</code>.</td></tr>
+<tr><td width="270" valign="middle">--install-path=*&lt;path&gt;*</td><td valign="middle">Optional. Customize the root installation directory for the feature retrieval package. If not set, the current directory where you run the command is used by default.<br>If a custom directory is used for installation, specify this parameter during upgrade.</td></tr>
+<tr><td width="270" valign="middle">--faiss-version=*&lt;version&gt;*</td><td valign="middle">Optional. Select the default activated Faiss ABI version after upgrade. Supported values include <code>1.10</code>, <code>1.10.0</code>, <code>faiss1.10</code>, <code>1.14</code>, <code>1.14.1</code>, and <code>faiss1.14</code>. The default value is <code>1.10</code>. If you need to continue using IVFRaBitQ/RaBitQ after the upgrade, specify <code>--faiss-version=1.14</code>.</td></tr>
+</tbody></table>
 
 **Procedure<a name="section1479912418555"></a>**
 
