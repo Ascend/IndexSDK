@@ -175,10 +175,11 @@ AscendFaiss 提供两组**可选**环境变量，用于排查 Device HBM 分配�
 
 **表 2** Device 内存调试环境变量
 
-|环境变量名|取值|默认|用途|
-|--|--|--|--|
-|ASCENDFAISS\_MEM\_DEBUG|非空且非 `0` / `false` / `off`（大小写不敏感）|关闭|总开关：开启分配抽样、HBM 余量打印；`aclrtMalloc` 失败时 dump 最近分配环形缓冲|
-|ASCENDFAISS\_MEM\_DEBUG\_EVERY|正整数 N|`64`|抽样周期：分配序号满足 `seq % N == 0`，或 `size ≤ 4096` 时打印明细；未设置/非法/0 时回退为 `64`|
+<table><tbody>
+<tr><td align="center" valign="middle"><strong>环境变量名</strong></td><td align="center" valign="middle"><strong>取值</strong></td><td width="70" align="center" valign="middle"><strong>默认</strong></td><td align="center" valign="middle"><strong>用途</strong></td></tr>
+<tr><td valign="middle">ASCENDFAISS\_MEM\_DEBUG</td><td valign="middle">非空且非 <code>0</code> / <code>false</code> / <code>off</code>（大小写不敏感）</td><td width="70" align="center" valign="middle">关闭</td><td valign="middle">总开关：开启分配抽样、HBM 余量打印；<code>aclrtMalloc</code> 失败时 dump 最近分配环形缓冲</td></tr>
+<tr><td valign="middle">ASCENDFAISS\_MEM\_DEBUG\_EVERY</td><td valign="middle">正整数 N</td><td width="70" align="center" valign="middle"><code>64</code></td><td valign="middle">抽样周期：分配序号满足 <code>seq % N == 0</code>，或 <code>size ≤ 4096</code> 时打印明细；未设置/非法/0 时回退为 <code>64</code></td></tr>
+</tbody></table>
 
 关闭方式：
 

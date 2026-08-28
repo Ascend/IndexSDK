@@ -1,14 +1,15 @@
 # API Reference<a name="ZH-CN_TOPIC_0000001456534960"></a>
 
-|Category|Link|
-|--|--|
-|Full retrieval|[full_retrieval](./full_retrieval.md)|
-|Approximate retrieval|[approximate_retrieval](./approximate_retrieval.md)|
-|Attribute filtering retrieval|[attribute_filtering-based_retrieval](./attribute_filtering-based_retrieval.md)|
-|Multi-index batch retrieval|[multi-index_batch_retrieval](./multi-index_batch_retrieval.md)|
-|Other functions|[more_functions](./more_functions.md)|
-|Unused APIs|[unused_apis](./unused_apis.md)|
-|API return value reference|[return_code_reference](./return_code_reference.md)|
+<table><tbody>
+<tr><td width="280" align="center" valign="middle"><strong>Category</strong></td><td align="center" valign="middle"><strong>Link</strong></td></tr>
+<tr><td width="280" align="center" valign="middle">Full retrieval</td><td valign="middle"><a href="./full_retrieval.md">full_retrieval</a></td></tr>
+<tr><td width="280" align="center" valign="middle">Approximate retrieval</td><td valign="middle"><a href="./approximate_retrieval.md">approximate_retrieval</a></td></tr>
+<tr><td width="280" align="center" valign="middle">Attribute filtering retrieval</td><td valign="middle"><a href="./attribute_filtering-based_retrieval.md">attribute_filtering-based_retrieval</a></td></tr>
+<tr><td width="280" align="center" valign="middle">Multi-index batch retrieval</td><td valign="middle"><a href="./multi-index_batch_retrieval.md">multi-index_batch_retrieval</a></td></tr>
+<tr><td width="280" align="center" valign="middle">Other functions</td><td valign="middle"><a href="./more_functions.md">more_functions</a></td></tr>
+<tr><td width="280" align="center" valign="middle">Unused APIs</td><td valign="middle"><a href="./unused_apis.md">unused_apis</a></td></tr>
+<tr><td width="280" align="center" valign="middle">API return value reference</td><td valign="middle"><a href="./return_code_reference.md">return_code_reference</a></td></tr>
+</tbody></table>
 
 ## API Changes<a name="ZH-CN_TOPIC_0000001691057326"></a>
 
@@ -19,36 +20,37 @@ This section describes API changes, including additions, modifications, deletion
 - Deleted: Indicates that the API was deleted in this version.
 - Retirement notice: Indicates that the API stops evolving starting from the version in which the retirement notice is issued, and it is retired and removed one year later.
 
-|Class Name/API Prototype|Change Type|Change Description|Version|
-|--|--|--|--|
-|`AscendIndexIVFConfig` / `AscendIndexIVFPQConfig`|Modified|Move large-nlist training fields (`trainSamplesPerList`, `maxTrainSamples`, `pqNiter`, `useDistributedCoarse`) from `AscendIndexIVFConfig` to the end of `AscendIndexIVFPQConfig`, restoring derived IVF config POD layout (IVFFlat / IVFSQ / IVFRaBitQ). Fixes #133.|26.2.0|
-|The [Init](./full_retrieval.md#init) `AscendIndexCluster`|Modified|The `resourceSize` variable in the `Init` API of the `AscendIndexCluster` algorithm uses the default value 128 MB.|6.0.RC2|
-|Constructor of `AscendIndexBinaryFlat`|Modified|The `AscendIndexBinaryFlat` constructor adds the `usedFloat` parameter, which improves the performance of the retrieval mode that stores binary features and uses float features for retrieval, namely, the `search` API.|6.0.RC2|
-|The [search](./approximate_retrieval.md#search) `AscendIndexBinaryFlat`|Added|`AscendIndexBinaryFlat` adds support for the retrieval mode in which binary features are stored and float features are used for retrieval.|6.0.RC2|
-|[AscendIndexInt8FlatConfig](./full_retrieval.md#ascendindexint8flatconfig) `AscendIndexInt8Flat` (Table 2)|Modified|The value of `resourceSize` cannot exceed 16 \* 1024 MB (16 \* 1024 \* 1024 \* 1024 bytes).|6.0.RC3|
-|[AscendIndexInt8FlatConfig](./full_retrieval.md#ascendindexint8flatconfig) `AscendIndexInt8Flat` (Table 3)|Modified|The value of `resourceSize` cannot exceed 16 \* 1024 MB (16 \* 1024 \* 1024 \* 1024 bytes).|6.0.RC3|
-|The [Init](./attribute_filtering-based_retrieval.md#init) `AscendIndexTS`|Modified|Changes the constraints on the `maxFeatureRowCount` parameter.|6.0.RC3|
-|The [setPageSize](./full_retrieval.md#setpagesize) `AscendIndexInt8Flat`|Added|Sets the number of consecutive base-library blocks that `AscendIndexInt8Flat` computes in a single `search` call.|6.0.RC3|
-|[InitWithExtraVal](./attribute_filtering-based_retrieval.md#initwithextraval) `AscendIndexTS`|Added|Initialization function for an instance with extra attributes.|6.0.RC3|
-|[AddWithExtraVal](./attribute_filtering-based_retrieval.md#addwithextraval) `AscendIndexTS`|Added|API for adding features with additional attributes.|6.0.RC3|
-|[GetBaseByRangeWithExtraVal](./attribute_filtering-based_retrieval.md#getbasebyrangewithextraval) `AscendIndexTS`|Added|Queries the base library with additional attributes by range.|6.0.RC3|
-|[GetExtraValAttrByLabel](./attribute_filtering-based_retrieval.md#getextravalattrbylabel) `AscendIndexTS`|Added|Obtains the attributes of the specified label feature.|6.0.RC3|
-|[ExtraValAttr](./attribute_filtering-based_retrieval.md#extravalattr) `AscendIndexTS`|Added|Additional attribute information.|6.0.RC3|
-|[ExtraValFilter](./attribute_filtering-based_retrieval.md#extravalfilter) `AscendIndexTS`|Added|Additional attribute filter.|6.0.RC3|
-|The [setRemoveFast](./approximate_retrieval.md#setremovefast) `AscendIndexBinaryFlat`|Added|Sets whether `AscendIndexBinaryFlat` quickly deletes vectors from the base library.|6.0.RC3|
-|[AscendIndexVStar](./approximate_retrieval.md#ascendindexvstar) | Added | Adds the new `AscendIndexVStar` algorithm.|6.0.RC3|
-|[AscendIndexGreat](./approximate_retrieval.md#ascendindexgreat) | Added | Adds the new `AscendIndexGreat` algorithm.|6.0.RC3|
-|The [setSearchParams](./approximate_retrieval.md#setsearchparams) `AscendIndexIVFSQT`|Added|Sets the parameters that affect retrieval accuracy and performance.|6.0.RC3|
-|The [setNumProbes](./approximate_retrieval.md#setnumprobes) `AscendIndexIVFSQT`|Retirement notice|Expected to be deprecated in September 2025. Use `setSearchParams` instead.|6.0.RC3|
-|The [updateTParams](./approximate_retrieval.md#updatetparams) `AscendIndexIVFSQT`|Retirement notice|Expected to be deprecated in September 2025. Use `setSearchParams` instead.|6.0.RC3|
-|The [SetSaveHostMemory](./attribute_filtering-based_retrieval.md#setsavehostmemory) `AscendIndexTS`|Added|Sets the API for using the host-memory-saving mode.|6.0.0|
-|The [add](./full_retrieval.md#add) `AscendIndex`|Added|The Flat algorithm newly supports ingesting FP16 data into the base library.|6.0.0|
-|The [add_with_ids](./full_retrieval.md#add_with_ids) `AscendIndex`|Added|The Flat algorithm newly supports ingesting FP16 data into the base library with IDs.|6.0.0|
-|The [search](./full_retrieval.md#search) `AscendIndex`|Added|The Flat algorithm newly supports FP16 retrieval.|6.0.0|
-|The [search_with_masks](./full_retrieval.md#search_with_masks) `AscendIndexFlat`|Added|The Flat algorithm newly supports FP16 retrieval with masks.|6.0.0|
-|The [AscendIndexIVFSP](./approximate_retrieval.md#ascendindexivfsp) `AscendIndexIVFSP`|Added|Constructor for the shared-codebook mode.|6.0.0|
-|The [saveAllData](./approximate_retrieval.md#savealldata) `AscendIndexIVFSP`|Added|Stores IVFSP data in memory.|6.0.0|
-|The [loadAllData](./approximate_retrieval.md#loadalldata-api) `AscendIndexIVFSP`|Added|Restores IVFSP from memory.|6.0.0|
+<table><tbody>
+<tr><td align="center" valign="middle"><strong>Class Name/API Prototype</strong></td><td width="180" align="center" valign="middle"><strong>Change Type</strong></td><td align="center" valign="middle"><strong>Change Description</strong></td><td width="90" align="center" valign="middle"><strong>Version</strong></td></tr>
+<tr><td valign="middle"><code>AscendIndexIVFConfig</code> / <code>AscendIndexIVFPQConfig</code></td><td width="180" align="center" valign="middle">Modified</td><td valign="middle">Move large-nlist training fields (<code>trainSamplesPerList</code>, <code>maxTrainSamples</code>, <code>pqNiter</code>, <code>useDistributedCoarse</code>) from <code>AscendIndexIVFConfig</code> to the end of <code>AscendIndexIVFPQConfig</code>, restoring derived IVF config POD layout (IVFFlat / IVFSQ / IVFRaBitQ). Fixes #133.</td><td width="90" align="center" valign="middle">26.2.0</td></tr>
+<tr><td valign="middle">The <a href="./full_retrieval.md#init">Init</a> <code>AscendIndexCluster</code></td><td width="180" align="center" valign="middle">Modified</td><td valign="middle">The <code>resourceSize</code> variable in the <code>Init</code> API of the <code>AscendIndexCluster</code> algorithm uses the default value 128 MB.</td><td width="90" align="center" valign="middle">6.0.RC2</td></tr>
+<tr><td valign="middle">Constructor of <code>AscendIndexBinaryFlat</code></td><td width="180" align="center" valign="middle">Modified</td><td valign="middle">The <code>AscendIndexBinaryFlat</code> constructor adds the <code>usedFloat</code> parameter, which improves the performance of the retrieval mode that stores binary features and uses float features for retrieval, namely, the <code>search</code> API.</td><td width="90" align="center" valign="middle">6.0.RC2</td></tr>
+<tr><td valign="middle">The <a href="./approximate_retrieval.md#search">search</a> <code>AscendIndexBinaryFlat</code></td><td width="180" align="center" valign="middle">Added</td><td valign="middle"><code>AscendIndexBinaryFlat</code> adds support for the retrieval mode in which binary features are stored and float features are used for retrieval.</td><td width="90" align="center" valign="middle">6.0.RC2</td></tr>
+<tr><td valign="middle"><a href="./full_retrieval.md#ascendindexint8flatconfig">AscendIndexInt8FlatConfig</a> <code>AscendIndexInt8Flat</code> (Table 2)</td><td width="180" align="center" valign="middle">Modified</td><td valign="middle">The value of <code>resourceSize</code> cannot exceed 16 \* 1024 MB (16 \* 1024 \* 1024 \* 1024 bytes).</td><td width="90" align="center" valign="middle">6.0.RC3</td></tr>
+<tr><td valign="middle"><a href="./full_retrieval.md#ascendindexint8flatconfig">AscendIndexInt8FlatConfig</a> <code>AscendIndexInt8Flat</code> (Table 3)</td><td width="180" align="center" valign="middle">Modified</td><td valign="middle">The value of <code>resourceSize</code> cannot exceed 16 \* 1024 MB (16 \* 1024 \* 1024 \* 1024 bytes).</td><td width="90" align="center" valign="middle">6.0.RC3</td></tr>
+<tr><td valign="middle">The <a href="./attribute_filtering-based_retrieval.md#init">Init</a> <code>AscendIndexTS</code></td><td width="180" align="center" valign="middle">Modified</td><td valign="middle">Changes the constraints on the <code>maxFeatureRowCount</code> parameter.</td><td width="90" align="center" valign="middle">6.0.RC3</td></tr>
+<tr><td valign="middle">The <a href="./full_retrieval.md#setpagesize">setPageSize</a> <code>AscendIndexInt8Flat</code></td><td width="180" align="center" valign="middle">Added</td><td valign="middle">Sets the number of consecutive base-library blocks that <code>AscendIndexInt8Flat</code> computes in a single <code>search</code> call.</td><td width="90" align="center" valign="middle">6.0.RC3</td></tr>
+<tr><td valign="middle"><a href="./attribute_filtering-based_retrieval.md#initwithextraval">InitWithExtraVal</a> <code>AscendIndexTS</code></td><td width="180" align="center" valign="middle">Added</td><td valign="middle">Initialization function for an instance with extra attributes.</td><td width="90" align="center" valign="middle">6.0.RC3</td></tr>
+<tr><td valign="middle"><a href="./attribute_filtering-based_retrieval.md#addwithextraval">AddWithExtraVal</a> <code>AscendIndexTS</code></td><td width="180" align="center" valign="middle">Added</td><td valign="middle">API for adding features with additional attributes.</td><td width="90" align="center" valign="middle">6.0.RC3</td></tr>
+<tr><td valign="middle"><a href="./attribute_filtering-based_retrieval.md#getbasebyrangewithextraval">GetBaseByRangeWithExtraVal</a> <code>AscendIndexTS</code></td><td width="180" align="center" valign="middle">Added</td><td valign="middle">Queries the base library with additional attributes by range.</td><td width="90" align="center" valign="middle">6.0.RC3</td></tr>
+<tr><td valign="middle"><a href="./attribute_filtering-based_retrieval.md#getextravalattrbylabel">GetExtraValAttrByLabel</a> <code>AscendIndexTS</code></td><td width="180" align="center" valign="middle">Added</td><td valign="middle">Obtains the attributes of the specified label feature.</td><td width="90" align="center" valign="middle">6.0.RC3</td></tr>
+<tr><td valign="middle"><a href="./attribute_filtering-based_retrieval.md#extravalattr">ExtraValAttr</a> <code>AscendIndexTS</code></td><td width="180" align="center" valign="middle">Added</td><td valign="middle">Additional attribute information.</td><td width="90" align="center" valign="middle">6.0.RC3</td></tr>
+<tr><td valign="middle"><a href="./attribute_filtering-based_retrieval.md#extravalfilter">ExtraValFilter</a> <code>AscendIndexTS</code></td><td width="180" align="center" valign="middle">Added</td><td valign="middle">Additional attribute filter.</td><td width="90" align="center" valign="middle">6.0.RC3</td></tr>
+<tr><td valign="middle">The <a href="./approximate_retrieval.md#setremovefast">setRemoveFast</a> <code>AscendIndexBinaryFlat</code></td><td width="180" align="center" valign="middle">Added</td><td valign="middle">Sets whether <code>AscendIndexBinaryFlat</code> quickly deletes vectors from the base library.</td><td width="90" align="center" valign="middle">6.0.RC3</td></tr>
+<tr><td valign="middle"><a href="./approximate_retrieval.md#ascendindexvstar">AscendIndexVStar</a></td><td width="180" align="center" valign="middle">Added</td><td valign="middle">Adds the new <code>AscendIndexVStar</code> algorithm.</td><td width="90" align="center" valign="middle">6.0.RC3</td></tr>
+<tr><td valign="middle"><a href="./approximate_retrieval.md#ascendindexgreat">AscendIndexGreat</a></td><td width="180" align="center" valign="middle">Added</td><td valign="middle">Adds the new <code>AscendIndexGreat</code> algorithm.</td><td width="90" align="center" valign="middle">6.0.RC3</td></tr>
+<tr><td valign="middle">The <a href="./approximate_retrieval.md#setsearchparams">setSearchParams</a> <code>AscendIndexIVFSQT</code></td><td width="180" align="center" valign="middle">Added</td><td valign="middle">Sets the parameters that affect retrieval accuracy and performance.</td><td width="90" align="center" valign="middle">6.0.RC3</td></tr>
+<tr><td valign="middle">The <a href="./approximate_retrieval.md#setnumprobes">setNumProbes</a> <code>AscendIndexIVFSQT</code></td><td width="180" align="center" valign="middle">Retirement notice</td><td valign="middle">Expected to be deprecated in September 2025. Use <code>setSearchParams</code> instead.</td><td width="90" align="center" valign="middle">6.0.RC3</td></tr>
+<tr><td valign="middle">The <a href="./approximate_retrieval.md#updatetparams">updateTParams</a> <code>AscendIndexIVFSQT</code></td><td width="180" align="center" valign="middle">Retirement notice</td><td valign="middle">Expected to be deprecated in September 2025. Use <code>setSearchParams</code> instead.</td><td width="90" align="center" valign="middle">6.0.RC3</td></tr>
+<tr><td valign="middle">The <a href="./attribute_filtering-based_retrieval.md#setsavehostmemory">SetSaveHostMemory</a> <code>AscendIndexTS</code></td><td width="180" align="center" valign="middle">Added</td><td valign="middle">Sets the API for using the host-memory-saving mode.</td><td width="90" align="center" valign="middle">6.0.0</td></tr>
+<tr><td valign="middle">The <a href="./full_retrieval.md#add">add</a> <code>AscendIndex</code></td><td width="180" align="center" valign="middle">Added</td><td valign="middle">The Flat algorithm newly supports ingesting FP16 data into the base library.</td><td width="90" align="center" valign="middle">6.0.0</td></tr>
+<tr><td valign="middle">The <a href="./full_retrieval.md#add_with_ids">add_with_ids</a> <code>AscendIndex</code></td><td width="180" align="center" valign="middle">Added</td><td valign="middle">The Flat algorithm newly supports ingesting FP16 data into the base library with IDs.</td><td width="90" align="center" valign="middle">6.0.0</td></tr>
+<tr><td valign="middle">The <a href="./full_retrieval.md#search">search</a> <code>AscendIndex</code></td><td width="180" align="center" valign="middle">Added</td><td valign="middle">The Flat algorithm newly supports FP16 retrieval.</td><td width="90" align="center" valign="middle">6.0.0</td></tr>
+<tr><td valign="middle">The <a href="./full_retrieval.md#search_with_masks">search_with_masks</a> <code>AscendIndexFlat</code></td><td width="180" align="center" valign="middle">Added</td><td valign="middle">The Flat algorithm newly supports FP16 retrieval with masks.</td><td width="90" align="center" valign="middle">6.0.0</td></tr>
+<tr><td valign="middle">The <a href="./approximate_retrieval.md#ascendindexivfsp">AscendIndexIVFSP</a> <code>AscendIndexIVFSP</code></td><td width="180" align="center" valign="middle">Added</td><td valign="middle">Constructor for the shared-codebook mode.</td><td width="90" align="center" valign="middle">6.0.0</td></tr>
+<tr><td valign="middle">The <a href="./approximate_retrieval.md#savealldata">saveAllData</a> <code>AscendIndexIVFSP</code></td><td width="180" align="center" valign="middle">Added</td><td valign="middle">Stores IVFSP data in memory.</td><td width="90" align="center" valign="middle">6.0.0</td></tr>
+<tr><td valign="middle">The <a href="./approximate_retrieval.md#loadalldata-api">loadAllData</a> <code>AscendIndexIVFSP</code></td><td width="180" align="center" valign="middle">Added</td><td valign="middle">Restores IVFSP from memory.</td><td width="90" align="center" valign="middle">6.0.0</td></tr>
+</tbody></table>
 
 ## Calling Process and Inheritance Relations<a name="ZH-CN_TOPIC_0000001506615153"></a>
 
@@ -82,32 +84,33 @@ Feature retrieval inherits from `Index` in Faiss and supports multiple retrieval
 
 **Table 1** Header files
 
-|Header File Name|Directory|Purpose|
-|--|--|--|
-|AscendCloner.h|${mxIndex_install_path}/mxIndex/include/faiss/ascend/|This header file provides the operation for copying retrieval `Index` resources from the NPU to Faiss on the CPU side. The copy process occurs in memory. Data loaded on the original NPU `Index` is copied to CPU-side memory, which makes it easy to use the same base library for retrieval on the CPU.|
-|AscendClonerOptions.h|${mxIndex_install_path}/mxIndex/include/faiss/ascend/|Provides configuration options.|
-|AscendIndex.h|${mxIndex_install_path}/mxIndex/include/faiss/ascend/|`AscendIndex` is the base class for most retrieval `Index` implementations in the feature retrieval component. It sits on top of Faiss and defines APIs for other indexes in feature retrieval.|
-|AscendIndexBinaryFlat.h|${mxIndex_install_path}/mxIndex/include/faiss/ascend/|This header file provides the Hamming-distance API class and defines the external Hamming-distance APIs.|
-|AscendIndexCluster.h|${mxIndex_install_path}/mxIndex/include/faiss/ascend/|External APIs of `AscendIndexCluster`.|
-|AscendIndexFlat.h|${mxIndex_install_path}/mxIndex/include/faiss/ascend/|This class mainly provides external APIs for Flat-FP16.|
-|AscendIndexIVF.h|${mxIndex_install_path}/mxIndex/include/faiss/ascend/|`AscendIndexIVF` is the base class for approximate retrieval and cannot be used directly.|
-|AscendIndexIVFSP.h|${mxIndex_install_path}/mxIndex/include/faiss/ascend/|Provides the external APIs for IVFSP. The core APIs include `add`, `add_with_ids`, `search`, and `search_with_filter`.|
-|AscendIndexIVFSQ.h|${mxIndex_install_path}/mxIndex/include/faiss/ascend/|External APIs for IVFSQ, including `train`, `copyto`, `copyfrom`, and the constructor.|
-|AscendIndexInt8.h|${mxIndex_install_path}/mxIndex/include/faiss/ascend/|`AscendIndex` is the base class for int8-type indexes in the feature retrieval component. It sits on top of Faiss and defines APIs for `IndexInt8Flat`.|
-|AscendIndexInt8Flat.h|${mxIndex_install_path}/mxIndex/include/faiss/ascend/|This class mainly provides external APIs for Flat-Int8.|
-|AscendIndexSQ.h|${mxIndex_install_path}/mxIndex/include/faiss/ascend/|External API definitions for SQ retrieval.|
-|AscendIndexTS.h|${mxIndex_install_path}/mxIndex/include/faiss/ascend/|External APIs for the spatiotemporal library, including the Hamming, `Int8Flat`, and `FP16Flat` algorithms.|
-|AscendMultiIndexSearch.h|${mxIndex_install_path}/mxIndex/include/faiss/ascend/|Provides the external APIs for multi-index retrieval.|
-|AscendNNInference.h|${mxIndex_install_path}/mxIndex/include/faiss/ascend/|External APIs for neural-network dimensionality reduction.|
-|AscendIndexIVFSQT.h|${mxIndex_install_path}/mxIndex/include/faiss/ascend/custom|Contains the three-level IVFSQ retrieval algorithm with dimensionality reduction and fuzzy clustering. It reclusters each cluster. First it selects `nprobe` clusters based on the first-level clustering results. Then it selects `l2nprobe` clusters from all second-level clusters, and then it performs precise retrieval.|
-|IReduction.h|${mxIndex_install_path}/mxIndex/include/faiss/ascend/custom|`IReduction` is the unified API for dimensionality reduction methods in the feature retrieval component. It currently supports the `PCAR` and `NN` dimensionality-reduction algorithms.|
-|Version.h|${mxIndex_install_path}/mxIndex/include/faiss/ascend/utils|API for obtaining version information.|
-|ErrorCode.h|${mxIndex_install_path}/mxIndex/device/include|Contains Index SDK error code information.|
-|IndexILFlat.h|${mxIndex_install_path}/mxIndex/device/include|External API definition of `IndexILFlat`.|
-|IndexIL.h|${mxIndex_install_path}/mxIndex/device/include|Base class for `IndexILFlat`. It cannot be used directly.|
-|AscendIndexGreat.h|${mxIndex_install_path}/mxIndex/include/faiss/ascend/|External API definition for Great retrieval.|
-|AscendIndexVStar.h|${mxIndex_install_path}/mxIndex/include/faiss/ascend/|External API definition for VStar retrieval.|
-|AscendIndexMixSearchParams.h|${mxIndex_install_path}/mxIndex/include/faiss/ascend/|External header file for the parameter structures required by VStar and Great retrieval.|
+<table><tbody>
+<tr><td align="center" valign="middle"><strong>Header File Name</strong></td><td align="center" valign="middle"><strong>Directory</strong></td><td align="center" valign="middle"><strong>Purpose</strong></td></tr>
+<tr><td valign="middle">AscendCloner.h</td><td valign="middle">${mxIndex_install_path}/mxIndex/include/faiss/ascend/</td><td valign="middle">This header file provides the operation for copying retrieval <code>Index</code> resources from the NPU to Faiss on the CPU side. The copy process occurs in memory. Data loaded on the original NPU <code>Index</code> is copied to CPU-side memory, which makes it easy to use the same base library for retrieval on the CPU.</td></tr>
+<tr><td valign="middle">AscendClonerOptions.h</td><td valign="middle">${mxIndex_install_path}/mxIndex/include/faiss/ascend/</td><td valign="middle">Provides configuration options.</td></tr>
+<tr><td valign="middle">AscendIndex.h</td><td valign="middle">${mxIndex_install_path}/mxIndex/include/faiss/ascend/</td><td valign="middle"><code>AscendIndex</code> is the base class for most retrieval <code>Index</code> implementations in the feature retrieval component. It sits on top of Faiss and defines APIs for other indexes in feature retrieval.</td></tr>
+<tr><td valign="middle">AscendIndexBinaryFlat.h</td><td valign="middle">${mxIndex_install_path}/mxIndex/include/faiss/ascend/</td><td valign="middle">This header file provides the Hamming-distance API class and defines the external Hamming-distance APIs.</td></tr>
+<tr><td valign="middle">AscendIndexCluster.h</td><td valign="middle">${mxIndex_install_path}/mxIndex/include/faiss/ascend/</td><td valign="middle">External APIs of <code>AscendIndexCluster</code>.</td></tr>
+<tr><td valign="middle">AscendIndexFlat.h</td><td valign="middle">${mxIndex_install_path}/mxIndex/include/faiss/ascend/</td><td valign="middle">This class mainly provides external APIs for Flat-FP16.</td></tr>
+<tr><td valign="middle">AscendIndexIVF.h</td><td valign="middle">${mxIndex_install_path}/mxIndex/include/faiss/ascend/</td><td valign="middle"><code>AscendIndexIVF</code> is the base class for approximate retrieval and cannot be used directly.</td></tr>
+<tr><td valign="middle">AscendIndexIVFSP.h</td><td valign="middle">${mxIndex_install_path}/mxIndex/include/faiss/ascend/</td><td valign="middle">Provides the external APIs for IVFSP. The core APIs include <code>add</code>, <code>add_with_ids</code>, <code>search</code>, and <code>search_with_filter</code>.</td></tr>
+<tr><td valign="middle">AscendIndexIVFSQ.h</td><td valign="middle">${mxIndex_install_path}/mxIndex/include/faiss/ascend/</td><td valign="middle">External APIs for IVFSQ, including <code>train</code>, <code>copyto</code>, <code>copyfrom</code>, and the constructor.</td></tr>
+<tr><td valign="middle">AscendIndexInt8.h</td><td valign="middle">${mxIndex_install_path}/mxIndex/include/faiss/ascend/</td><td valign="middle"><code>AscendIndex</code> is the base class for int8-type indexes in the feature retrieval component. It sits on top of Faiss and defines APIs for <code>IndexInt8Flat</code>.</td></tr>
+<tr><td valign="middle">AscendIndexInt8Flat.h</td><td valign="middle">${mxIndex_install_path}/mxIndex/include/faiss/ascend/</td><td valign="middle">This class mainly provides external APIs for Flat-Int8.</td></tr>
+<tr><td valign="middle">AscendIndexSQ.h</td><td valign="middle">${mxIndex_install_path}/mxIndex/include/faiss/ascend/</td><td valign="middle">External API definitions for SQ retrieval.</td></tr>
+<tr><td valign="middle">AscendIndexTS.h</td><td valign="middle">${mxIndex_install_path}/mxIndex/include/faiss/ascend/</td><td valign="middle">External APIs for the spatiotemporal library, including the Hamming, <code>Int8Flat</code>, and <code>FP16Flat</code> algorithms.</td></tr>
+<tr><td valign="middle">AscendMultiIndexSearch.h</td><td valign="middle">${mxIndex_install_path}/mxIndex/include/faiss/ascend/</td><td valign="middle">Provides the external APIs for multi-index retrieval.</td></tr>
+<tr><td valign="middle">AscendNNInference.h</td><td valign="middle">${mxIndex_install_path}/mxIndex/include/faiss/ascend/</td><td valign="middle">External APIs for neural-network dimensionality reduction.</td></tr>
+<tr><td valign="middle">AscendIndexIVFSQT.h</td><td valign="middle">${mxIndex_install_path}/mxIndex/include/faiss/ascend/custom</td><td valign="middle">Contains the three-level IVFSQ retrieval algorithm with dimensionality reduction and fuzzy clustering. It reclusters each cluster. First it selects <code>nprobe</code> clusters based on the first-level clustering results. Then it selects <code>l2nprobe</code> clusters from all second-level clusters, and then it performs precise retrieval.</td></tr>
+<tr><td valign="middle">IReduction.h</td><td valign="middle">${mxIndex_install_path}/mxIndex/include/faiss/ascend/custom</td><td valign="middle"><code>IReduction</code> is the unified API for dimensionality reduction methods in the feature retrieval component. It currently supports the <code>PCAR</code> and <code>NN</code> dimensionality-reduction algorithms.</td></tr>
+<tr><td valign="middle">Version.h</td><td valign="middle">${mxIndex_install_path}/mxIndex/include/faiss/ascend/utils</td><td valign="middle">API for obtaining version information.</td></tr>
+<tr><td valign="middle">ErrorCode.h</td><td valign="middle">${mxIndex_install_path}/mxIndex/device/include</td><td valign="middle">Contains Index SDK error code information.</td></tr>
+<tr><td valign="middle">IndexILFlat.h</td><td valign="middle">${mxIndex_install_path}/mxIndex/device/include</td><td valign="middle">External API definition of <code>IndexILFlat</code>.</td></tr>
+<tr><td valign="middle">IndexIL.h</td><td valign="middle">${mxIndex_install_path}/mxIndex/device/include</td><td valign="middle">Base class for <code>IndexILFlat</code>. It cannot be used directly.</td></tr>
+<tr><td valign="middle">AscendIndexGreat.h</td><td valign="middle">${mxIndex_install_path}/mxIndex/include/faiss/ascend/</td><td valign="middle">External API definition for Great retrieval.</td></tr>
+<tr><td valign="middle">AscendIndexVStar.h</td><td valign="middle">${mxIndex_install_path}/mxIndex/include/faiss/ascend/</td><td valign="middle">External API definition for VStar retrieval.</td></tr>
+<tr><td valign="middle">AscendIndexMixSearchParams.h</td><td valign="middle">${mxIndex_install_path}/mxIndex/include/faiss/ascend/</td><td valign="middle">External header file for the parameter structures required by VStar and Great retrieval.</td></tr>
+</tbody></table>
 
 > [!NOTE]
 >

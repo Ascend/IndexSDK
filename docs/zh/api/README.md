@@ -1,14 +1,15 @@
 # API参考<a name="ZH-CN_TOPIC_0000001456534960"></a>
 
-|分类|导航链接|
-|--|--|
-|全量检索|[01_full_retrieval](./01_full_retrieval)|
-|近似检索|[02_approximate_retrieval](./02_approximate_retrieval)|
-|属性过滤检索|[03_attribute_filtering-based_retrieval](./03_attribute_filtering-based_retrieval)|
-|多index批量检索|[04_multi-index_batch_retrieval](./04_multi-index_batch_retrieval)|
-|其他功能|[05_more_functions](./05_more_functions)|
-|未使用接口|[06_unused_apis](./06_unused_apis)|
-|接口调用返回值参考|[07_return_code_reference](./07_return_code_reference)|
+<table><tbody>
+<tr><td width="180" align="center" valign="middle"><strong>分类</strong></td><td align="center" valign="middle"><strong>导航链接</strong></td></tr>
+<tr><td width="180" align="center" valign="middle">全量检索</td><td valign="middle"><a href="./01_full_retrieval">01_full_retrieval</a></td></tr>
+<tr><td width="180" align="center" valign="middle">近似检索</td><td valign="middle"><a href="./02_approximate_retrieval">02_approximate_retrieval</a></td></tr>
+<tr><td width="180" align="center" valign="middle">属性过滤检索</td><td valign="middle"><a href="./03_attribute_filtering-based_retrieval">03_attribute_filtering-based_retrieval</a></td></tr>
+<tr><td width="180" align="center" valign="middle">多index批量检索</td><td valign="middle"><a href="./04_multi-index_batch_retrieval">04_multi-index_batch_retrieval</a></td></tr>
+<tr><td width="180" align="center" valign="middle">其他功能</td><td valign="middle"><a href="./05_more_functions">05_more_functions</a></td></tr>
+<tr><td width="180" align="center" valign="middle">未使用接口</td><td valign="middle"><a href="./06_unused_apis">06_unused_apis</a></td></tr>
+<tr><td width="180" align="center" valign="middle">接口调用返回值参考</td><td valign="middle"><a href="./07_return_code_reference">07_return_code_reference</a></td></tr>
+</tbody></table>
 
 ## 接口变更说明<a name="ZH-CN_TOPIC_0000001691057326"></a>
 
@@ -19,36 +20,37 @@
 - 删除：表示该接口在此次版本已经删除。
 - 退出声明：表示该接口自作出退出声明的版本起停止演进，且在声明一年后退出并删除。
 
-|类名/API原型|变更类别|变更说明|变更版本|
-|--|--|--|--|
-|`AscendIndexIVFConfig` / `AscendIndexIVFPQConfig`|修改|将 large-nlist 训练相关字段（`trainSamplesPerList`、`maxTrainSamples`、`pqNiter`、`useDistributedCoarse`）从 `AscendIndexIVFConfig` 下沉到 `AscendIndexIVFPQConfig` 末尾，恢复派生 IVF config（IVFFlat / IVFSQ / IVFRaBitQ）的公开 POD 布局。Fixes #133。|26.2.0|
-|AscendIndexCluster的[Init](./01_full_retrieval/02_AscendIndexCluster.md#init接口)|修改|AscendIndexCluster算法Init接口resourceSize变量使用默认值128MB。|6.0.RC2|
-|AscendIndexBinaryFlat的AscendIndexBinaryFlat构造函数|修改|AscendIndexBinaryFlat构造函数新增参数usedFloat，用于设置入库为二进制、检索特征为float类型的检索方式（search接口）的性能提升。|6.0.RC2|
-|AscendIndexBinaryFlat的[search接口](./02_approximate_retrieval/01_AscendIndexBinaryFlat.md#search接口)|新增|AscendIndexBinaryFlat新增入库特征为二进制特征，检索特征为float类型的检索方式。|6.0.RC2|
-|AscendIndexInt8Flat的[AscendIndexInt8FlatConfig](./01_full_retrieval/07_AscendIndexInt8FlatConfig.md#ascendindexint8flatconfig)（表2）|修改|“resourceSize”配置的值不超过16 \* 1024MB（16 \* 1024 \* 1024 \* 1024字节）。|6.0.RC3|
-|AscendIndexInt8Flat的[AscendIndexInt8FlatConfig](./01_full_retrieval/07_AscendIndexInt8FlatConfig.md#ascendindexint8flatconfig)（表3）|修改|“resourceSize”配置的值不超过16 \* 1024MB（16 \* 1024 \* 1024 \* 1024字节）。|6.0.RC3|
-|AscendIndexTS的[Init](./03_attribute_filtering-based_retrieval/01_AscendIndexTS.md#init接口)|修改|修改“maxFeatureRowCount”参数约束。|6.0.RC3|
-|AscendIndexInt8Flat的[setPageSize](./01_full_retrieval/06_AscendIndexInt8Flat.md#setpagesize接口)|新增|设置该AscendIndexInt8Flat在search时一次性连续计算底库的block数量。|6.0.RC3|
-|AscendIndexTS的[InitWithExtraVal](./03_attribute_filtering-based_retrieval/01_AscendIndexTS.md#initwithextraval接口)|新增|实例带附加属性的初始化函数。|6.0.RC3|
-|AscendIndexTS的[AddWithExtraVal](./03_attribute_filtering-based_retrieval/01_AscendIndexTS.md#addwithextraval接口)|新增|添加附加属性特征接口。|6.0.RC3|
-|AscendIndexTS的[GetBaseByRangeWithExtraVal](./03_attribute_filtering-based_retrieval/01_AscendIndexTS.md#getbasebyrangewithextraval接口)|新增|基于范围查询带附加属性的底库。|6.0.RC3|
-|AscendIndexTS的[GetExtraValAttrByLabel](./03_attribute_filtering-based_retrieval/01_AscendIndexTS.md#getextravalattrbylabel接口)|新增|获取指定Label特征的属性。|6.0.RC3|
-|AscendIndexTS的[ExtraValAttr](./03_attribute_filtering-based_retrieval/03_ExtraValAttr.md#extravalattr)|新增|附加属性信息。|6.0.RC3|
-|AscendIndexTS的[ExtraValFilter](./03_attribute_filtering-based_retrieval/04_ExtraValFilter.md#extravalfilter)|新增|附加属性过滤器。|6.0.RC3|
-|AscendIndexBinaryFlat的[setRemoveFast](./02_approximate_retrieval/01_AscendIndexBinaryFlat.md#setremovefast接口)|新增|AscendIndexBinaryFlat设置是否快速删除底库中的向量。|6.0.RC3|
-|[AscendIndexVStar](./02_approximate_retrieval/11_AscendIndexVStar.md#ascendindexvstar)|新增|新增AscendIndexVStar新算法|6.0.RC3|
-|[AscendIndexGreat](./02_approximate_retrieval/12_AscendIndexGreat.md#ascendindexgreat)|新增|新增AscendIndexGreat新算法|6.0.RC3|
-|AscendIndexIVFSQT的[setSearchParams](./02_approximate_retrieval/09_AscendIndexIVFSQT.md#setsearchparams接口)|新增|设置影响检索精度和性能的参数|6.0.RC3|
-|AscendIndexIVFSQT的[setNumProbes](./02_approximate_retrieval/09_AscendIndexIVFSQT.md#setnumprobes接口)|退出声明|预计2025年9月废除，请使用setSearchParams|6.0.RC3|
-|AscendIndexIVFSQT的[updateTParams](./02_approximate_retrieval/09_AscendIndexIVFSQT.md#updatetparams接口)|退出声明|预计2025年9月废除，请使用setSearchParams|6.0.RC3|
-|AscendIndexTS的[SetSaveHostMemory](./03_attribute_filtering-based_retrieval/01_AscendIndexTS.md#setsavehostmemory接口)|新增|设置使用节约host内存模式的接口|6.0.0|
-|AscendIndex的[add](./01_full_retrieval/01_AscendIndex.md#add接口)|新增|Flat算法新增支持FP16数据底库入库函数|6.0.0|
-|AscendIndex的[add_with_ids](./01_full_retrieval/01_AscendIndex.md#add_with_ids接口)|新增|Flat算法新增支持FP16数据底库带id入库函数|6.0.0|
-|AscendIndex的[search](./01_full_retrieval/01_AscendIndex.md#search接口)|新增|Flat算法新增支持FP16数据检索函数|6.0.0|
-|AscendIndexFlat[search_with_masks](./01_full_retrieval/08_AscendIndexFlat.md#search_with_masks接口)|新增|Flat算法新增支持FP16数据带mask检索函数|6.0.0|
-|AscendIndexIVFSP的[AscendIndexIVFSP](./02_approximate_retrieval/05_AscendIndexIVFSP.md#ascendindexivfsp)|新增|共享码本的构造函数|6.0.0|
-|AscendIndexIVFSP的[saveAllData](./02_approximate_retrieval/05_AscendIndexIVFSP.md#savealldata接口)|新增|存储IVFSP数据至内存中|6.0.0|
-|AscendIndexIVFSP的[loadAllData](./02_approximate_retrieval/05_AscendIndexIVFSP.md#loadalldata接口)|新增|从内存中恢复IVFSP|6.0.0|
+<table><tbody>
+<tr><td align="center" valign="middle"><strong>类名/API原型</strong></td><td width="100" align="center" valign="middle"><strong>变更类别</strong></td><td align="center" valign="middle"><strong>变更说明</strong></td><td width="90" align="center" valign="middle"><strong>变更版本</strong></td></tr>
+<tr><td valign="middle"><code>AscendIndexIVFConfig</code> / <code>AscendIndexIVFPQConfig</code></td><td width="100" align="center" valign="middle">修改</td><td valign="middle">将 large-nlist 训练相关字段（<code>trainSamplesPerList</code>、<code>maxTrainSamples</code>、<code>pqNiter</code>、<code>useDistributedCoarse</code>）从 <code>AscendIndexIVFConfig</code> 下沉到 <code>AscendIndexIVFPQConfig</code> 末尾，恢复派生 IVF config（IVFFlat / IVFSQ / IVFRaBitQ）的公开 POD 布局。Fixes #133。</td><td width="90" align="center" valign="middle">26.2.0</td></tr>
+<tr><td valign="middle">AscendIndexCluster的<a href="./01_full_retrieval/02_AscendIndexCluster.md#init接口">Init</a></td><td width="100" align="center" valign="middle">修改</td><td valign="middle">AscendIndexCluster算法Init接口resourceSize变量使用默认值128MB。</td><td width="90" align="center" valign="middle">6.0.RC2</td></tr>
+<tr><td valign="middle">AscendIndexBinaryFlat的AscendIndexBinaryFlat构造函数</td><td width="100" align="center" valign="middle">修改</td><td valign="middle">AscendIndexBinaryFlat构造函数新增参数usedFloat，用于设置入库为二进制、检索特征为float类型的检索方式（search接口）的性能提升。</td><td width="90" align="center" valign="middle">6.0.RC2</td></tr>
+<tr><td valign="middle">AscendIndexBinaryFlat的<a href="./02_approximate_retrieval/01_AscendIndexBinaryFlat.md#search接口">search接口</a></td><td width="100" align="center" valign="middle">新增</td><td valign="middle">AscendIndexBinaryFlat新增入库特征为二进制特征，检索特征为float类型的检索方式。</td><td width="90" align="center" valign="middle">6.0.RC2</td></tr>
+<tr><td valign="middle">AscendIndexInt8Flat的<a href="./01_full_retrieval/07_AscendIndexInt8FlatConfig.md#ascendindexint8flatconfig">AscendIndexInt8FlatConfig</a>（表2）</td><td width="100" align="center" valign="middle">修改</td><td valign="middle">“resourceSize”配置的值不超过16 \* 1024MB（16 \* 1024 \* 1024 \* 1024字节）。</td><td width="90" align="center" valign="middle">6.0.RC3</td></tr>
+<tr><td valign="middle">AscendIndexInt8Flat的<a href="./01_full_retrieval/07_AscendIndexInt8FlatConfig.md#ascendindexint8flatconfig">AscendIndexInt8FlatConfig</a>（表3）</td><td width="100" align="center" valign="middle">修改</td><td valign="middle">“resourceSize”配置的值不超过16 \* 1024MB（16 \* 1024 \* 1024 \* 1024字节）。</td><td width="90" align="center" valign="middle">6.0.RC3</td></tr>
+<tr><td valign="middle">AscendIndexTS的<a href="./03_attribute_filtering-based_retrieval/01_AscendIndexTS.md#init接口">Init</a></td><td width="100" align="center" valign="middle">修改</td><td valign="middle">修改“maxFeatureRowCount”参数约束。</td><td width="90" align="center" valign="middle">6.0.RC3</td></tr>
+<tr><td valign="middle">AscendIndexInt8Flat的<a href="./01_full_retrieval/06_AscendIndexInt8Flat.md#setpagesize接口">setPageSize</a></td><td width="100" align="center" valign="middle">新增</td><td valign="middle">设置该AscendIndexInt8Flat在search时一次性连续计算底库的block数量。</td><td width="90" align="center" valign="middle">6.0.RC3</td></tr>
+<tr><td valign="middle">AscendIndexTS的<a href="./03_attribute_filtering-based_retrieval/01_AscendIndexTS.md#initwithextraval接口">InitWithExtraVal</a></td><td width="100" align="center" valign="middle">新增</td><td valign="middle">实例带附加属性的初始化函数。</td><td width="90" align="center" valign="middle">6.0.RC3</td></tr>
+<tr><td valign="middle">AscendIndexTS的<a href="./03_attribute_filtering-based_retrieval/01_AscendIndexTS.md#addwithextraval接口">AddWithExtraVal</a></td><td width="100" align="center" valign="middle">新增</td><td valign="middle">添加附加属性特征接口。</td><td width="90" align="center" valign="middle">6.0.RC3</td></tr>
+<tr><td valign="middle">AscendIndexTS的<a href="./03_attribute_filtering-based_retrieval/01_AscendIndexTS.md#getbasebyrangewithextraval接口">GetBaseByRangeWithExtraVal</a></td><td width="100" align="center" valign="middle">新增</td><td valign="middle">基于范围查询带附加属性的底库。</td><td width="90" align="center" valign="middle">6.0.RC3</td></tr>
+<tr><td valign="middle">AscendIndexTS的<a href="./03_attribute_filtering-based_retrieval/01_AscendIndexTS.md#getextravalattrbylabel接口">GetExtraValAttrByLabel</a></td><td width="100" align="center" valign="middle">新增</td><td valign="middle">获取指定Label特征的属性。</td><td width="90" align="center" valign="middle">6.0.RC3</td></tr>
+<tr><td valign="middle">AscendIndexTS的<a href="./03_attribute_filtering-based_retrieval/03_ExtraValAttr.md#extravalattr">ExtraValAttr</a></td><td width="100" align="center" valign="middle">新增</td><td valign="middle">附加属性信息。</td><td width="90" align="center" valign="middle">6.0.RC3</td></tr>
+<tr><td valign="middle">AscendIndexTS的<a href="./03_attribute_filtering-based_retrieval/04_ExtraValFilter.md#extravalfilter">ExtraValFilter</a></td><td width="100" align="center" valign="middle">新增</td><td valign="middle">附加属性过滤器。</td><td width="90" align="center" valign="middle">6.0.RC3</td></tr>
+<tr><td valign="middle">AscendIndexBinaryFlat的<a href="./02_approximate_retrieval/01_AscendIndexBinaryFlat.md#setremovefast接口">setRemoveFast</a></td><td width="100" align="center" valign="middle">新增</td><td valign="middle">AscendIndexBinaryFlat设置是否快速删除底库中的向量。</td><td width="90" align="center" valign="middle">6.0.RC3</td></tr>
+<tr><td valign="middle"><a href="./02_approximate_retrieval/11_AscendIndexVStar.md#ascendindexvstar">AscendIndexVStar</a></td><td width="100" align="center" valign="middle">新增</td><td valign="middle">新增AscendIndexVStar新算法</td><td width="90" align="center" valign="middle">6.0.RC3</td></tr>
+<tr><td valign="middle"><a href="./02_approximate_retrieval/12_AscendIndexGreat.md#ascendindexgreat">AscendIndexGreat</a></td><td width="100" align="center" valign="middle">新增</td><td valign="middle">新增AscendIndexGreat新算法</td><td width="90" align="center" valign="middle">6.0.RC3</td></tr>
+<tr><td valign="middle">AscendIndexIVFSQT的<a href="./02_approximate_retrieval/09_AscendIndexIVFSQT.md#setsearchparams接口">setSearchParams</a></td><td width="100" align="center" valign="middle">新增</td><td valign="middle">设置影响检索精度和性能的参数</td><td width="90" align="center" valign="middle">6.0.RC3</td></tr>
+<tr><td valign="middle">AscendIndexIVFSQT的<a href="./02_approximate_retrieval/09_AscendIndexIVFSQT.md#setnumprobes接口">setNumProbes</a></td><td width="100" align="center" valign="middle">退出声明</td><td valign="middle">预计2025年9月废除，请使用setSearchParams</td><td width="90" align="center" valign="middle">6.0.RC3</td></tr>
+<tr><td valign="middle">AscendIndexIVFSQT的<a href="./02_approximate_retrieval/09_AscendIndexIVFSQT.md#updatetparams接口">updateTParams</a></td><td width="100" align="center" valign="middle">退出声明</td><td valign="middle">预计2025年9月废除，请使用setSearchParams</td><td width="90" align="center" valign="middle">6.0.RC3</td></tr>
+<tr><td valign="middle">AscendIndexTS的<a href="./03_attribute_filtering-based_retrieval/01_AscendIndexTS.md#setsavehostmemory接口">SetSaveHostMemory</a></td><td width="100" align="center" valign="middle">新增</td><td valign="middle">设置使用节约host内存模式的接口</td><td width="90" align="center" valign="middle">6.0.0</td></tr>
+<tr><td valign="middle">AscendIndex的<a href="./01_full_retrieval/01_AscendIndex.md#add接口">add</a></td><td width="100" align="center" valign="middle">新增</td><td valign="middle">Flat算法新增支持FP16数据底库入库函数</td><td width="90" align="center" valign="middle">6.0.0</td></tr>
+<tr><td valign="middle">AscendIndex的<a href="./01_full_retrieval/01_AscendIndex.md#add_with_ids接口">add_with_ids</a></td><td width="100" align="center" valign="middle">新增</td><td valign="middle">Flat算法新增支持FP16数据底库带id入库函数</td><td width="90" align="center" valign="middle">6.0.0</td></tr>
+<tr><td valign="middle">AscendIndex的<a href="./01_full_retrieval/01_AscendIndex.md#search接口">search</a></td><td width="100" align="center" valign="middle">新增</td><td valign="middle">Flat算法新增支持FP16数据检索函数</td><td width="90" align="center" valign="middle">6.0.0</td></tr>
+<tr><td valign="middle">AscendIndexFlat<a href="./01_full_retrieval/08_AscendIndexFlat.md#search_with_masks接口">search_with_masks</a></td><td width="100" align="center" valign="middle">新增</td><td valign="middle">Flat算法新增支持FP16数据带mask检索函数</td><td width="90" align="center" valign="middle">6.0.0</td></tr>
+<tr><td valign="middle">AscendIndexIVFSP的<a href="./02_approximate_retrieval/05_AscendIndexIVFSP.md#ascendindexivfsp">AscendIndexIVFSP</a></td><td width="100" align="center" valign="middle">新增</td><td valign="middle">共享码本的构造函数</td><td width="90" align="center" valign="middle">6.0.0</td></tr>
+<tr><td valign="middle">AscendIndexIVFSP的<a href="./02_approximate_retrieval/05_AscendIndexIVFSP.md#savealldata接口">saveAllData</a></td><td width="100" align="center" valign="middle">新增</td><td valign="middle">存储IVFSP数据至内存中</td><td width="90" align="center" valign="middle">6.0.0</td></tr>
+<tr><td valign="middle">AscendIndexIVFSP的<a href="./02_approximate_retrieval/05_AscendIndexIVFSP.md#loadalldata接口">loadAllData</a></td><td width="100" align="center" valign="middle">新增</td><td valign="middle">从内存中恢复IVFSP</td><td width="90" align="center" valign="middle">6.0.0</td></tr>
+</tbody></table>
 
 ## 调用流程与继承关系<a name="ZH-CN_TOPIC_0000001506615153"></a>
 
@@ -82,32 +84,33 @@
 
 **表 1**  头文件列表
 
-|头文件名称|所在目录|用途|
-|--|--|--|
-|AscendCloner.h|${mxIndex_install_path}/mxIndex/include/faiss/ascend/|该头文件提供了将NPU上的检索Index资源拷贝到CPU侧Faiss的操作，拷贝过程发生在内存中，原始NPU的Index上加载的数据会被拷贝到CPU侧的内存中，方便用户在CPU上使用相同的底库执行检索。|
-|AscendClonerOptions.h|${mxIndex_install_path}/mxIndex/include/faiss/ascend/|AscendClonerOptions提供配置选项。|
-|AscendIndex.h|${mxIndex_install_path}/mxIndex/include/faiss/ascend/|AscendIndex作为特征检索组件中的大部分检索的Index的基类，向上承接Faiss，向下为特征检索中的其他Index定义接口。|
-|AscendIndexBinaryFlat.h|${mxIndex_install_path}/mxIndex/include/faiss/ascend/|AscendIndexBinaryFlat.h是汉明距离的接口类，定义汉明距离对外接口。|
-|AscendIndexCluster.h|${mxIndex_install_path}/mxIndex/include/faiss/ascend/|AscendIndexCluster对外接口。|
-|AscendIndexFlat.h|${mxIndex_install_path}/mxIndex/include/faiss/ascend/|该类主要提供Flat-FP16的对外接口。|
-|AscendIndexIVF.h|${mxIndex_install_path}/mxIndex/include/faiss/ascend/|AscendIndexIVF是近似检索的基类，不能直接使用。|
-|AscendIndexIVFSP.h|${mxIndex_install_path}/mxIndex/include/faiss/ascend/|该类提供IVFSP的对外接口，核心接口包括add，add_with_ids，search和search_with_filter。|
-|AscendIndexIVFSQ.h|${mxIndex_install_path}/mxIndex/include/faiss/ascend/|IVFSQ对外接口，包括train，copyto，copyfrom，构造函数。|
-|AscendIndexInt8.h|${mxIndex_install_path}/mxIndex/include/faiss/ascend/|AscendIndex作为特征检索组件中的int8类型的Index的基类，向上承接Faiss，向下为特征检索中的IndexInt8Flat定义接口。|
-|AscendIndexInt8Flat.h|${mxIndex_install_path}/mxIndex/include/faiss/ascend/|该类主要提供Flat-Int8的对外接口。|
-|AscendIndexSQ.h|${mxIndex_install_path}/mxIndex/include/faiss/ascend/|SQ检索的对外接口定义。|
-|AscendIndexTS.h|${mxIndex_install_path}/mxIndex/include/faiss/ascend/|时空库对外接口，包括了汉明、int8Flat、FP16Flat三种算法。|
-|AscendMultiIndexSearch.h|${mxIndex_install_path}/mxIndex/include/faiss/ascend/|提供多index检索的对外接口。|
-|AscendNNInference.h|${mxIndex_install_path}/mxIndex/include/faiss/ascend/|神经网络降维对外接口。|
-|AscendIndexIVFSQT.h|${mxIndex_install_path}/mxIndex/include/faiss/ascend/custom|包含降维算法带有模糊聚类功能的三级检索IVFSQ算法，将每个聚类簇再进行聚类，先根据一级聚类结果选出nprobe个簇，再在这些簇的所有二级聚类簇中选出l2nprobe个簇，再进行精搜。|
-|IReduction.h|${mxIndex_install_path}/mxIndex/include/faiss/ascend/custom|IReduction是特征检索组件中降维方法的统一接口，目前支持**PCAR**和**NN**两种降维算法。|
-|Version.h|${mxIndex_install_path}/mxIndex/include/faiss/ascend/utils|获取版本信息接口。|
-|ErrorCode.h|${mxIndex_install_path}/mxIndex/device/include|包含Index SDK错误码信息。|
-|IndexILFlat.h|${mxIndex_install_path}/mxIndex/device/include|IndexILFlat对外接口定义。|
-|IndexIL.h|${mxIndex_install_path}/mxIndex/device/include|IndexILFlat的基类，不能直接使用。|
-|AscendIndexGreat.h|${mxIndex_install_path}/mxIndex/include/faiss/ascend/|Great检索的对外接口定义。|
-|AscendIndexVStar.h|${mxIndex_install_path}/mxIndex/include/faiss/ascend/|VStar检索的对外接口定义。|
-|AscendIndexMixSearchParams.h|${mxIndex_install_path}/mxIndex/include/faiss/ascend/|Vstar和Great检索所需的参数结构体对外头文件。|
+<table><tbody>
+<tr><td align="center" valign="middle"><strong>头文件名称</strong></td><td align="center" valign="middle"><strong>所在目录</strong></td><td align="center" valign="middle"><strong>用途</strong></td></tr>
+<tr><td valign="middle">AscendCloner.h</td><td valign="middle">${mxIndex_install_path}/mxIndex/include/faiss/ascend/</td><td valign="middle">该头文件提供了将NPU上的检索Index资源拷贝到CPU侧Faiss的操作，拷贝过程发生在内存中，原始NPU的Index上加载的数据会被拷贝到CPU侧的内存中，方便用户在CPU上使用相同的底库执行检索。</td></tr>
+<tr><td valign="middle">AscendClonerOptions.h</td><td valign="middle">${mxIndex_install_path}/mxIndex/include/faiss/ascend/</td><td valign="middle">AscendClonerOptions提供配置选项。</td></tr>
+<tr><td valign="middle">AscendIndex.h</td><td valign="middle">${mxIndex_install_path}/mxIndex/include/faiss/ascend/</td><td valign="middle">AscendIndex作为特征检索组件中的大部分检索的Index的基类，向上承接Faiss，向下为特征检索中的其他Index定义接口。</td></tr>
+<tr><td valign="middle">AscendIndexBinaryFlat.h</td><td valign="middle">${mxIndex_install_path}/mxIndex/include/faiss/ascend/</td><td valign="middle">AscendIndexBinaryFlat.h是汉明距离的接口类，定义汉明距离对外接口。</td></tr>
+<tr><td valign="middle">AscendIndexCluster.h</td><td valign="middle">${mxIndex_install_path}/mxIndex/include/faiss/ascend/</td><td valign="middle">AscendIndexCluster对外接口。</td></tr>
+<tr><td valign="middle">AscendIndexFlat.h</td><td valign="middle">${mxIndex_install_path}/mxIndex/include/faiss/ascend/</td><td valign="middle">该类主要提供Flat-FP16的对外接口。</td></tr>
+<tr><td valign="middle">AscendIndexIVF.h</td><td valign="middle">${mxIndex_install_path}/mxIndex/include/faiss/ascend/</td><td valign="middle">AscendIndexIVF是近似检索的基类，不能直接使用。</td></tr>
+<tr><td valign="middle">AscendIndexIVFSP.h</td><td valign="middle">${mxIndex_install_path}/mxIndex/include/faiss/ascend/</td><td valign="middle">该类提供IVFSP的对外接口，核心接口包括add，add_with_ids，search和search_with_filter。</td></tr>
+<tr><td valign="middle">AscendIndexIVFSQ.h</td><td valign="middle">${mxIndex_install_path}/mxIndex/include/faiss/ascend/</td><td valign="middle">IVFSQ对外接口，包括train，copyto，copyfrom，构造函数。</td></tr>
+<tr><td valign="middle">AscendIndexInt8.h</td><td valign="middle">${mxIndex_install_path}/mxIndex/include/faiss/ascend/</td><td valign="middle">AscendIndex作为特征检索组件中的int8类型的Index的基类，向上承接Faiss，向下为特征检索中的IndexInt8Flat定义接口。</td></tr>
+<tr><td valign="middle">AscendIndexInt8Flat.h</td><td valign="middle">${mxIndex_install_path}/mxIndex/include/faiss/ascend/</td><td valign="middle">该类主要提供Flat-Int8的对外接口。</td></tr>
+<tr><td valign="middle">AscendIndexSQ.h</td><td valign="middle">${mxIndex_install_path}/mxIndex/include/faiss/ascend/</td><td valign="middle">SQ检索的对外接口定义。</td></tr>
+<tr><td valign="middle">AscendIndexTS.h</td><td valign="middle">${mxIndex_install_path}/mxIndex/include/faiss/ascend/</td><td valign="middle">时空库对外接口，包括了汉明、int8Flat、FP16Flat三种算法。</td></tr>
+<tr><td valign="middle">AscendMultiIndexSearch.h</td><td valign="middle">${mxIndex_install_path}/mxIndex/include/faiss/ascend/</td><td valign="middle">提供多index检索的对外接口。</td></tr>
+<tr><td valign="middle">AscendNNInference.h</td><td valign="middle">${mxIndex_install_path}/mxIndex/include/faiss/ascend/</td><td valign="middle">神经网络降维对外接口。</td></tr>
+<tr><td valign="middle">AscendIndexIVFSQT.h</td><td valign="middle">${mxIndex_install_path}/mxIndex/include/faiss/ascend/custom</td><td valign="middle">包含降维算法带有模糊聚类功能的三级检索IVFSQ算法，将每个聚类簇再进行聚类，先根据一级聚类结果选出nprobe个簇，再在这些簇的所有二级聚类簇中选出l2nprobe个簇，再进行精搜。</td></tr>
+<tr><td valign="middle">IReduction.h</td><td valign="middle">${mxIndex_install_path}/mxIndex/include/faiss/ascend/custom</td><td valign="middle">IReduction是特征检索组件中降维方法的统一接口，目前支持<strong>PCAR</strong>和<strong>NN</strong>两种降维算法。</td></tr>
+<tr><td valign="middle">Version.h</td><td valign="middle">${mxIndex_install_path}/mxIndex/include/faiss/ascend/utils</td><td valign="middle">获取版本信息接口。</td></tr>
+<tr><td valign="middle">ErrorCode.h</td><td valign="middle">${mxIndex_install_path}/mxIndex/device/include</td><td valign="middle">包含Index SDK错误码信息。</td></tr>
+<tr><td valign="middle">IndexILFlat.h</td><td valign="middle">${mxIndex_install_path}/mxIndex/device/include</td><td valign="middle">IndexILFlat对外接口定义。</td></tr>
+<tr><td valign="middle">IndexIL.h</td><td valign="middle">${mxIndex_install_path}/mxIndex/device/include</td><td valign="middle">IndexILFlat的基类，不能直接使用。</td></tr>
+<tr><td valign="middle">AscendIndexGreat.h</td><td valign="middle">${mxIndex_install_path}/mxIndex/include/faiss/ascend/</td><td valign="middle">Great检索的对外接口定义。</td></tr>
+<tr><td valign="middle">AscendIndexVStar.h</td><td valign="middle">${mxIndex_install_path}/mxIndex/include/faiss/ascend/</td><td valign="middle">VStar检索的对外接口定义。</td></tr>
+<tr><td valign="middle">AscendIndexMixSearchParams.h</td><td valign="middle">${mxIndex_install_path}/mxIndex/include/faiss/ascend/</td><td valign="middle">Vstar和Great检索所需的参数结构体对外头文件。</td></tr>
+</tbody></table>
 
 > [!NOTE]
 >$\{mxIndex\_install\_path\}表示Index SDK的安装路径。

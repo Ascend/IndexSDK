@@ -10,15 +10,16 @@ The program uses the following environment variables when it reads them. Do not 
 
 **Table 1**  Environment variables
 
-|Environment Variable|Description|
-|--|--|
-|PATH|Path to the executable.|
-|LD_LIBRARY_PATH|Path to dynamic libraries.|
-|PYTHONPATH|Default search path for Python module files.|
-|HOME|Current user's home directory.|
-|PWD|Current working directory.|
-|TMPDIR|Temporary directory.|
-|LANG|Locale.|
+<table><tbody>
+<tr><td width="200" align="center" valign="middle"><strong>Environment Variable</strong></td><td align="center" valign="middle"><strong>Description</strong></td></tr>
+<tr><td width="200" valign="middle">PATH</td><td valign="middle">Path to the executable.</td></tr>
+<tr><td width="200" valign="middle">LD_LIBRARY_PATH</td><td valign="middle">Path to dynamic libraries.</td></tr>
+<tr><td width="200" valign="middle">PYTHONPATH</td><td valign="middle">Default search path for Python module files.</td></tr>
+<tr><td width="200" valign="middle">HOME</td><td valign="middle">Current user&#x27;s home directory.</td></tr>
+<tr><td width="200" valign="middle">PWD</td><td valign="middle">Current working directory.</td></tr>
+<tr><td width="200" valign="middle">TMPDIR</td><td valign="middle">Temporary directory.</td></tr>
+<tr><td width="200" valign="middle">LANG</td><td valign="middle">Locale.</td></tr>
+</tbody></table>
 
 ### Device Memory Debug Environment Variables<a name="ascendfaiss-mem-debug-env"></a>
 
@@ -26,10 +27,11 @@ The following environment variables help diagnose Device HBM allocation failures
 
 **Table 2** Device memory debug environment variables
 
-|Environment Variable|Description|
-|--|--|
-|ASCENDFAISS\_MEM\_DEBUG|When set to a non-empty value other than `0`/`false`/`off` (case-insensitive), enables memory debugging: samples allocations and HBM free/total, and on allocation failure dumps recent allocation records to stderr.|
-|ASCENDFAISS\_MEM\_DEBUG\_EVERY|Sampling period N (positive integer, default `64`): prints details every N-th allocation and for allocations with size ≤ 4096; invalid values fall back to `64`. Effective only when `ASCENDFAISS_MEM_DEBUG` is enabled.|
+<table><tbody>
+<tr><td width="200" align="center" valign="middle"><strong>Environment Variable</strong></td><td align="center" valign="middle"><strong>Description</strong></td></tr>
+<tr><td width="200" valign="middle">ASCENDFAISS\_MEM\_DEBUG</td><td valign="middle">When set to a non-empty value other than <code>0</code>/<code>false</code>/<code>off</code> (case-insensitive), enables memory debugging: samples allocations and HBM free/total, and on allocation failure dumps recent allocation records to stderr.</td></tr>
+<tr><td width="200" valign="middle">ASCENDFAISS\_MEM\_DEBUG\_EVERY</td><td valign="middle">Sampling period N (positive integer, default <code>64</code>): prints details every N-th allocation and for allocations with size ≤ 4096; invalid values fall back to <code>64</code>. Effective only when <code>ASCENDFAISS_MEM_DEBUG</code> is enabled.</td></tr>
+</tbody></table>
 
 ## Code Reference<a name="ZH-CN_TOPIC_0000001456375372"></a>
 
@@ -266,6 +268,7 @@ Currently, retrieval supports only the standard mode, that is, running retrieval
 
 ## Revision History<a name="ZH-CN_TOPIC_0000001682175202"></a>
 
-|Release Date|Revision History|
-|--|--|
-|2025-12-30|First official release.|
+<table><tbody>
+<tr><td width="140" align="center" valign="middle"><strong>Release Date</strong></td><td align="center" valign="middle"><strong>Revision History</strong></td></tr>
+<tr><td width="140" valign="middle">2025-12-30</td><td valign="middle">First official release.</td></tr>
+</tbody></table>

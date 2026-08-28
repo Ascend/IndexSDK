@@ -88,10 +88,11 @@
 
         **表 3**  批量生成算子<a id="table03891576018"></a>
 
-        |用法|**python3 run_generate_model.py** -m \<mode> -t <npu_type> -p \<pipeline> -pool <pool_size>|
-        |--|---------------------------------|
-        |参数名称|\<mode>：算法模式，\<mode>支持ALL以及Flat，SQ8，IVFSQ8，INT8中的一种或多种，多种之间用逗号隔开，如：**python3 run_generate_model.py** **-m Flat,IVFSQ8**。默认全选，可以直接执行**python3 run_generate_model.py**。<br>\<npu_type>：*npu_type*表示芯片名称。<li>对于<term>Atlas 推理系列产品</term>，可在安装昇腾AI处理器的服务器执行**npu-smi info**命令进行查询，将查询到的“Name”最后一位数字删除，即是npu_type的取值。</li><li>对于Atlas 800I A2 推理服务器，可在安装昇腾AI处理器的服务器执行**npu-smi info**命令进行查询，查询到的“Name”即是npu_type的取值。</li><li>对于Atlas 800I A3 超节点服务器，可以通过**npu-smi info -t board -i 0 -c 0**命令进行查询，获取**NPU Name**信息，910_**NPU Name**即是npu_type的取值。</li><br>\<pipeline>：是否使用多线程并行流水生成算子模型，默认为true。设置为true时，使用默认的pool_size的值为32。<br>\<pool_size>：批量生成算子多进程调度的进程池大小。<br>--help \| -h：查询帮助信息。|
-        |说明| <li>执行此命令，用户可以得到多组算子模型文件。执行命令前，用户需要更改当前目录下的para_table.xml文件，将所需的参数填入表中。</li><li>1 ≤ pool_size ≤ 32</li>|
+        <table><tbody>
+        <tr><td width="140" align="center" valign="middle">用法</td><td valign="middle"><strong>python3 run_generate_model.py</strong> -m &lt;mode&gt; -t &lt;npu_type&gt; -p &lt;pipeline&gt; -pool &lt;pool_size&gt;</td></tr>
+        <tr><td width="140" align="center" valign="middle">参数名称</td><td valign="middle">&lt;mode&gt;：算法模式，&lt;mode&gt;支持ALL以及Flat，SQ8，IVFSQ8，INT8中的一种或多种，多种之间用逗号隔开，如：<strong>python3 run_generate_model.py</strong> <strong>-m Flat,IVFSQ8</strong>。默认全选，可以直接执行<strong>python3 run_generate_model.py</strong>。<br>&lt;npu_type&gt;：*npu_type*表示芯片名称。<br>● 对于Atlas 推理系列产品，可在安装昇腾AI处理器的服务器执行<strong>npu-smi info</strong>命令进行查询，将查询到的“Name”最后一位数字删除，即是npu_type的取值。<br>● 对于Atlas 800I A2 推理服务器，可在安装昇腾AI处理器的服务器执行<strong>npu-smi info</strong>命令进行查询，查询到的“Name”即是npu_type的取值。<br>● 对于Atlas 800I A3 超节点服务器，可以通过<strong>npu-smi info -t board -i 0 -c 0</strong>命令进行查询，获取<strong>NPU Name</strong>信息，910_<strong>NPU Name</strong>即是npu_type的取值。<br>&lt;pipeline&gt;：是否使用多线程并行流水生成算子模型，默认为true。设置为true时，使用默认的pool_size的值为32。<br>&lt;pool_size&gt;：批量生成算子多进程调度的进程池大小。<br>--help | -h：查询帮助信息。</td></tr>
+        <tr><td width="140" align="center" valign="middle">说明</td><td valign="middle">● 执行此命令，用户可以得到多组算子模型文件。执行命令前，用户需要更改当前目录下的para_table.xml文件，将所需的参数填入表中。<br>● 1 ≤ pool_size ≤ 32</td></tr>
+        </tbody></table>
 
         > [!NOTE]
         >算子生成说明表格中的约束说明，代表业务中经常涉及的参数组合，使用其他参数运行异常请参见《[CANN ATC离线模型编译工具用户指南](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/910/devaids/atctool/atlasatc_16_0001.html)》。
@@ -126,14 +127,15 @@
 
 全量检索（Brute-force Search）是指对底库中的所有向量逐一计算距离，返回与查询向量距离最近的TopK结果。全量检索不进行任何剪枝或近似处理，因此检索精度最高，但计算量与底库规模成正比，适用于对精度要求严格、底库规模适中的场景。
 
-|算法（API参考）|算法使用场景|需要生成的算子|样例链接|
-|--|--|--|--|
-|[AscendIndexInt8Flat](./api/01_full_retrieval/06_AscendIndexInt8Flat.md#ascendindexint8flat)|<li>特征类型：int8</li><li>特征维度：64, 128, 256, 384, 512, 768, 1024</li><li>距离类型：L2和IP</li><li>计算精度：高</li><li>Device内存占用：较低</li><li>适应场景：精度要求高的暴力检索场景</li>|<li>[INT8Flat](#int8flat)</li><li>[AICPU](#aicpu)</li>|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexInt8Flat.cpp">链接</a>|
-|[AscendIndexFlat](./api/01_full_retrieval/08_AscendIndexFlat.md#ascendindexflat)|<li>特征类型：FP32、FP16</li><li>特征维度：32, 64, 128, 256, 384, 512, 768, 1024, 1408, 1536, 2048, 3072, 3584, 4096</li><li>距离类型：L2和IP</li><li>计算精度：高</li><li>Device内存占用：高</li><li>适应场景：精度要求高的暴力检索场景；IP距离推荐在dim > 128的场景下使用。</li>|<li>[Flat](#flat)</li><li>[AICPU](#aicpu)</li>|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexFlat.cpp">链接</a>|
-|[AscendIndexSQ](./api/01_full_retrieval/11_AscendIndexSQ.md#ascendindexsq)|<li>特征类型：FP32</li><li>特征维度：64, 128, 256, 384, 512, 768</li><li>距离类型：L2和IP</li><li>计算精度：高</li><li>Device内存占用：较低（已量化为int8）</li><li>适应场景：精度要求较高的暴力检索场景</li>|<li>[SQ8](#sq8)</li><li>[AICPU](#aicpu)</li>|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexSQ.cpp">链接</a>|
-|[AscendIndexCluster](./api/01_full_retrieval/02_AscendIndexCluster.md#ascendindexcluster)|<li>特征类型：FP32</li><li>特征维度：32, 64, 128, 256, 384, 512</li><li>距离类型：IP</li><li>计算精度：高</li><li>Device内存占用：较高</li><li>适应场景：只计算距离的聚类场景</li><li>仅支持<term>Atlas 推理系列产品</term></li>|<li>[Flat](#flat)</li><li>[AICPU](#aicpu)</li>|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexCluster.cpp">链接</a>|
-|[IndexIL](./api/01_full_retrieval/13_IndexIL.md#indexil)|需要运行在Device上，安装部署复杂，暂不推荐使用|<li>[Flat](#flat)</li>|参考[IndexILFlat](./api/01_full_retrieval/14_IndexILFlat.md#indexilflat)|
-|[AscendIndexILFlat](./api/01_full_retrieval/15_AscendIndexILFlat.md#ascendindexilflat)|<li>特征类型：FP16、FP32</li><li>特征维度：32, 64, 128, 256, 384, 512</li><li>距离类型：IP</li><li>计算精度：高</li><li>Device内存占用：较高</li><li>适应场景：只计算距离的聚类场景</li><li>仅支持<term>Atlas 推理系列产品</term></li>|<li>[Flat](#flat)</li><li>[AICPU](#aicpu)</li>|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/tree/master/IndexSDK">链接</a>|
+<table><tbody>
+<tr><td align="center" valign="middle"><strong>算法（API参考）</strong></td><td align="center" valign="middle"><strong>算法使用场景</strong></td><td align="center" valign="middle"><strong>需要生成的算子</strong></td><td width="100" align="center" valign="middle"><strong>样例链接</strong></td></tr>
+<tr><td valign="middle"><a href="./api/01_full_retrieval/06_AscendIndexInt8Flat.md#ascendindexint8flat">AscendIndexInt8Flat</a></td><td valign="middle">● 特征类型：int8<br>● 特征维度：64, 128, 256, 384, 512, 768, 1024<br>● 距离类型：L2和IP<br>● 计算精度：高<br>● Device内存占用：较低<br>● 适应场景：精度要求高的暴力检索场景</td><td valign="middle">● <a href="#int8flat">INT8Flat</a><br>● <a href="#aicpu">AICPU</a></td><td width="100" align="center" valign="middle"><a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexInt8Flat.cpp">链接</a></td></tr>
+<tr><td valign="middle"><a href="./api/01_full_retrieval/08_AscendIndexFlat.md#ascendindexflat">AscendIndexFlat</a></td><td valign="middle">● 特征类型：FP32、FP16<br>● 特征维度：32, 64, 128, 256, 384, 512, 768, 1024, 1408, 1536, 2048, 3072, 3584, 4096<br>● 距离类型：L2和IP<br>● 计算精度：高<br>● Device内存占用：高<br>● 适应场景：精度要求高的暴力检索场景；IP距离推荐在dim &gt; 128的场景下使用。</td><td valign="middle">● <a href="#flat">Flat</a><br>● <a href="#aicpu">AICPU</a></td><td width="100" align="center" valign="middle"><a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexFlat.cpp">链接</a></td></tr>
+<tr><td valign="middle"><a href="./api/01_full_retrieval/11_AscendIndexSQ.md#ascendindexsq">AscendIndexSQ</a></td><td valign="middle">● 特征类型：FP32<br>● 特征维度：64, 128, 256, 384, 512, 768<br>● 距离类型：L2和IP<br>● 计算精度：高<br>● Device内存占用：较低（已量化为int8）<br>● 适应场景：精度要求较高的暴力检索场景</td><td valign="middle">● <a href="#sq8">SQ8</a><br>● <a href="#aicpu">AICPU</a></td><td width="100" align="center" valign="middle"><a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexSQ.cpp">链接</a></td></tr>
+<tr><td valign="middle"><a href="./api/01_full_retrieval/02_AscendIndexCluster.md#ascendindexcluster">AscendIndexCluster</a></td><td valign="middle">● 特征类型：FP32<br>● 特征维度：32, 64, 128, 256, 384, 512<br>● 距离类型：IP<br>● 计算精度：高<br>● Device内存占用：较高<br>● 适应场景：只计算距离的聚类场景<br>● 仅支持Atlas 推理系列产品</td><td valign="middle">● <a href="#flat">Flat</a><br>● <a href="#aicpu">AICPU</a></td><td width="100" align="center" valign="middle"><a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexCluster.cpp">链接</a></td></tr>
+<tr><td valign="middle"><a href="./api/01_full_retrieval/13_IndexIL.md#indexil">IndexIL</a></td><td valign="middle">需要运行在Device上，安装部署复杂，暂不推荐使用</td><td valign="middle">● <a href="#flat">Flat</a></td><td width="100" align="center" valign="middle">参考<a href="./api/01_full_retrieval/14_IndexILFlat.md#indexilflat">IndexILFlat</a></td></tr>
+<tr><td valign="middle"><a href="./api/01_full_retrieval/15_AscendIndexILFlat.md#ascendindexilflat">AscendIndexILFlat</a></td><td valign="middle">● 特征类型：FP16、FP32<br>● 特征维度：32, 64, 128, 256, 384, 512<br>● 距离类型：IP<br>● 计算精度：高<br>● Device内存占用：较高<br>● 适应场景：只计算距离的聚类场景<br>● 仅支持Atlas 推理系列产品</td><td valign="middle">● <a href="#flat">Flat</a><br>● <a href="#aicpu">AICPU</a></td><td width="100" align="center" valign="middle"><a href="https://gitcode.com/Ascend/mindsdk-referenceapps/tree/master/IndexSDK">链接</a></td></tr>
+</tbody></table>
 
 ### 近似检索<a name="ZH-CN_TOPIC_0000001698168797"></a>
 
@@ -141,18 +143,19 @@
 
 近似检索（Approximate Nearest Neighbor Search）通过聚类、量化、图索引等方式对底库进行预处理或压缩，检索时仅计算部分向量距离，以牺牲少量精度换取显著的性能提升和内存节省。适用于亿级大库容、对时延敏感、可接受一定精度损失的场景。
 
-|算法（API参考）|算法使用场景|需要生成的算子|样例链接|
-|--|--|--|--|
-|[AscendIndexIVFSP](./api/02_approximate_retrieval/05_AscendIndexIVFSP.md#ascendindexivfsp)|<li>特征类型：FP32</li><li>特征维度：64, 128, 256, 512, 768</li><li>距离类型：L2</li><li>计算精度：中</li><li>Device内存占用：低（压缩特征）</li><li>适应场景：适用于亿级底库（大库容），对性能要求较高，对精度损失有容忍的近似检索场景。</li><li>仅支持<term>Atlas 推理系列产品</term></li>|<li>IVFSP业务算子</li><li>IVFSP AICPU算子</li><li>IVFSP训练算子（仅在需要通过训练生成码本文件时才使用到）</li><br>请参见[IVFSP](#ivfsp)。|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexIVFSP.cpp">链接</a>|
-|[AscendIndexIVFSQ](./api/02_approximate_retrieval/07_AscendIndexIVFSQ.md#ascendindexivfsq)|<li>特征类型：FP32</li><li>特征维度：64, 128, 256, 384, 512</li><li>距离类型：L2和IP</li><li>计算精度：中</li><li>Device内存占用：较低（量化为int8）</li><li>适应场景：IVFSQ算法作为性能-精度调节器，适用于对精度损失有容忍，但是对性能要求比较高的场景。</li>|<li>[IVFSQ8](#ivfsq8)</li><li>[AICPU](#aicpu)</li><li>[FlatAT](#flatat)（仅在参数useKmeansPP设置为true的时候需要生成FlatAT算子）</li>|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexIVFSQ.cpp">链接</a>|
-|[AscendIndexIVFSQT](./api/02_approximate_retrieval/09_AscendIndexIVFSQT.md#ascendindexivfsqt)|<li>特征类型：FP32</li><li>特征维度：256</li><li>距离类型：IP</li><li>计算精度：中</li><li>Device内存占用：低（量化和降维）</li><li>适应场景：AscendIndexIVFSQT包含降维算法的三级检索IVFSQ算法，适用于亿级底库（大库容），对性能要求较高，对精度损失有容忍的近似检索场景。</li>|<li>[IVFSQT](#ivfsqt)</li><li>[FlatAT](#flatat)</li><li>[AICPU](#aicpu)</li><li>[FlatInt8AT](#flatint8at)（在Atlas 推理系列产品上时需要生成）</li>|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexIVFSQT.cpp">链接</a>|
-|[AscendIndexBinaryFlat](./api/02_approximate_retrieval/01_AscendIndexBinaryFlat.md#ascendindexbinaryflat)|<li>特征类型：uint8二值化特征</li><li>特征维度：256, 512, 1024</li><li>距离类型：Hamming和IP</li><li>计算精度：高</li><li>Device内存占用：低</li><li>适应场景：AscendIndexBinaryFlat类继承自Faiss的IndexBinary类，用于二值化特征检索。对内存占用要求较低，性能要求较高的场景。</li><li>仅支持Atlas 推理系列产品</li>|<li>[BinaryFlat](#binaryflat)</li><li>[AICPU](#aicpu)</li>|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexBinaryFlat.cpp">链接</a>|
-|[AscendIndexVStar](./api/02_approximate_retrieval/11_AscendIndexVStar.md#ascendindexvstar)|<li>特征类型：FP32</li><li>特征维度：128, 256, 512, 1024</li><li>距离类型：L2</li><li>计算精度：中</li><li>Device内存占用：低（压缩特征）</li><li>适应场景：适用于千万级底库（大库容），对性能要求较高，对精度损失有容忍的近似检索场景。</li><li>仅支持Atlas 推理系列产品</li>|<li>VStar业务算子</li><li>VStar AICPU算子</li><li>VStar训练算子（仅在需要通过训练生成码本文件时才使用到）</li><br>请参见[VSTAR](#vstar)。|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexVStar.cpp">链接</a>|
-|[AscendIndexGreat](./api/02_approximate_retrieval/12_AscendIndexGreat.md#ascendindexgreat)|<li>特征类型：FP32</li><li>特征维度：128, 256, 512, 1024</li><li>距离类型：L2</li><li>计算精度：中</li><li>Device内存占用：低（压缩特征）</li><li>适应场景：适用于千万级底库（大库容），对性能要求较高，对精度损失有容忍的近似检索场景。</li><li>仅支持Atlas 推理系列产品。（当mode为AKMode时，才需要生成算子）</li>|<li>VStar业务算子</li><li>VStar AICPU算子</li><li>VStar训练算子（仅在需要通过训练生成码本文件时才使用到）</li><br>请参见[VSTAR](#vstar)。|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexGreat.cpp">链接</a>|
-|[AscendIndexIVFFlat](./api/02_approximate_retrieval/14_AscendIndexIVFFlat.md#ascendindexivfflat)|<li>特征类型：FP32</li><li>特征维度：128</li><li>距离类型：IP</li><li>计算精度：中</li><li>Device内存占用：中</li><li>适应场景：适用于亿级底库（大库容），对性能要求较高，对精度损失有容忍的近似检索场景。</li><li>仅支持<term>Atlas A2 推理系列产品</term>, <term>Atlas A3 推理系列产品</term>和<term>Ascend 950 系列产品</term></li>|<li>[AICPU](#aicpu)</li><li>[IVFFLAT](#ivfflat)</li>|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexIVFFlat.cpp">链接</a>|
-|[AscendIndexIVFPQ](./api/02_approximate_retrieval/15_AscendIndexIVFPQ.md#ascendindexivfpq)|<li>特征类型：FP32</li><li>特征维度：128</li><li>距离类型：L2</li><li>计算精度：中（近似检索）</li><li>Device内存占用：低（基于PQ编码压缩向量）</li><li>适应场景：适用于亿级底库（大库容），对吞吐和时延要求较高，可接受一定精度损失的近似检索场景。</li><li>仅支持Ascend 950 系列产品</li>|<li>[AICPU](#aicpu)</li><li>[IVFPQ](#ivfpq)</li>|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexIVFPQ.cpp">链接</a>|
-|[AscendIndexIVFRaBitQ](./api/02_approximate_retrieval/16_AscendIndexIVFRaBitQ.md#ascendindexivfrabitq)|<li>特征类型：FP32</li><li>特征维度：128</li><li>距离类型：L2 & IP</li><li>计算精度：中</li><li>Device内存占用：低（压缩特征）</li><li>适应场景：适用于亿级底库（大库容），对性能要求较高，对精度损失有容忍的近似检索场景。</li><li>仅支持<term>Atlas A2 推理系列产品</term>, <term>Atlas A3 推理系列产品</term> 和<term>Ascend 950 系列产品</term></li>|<li>[AICPU](#aicpu)</li><li>[IVFRaBitQ](#ivfrabitq)</li>|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexIVFRabitQ.cpp">链接</a>|
-|[AscendIndexCagra](./api/02_approximate_retrieval/18_AscendIndexCagra.md#ascendindexcagra)|<li>特征类型：FP32</li><li>特征维度：64, 128, 256, 512</li><li>距离类型：L2</li><li>计算精度：中</li><li>Device内存占用：低（RabitQ量化压缩）</li><li>适应场景：基于图检索的近似最近邻搜索，适用于亿级底库（大库容），对性能要求较高，对精度损失有容忍的近似检索场景。</li><li>仅支持<term>Ascend 950 系列产品</term></li>|<li>[Cagra](#cagra)</li>|<a href="../../examples/TestAscendIndexCagra.cpp">链接</a>|
+<table><tbody>
+<tr><td align="center" valign="middle"><strong>算法（API参考）</strong></td><td align="center" valign="middle"><strong>算法使用场景</strong></td><td align="center" valign="middle"><strong>需要生成的算子</strong></td><td width="100" align="center" valign="middle"><strong>样例链接</strong></td></tr>
+<tr><td valign="middle"><a href="./api/02_approximate_retrieval/05_AscendIndexIVFSP.md#ascendindexivfsp">AscendIndexIVFSP</a></td><td valign="middle">● 特征类型：FP32<br>● 特征维度：64, 128, 256, 512, 768<br>● 距离类型：L2<br>● 计算精度：中<br>● Device内存占用：低（压缩特征）<br>● 适应场景：适用于亿级底库（大库容），对性能要求较高，对精度损失有容忍的近似检索场景。<br>● 仅支持Atlas 推理系列产品</td><td valign="middle">● IVFSP业务算子<br>● IVFSP AICPU算子<br>● IVFSP训练算子（仅在需要通过训练生成码本文件时才使用到）<br>请参见<a href="#ivfsp">IVFSP</a>。</td><td width="100" align="center" valign="middle"><a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexIVFSP.cpp">链接</a></td></tr>
+<tr><td valign="middle"><a href="./api/02_approximate_retrieval/07_AscendIndexIVFSQ.md#ascendindexivfsq">AscendIndexIVFSQ</a></td><td valign="middle">● 特征类型：FP32<br>● 特征维度：64, 128, 256, 384, 512<br>● 距离类型：L2和IP<br>● 计算精度：中<br>● Device内存占用：较低（量化为int8）<br>● 适应场景：IVFSQ算法作为性能-精度调节器，适用于对精度损失有容忍，但是对性能要求比较高的场景。</td><td valign="middle">● <a href="#ivfsq8">IVFSQ8</a><br>● <a href="#aicpu">AICPU</a><br>● <a href="#flatat">FlatAT</a>（仅在参数useKmeansPP设置为true的时候需要生成FlatAT算子）</td><td width="100" align="center" valign="middle"><a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexIVFSQ.cpp">链接</a></td></tr>
+<tr><td valign="middle"><a href="./api/02_approximate_retrieval/09_AscendIndexIVFSQT.md#ascendindexivfsqt">AscendIndexIVFSQT</a></td><td valign="middle">● 特征类型：FP32<br>● 特征维度：256<br>● 距离类型：IP<br>● 计算精度：中<br>● Device内存占用：低（量化和降维）<br>● 适应场景：AscendIndexIVFSQT包含降维算法的三级检索IVFSQ算法，适用于亿级底库（大库容），对性能要求较高，对精度损失有容忍的近似检索场景。</td><td valign="middle">● <a href="#ivfsqt">IVFSQT</a><br>● <a href="#flatat">FlatAT</a><br>● <a href="#aicpu">AICPU</a><br>● <a href="#flatint8at">FlatInt8AT</a>（在Atlas 推理系列产品上时需要生成）</td><td width="100" align="center" valign="middle"><a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexIVFSQT.cpp">链接</a></td></tr>
+<tr><td valign="middle"><a href="./api/02_approximate_retrieval/01_AscendIndexBinaryFlat.md#ascendindexbinaryflat">AscendIndexBinaryFlat</a></td><td valign="middle">● 特征类型：uint8二值化特征<br>● 特征维度：256, 512, 1024<br>● 距离类型：Hamming和IP<br>● 计算精度：高<br>● Device内存占用：低<br>● 适应场景：AscendIndexBinaryFlat类继承自Faiss的IndexBinary类，用于二值化特征检索。对内存占用要求较低，性能要求较高的场景。<br>● 仅支持Atlas 推理系列产品</td><td valign="middle">● <a href="#binaryflat">BinaryFlat</a><br>● <a href="#aicpu">AICPU</a></td><td width="100" align="center" valign="middle"><a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexBinaryFlat.cpp">链接</a></td></tr>
+<tr><td valign="middle"><a href="./api/02_approximate_retrieval/11_AscendIndexVStar.md#ascendindexvstar">AscendIndexVStar</a></td><td valign="middle">● 特征类型：FP32<br>● 特征维度：128, 256, 512, 1024<br>● 距离类型：L2<br>● 计算精度：中<br>● Device内存占用：低（压缩特征）<br>● 适应场景：适用于千万级底库（大库容），对性能要求较高，对精度损失有容忍的近似检索场景。<br>● 仅支持Atlas 推理系列产品</td><td valign="middle">● VStar业务算子<br>● VStar AICPU算子<br>● VStar训练算子（仅在需要通过训练生成码本文件时才使用到）<br>请参见<a href="#vstar">VSTAR</a>。</td><td width="100" align="center" valign="middle"><a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexVStar.cpp">链接</a></td></tr>
+<tr><td valign="middle"><a href="./api/02_approximate_retrieval/12_AscendIndexGreat.md#ascendindexgreat">AscendIndexGreat</a></td><td valign="middle">● 特征类型：FP32<br>● 特征维度：128, 256, 512, 1024<br>● 距离类型：L2<br>● 计算精度：中<br>● Device内存占用：低（压缩特征）<br>● 适应场景：适用于千万级底库（大库容），对性能要求较高，对精度损失有容忍的近似检索场景。<br>● 仅支持Atlas 推理系列产品。（当mode为AKMode时，才需要生成算子）</td><td valign="middle">● VStar业务算子<br>● VStar AICPU算子<br>● VStar训练算子（仅在需要通过训练生成码本文件时才使用到）<br>请参见<a href="#vstar">VSTAR</a>。</td><td width="100" align="center" valign="middle"><a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexGreat.cpp">链接</a></td></tr>
+<tr><td valign="middle"><a href="./api/02_approximate_retrieval/14_AscendIndexIVFFlat.md#ascendindexivfflat">AscendIndexIVFFlat</a></td><td valign="middle">● 特征类型：FP32<br>● 特征维度：128<br>● 距离类型：IP<br>● 计算精度：中<br>● Device内存占用：中<br>● 适应场景：适用于亿级底库（大库容），对性能要求较高，对精度损失有容忍的近似检索场景。<br>● 仅支持Atlas A2 推理系列产品, Atlas A3 推理系列产品和Ascend 950 系列产品</td><td valign="middle">● <a href="#aicpu">AICPU</a><br>● <a href="#ivfflat">IVFFLAT</a></td><td width="100" align="center" valign="middle"><a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexIVFFlat.cpp">链接</a></td></tr>
+<tr><td valign="middle"><a href="./api/02_approximate_retrieval/15_AscendIndexIVFPQ.md#ascendindexivfpq">AscendIndexIVFPQ</a></td><td valign="middle">● 特征类型：FP32<br>● 特征维度：128<br>● 距离类型：L2<br>● 计算精度：中（近似检索）<br>● Device内存占用：低（基于PQ编码压缩向量）<br>● 适应场景：适用于亿级底库（大库容），对吞吐和时延要求较高，可接受一定精度损失的近似检索场景。<br>● 仅支持Ascend 950 系列产品</td><td valign="middle">● <a href="#aicpu">AICPU</a><br>● <a href="#ivfpq">IVFPQ</a></td><td width="100" align="center" valign="middle"><a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexIVFPQ.cpp">链接</a></td></tr>
+<tr><td valign="middle"><a href="./api/02_approximate_retrieval/16_AscendIndexIVFRaBitQ.md#ascendindexivfrabitq">AscendIndexIVFRaBitQ</a></td><td valign="middle">● 特征类型：FP32<br>● 特征维度：128<br>● 距离类型：L2 &amp; IP<br>● 计算精度：中<br>● Device内存占用：低（压缩特征）<br>● 适应场景：适用于亿级底库（大库容），对性能要求较高，对精度损失有容忍的近似检索场景。<br>● 仅支持Atlas A2 推理系列产品, Atlas A3 推理系列产品 和Ascend 950 系列产品</td><td valign="middle">● <a href="#aicpu">AICPU</a><br>● <a href="#ivfrabitq">IVFRaBitQ</a></td><td width="100" align="center" valign="middle"><a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexIVFRabitQ.cpp">链接</a></td></tr>
+<tr><td valign="middle"><a href="./api/02_approximate_retrieval/18_AscendIndexCagra.md#ascendindexcagra">AscendIndexCagra</a></td><td valign="middle">● 特征类型：FP32<br>● 特征维度：64, 128, 256, 512<br>● 距离类型：L2<br>● 计算精度：中<br>● Device内存占用：低（RabitQ量化压缩）<br>● 适应场景：基于图检索的近似最近邻搜索，适用于亿级底库（大库容），对性能要求较高，对精度损失有容忍的近似检索场景。<br>● 仅支持Ascend 950 系列产品</td><td valign="middle">● <a href="#cagra">Cagra</a></td><td width="100" align="center" valign="middle"><a href="../../examples/TestAscendIndexCagra.cpp">链接</a></td></tr>
+</tbody></table>
 
 ### 属性过滤检索<a name="ZH-CN_TOPIC_0000001649689168"></a>
 
@@ -160,9 +163,10 @@
 
 属性过滤检索是指在向量检索的基础上，结合业务属性（如时间、空间、附加属性、自定义属性等）进行过滤，仅对满足属性条件的向量执行距离计算和排序，实现时空联合检索。适用于需要同时满足相似性和属性约束的场景。
 
-|算法（API参考）|算法使用场景|需要生成的算子|样例链接|
-|--|--|--|--|
- |[AscendIndexTS](./api/03_attribute_filtering-based_retrieval/01_AscendIndexTS.md#ascendindexts)|<li>特征类型：uint8二值化特征、int8、FP32（具体算法不同而不同）</li><li>特征维度：具体算法不同而不同</li><li>距离类型：Hamming、Cos、IP、L2</li><li>计算精度：较高</li><li>Device内存占用：较高</li><li>适应场景：需要过滤属性的时空库场景</li><li>Cos和IP支持<term>Atlas 推理系列产品</term>，<term>Atlas A2 推理系列产品</term>，<term>Atlas A3 推理系列产品</term></li><li>Hamming距离仅支持<term>Atlas 推理系列产品</term></li>|<li>[Mask](#mask)</li><li>[BinaryFlat](#binaryflat)</li><li>[Int8Flat](#int8flat)</li><li>[Flat](#flat)</li><li>[AICPU](#aicpu)</li>|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexTS.cpp">链接</a>|
+<table><tbody>
+<tr><td align="center" valign="middle"><strong>算法（API参考）</strong></td><td align="center" valign="middle"><strong>算法使用场景</strong></td><td align="center" valign="middle"><strong>需要生成的算子</strong></td><td width="100" align="center" valign="middle"><strong>样例链接</strong></td></tr>
+<tr><td valign="middle"><a href="./api/03_attribute_filtering-based_retrieval/01_AscendIndexTS.md#ascendindexts">AscendIndexTS</a></td><td valign="middle">● 特征类型：uint8二值化特征、int8、FP32（具体算法不同而不同）<br>● 特征维度：具体算法不同而不同<br>● 距离类型：Hamming、Cos、IP、L2<br>● 计算精度：较高<br>● Device内存占用：较高<br>● 适应场景：需要过滤属性的时空库场景<br>● Cos和IP支持Atlas 推理系列产品，Atlas A2 推理系列产品，Atlas A3 推理系列产品<br>● Hamming距离仅支持Atlas 推理系列产品</td><td valign="middle">● <a href="#mask">Mask</a><br>● <a href="#binaryflat">BinaryFlat</a><br>● <a href="#int8flat">Int8Flat</a><br>● <a href="#flat">Flat</a><br>● <a href="#aicpu">AICPU</a></td><td width="100" align="center" valign="middle"><a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexTS.cpp">链接</a></td></tr>
+</tbody></table>
 
 ### 多Index批量检索<a name="ZH-CN_TOPIC_0000001649848472"></a>
 
@@ -170,25 +174,27 @@
 
 多Index批量检索允许在单个Device上同时管理多个Index实例，通过一次调用对多个Index执行检索，减少Host与Device之间的交互次数，提升多库并发检索的整体吞吐。
 
-|接口（API参考）|**接口使用场景**|**可以使用本接口的算法**|样例链接|
-|--|--|--|--|
-|[Search](./api/04_multi-index_batch_retrieval/01_multi-index_batch_retrieval.md#searchfaissindex接口)|单Device进行多个Index检索。|<li>[AscendIndexSQ](./api/01_full_retrieval/11_AscendIndexSQ.md#ascendindexsq)</li><li>[AscendIndexFlat](./api/01_full_retrieval/08_AscendIndexFlat.md#ascendindexflat)</li><li>[AscendIndexIVFSP](./api/02_approximate_retrieval/05_AscendIndexIVFSP.md#ascendindexivfsp)</li>|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendMultiSearch.cpp">链接</a>|
-|[Search](./api/04_multi-index_batch_retrieval/01_multi-index_batch_retrieval.md#searchascendindex接口)|单Device进行多个AscendIndex检索。|<li>[AscendIndexSQ](./api/01_full_retrieval/11_AscendIndexSQ.md#ascendindexsq)</li><li>[AscendIndexFlat](./api/01_full_retrieval/08_AscendIndexFlat.md#ascendindexflat)</li><li>[AscendIndexIVFSP](./api/02_approximate_retrieval/05_AscendIndexIVFSP.md#ascendindexivfsp)</li>|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendMultiSearch.cpp">链接</a>|
-|[Search](./api/04_multi-index_batch_retrieval/01_multi-index_batch_retrieval.md#searchascendindexint8接口)|单Device进行多个AscendIndexInt8检索。|<li>[AscendIndexInt8Flat](./api/01_full_retrieval/06_AscendIndexInt8Flat.md#ascendindexint8flat)</li>|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendMultiSearch.cpp">链接</a>|
-|[SearchWithFilter](./api/04_multi-index_batch_retrieval/01_multi-index_batch_retrieval.md#searchwithfilterfaissindex单filter接口)|单Device进行多个Index带属性过滤（单filter）检索。|<li>[AscendIndexSQ](./api/01_full_retrieval/11_AscendIndexSQ.md#ascendindexsq)</li><li>[AscendIndexIVFSP](./api/02_approximate_retrieval/05_AscendIndexIVFSP.md#ascendindexivfsp)</li>|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendMultiSearch.cpp">链接</a>|
-|[SearchWithFilter](./api/04_multi-index_batch_retrieval/01_multi-index_batch_retrieval.md#searchwithfilterascendindex单filter接口)|单Device进行多个AscendIndex带属性过滤（单filter）检索。|<li>[AscendIndexSQ](./api/01_full_retrieval/11_AscendIndexSQ.md#ascendindexsq)</li><li>[AscendIndexIVFSP](./api/02_approximate_retrieval/05_AscendIndexIVFSP.md#ascendindexivfsp)</li>|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendMultiSearch.cpp">链接</a>|
-|[SearchWithFilter](./api/04_multi-index_batch_retrieval/01_multi-index_batch_retrieval.md#searchwithfilterfaissindex多filter接口)|单Device进行多个Index带过滤属性（多filter）检索。|<li>[AscendIndexSQ](./api/01_full_retrieval/11_AscendIndexSQ.md#ascendindexsq)</li><li>[AscendIndexIVFSP](./api/02_approximate_retrieval/05_AscendIndexIVFSP.md#ascendindexivfsp)</li>|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendMultiSearch.cpp">链接</a>|
-|[SearchWithFilter](./api/04_multi-index_batch_retrieval/01_multi-index_batch_retrieval.md#searchwithfilterascendindex多filter接口)|单Device进行多个AscendIndex带过滤属性（多filter）检索。|<li>[AscendIndexSQ](./api/01_full_retrieval/11_AscendIndexSQ.md#ascendindexsq)</li><li>[AscendIndexIVFSP](./api/02_approximate_retrieval/05_AscendIndexIVFSP.md#ascendindexivfsp)</li>|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendMultiSearch.cpp">链接</a>|
+<table><tbody>
+<tr><td align="center" valign="middle"><strong>接口（API参考）</strong></td><td align="center" valign="middle"><strong>接口使用场景</strong></td><td align="center" valign="middle"><strong>可以使用本接口的算法</strong></td><td width="100" align="center" valign="middle"><strong>样例链接</strong></td></tr>
+<tr><td valign="middle"><a href="./api/04_multi-index_batch_retrieval/01_multi-index_batch_retrieval.md#searchfaissindex接口">Search</a></td><td valign="middle">单Device进行多个Index检索。</td><td valign="middle">● <a href="./api/01_full_retrieval/11_AscendIndexSQ.md#ascendindexsq">AscendIndexSQ</a><br>● <a href="./api/01_full_retrieval/08_AscendIndexFlat.md#ascendindexflat">AscendIndexFlat</a><br>● <a href="./api/02_approximate_retrieval/05_AscendIndexIVFSP.md#ascendindexivfsp">AscendIndexIVFSP</a></td><td width="100" align="center" valign="middle"><a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendMultiSearch.cpp">链接</a></td></tr>
+<tr><td valign="middle"><a href="./api/04_multi-index_batch_retrieval/01_multi-index_batch_retrieval.md#searchascendindex接口">Search</a></td><td valign="middle">单Device进行多个AscendIndex检索。</td><td valign="middle">● <a href="./api/01_full_retrieval/11_AscendIndexSQ.md#ascendindexsq">AscendIndexSQ</a><br>● <a href="./api/01_full_retrieval/08_AscendIndexFlat.md#ascendindexflat">AscendIndexFlat</a><br>● <a href="./api/02_approximate_retrieval/05_AscendIndexIVFSP.md#ascendindexivfsp">AscendIndexIVFSP</a></td><td width="100" align="center" valign="middle"><a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendMultiSearch.cpp">链接</a></td></tr>
+<tr><td valign="middle"><a href="./api/04_multi-index_batch_retrieval/01_multi-index_batch_retrieval.md#searchascendindexint8接口">Search</a></td><td valign="middle">单Device进行多个AscendIndexInt8检索。</td><td valign="middle">● <a href="./api/01_full_retrieval/06_AscendIndexInt8Flat.md#ascendindexint8flat">AscendIndexInt8Flat</a></td><td width="100" align="center" valign="middle"><a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendMultiSearch.cpp">链接</a></td></tr>
+<tr><td valign="middle"><a href="./api/04_multi-index_batch_retrieval/01_multi-index_batch_retrieval.md#searchwithfilterfaissindex单filter接口">SearchWithFilter</a></td><td valign="middle">单Device进行多个Index带属性过滤（单filter）检索。</td><td valign="middle">● <a href="./api/01_full_retrieval/11_AscendIndexSQ.md#ascendindexsq">AscendIndexSQ</a><br>● <a href="./api/02_approximate_retrieval/05_AscendIndexIVFSP.md#ascendindexivfsp">AscendIndexIVFSP</a></td><td width="100" align="center" valign="middle"><a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendMultiSearch.cpp">链接</a></td></tr>
+<tr><td valign="middle"><a href="./api/04_multi-index_batch_retrieval/01_multi-index_batch_retrieval.md#searchwithfilterascendindex单filter接口">SearchWithFilter</a></td><td valign="middle">单Device进行多个AscendIndex带属性过滤（单filter）检索。</td><td valign="middle">● <a href="./api/01_full_retrieval/11_AscendIndexSQ.md#ascendindexsq">AscendIndexSQ</a><br>● <a href="./api/02_approximate_retrieval/05_AscendIndexIVFSP.md#ascendindexivfsp">AscendIndexIVFSP</a></td><td width="100" align="center" valign="middle"><a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendMultiSearch.cpp">链接</a></td></tr>
+<tr><td valign="middle"><a href="./api/04_multi-index_batch_retrieval/01_multi-index_batch_retrieval.md#searchwithfilterfaissindex多filter接口">SearchWithFilter</a></td><td valign="middle">单Device进行多个Index带过滤属性（多filter）检索。</td><td valign="middle">● <a href="./api/01_full_retrieval/11_AscendIndexSQ.md#ascendindexsq">AscendIndexSQ</a><br>● <a href="./api/02_approximate_retrieval/05_AscendIndexIVFSP.md#ascendindexivfsp">AscendIndexIVFSP</a></td><td width="100" align="center" valign="middle"><a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendMultiSearch.cpp">链接</a></td></tr>
+<tr><td valign="middle"><a href="./api/04_multi-index_batch_retrieval/01_multi-index_batch_retrieval.md#searchwithfilterascendindex多filter接口">SearchWithFilter</a></td><td valign="middle">单Device进行多个AscendIndex带过滤属性（多filter）检索。</td><td valign="middle">● <a href="./api/01_full_retrieval/11_AscendIndexSQ.md#ascendindexsq">AscendIndexSQ</a><br>● <a href="./api/02_approximate_retrieval/05_AscendIndexIVFSP.md#ascendindexivfsp">AscendIndexIVFSP</a></td><td width="100" align="center" valign="middle"><a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendMultiSearch.cpp">链接</a></td></tr>
+</tbody></table>
 
 ### 其他功能<a name="ZH-CN_TOPIC_0000001698088065"></a>
 
 **算法介绍<a name="section46312418528"></a>**
 
-|算法（API参考）|算法需求（性能、场景差异）|如何调用|样例链接|
-|--|--|--|--|
-|[IReduction](./api/05_more_functions/01_IReduction.md#ireduction)|IReduction是特征检索组件中降维方法的统一接口，目前支持**PCAR**和**NN**两种降维算法。|通过ReductionConfig初始化，调用CreateReduction创建降维对象，然后进行train和reduce。|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIReduction.cpp">链接</a>|
-|[AscendNNInference](./api/05_more_functions/02_AscendNNInference.md#ascendnninference)|通过神经网络进行推理。|通过AscendNNInference创建NN降维对象，然后进行infer降维。|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIReduction.cpp">链接</a>|
-|[AscendCloner](./api/05_more_functions/04_AscendCloner.md#ascendcloner)|Index SDK提供了将NPU上的检索Index资源拷贝到CPU侧Faiss的操作，拷贝过程发生在内存中，原始NPU的Index上加载的数据会被拷贝到CPU侧的内存中，方便用户在CPU上使用相同的底库执行检索。|index_ascend_to_cpu将AscendIndex拷贝生成一个CPU上的Index，index_cpu_to_ascend将CPU上的Index拷贝生成一个AscendIndex。|无|
+<table><tbody>
+<tr><td align="center" valign="middle"><strong>算法（API参考）</strong></td><td align="center" valign="middle"><strong>算法需求（性能、场景差异）</strong></td><td align="center" valign="middle"><strong>如何调用</strong></td><td width="100" align="center" valign="middle"><strong>样例链接</strong></td></tr>
+<tr><td valign="middle"><a href="./api/05_more_functions/01_IReduction.md#ireduction">IReduction</a></td><td valign="middle">IReduction是特征检索组件中降维方法的统一接口，目前支持<strong>PCAR</strong>和<strong>NN</strong>两种降维算法。</td><td valign="middle">通过ReductionConfig初始化，调用CreateReduction创建降维对象，然后进行train和reduce。</td><td width="100" align="center" valign="middle"><a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIReduction.cpp">链接</a></td></tr>
+<tr><td valign="middle"><a href="./api/05_more_functions/02_AscendNNInference.md#ascendnninference">AscendNNInference</a></td><td valign="middle">通过神经网络进行推理。</td><td valign="middle">通过AscendNNInference创建NN降维对象，然后进行infer降维。</td><td width="100" align="center" valign="middle"><a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIReduction.cpp">链接</a></td></tr>
+<tr><td valign="middle"><a href="./api/05_more_functions/04_AscendCloner.md#ascendcloner">AscendCloner</a></td><td valign="middle">Index SDK提供了将NPU上的检索Index资源拷贝到CPU侧Faiss的操作，拷贝过程发生在内存中，原始NPU的Index上加载的数据会被拷贝到CPU侧的内存中，方便用户在CPU上使用相同的底库执行检索。</td><td valign="middle">index_ascend_to_cpu将AscendIndex拷贝生成一个CPU上的Index，index_cpu_to_ascend将CPU上的Index拷贝生成一个AscendIndex。</td><td width="100" align="center" valign="middle">无</td></tr>
+</tbody></table>
 
 ## 自定义算子介绍<a name="ZH-CN_TOPIC_0000001456854988"></a>
 
@@ -218,34 +224,12 @@
 #### Flat<a name="ZH-CN_TOPIC_0000001506495813"></a>
 
 <a name="table3955133174816"></a>
-<table><tbody><tr id="row3956113304810"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.1.1"><p id="p1995613338481"><a name="p1995613338481"></a><a name="p1995613338481"></a>用法</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.1.1 "><p id="p151131757175117"><a name="p151131757175117"></a><a name="p151131757175117"></a>python3 flat_generate_model.py -d &lt;dim&gt; --cores &lt;core_num&gt; -p &lt;process_id&gt; -pool &lt;pool_size&gt; -t &lt;npu_type&gt;</p>
-</td>
-</tr>
-<tr id="row1695612338483"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.2.1"><p id="p395693310480"><a name="p395693310480"></a><a name="p395693310480"></a>参数名称</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.2.1 "><p id="p1242365818554"><a name="p1242365818554"></a><a name="p1242365818554"></a>&lt;dim&gt;：特征向量维度D，默认值为“512”。</p>
-<p id="p19895115711230"><a name="p19895115711230"></a><a name="p19895115711230"></a>&lt;core_num&gt;：<span id="ph129021410310"><a name="ph129021410310"></a><a name="ph129021410310"></a>昇腾AI处理器</span>AI Core的个数，默认值为<span class="parmvalue" id="parmvalue136315104287"><a name="parmvalue136315104287"></a><a name="parmvalue136315104287"></a>“8”</span>。无需设置。</p>
-<p id="p1489519612244"><a name="p1489519612244"></a><a name="p1489519612244"></a>&lt;process_id&gt;：批量生成算子多进程调度的进程ID，默认值为<span class="parmvalue" id="parmvalue12408135012357"><a name="parmvalue12408135012357"></a><a name="parmvalue12408135012357"></a>“0”</span>，无需设置。</p>
-<p id="p15972135916413"><a name="p15972135916413"></a><a name="p15972135916413"></a>&lt;pool_size&gt;：批量生成算子多进程调度的进程池大小，默认值为<span class="parmvalue" id="parmvalue771714711233"><a name="parmvalue771714711233"></a><a name="parmvalue771714711233"></a>“10”</span>。</p>
-<p id="p16833155612195"><a name="p16833155612195"></a><a name="p16833155612195"></a>&lt;npu_type&gt;：硬件形态，当前&lt;npu_type&gt;支持<term>Atlas 推理系列产品</term>，<term>Atlas A2 推理系列产品</term>，<term>Atlas A3 推理系列产品</term>，默认值为"310P"。</p>
-<a name="ul994471125418"></a><a name="ul994471125418"></a><ul id="ul994471125418"><li><span id="ph10941163375016"><a name="ph10941163375016"></a><a name="ph10941163375016"></a>对于<span id="ph19941183375011"><a name="ph19941183375011"></a><a name="ph19941183375011"></a><term>Atlas 推理系列产品</term></span>，可在安装昇腾AI处理器的服务器执行<strong id="b7330834135115"><a name="b7330834135115"></a><a name="b7330834135115"></a>npu-smi info</strong>命令进行查询，将查询到的“Name”最后一位数字删除，即是npu_type的取值</span>。</li><li>对于<span id="ph299603920504"><a name="ph299603920504"></a><a name="ph299603920504"></a>Atlas 800I A2 推理服务器</span>，<span id="ph18599444165014"><a name="ph18599444165014"></a><a name="ph18599444165014"></a>可在安装昇腾AI处理器的服务器执行<strong id="b18495139195117"><a name="b18495139195117"></a><a name="b18495139195117"></a>npu-smi info</strong>命令进行查询，查询到的“Name”即是npu_type的取值</span>。</li><li>对于<span id="ph6488102065112"><a name="ph6488102065112"></a><a name="ph6488102065112"></a>Atlas 800I A3 超节点服务器</span>，可以通过<strong id="b1248815206511"><a name="b1248815206511"></a><a name="b1248815206511"></a>npu-smi info -t board -i 0 -c 0</strong>命令进行查询，获取<strong id="b144882206516"><a name="b144882206516"></a><a name="b144882206516"></a>NPU Name</strong>信息，910_<strong id="b1648872017519"><a name="b1648872017519"></a><a name="b1648872017519"></a>NPU Name</strong>即是npu_type的取值。</li></ul>
-<p id="p952414873216"><a name="p952414873216"></a><a name="p952414873216"></a>--help | -h：查询帮助信息。</p>
-</td>
-</tr>
-<tr id="row15956133317485"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.3.1"><p id="p11956183311486"><a name="p11956183311486"></a><a name="p11956183311486"></a>说明</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.3.1 "><p id="p9956933114816"><a name="p9956933114816"></a><a name="p9956933114816"></a>执行此命令，用户可以得到一组距离计算算子模型文件，用户需要自行修改命令中的参数。例如对于Atlas 推理系列产品 生成512维算子：python3 flat_generate_model.py -d 512 -t 310P</p>
-</td>
-</tr>
-<tr id="row3636101012016"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.4.1"><p id="p176373101504"><a name="p176373101504"></a><a name="p176373101504"></a>约束说明</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.4.1 "><a name="ul9805193810583"></a><a name="ul9805193810583"></a><ul id="ul9805193810583"><li>dim ∈ {32, 64, 128, 256, 384, 512, 768, 1024, 1408, 1536, 2048, 3072, 3584, 4096}</li><li>1 ≤ pool_size ≤ 32</li></ul>
-</td>
-</tr>
-</tbody>
-</table>
+<table><tbody>
+<tr><td width="140" align="center" valign="middle">用法</td><td valign="middle"><strong><code>python3 flat_generate_model.py -d &lt;dim&gt; --cores &lt;core_num&gt; -p &lt;process_id&gt; -pool &lt;pool_size&gt; -t &lt;npu_type&gt;</code></strong></td></tr>
+<tr><td width="140" align="center" valign="middle">参数名称</td><td valign="middle">&lt;dim&gt;：特征向量维度D，默认值为“512”。<br>&lt;core_num&gt;：昇腾AI处理器AI Core的个数，默认值为“8”。无需设置。<br>&lt;process_id&gt;：批量生成算子多进程调度的进程ID，默认值为“0”，无需设置。<br>&lt;pool_size&gt;：批量生成算子多进程调度的进程池大小，默认值为“10”。<br>&lt;npu_type&gt;：硬件形态，当前&lt;npu_type&gt;支持Atlas 推理系列产品，Atlas A2 推理系列产品，Atlas A3 推理系列产品，默认值为&quot;310P&quot;。<br>● 对于Atlas 推理系列产品，可在安装昇腾AI处理器的服务器执行<strong><code>npu-smi info</code></strong>命令进行查询，将查询到的“Name”最后一位数字删除，即是npu_type的取值。<br>● 对于Atlas 800I A2 推理服务器，可在安装昇腾AI处理器的服务器执行<strong><code>npu-smi info</code></strong>命令进行查询，查询到的“Name”即是npu_type的取值。<br>● 对于Atlas 800I A3 超节点服务器，可以通过<strong><code>npu-smi info -t board -i 0 -c 0</code></strong>命令进行查询，获取<strong><code>NPU Name</code></strong>信息，910_<strong><code>NPU Name</code></strong>即是npu_type的取值。<br>--help | -h：查询帮助信息。</td></tr>
+<tr><td width="140" align="center" valign="middle">说明</td><td valign="middle">执行此命令，用户可以得到一组距离计算算子模型文件，用户需要自行修改命令中的参数。例如对于Atlas 推理系列产品 生成512维算子：python3 flat_generate_model.py -d 512 -t 310P</td></tr>
+<tr><td width="140" align="center" valign="middle">约束说明</td><td valign="middle">● dim ∈ {32, 64, 128, 256, 384, 512, 768, 1024, 1408, 1536, 2048, 3072, 3584, 4096}<br>● 1 ≤ pool_size ≤ 32</td></tr>
+</tbody></table>
 
 **涉及算法<a name="section1467921619472"></a>**
 
@@ -262,33 +246,12 @@
 >INT8Flat和SQ8的区别主要在于：INT8由外部进行量化，Index的输入特征是INT8类型，SQ8由Index内部量化，Index的输入特征是Float32类型。
 
 <a name="table3955133174816"></a>
-<table><tbody><tr id="row3956113304810"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.1.1"><p id="p1995613338481"><a name="p1995613338481"></a><a name="p1995613338481"></a>用法</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.1.1 "><p id="p185151728356"><a name="p185151728356"></a><a name="p185151728356"></a>python3 sq8_generate_model.py -d &lt;dim&gt; --cores &lt;core_num&gt; -p &lt;process_id&gt; -pool &lt;pool_size&gt; -t &lt;npu_type&gt;</p>
-</td>
-</tr>
-<tr id="row1695612338483"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.2.1"><p id="p395693310480"><a name="p395693310480"></a><a name="p395693310480"></a>参数名称</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.2.1 "><p id="p142073616319"><a name="p142073616319"></a><a name="p142073616319"></a>&lt;dim&gt;：特征向量维度D，默认值为“128”。</p>
-<p id="p76412712341"><a name="p76412712341"></a><a name="p76412712341"></a>&lt;core_num&gt;：<span id="ph129021410310"><a name="ph129021410310"></a><a name="ph129021410310"></a>昇腾AI处理器</span>AI Core的个数，默认为<span class="parmvalue" id="parmvalue172734465517"><a name="parmvalue172734465517"></a><a name="parmvalue172734465517"></a>“8”</span>。不指定该值时，根据&lt;npu_type&gt;配置：当npu_type配置为310P时，&lt;core_num&gt;配置为8。</p>
-<p id="p882511475345"><a name="p882511475345"></a><a name="p882511475345"></a>&lt;process_id&gt;：批量生成算子多进程调度的进程ID，默认值为<span class="parmvalue" id="parmvalue12408135012357"><a name="parmvalue12408135012357"></a><a name="parmvalue12408135012357"></a>“0”</span>，无需设置。</p>
-<p id="p822871512241"><a name="p822871512241"></a><a name="p822871512241"></a>&lt;pool_size&gt;：批量生成算子多进程调度的进程池大小，默认值为<span class="parmvalue" id="parmvalue771714711233"><a name="parmvalue771714711233"></a><a name="parmvalue771714711233"></a>“10”</span>。</p>
-<p id="p1719018389440"><a name="p1719018389440"></a><a name="p1719018389440"></a>&lt;npu_type&gt;：硬件形态，当前&lt;npu_type&gt;支持<span id="ph19590185162111"><a name="ph19590185162111"></a><a name="ph19590185162111"></a><term>Atlas 推理系列产品</term></span>，取值为：310P，默认为<span class="parmvalue" id="parmvalue68401116171220"><a name="parmvalue68401116171220"></a><a name="parmvalue68401116171220"></a>“310P”</span>。</p>
-<p id="p1692503012329"><a name="p1692503012329"></a><a name="p1692503012329"></a>--help | -h：查询帮助信息。</p>
-</td>
-</tr>
-<tr id="row15956133317485"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.3.1"><p id="p11956183311486"><a name="p11956183311486"></a><a name="p11956183311486"></a>说明</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.3.1 "><p id="p158811120735"><a name="p158811120735"></a><a name="p158811120735"></a>执行此命令，用户可以得到一组SQ8距离计算算子模型文件，用户需要自行修改命令中的参数。例如对于Atlas 推理系列产品 生成512维算子：python3 sq8_generate_model.py -d 512 -t 310P</p>
-</td>
-</tr>
-<tr id="row1080311205318"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.4.1"><p id="p280411209314"><a name="p280411209314"></a><a name="p280411209314"></a>约束说明</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.4.1 "><a name="ul1361419421018"></a><a name="ul1361419421018"></a><ul id="ul1361419421018"><li>dim ∈ {64, 128, 256, 384, 512, 768}</li><li>1 ≤ pool_size ≤ 32</li></ul>
-</td>
-</tr>
-</tbody>
-</table>
+<table><tbody>
+<tr><td width="140" align="center" valign="middle">用法</td><td valign="middle"><strong><code>python3 sq8_generate_model.py -d &lt;dim&gt; --cores &lt;core_num&gt; -p &lt;process_id&gt; -pool &lt;pool_size&gt; -t &lt;npu_type&gt;</code></strong></td></tr>
+<tr><td width="140" align="center" valign="middle">参数名称</td><td valign="middle">&lt;dim&gt;：特征向量维度D，默认值为“128”。<br>&lt;core_num&gt;：昇腾AI处理器AI Core的个数，默认为“8”。不指定该值时，根据&lt;npu_type&gt;配置：当npu_type配置为310P时，&lt;core_num&gt;配置为8。<br>&lt;process_id&gt;：批量生成算子多进程调度的进程ID，默认值为“0”，无需设置。<br>&lt;pool_size&gt;：批量生成算子多进程调度的进程池大小，默认值为“10”。<br>&lt;npu_type&gt;：硬件形态，当前&lt;npu_type&gt;支持Atlas 推理系列产品，取值为：310P，默认为“310P”。<br>--help | -h：查询帮助信息。</td></tr>
+<tr><td width="140" align="center" valign="middle">说明</td><td valign="middle">执行此命令，用户可以得到一组SQ8距离计算算子模型文件，用户需要自行修改命令中的参数。例如对于Atlas 推理系列产品 生成512维算子：python3 sq8_generate_model.py -d 512 -t 310P</td></tr>
+<tr><td width="140" align="center" valign="middle">约束说明</td><td valign="middle">● dim ∈ {64, 128, 256, 384, 512, 768}<br>● 1 ≤ pool_size ≤ 32</td></tr>
+</tbody></table>
 
 **涉及算法<a name="section6413836184719"></a>**
 
@@ -303,34 +266,12 @@
 #### IVFSQ8<a name="ZH-CN_TOPIC_0000001506614889"></a>
 
 <a name="table3955133174816"></a>
-<table><tbody><tr id="row3956113304810"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.1.1"><p id="p1995613338481"><a name="p1995613338481"></a><a name="p1995613338481"></a>用法</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.1.1 "><p id="p151131757175117"><a name="p151131757175117"></a><a name="p151131757175117"></a>python3 ivfsq8_generate_model.py -d &lt;dim&gt; -c &lt;coarse_centroid_num&gt; --cores &lt;core_num&gt; -p &lt;process_id&gt; -pool &lt;pool_size&gt; -t &lt;npu_type&gt;</p>
-</td>
-</tr>
-<tr id="row1695612338483"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.2.1"><p id="p395693310480"><a name="p395693310480"></a><a name="p395693310480"></a>参数名称</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.2.1 "><p id="p114841371610"><a name="p114841371610"></a><a name="p114841371610"></a>&lt;dim&gt;：特征向量维度D，默认值为“128”。</p>
-<p id="p1157915132617"><a name="p1157915132617"></a><a name="p1157915132617"></a>&lt;coarse_centroid_num&gt;：L1簇聚类中心个数，默认值为“16384”。</p>
-<p id="p45741834183717"><a name="p45741834183717"></a><a name="p45741834183717"></a>&lt;core_num&gt;：<span id="ph129021410310"><a name="ph129021410310"></a><a name="ph129021410310"></a>昇腾AI处理器</span>AI Core的个数，默认为<span class="parmvalue" id="parmvalue76481515195212"><a name="parmvalue76481515195212"></a><a name="parmvalue76481515195212"></a>“8”</span>。不指定该值时，根据&lt;npu_type&gt;配置：当npu_type配置为310P时，&lt;core_num&gt;配置为8。</p>
-<p id="p14268135033720"><a name="p14268135033720"></a><a name="p14268135033720"></a>&lt;process_id&gt;：批量生成算子多进程调度的进程ID，默认值为<span class="parmvalue" id="parmvalue12408135012357"><a name="parmvalue12408135012357"></a><a name="parmvalue12408135012357"></a>“0”</span>，无需设置。</p>
-<p id="p17428219182417"><a name="p17428219182417"></a><a name="p17428219182417"></a>&lt;pool_size&gt;：批量生成算子多进程调度的进程池大小，默认值为<span class="parmvalue" id="parmvalue771714711233"><a name="parmvalue771714711233"></a><a name="parmvalue771714711233"></a>“10”</span>。</p>
-<p id="p1719018389440"><a name="p1719018389440"></a><a name="p1719018389440"></a>&lt;npu_type&gt;：硬件形态，当前&lt;npu_type&gt;支持<span id="ph19590185162111"><a name="ph19590185162111"></a><a name="ph19590185162111"></a><term>Atlas 推理系列产品</term></span>，取值为：310P，默认为<span class="parmvalue" id="parmvalue68401116171220"><a name="parmvalue68401116171220"></a><a name="parmvalue68401116171220"></a>“310P”</span>。</p>
-<p id="p824473918329"><a name="p824473918329"></a><a name="p824473918329"></a>--help | -h：查询帮助信息。</p>
-</td>
-</tr>
-<tr id="row15956133317485"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.3.1"><p id="p11956183311486"><a name="p11956183311486"></a><a name="p11956183311486"></a>说明</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.3.1 "><p id="p1648417714614"><a name="p1648417714614"></a><a name="p1648417714614"></a>执行此命令，用户可以得到一组算子模型文件，用户需要自行修改命令中的参数。例如对于Atlas 推理系列产品 生成512维,nlist为1024算子：python3 ivfsq8_generate_model.py -d 512 -c 1024 -t 310P</p>
-</td>
-</tr>
-<tr id="row2657434476"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.4.1"><p id="p1565893415718"><a name="p1565893415718"></a><a name="p1565893415718"></a>约束说明</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.4.1 "><a name="ul1186212111343"></a><a name="ul1186212111343"></a><ul id="ul1186212111343"><li>dim ∈ {64, 128, 256, 384, 512}</li><li>coarse centroid num ∈ {1024, 2048, 4096, 8192, 16384, 32768}</li><li>1 ≤ pool_size ≤ 32</li></ul>
-</td>
-</tr>
-</tbody>
-</table>
+<table><tbody>
+<tr><td width="140" align="center" valign="middle">用法</td><td valign="middle"><strong><code>python3 ivfsq8_generate_model.py -d &lt;dim&gt; -c &lt;coarse_centroid_num&gt; --cores &lt;core_num&gt; -p &lt;process_id&gt; -pool &lt;pool_size&gt; -t &lt;npu_type&gt;</code></strong></td></tr>
+<tr><td width="140" align="center" valign="middle">参数名称</td><td valign="middle">&lt;dim&gt;：特征向量维度D，默认值为“128”。<br>&lt;coarse_centroid_num&gt;：L1簇聚类中心个数，默认值为“16384”。<br>&lt;core_num&gt;：昇腾AI处理器AI Core的个数，默认为“8”。不指定该值时，根据&lt;npu_type&gt;配置：当npu_type配置为310P时，&lt;core_num&gt;配置为8。<br>&lt;process_id&gt;：批量生成算子多进程调度的进程ID，默认值为“0”，无需设置。<br>&lt;pool_size&gt;：批量生成算子多进程调度的进程池大小，默认值为“10”。<br>&lt;npu_type&gt;：硬件形态，当前&lt;npu_type&gt;支持Atlas 推理系列产品，取值为：310P，默认为“310P”。<br>--help | -h：查询帮助信息。</td></tr>
+<tr><td width="140" align="center" valign="middle">说明</td><td valign="middle">执行此命令，用户可以得到一组算子模型文件，用户需要自行修改命令中的参数。例如对于Atlas 推理系列产品 生成512维,nlist为1024算子：python3 ivfsq8_generate_model.py -d 512 -c 1024 -t 310P</td></tr>
+<tr><td width="140" align="center" valign="middle">约束说明</td><td valign="middle">● dim ∈ {64, 128, 256, 384, 512}<br>● coarse centroid num ∈ {1024, 2048, 4096, 8192, 16384, 32768}<br>● 1 ≤ pool_size ≤ 32</td></tr>
+</tbody></table>
 
 **涉及算法<a name="section14565105918474"></a>**
 
@@ -342,35 +283,12 @@
 >INT8Flat和SQ8的区别主要在于：INT8由外部进行量化，Index的输入特征是INT8类型，SQ8由Index内部量化，Index的输入特征是Float32类型。
 
 <a name="table3955133174816"></a>
-<table><tbody><tr id="row3956113304810"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.1.1"><p id="p1995613338481"><a name="p1995613338481"></a><a name="p1995613338481"></a>用法</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.1.1 "><p id="p126011312484"><a name="p126011312484"></a><a name="p126011312484"></a>python3 int8flat_generate_model.py -d &lt;dim&gt; --cores &lt;core_num&gt; -p &lt;process_id&gt; -pool &lt;pool_size&gt; -t &lt;npu_type&gt; -code &lt;code_num&gt;</p>
-</td>
-</tr>
-<tr id="row1695612338483"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.2.1"><p id="p395693310480"><a name="p395693310480"></a><a name="p395693310480"></a>参数名称</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.2.1 "><p id="p114841371610"><a name="p114841371610"></a><a name="p114841371610"></a>&lt;dim&gt;：特征向量维度D，默认值为“512”。</p>
-<p id="p76412712341"><a name="p76412712341"></a><a name="p76412712341"></a>&lt;core_num&gt;：<span id="ph129021410310"><a name="ph129021410310"></a><a name="ph129021410310"></a>昇腾AI处理器</span>AI Core的个数，默认为<span class="parmvalue" id="parmvalue1790915218539"><a name="parmvalue1790915218539"></a><a name="parmvalue1790915218539"></a>“8”</span>。无需设置。</p>
-<p id="p1489519612244"><a name="p1489519612244"></a><a name="p1489519612244"></a>&lt;process_id&gt;：批量生成算子多进程调度的进程ID，默认值为<span class="parmvalue" id="parmvalue12408135012357"><a name="parmvalue12408135012357"></a><a name="parmvalue12408135012357"></a>“0”</span>，无需设置。</p>
-<p id="p67082264240"><a name="p67082264240"></a><a name="p67082264240"></a>&lt;pool_size&gt;：批量生成算子多进程调度的进程池大小，默认值为<span class="parmvalue" id="parmvalue771714711233"><a name="parmvalue771714711233"></a><a name="parmvalue771714711233"></a>“10”</span>。</p>
-<p id="p1719018389440"><a name="p1719018389440"></a><a name="p1719018389440"></a>&lt;npu_type&gt;：硬件形态，当前&lt;npu_type&gt;支持<term>Atlas A2 推理系列产品</term>、<term>Atlas A3 推理系列产品</term>，默认值为“310P”。<a name="ul10641721165519"></a><a name="ul10641721165519"></a><ul id="ul10641721165519"><li><span id="ph10941163375016"><a name="ph10941163375016"></a><a name="ph10941163375016"></a>对于<span id="ph19941183375011"><a name="ph19941183375011"></a><a name="ph19941183375011"></a><term>Atlas 推理系列产品</term></span>，可在安装昇腾AI处理器的服务器执行<strong id="b7330834135115"><a name="b7330834135115"></a><a name="b7330834135115"></a>npu-smi info</strong>命令进行查询，将查询到的“Name”最后一位数字删除，即是npu_type的取值</span>。</li><li>对于<span id="ph299603920504"><a name="ph299603920504"></a><a name="ph299603920504"></a>Atlas 800I A2 推理服务器</span>，<span id="ph18599444165014"><a name="ph18599444165014"></a><a name="ph18599444165014"></a>可在安装昇腾AI处理器的服务器执行<strong id="b18495139195117"><a name="b18495139195117"></a><a name="b18495139195117"></a>npu-smi info</strong>命令进行查询，查询到的"Name"即是npu_type的取值</span>。</li></ul></p>
-
-<p id="p6501256288"><a name="p6501256288"></a><a name="p6501256288"></a>&lt;code_num&gt;：算子调用时底库分块大小，默认值为“262144”，不设置时默认生成所有code_num值的算子。</p>
-<p id="p11599745183215"><a name="p11599745183215"></a><a name="p11599745183215"></a>--help | -h：查询帮助信息。</p>
-</td>
-</tr>
-<tr id="row15956133317485"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.3.1"><p id="p11956183311486"><a name="p11956183311486"></a><a name="p11956183311486"></a>说明</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.3.1 "><p id="p1648417714614"><a name="p1648417714614"></a><a name="p1648417714614"></a>执行此命令，用户可以得到一组算子模型文件，用户需要自行修改命令中的参数。例如对于Atlas 推理系列产品 生成512维算子：python3 int8flat_generate_model.py -d 512 -t 310P</p>
-</td>
-</tr>
-<tr id="row13262151218181"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.4.1"><p id="p1552013434810"><a name="p1552013434810"></a><a name="p1552013434810"></a>约束说明</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.4.1 "><a name="ul13923029345"></a><a name="ul13923029345"></a><ul id="ul13923029345"><li>dim ∈ {64, 128, 256, 384, 512, 768, 1024}</li><li>1 ≤ pool_size ≤ 32</li><li>code_num ∈ {16384, 32768, 65536, 131072, 262144}</li></ul>
-</td>
-</tr>
-</tbody>
-</table>
+<table><tbody>
+<tr><td width="140" align="center" valign="middle">用法</td><td valign="middle"><strong><code>python3 int8flat_generate_model.py -d &lt;dim&gt; --cores &lt;core_num&gt; -p &lt;process_id&gt; -pool &lt;pool_size&gt; -t &lt;npu_type&gt; -code &lt;code_num&gt;</code></strong></td></tr>
+<tr><td width="140" align="center" valign="middle">参数名称</td><td valign="middle">&lt;dim&gt;：特征向量维度D，默认值为“512”。<br>&lt;core_num&gt;：昇腾AI处理器AI Core的个数，默认为“8”。无需设置。<br>&lt;process_id&gt;：批量生成算子多进程调度的进程ID，默认值为“0”，无需设置。<br>&lt;pool_size&gt;：批量生成算子多进程调度的进程池大小，默认值为“10”。<br>&lt;npu_type&gt;：硬件形态，当前&lt;npu_type&gt;支持Atlas A2 推理系列产品、Atlas A3 推理系列产品，默认值为“310P”。<br>● 对于Atlas 推理系列产品，可在安装昇腾AI处理器的服务器执行<strong><code>npu-smi info</code></strong>命令进行查询，将查询到的“Name”最后一位数字删除，即是npu_type的取值。<br>● 对于Atlas 800I A2 推理服务器，可在安装昇腾AI处理器的服务器执行<strong><code>npu-smi info</code></strong>命令进行查询，查询到的&quot;Name&quot;即是npu_type的取值。<br>&lt;code_num&gt;：算子调用时底库分块大小，默认值为“262144”，不设置时默认生成所有code_num值的算子。<br>--help | -h：查询帮助信息。</td></tr>
+<tr><td width="140" align="center" valign="middle">说明</td><td valign="middle">执行此命令，用户可以得到一组算子模型文件，用户需要自行修改命令中的参数。例如对于Atlas 推理系列产品 生成512维算子：python3 int8flat_generate_model.py -d 512 -t 310P</td></tr>
+<tr><td width="140" align="center" valign="middle">约束说明</td><td valign="middle">● dim ∈ {64, 128, 256, 384, 512, 768, 1024}<br>● 1 ≤ pool_size ≤ 32<br>● code_num ∈ {16384, 32768, 65536, 131072, 262144}</td></tr>
+</tbody></table>
 
 **涉及算法<a name="section3261111214818"></a>**
 
@@ -385,35 +303,12 @@
 >为了减少train和add的耗时，需要生成FlatAT算子。其中，Flat的<dim\>需与IVFSQT的<dim\_in\>相同，Flat的<code\_num\>与IVFSQT的<coarse\_centroid\_num\>一致。
 
 <a name="table3955133174816"></a>
-<table><tbody><tr id="row3956113304810"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.1.1"><p id="p1995613338481"><a name="p1995613338481"></a><a name="p1995613338481"></a>用法</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.1.1 "><p id="p151131757175117"><a name="p151131757175117"></a><a name="p151131757175117"></a>python3 ivfsqt_generate_model.py --cores &lt;core_num&gt; -d &lt;dim_in&gt; -r &lt;compress_ratio&gt; -c &lt;coarse_centroid_num&gt; -p &lt;process_id&gt; -pool &lt;pool_size&gt; -t &lt;npu_type&gt;</p>
-</td>
-</tr>
-<tr id="row1695612338483"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.2.1"><p id="p395693310480"><a name="p395693310480"></a><a name="p395693310480"></a>参数名称</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.2.1 "><p id="p114841371610"><a name="p114841371610"></a><a name="p114841371610"></a>&lt;dim_in&gt;：输入特征向量维度，默认值为“256”。</p>
-<p id="p334923265916"><a name="p334923265916"></a><a name="p334923265916"></a>&lt;compress_ratio&gt;：输入与输出维度的比值，默认值为<span class="parmvalue" id="parmvalue144721783518"><a name="parmvalue144721783518"></a><a name="parmvalue144721783518"></a>“4”</span>。取值范围：compress_ratio≥1。</p>
-<p id="p1157915132617"><a name="p1157915132617"></a><a name="p1157915132617"></a>&lt;coarse_centroid_num&gt;：L1簇聚类中心个数，默认值为“16384”。</p>
-<p id="p656513128471"><a name="p656513128471"></a><a name="p656513128471"></a>&lt;core_num&gt;：<span id="ph129021410310"><a name="ph129021410310"></a><a name="ph129021410310"></a>昇腾AI处理器</span>AI Core的个数，默认为<span class="parmvalue" id="parmvalue18901171585410"><a name="parmvalue18901171585410"></a><a name="parmvalue18901171585410"></a>“8”</span>。不指定该值时，根据&lt;npu_type&gt;配置：当npu_type配置为310P时，&lt;core_num&gt;配置为8。</p>
-<p id="p1489519612244"><a name="p1489519612244"></a><a name="p1489519612244"></a>&lt;process_id&gt;：批量生成算子多进程调度的进程ID，默认值为<span class="parmvalue" id="parmvalue12408135012357"><a name="parmvalue12408135012357"></a><a name="parmvalue12408135012357"></a>“0”</span>，无需设置。</p>
-<p id="p176142029102418"><a name="p176142029102418"></a><a name="p176142029102418"></a>&lt;pool_size&gt;：批量生成算子多进程调度的进程池大小，默认值为<span class="parmvalue" id="parmvalue1756444519167"><a name="parmvalue1756444519167"></a><a name="parmvalue1756444519167"></a>“32”</span>。取值范围：1≤pool_size≤32。</p>
-<p id="p1719018389440"><a name="p1719018389440"></a><a name="p1719018389440"></a>&lt;npu_type&gt;：硬件形态，当前&lt;npu_type&gt;支持<span id="ph19590185162111"><a name="ph19590185162111"></a><a name="ph19590185162111"></a><term>Atlas 推理系列产品</term></span>，取值为：310P，默认为<span class="parmvalue" id="parmvalue68401116171220"><a name="parmvalue68401116171220"></a><a name="parmvalue68401116171220"></a>“310P”</span>。</p>
-<p id="p581105217324"><a name="p581105217324"></a><a name="p581105217324"></a>--help | -h：查询帮助信息。</p>
-</td>
-</tr>
-<tr id="row15956133317485"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.3.1"><p id="p11956183311486"><a name="p11956183311486"></a><a name="p11956183311486"></a>说明</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.3.1 "><p id="p1648417714614"><a name="p1648417714614"></a><a name="p1648417714614"></a>执行此命令，用户可以得到一组算子模型文件。例如对于Atlas 推理系列产品 生成输入256维，输出64维，nlist1024算子：python3 ivfsqt_generate_model.py -d 256 -r 4 -c 1024 -t 310P</p>
-</td>
-</tr>
-<tr id="row1329410259210"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.4.1"><p id="p132941725162113"><a name="p132941725162113"></a><a name="p132941725162113"></a>约束说明</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.4.1 "><a name="ul423417236171"></a><a name="ul423417236171"></a><ul id="ul423417236171"><li>&lt;dim_in&gt; ∈ {256}</li><li>&lt;compress_ratio&gt; ∈ {2, 4, 8}</li><li>&lt;coarse_centroid_num&gt; ∈ {1024, 2048, 4096, 8192, 16384, 32768}</li><li>&lt;dim_in&gt;可以被&lt;compress_ratio&gt;整除。</li></ul>
-</td>
-</tr>
-</tbody>
-</table>
+<table><tbody>
+<tr><td width="140" align="center" valign="middle">用法</td><td valign="middle"><strong><code>python3 ivfsqt_generate_model.py --cores &lt;core_num&gt; -d &lt;dim_in&gt; -r &lt;compress_ratio&gt; -c &lt;coarse_centroid_num&gt; -p &lt;process_id&gt; -pool &lt;pool_size&gt; -t &lt;npu_type&gt;</code></strong></td></tr>
+<tr><td width="140" align="center" valign="middle">参数名称</td><td valign="middle">&lt;dim_in&gt;：输入特征向量维度，默认值为“256”。<br>&lt;compress_ratio&gt;：输入与输出维度的比值，默认值为“4”。取值范围：compress_ratio≥1。<br>&lt;coarse_centroid_num&gt;：L1簇聚类中心个数，默认值为“16384”。<br>&lt;core_num&gt;：昇腾AI处理器AI Core的个数，默认为“8”。不指定该值时，根据&lt;npu_type&gt;配置：当npu_type配置为310P时，&lt;core_num&gt;配置为8。<br>&lt;process_id&gt;：批量生成算子多进程调度的进程ID，默认值为“0”，无需设置。<br>&lt;pool_size&gt;：批量生成算子多进程调度的进程池大小，默认值为“32”。取值范围：1≤pool_size≤32。<br>&lt;npu_type&gt;：硬件形态，当前&lt;npu_type&gt;支持Atlas 推理系列产品，取值为：310P，默认为“310P”。<br>--help | -h：查询帮助信息。</td></tr>
+<tr><td width="140" align="center" valign="middle">说明</td><td valign="middle">执行此命令，用户可以得到一组算子模型文件。例如对于Atlas 推理系列产品 生成输入256维，输出64维，nlist1024算子：python3 ivfsqt_generate_model.py -d 256 -r 4 -c 1024 -t 310P</td></tr>
+<tr><td width="140" align="center" valign="middle">约束说明</td><td valign="middle">● &lt;dim_in&gt; ∈ {256}<br>● &lt;compress_ratio&gt; ∈ {2, 4, 8}<br>● &lt;coarse_centroid_num&gt; ∈ {1024, 2048, 4096, 8192, 16384, 32768}<br>● &lt;dim_in&gt;可以被&lt;compress_ratio&gt;整除。</td></tr>
+</tbody></table>
 
 **涉及算法<a name="section1931762794815"></a>**
 
@@ -425,34 +320,12 @@
 >当前FlatAT算子配合IVF类型的算子使用，用来加速IVF类型算子的add、train等过程，不支持直接调用FlatAT算子。当前的add/train加速功能通过IVF中AscendIndexIVFConfig.useKmeansPP进行指定，此时仅支持训练规模在7,000,000以下的训练。
 
 <a name="table17415417319"></a>
-<table><tbody><tr id="row124224153110"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.1.1"><p id="p194211412319"><a name="p194211412319"></a><a name="p194211412319"></a>用法</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.1.1 "><p id="p1442184113118"><a name="p1442184113118"></a><a name="p1442184113118"></a>python3 flat_at_generate_model.py --cores &lt;core_num&gt; -d &lt;dim&gt; -c &lt;code_num&gt; -p &lt;process_id&gt; -t &lt;npu_type&gt;</p>
-</td>
-</tr>
-<tr id="row11421741163119"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.2.1"><p id="p1742941193110"><a name="p1742941193110"></a><a name="p1742941193110"></a>参数名称</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.2.1 "><p id="p2421641133115"><a name="p2421641133115"></a><a name="p2421641133115"></a>&lt;dim&gt;：输入特征向量维度，默认值为“64”。</p>
-<p id="p44274114316"><a name="p44274114316"></a><a name="p44274114316"></a>&lt;code_num&gt;：与输入特征作对比的底库特征数，默认值为“8192”。</p>
-<p id="p16163133719589"><a name="p16163133719589"></a><a name="p16163133719589"></a>&lt;core_num&gt;：<span id="ph129021410310"><a name="ph129021410310"></a><a name="ph129021410310"></a>昇腾AI处理器</span>AI Core的个数，默认为<span class="parmvalue" id="parmvalue645218305563"><a name="parmvalue645218305563"></a><a name="parmvalue645218305563"></a>“8”</span>。不指定该值时，根据&lt;npu_type&gt;配置：当npu_type配置为310P时，&lt;core_num&gt;配置为8。</p>
-<p id="p1222812464588"><a name="p1222812464588"></a><a name="p1222812464588"></a>&lt;process_id&gt;：批量生成算子多进程调度的进程ID，默认值为<span class="parmvalue" id="parmvalue19166152815386"><a name="parmvalue19166152815386"></a><a name="parmvalue19166152815386"></a>“0”</span>，无需设置。</p>
-<p id="p1719018389440"><a name="p1719018389440"></a><a name="p1719018389440"></a>&lt;npu_type&gt;：硬件形态，当前&lt;npu_type&gt;支持<span id="ph19590185162111"><a name="ph19590185162111"></a><a name="ph19590185162111"></a><term>Atlas 推理系列产品</term></span>，取值为：310P，默认为<span class="parmvalue" id="parmvalue68401116171220"><a name="parmvalue68401116171220"></a><a name="parmvalue68401116171220"></a>“310P”</span>。</p>
-<p id="p1989920599326"><a name="p1989920599326"></a><a name="p1989920599326"></a>--help | -h：查询帮助信息。</p>
-</td>
-</tr>
-<tr id="row142104123115"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.3.1"><p id="p124294113115"><a name="p124294113115"></a><a name="p124294113115"></a>说明</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.3.1 "><p id="p19612144442216"><a name="p19612144442216"></a><a name="p19612144442216"></a>执行此命令，用户可以得到一组算子模型文件。例如对于Atlas 推理系列产品 生成256维，nlist1024算子： python3 flat_at_generate_model.py -d 256 -c 1024 -t 310P</p>
-<p id="p4425415312"><a name="p4425415312"></a><a name="p4425415312"></a>FlatAT算子主要用于在IVF场景，减少train和add的耗时。</p>
-</td>
-</tr>
-<tr id="row1828715702415"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.4.1"><p id="p12287757152416"><a name="p12287757152416"></a><a name="p12287757152416"></a>约束说明</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.4.1 "><a name="ul49294250179"></a><a name="ul49294250179"></a><ul id="ul49294250179"><li>dim ∈ {64, 128, 256}</li><li>code_num ∈ {1024, 2048, 4096, 8192, 16384, 32768}</li></ul>
-</td>
-</tr>
-</tbody>
-</table>
+<table><tbody>
+<tr><td width="140" align="center" valign="middle">用法</td><td valign="middle"><strong><code>python3 flat_at_generate_model.py --cores &lt;core_num&gt; -d &lt;dim&gt; -c &lt;code_num&gt; -p &lt;process_id&gt; -t &lt;npu_type&gt;</code></strong></td></tr>
+<tr><td width="140" align="center" valign="middle">参数名称</td><td valign="middle">&lt;dim&gt;：输入特征向量维度，默认值为“64”。<br>&lt;code_num&gt;：与输入特征作对比的底库特征数，默认值为“8192”。<br>&lt;core_num&gt;：昇腾AI处理器AI Core的个数，默认为“8”。不指定该值时，根据&lt;npu_type&gt;配置：当npu_type配置为310P时，&lt;core_num&gt;配置为8。<br>&lt;process_id&gt;：批量生成算子多进程调度的进程ID，默认值为“0”，无需设置。<br>&lt;npu_type&gt;：硬件形态，当前&lt;npu_type&gt;支持Atlas 推理系列产品，取值为：310P，默认为“310P”。<br>--help | -h：查询帮助信息。</td></tr>
+<tr><td width="140" align="center" valign="middle">说明</td><td valign="middle">执行此命令，用户可以得到一组算子模型文件。例如对于Atlas 推理系列产品 生成256维，nlist1024算子： python3 flat_at_generate_model.py -d 256 -c 1024 -t 310P<br>FlatAT算子主要用于在IVF场景，减少train和add的耗时。</td></tr>
+<tr><td width="140" align="center" valign="middle">约束说明</td><td valign="middle">● dim ∈ {64, 128, 256}<br>● code_num ∈ {1024, 2048, 4096, 8192, 16384, 32768}</td></tr>
+</tbody></table>
 
 **涉及算法<a name="section019718356489"></a>**
 
@@ -462,35 +335,12 @@
 #### FlatInt8AT<a name="ZH-CN_TOPIC_0000001456694972"></a>
 
 <a name="table17415417319"></a>
-<table><tbody><tr id="row124224153110"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.1.1"><p id="p194211412319"><a name="p194211412319"></a><a name="p194211412319"></a>用法</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.1.1 "><p id="p1442184113118"><a name="p1442184113118"></a><a name="p1442184113118"></a>python3 flat_at_int8_generate_model.py --cores &lt;core_num&gt; -d &lt;dim&gt; -c &lt;code_num&gt; -p &lt;process_id&gt; --soc-version &lt;soc_version&gt; -t &lt;npu_type&gt;</p>
-</td>
-</tr>
-<tr id="row11421741163119"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.2.1"><p id="p1742941193110"><a name="p1742941193110"></a><a name="p1742941193110"></a>参数名称</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.2.1 "><p id="p483612454218"><a name="p483612454218"></a><a name="p483612454218"></a>&lt;core_num&gt;：<span id="ph71911442141813"><a name="ph71911442141813"></a><a name="ph71911442141813"></a>昇腾AI处理器</span>AI Core的个数，默认为<span class="parmvalue" id="parmvalue11837165055814"><a name="parmvalue11837165055814"></a><a name="parmvalue11837165055814"></a>“8”</span>。</p>
-<p id="p157945377424"><a name="p157945377424"></a><a name="p157945377424"></a>&lt;dim&gt;：输入特征向量维度，默认值为“256”。</p>
-<p id="p44274114316"><a name="p44274114316"></a><a name="p44274114316"></a>&lt;code_num&gt;：与输入特征作对比的底库特征数，默认值为“16384”。</p>
-<p id="p1222812464588"><a name="p1222812464588"></a><a name="p1222812464588"></a>&lt;process_id&gt;：批量生成算子多进程调度的进程ID，默认值为<span class="parmvalue" id="parmvalue13397924123910"><a name="parmvalue13397924123910"></a><a name="parmvalue13397924123910"></a>“0”</span>，无需设置。</p>
-<p id="p716454113415"><a name="p716454113415"></a><a name="p716454113415"></a>&lt;soc_version&gt;：<span id="ph129021410310"><a name="ph129021410310"></a><a name="ph129021410310"></a>昇腾AI处理器</span>的型号，默认为<span class="parmvalue" id="parmvalue198811757104210"><a name="parmvalue198811757104210"></a><a name="parmvalue198811757104210"></a>“Ascend310P3”</span>，无需设置。</p>
-<p id="p1719018389440"><a name="p1719018389440"></a><a name="p1719018389440"></a>&lt;npu_type&gt;：硬件形态，当前支持<span id="ph19590185162111"><a name="ph19590185162111"></a><a name="ph19590185162111"></a><term>Atlas 推理系列产品</term></span>，默认为<span class="parmvalue" id="parmvalue68401116171220"><a name="parmvalue68401116171220"></a><a name="parmvalue68401116171220"></a>“310P”</span>，无需设置。</p>
-<p id="p418616673318"><a name="p418616673318"></a><a name="p418616673318"></a>--help | -h：查询帮助信息。</p>
-</td>
-</tr>
-<tr id="row142104123115"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.3.1"><p id="p124294113115"><a name="p124294113115"></a><a name="p124294113115"></a>说明</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.3.1 "><p id="p19612144442216"><a name="p19612144442216"></a><a name="p19612144442216"></a>执行此命令，用户可以得到一组算子模型文件。例如对于Atlas 推理系列产品 生成256维，nlist1024算子： python3 flat_at_int8_generate_model.py -d 256 -c 1024 -t 310P </p>
-<p id="p137541630185615"><a name="p137541630185615"></a><a name="p137541630185615"></a>FlatInt8AT优化<span id="ph9726111217394"><a name="ph9726111217394"></a><a name="ph9726111217394"></a>Atlas 推理系列产品</span>使用场景下，IVFSQT中train、add与update的耗时。</p>
-</td>
-</tr>
-<tr id="row1828715702415"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.4.1"><p id="p12287757152416"><a name="p12287757152416"></a><a name="p12287757152416"></a>约束说明</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.4.1 "><a name="ul49294250179"></a><a name="ul49294250179"></a><ul id="ul49294250179"><li>dim ∈ {256}</li><li>code_num ∈ {1024, 2048, 4096, 8192, 16384, 32768}</li><li>soc_version ∈ {Ascend310P3}</li></ul>
-</td>
-</tr>
-</tbody>
-</table>
+<table><tbody>
+<tr><td width="140" align="center" valign="middle">用法</td><td valign="middle"><strong><code>python3 flat_at_int8_generate_model.py --cores &lt;core_num&gt; -d &lt;dim&gt; -c &lt;code_num&gt; -p &lt;process_id&gt; --soc-version &lt;soc_version&gt; -t &lt;npu_type&gt;</code></strong></td></tr>
+<tr><td width="140" align="center" valign="middle">参数名称</td><td valign="middle">&lt;core_num&gt;：昇腾AI处理器AI Core的个数，默认为“8”。<br>&lt;dim&gt;：输入特征向量维度，默认值为“256”。<br>&lt;code_num&gt;：与输入特征作对比的底库特征数，默认值为“16384”。<br>&lt;process_id&gt;：批量生成算子多进程调度的进程ID，默认值为“0”，无需设置。<br>&lt;soc_version&gt;：昇腾AI处理器的型号，默认为“Ascend310P3”，无需设置。<br>&lt;npu_type&gt;：硬件形态，当前支持Atlas 推理系列产品，默认为“310P”，无需设置。<br>--help | -h：查询帮助信息。</td></tr>
+<tr><td width="140" align="center" valign="middle">说明</td><td valign="middle">执行此命令，用户可以得到一组算子模型文件。例如对于Atlas 推理系列产品 生成256维，nlist1024算子： python3 flat_at_int8_generate_model.py -d 256 -c 1024 -t 310P<br>FlatInt8AT优化Atlas 推理系列产品使用场景下，IVFSQT中train、add与update的耗时。</td></tr>
+<tr><td width="140" align="center" valign="middle">约束说明</td><td valign="middle">● dim ∈ {256}<br>● code_num ∈ {1024, 2048, 4096, 8192, 16384, 32768}<br>● soc_version ∈ {Ascend310P3}</td></tr>
+</tbody></table>
 
 **涉及算法<a name="section16686174317488"></a>**
 
@@ -499,27 +349,11 @@
 #### AICPU<a name="ZH-CN_TOPIC_0000001506414793"></a>
 
 <a name="table4331184817108"></a>
-<table><tbody><tr id="row1433117485104"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.1.1"><p id="p733211482108"><a name="p733211482108"></a><a name="p733211482108"></a>用法</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.1.1 "><p id="p1333211482107"><a name="p1333211482107"></a><a name="p1333211482107"></a>python3 aicpu_generate_model.py --cores &lt;core_num&gt; -p &lt;process_id&gt; -t &lt;npu_type&gt;</p>
-</td>
-</tr>
-<tr id="row2033244801010"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.2.1"><p id="p4332164821010"><a name="p4332164821010"></a><a name="p4332164821010"></a>参数名称</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.2.1 "><p id="p193321480106"><a name="p193321480106"></a><a name="p193321480106"></a>&lt;core_num&gt;：<span id="ph71911442141813"><a name="ph71911442141813"></a><a name="ph71911442141813"></a>昇腾AI处理器</span>AI Core的个数，默认为<span class="parmvalue" id="parmvalue4332204851012"><a name="parmvalue4332204851012"></a><a name="parmvalue4332204851012"></a>“2”</span>。（预留参数，暂不使用）</p>
-<p id="p43321548181012"><a name="p43321548181012"></a><a name="p43321548181012"></a>&lt;process_id&gt;：批量生成算子多进程调度的进程ID，默认值为<span class="parmvalue" id="parmvalue12408135012357"><a name="parmvalue12408135012357"></a><a name="parmvalue12408135012357"></a>“0”</span>，无需设置。</p>
-<p id="p1719018389440"><a name="p1719018389440"></a><a name="p1719018389440"></a>&lt;npu_type&gt;：硬件形态，当前&lt;npu_type&gt;支持<span id="ph19590185162111"><a name="ph19590185162111"></a><a name="ph19590185162111"></a><term>Atlas 推理系列产品</term></span>和<span id="ph996833614580"><a name="ph996833614580"></a><a name="ph996833614580"></a><term>Atlas A2 推理系列产品</term>、<term>Atlas A3 推理系列产品</term></span>，默认为<span class="parmvalue" id="parmvalue68401116171220"><a name="parmvalue68401116171220"></a><a name="parmvalue68401116171220"></a>“310P”</span>。如果无法确定具体的npu_type，则在安装昇腾AI处理器的服务器执行<strong id="b87057513481"><a name="b87057513481"></a><a name="b87057513481"></a>npu-smi info</strong>命令进行查询，将查询到的“Name”最后一位数字删除，即是npu_type的取值。对于<span id="ph12325145818223"><a name="ph12325145818223"></a><a name="ph12325145818223"></a>Atlas 800I A3 超节点服务器</span>，可以通过<strong id="b10641459664"><a name="b10641459664"></a><a name="b10641459664"></a>npu-smi info -t board -i 0 -c 0</strong>命令进行查询，获取<strong id="b172691331852"><a name="b172691331852"></a><a name="b172691331852"></a>NPU Name</strong>信息，910_<strong id="b223011104513"><a name="b223011104513"></a><a name="b223011104513"></a>NPU Name</strong>即是npu_type的取值。</p>
-<p id="p13676151710337"><a name="p13676151710337"></a><a name="p13676151710337"></a>--help | -h：查询帮助信息。</p>
-</td>
-</tr>
-<tr id="row1333284817107"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.3.1"><p id="p103329483101"><a name="p103329483101"></a><a name="p103329483101"></a>说明</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.3.1 "><p id="p1433264811011"><a name="p1433264811011"></a><a name="p1433264811011"></a>执行此命令，用户可以得到一组算子模型文件。例如对于Atlas 推理系列产品 生成aicpu算子：python3 aicpu_generate_model.py -t 310P</p>
-<p id="p7405349165018"><a name="p7405349165018"></a><a name="p7405349165018"></a>AICPU算子模型文件只需生成一次，会全部生成所有算法的算子。</p>
-</td>
-</tr>
-</tbody>
-</table>
+<table><tbody>
+<tr><td width="140" align="center" valign="middle">用法</td><td valign="middle"><strong><code>python3 aicpu_generate_model.py --cores &lt;core_num&gt; -p &lt;process_id&gt; -t &lt;npu_type&gt;</code></strong></td></tr>
+<tr><td width="140" align="center" valign="middle">参数名称</td><td valign="middle">&lt;core_num&gt;：昇腾AI处理器AI Core的个数，默认为“2”。（预留参数，暂不使用）<br>&lt;process_id&gt;：批量生成算子多进程调度的进程ID，默认值为“0”，无需设置。<br>&lt;npu_type&gt;：硬件形态，当前&lt;npu_type&gt;支持Atlas 推理系列产品和Atlas A2 推理系列产品、Atlas A3 推理系列产品，默认为“310P”。如果无法确定具体的npu_type，则在安装昇腾AI处理器的服务器执行<strong><code>npu-smi info</code></strong>命令进行查询，将查询到的“Name”最后一位数字删除，即是npu_type的取值。对于Atlas 800I A3 超节点服务器，可以通过<strong><code>npu-smi info -t board -i 0 -c 0</code></strong>命令进行查询，获取<strong><code>NPU Name</code></strong>信息，910_<strong><code>NPU Name</code></strong>即是npu_type的取值。<br>--help | -h：查询帮助信息。</td></tr>
+<tr><td width="140" align="center" valign="middle">说明</td><td valign="middle">执行此命令，用户可以得到一组算子模型文件。例如对于Atlas 推理系列产品 生成aicpu算子：python3 aicpu_generate_model.py -t 310P<br>AICPU算子模型文件只需生成一次，会全部生成所有算法的算子。</td></tr>
+</tbody></table>
 
 **涉及算法<a name="section156851751144816"></a>**
 
@@ -538,27 +372,11 @@
 #### BinaryFlat<a name="ZH-CN_TOPIC_0000001506615001"></a>
 
 <a name="table4331184817108"></a>
-<table><tbody><tr id="row1433117485104"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.1.1"><p id="p733211482108"><a name="p733211482108"></a><a name="p733211482108"></a>用法</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.1.1 "><p id="p1333211482107"><a name="p1333211482107"></a><a name="p1333211482107"></a>python3 binary_flat_generate_model.py -d &lt;dim&gt; -q &lt;query_type&gt; -p &lt;process_id&gt; -pool &lt;pool_size&gt;</p>
-</td>
-</tr>
-<tr id="row2033244801010"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.2.1"><p id="p4332164821010"><a name="p4332164821010"></a><a name="p4332164821010"></a>参数名称</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.2.1 "><p id="p193321480106"><a name="p193321480106"></a><a name="p193321480106"></a>&lt;dim&gt;：二值化特征向量维度，dim ∈ { 256， 512，1024 }，默认值为“512”。</p>
-<p id="p1474218499117"><a name="p1474218499117"></a><a name="p1474218499117"></a>&lt;query_type&gt;：检索类型，默认为<span class="parmvalue" id="parmvalue12920913153"><a name="parmvalue12920913153"></a><a name="parmvalue12920913153"></a>“uint8”</span>，当AscendIndexBinaryFlat算法的<a href="./api/02_approximate_retrieval/01_AscendIndexBinaryFlat.md#ZH-CN_TOPIC_0000001456375288">search接口</a>进行性能提升时，需要设置为<span class="parmvalue" id="parmvalue10202131541419"><a name="parmvalue10202131541419"></a><a name="parmvalue10202131541419"></a>“float”</span>。</p>
-<p id="p43321548181012"><a name="p43321548181012"></a><a name="p43321548181012"></a>&lt;process_id&gt;：批量生成算子多进程调度的进程ID，默认值为<span class="parmvalue" id="parmvalue12408135012357"><a name="parmvalue12408135012357"></a><a name="parmvalue12408135012357"></a>“0”</span>，无需设置。</p>
-<p id="p670916785418"><a name="p670916785418"></a><a name="p670916785418"></a>&lt;pool_size&gt;：批量生成算子多进程调度的进程池大小，默认为16。</p>
-<p id="p7767123203320"><a name="p7767123203320"></a><a name="p7767123203320"></a>--help | -h：查询帮助信息。</p>
-</td>
-</tr>
-<tr id="row1333284817107"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.3.1"><p id="p103329483101"><a name="p103329483101"></a><a name="p103329483101"></a>说明</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.3.1 "><p id="p1533224810102"><a name="p1533224810102"></a><a name="p1533224810102"></a>例如对于Atlas 推理系列产品 生成256维 uint8类型算子：python3 binary_flat_generate_model.py -d 256。</p>
-</td>
-</tr>
-</tbody>
-</table>
+<table><tbody>
+<tr><td width="140" align="center" valign="middle">用法</td><td valign="middle"><strong><code>python3 binary_flat_generate_model.py -d &lt;dim&gt; -q &lt;query_type&gt; -p &lt;process_id&gt; -pool &lt;pool_size&gt;</code></strong></td></tr>
+<tr><td width="140" align="center" valign="middle">参数名称</td><td valign="middle">&lt;dim&gt;：二值化特征向量维度，dim ∈ { 256， 512，1024 }，默认值为“512”。<br>&lt;query_type&gt;：检索类型，默认为“uint8”，当AscendIndexBinaryFlat算法的<a href="./api/02_approximate_retrieval/01_AscendIndexBinaryFlat.md#ZH-CN_TOPIC_0000001456375288">search接口</a>进行性能提升时，需要设置为“float”。<br>&lt;process_id&gt;：批量生成算子多进程调度的进程ID，默认值为“0”，无需设置。<br>&lt;pool_size&gt;：批量生成算子多进程调度的进程池大小，默认为16。<br>--help | -h：查询帮助信息。</td></tr>
+<tr><td width="140" align="center" valign="middle">说明</td><td valign="middle">例如对于Atlas 推理系列产品 生成256维 uint8类型算子：python3 binary_flat_generate_model.py -d 256。</td></tr>
+</tbody></table>
 
 **涉及算法<a name="section6613359134811"></a>**
 
@@ -568,28 +386,11 @@
 #### Mask<a name="ZH-CN_TOPIC_0000001461181500"></a>
 
 <a name="table4331184817108"></a>
-<table><tbody><tr id="row1433117485104"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.1.1"><p id="p733211482108"><a name="p733211482108"></a><a name="p733211482108"></a>用法</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.1.1 "><p id="p1197352833411"><a name="p1197352833411"></a><a name="p1197352833411"></a>python3 mask_generate_model.py -token &lt;max_token_cnt&gt; -p &lt;process_id&gt; -pool &lt;pool_size&gt; -t &lt;npu_type&gt;</p>
-</td>
-</tr>
-<tr id="row2033244801010"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.2.1"><p id="p4332164821010"><a name="p4332164821010"></a><a name="p4332164821010"></a>参数名称</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.2.1 "><p id="p16675175613311"><a name="p16675175613311"></a><a name="p16675175613311"></a>&lt;max_token_cnt&gt;：算子生成token的最大值，默认为2500，建议设置范围为[1, 300000]。</p>
-<p id="p1315743173515"><a name="p1315743173515"></a><a name="p1315743173515"></a>&lt;process_id&gt;：批量生成算子多进程调度的进程ID，默认值为<span class="parmvalue" id="parmvalue12408135012357"><a name="parmvalue12408135012357"></a><a name="parmvalue12408135012357"></a>“0”</span>，无需设置。</p>
-<p id="p10793175223414"><a name="p10793175223414"></a><a name="p10793175223414"></a>&lt;pool_size&gt;：批量生成算子多进程调度的进程池大小，默认为16。</p>
-<p id="p1719018389440"><a name="p1719018389440"></a><a name="p1719018389440"></a>&lt;npu_type&gt;：硬件形态，当前&lt;npu_type&gt;支持<term>Atlas 推理系列产品</term>，<term>Atlas A2 推理系列产品</term>、<term>Atlas A3 推理系列产品</term>，默认值为“310P”。
-<a name="ul994471125418"></a><a name="ul994471125418"></a><ul id="ul994471125418"><li><span id="ph10941163375016"><a name="ph10941163375016"></a><a name="ph10941163375016"></a>对于<span id="ph19941183375011"><a name="ph19941183375011"></a><a name="ph19941183375011"></a>Atlas 推理系列产品</span>，可在安装昇腾AI处理器的服务器执行<strong id="b7330834135115"><a name="b7330834135115"></a><a name="b7330834135115"></a>npu-smi info</strong>命令进行查询，将查询到的“Name”最后一位数字删除，即是npu_type的取值</span>。</li><li>对于<span id="ph299603920504"><a name="ph299603920504"></a><a name="ph299603920504"></a>Atlas 800I A2 推理服务器</span>，<span id="ph18599444165014"><a name="ph18599444165014"></a><a name="ph18599444165014"></a>可在安装昇腾AI处理器的服务器执行<strong id="b18495139195117"><a name="b18495139195117"></a><a name="b18495139195117"></a>npu-smi info</strong>命令进行查询，查询到的“Name”即是npu_type的取值</span>。</li><li>对于<span id="ph6488102065112"><a name="ph6488102065112"></a><a name="ph6488102065112"></a>Atlas 800I A3 超节点服务器</span>，可以通过<strong id="b1248815206511"><a name="b1248815206511"></a><a name="b1248815206511"></a>npu-smi info -t board -i 0 -c 0</strong>命令进行查询，获取<strong id="b144882206516"><a name="b144882206516"></a><a name="b144882206516"></a>NPU Name</strong>信息，910_<strong id="b1648872017519"><a name="b1648872017519"></a><a name="b1648872017519"></a>NPU Name</strong>即是npu_type的取值。</li></ul></p>
-<p id="p688819307338"><a name="p688819307338"></a><a name="p688819307338"></a>--help | -h：查询帮助信息。</p>
-</td>
-</tr>
-<tr id="row1333284817107"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.3.1"><p id="p103329483101"><a name="p103329483101"></a><a name="p103329483101"></a>说明</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.3.1 "><p id="p1896717588333"><a name="p1896717588333"></a><a name="p1896717588333"></a>例如对于Atlas 推理系列产品 生成token数量为300000的算子：python3 mask_generate_model.py -token 300000 -t 310P。</p>
-</td>
-</tr>
-</tbody>
-</table>
+<table><tbody>
+<tr><td width="140" align="center" valign="middle">用法</td><td valign="middle"><strong><code>python3 mask_generate_model.py -token &lt;max_token_cnt&gt; -p &lt;process_id&gt; -pool &lt;pool_size&gt; -t &lt;npu_type&gt;</code></strong></td></tr>
+<tr><td width="140" align="center" valign="middle">参数名称</td><td valign="middle">&lt;max_token_cnt&gt;：算子生成token的最大值，默认为2500，建议设置范围为[1, 300000]。<br>&lt;process_id&gt;：批量生成算子多进程调度的进程ID，默认值为“0”，无需设置。<br>&lt;pool_size&gt;：批量生成算子多进程调度的进程池大小，默认为16。<br>&lt;npu_type&gt;：硬件形态，当前&lt;npu_type&gt;支持Atlas 推理系列产品，Atlas A2 推理系列产品、Atlas A3 推理系列产品，默认值为“310P”。 <br>● 对于Atlas 推理系列产品，可在安装昇腾AI处理器的服务器执行<strong><code>npu-smi info</code></strong>命令进行查询，将查询到的“Name”最后一位数字删除，即是npu_type的取值。<br>● 对于Atlas 800I A2 推理服务器，可在安装昇腾AI处理器的服务器执行<strong><code>npu-smi info</code></strong>命令进行查询，查询到的“Name”即是npu_type的取值。<br>● 对于Atlas 800I A3 超节点服务器，可以通过<strong><code>npu-smi info -t board -i 0 -c 0</code></strong>命令进行查询，获取<strong><code>NPU Name</code></strong>信息，910_<strong><code>NPU Name</code></strong>即是npu_type的取值。<br>--help | -h：查询帮助信息。</td></tr>
+<tr><td width="140" align="center" valign="middle">说明</td><td valign="middle">例如对于Atlas 推理系列产品 生成token数量为300000的算子：python3 mask_generate_model.py -token 300000 -t 310P。</td></tr>
+</tbody></table>
 
 **涉及接口<a name="section1345318864915"></a>**
 
@@ -606,92 +407,31 @@ IVFSP检索当前支持硬件形态“910B4”，涉及以下几种类型的模�
 **IVFSP业务算子模型文件生成<a ID="section11272703813"></a>**
 
 <a name="table4331184817108"></a>
-<table><tbody><tr id="row1433117485104"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.1.1"><p id="p733211482108"><a name="p733211482108"></a><a name="p733211482108"></a>用法</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.1.1 "><p id="p828815402278"><a name="p828815402278"></a><a name="p828815402278"></a>python3 ivfsp_generate_model.py --cores &lt;core_num&gt; -d &lt;dim&gt; -nonzero_num &lt;low_dim&gt; -nlist &lt;k&gt; -handle_batch &lt;handle_batch&gt; -code_num &lt;code_num&gt; -p &lt;process_id&gt; --pool &lt;pool_size&gt;</p>
-</td>
-</tr>
-<tr id="row2033244801010"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.2.1"><p id="p4332164821010"><a name="p4332164821010"></a><a name="p4332164821010"></a>参数名称</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.2.1 "><p id="p472394917248"><a name="p472394917248"></a><a name="p472394917248"></a>&lt;core_num&gt;：AI Core的个数，默认值为“8”，无需设置。</p>
-<p id="p19724949202417"><a name="p19724949202417"></a><a name="p19724949202417"></a>&lt;dim&gt;：特征向量维度，默认值为“256”。</p>
-<p id="p472484911241"><a name="p472484911241"></a><a name="p472484911241"></a>&lt;low_dim&gt;：特征向量压缩后非零维度个数，默认值为“32”。</p>
-<p id="p1572494913240"><a name="p1572494913240"></a><a name="p1572494913240"></a>&lt;k&gt;：簇聚类中心个数。与<a href="#section51314823813">IVFSP训练算子模型文件生成</a>中的&lt;k&gt;保持一致，默认值为“1024”。</p>
-<p id="p1972464912414"><a name="p1972464912414"></a><a name="p1972464912414"></a>&lt;handle_batch&gt;：检索时每次下发计算的候选桶数量，默认值为“32”。</p>
-<p id="p1272411499246"><a name="p1272411499246"></a><a name="p1272411499246"></a>&lt;code_num&gt;：检索时每次下发计算的每个桶的最大样本数量，若桶太大，程序会自动根据code_num将桶拆成多次算子下发计算距离。与<a href="#section51314823813">IVFSP训练算子模型文件生成</a>中的&lt;codebook_batch_size&gt;保持一致，默认值为“32768”。</p>
-<p id="p5724134992412"><a name="p5724134992412"></a><a name="p5724134992412"></a>&lt;process_id&gt;：批量生成算子多进程调度的进程ID，默认值为<span class="parmvalue" id="parmvalue12408135012357"><a name="parmvalue12408135012357"></a><a name="parmvalue12408135012357"></a>“0”</span>，无需设置。</p>
-<p id="p1626301617420"><a name="p1626301617420"></a><a name="p1626301617420"></a>&lt;pool_size&gt;：批量生成算子多进程调度的进程池大小，默认值为“16”。</p>
-<p id="p11852192143213"><a name="p11852192143213"></a><a name="p11852192143213"></a>--help | -h：查询帮助信息。</p>
-</td>
-</tr>
-<tr id="row1333284817107"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.3.1"><p id="p103329483101"><a name="p103329483101"></a><a name="p103329483101"></a>说明</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.3.1 "><p id="p3370256123818"><a name="p3370256123818"></a><a name="p3370256123818"></a>执行此命令，用户可以得到一组用于IVFSP检索时的AI Core算子模型文件，用户需要自行修改命令中的参数。例如对于Atlas 推理系列产品 生成256维，压缩后维度为32，聚类中心为1024，桶数量为32，样本数量为32768的算子：python3 ivfsp_generate_model.py -d 256 -nonzero_num 32 -nlist 1024 -handle_batch 32 -code_num 32768</p>
-</td>
-</tr>
-<tr id="row1827720142259"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.4.1"><p id="p327810141252"><a name="p327810141252"></a><a name="p327810141252"></a>约束说明</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.4.1 "><a name="ul2098017146167"></a><a name="ul2098017146167"></a><ul id="ul2098017146167"><li>当dim ∈ {64, 128, 256}时，k∈ {256, 512, 1024, 2048, 4096, 8192, 16384}；当dim ∈ {512, 768}时，k∈ {256, 512, 1024, 2048}。</li><li>low_dim需为16的倍数且小于等于min(128, dim)。</li><li>handle_batch需为16的倍数，且16 ≤ handle_batch ≤ 240。</li><li>1 ≤ pool_size ≤ 32。</li></ul>
-</td>
-</tr>
-</tbody>
-</table>
+<table><tbody>
+<tr><td width="140" align="center" valign="middle">用法</td><td valign="middle"><strong><code>python3 ivfsp_generate_model.py --cores &lt;core_num&gt; -d &lt;dim&gt; -nonzero_num &lt;low_dim&gt; -nlist &lt;k&gt; -handle_batch &lt;handle_batch&gt; -code_num &lt;code_num&gt; -p &lt;process_id&gt; --pool &lt;pool_size&gt;</code></strong></td></tr>
+<tr><td width="140" align="center" valign="middle">参数名称</td><td valign="middle">&lt;core_num&gt;：AI Core的个数，默认值为“8”，无需设置。<br>&lt;dim&gt;：特征向量维度，默认值为“256”。<br>&lt;low_dim&gt;：特征向量压缩后非零维度个数，默认值为“32”。<br>&lt;k&gt;：簇聚类中心个数。与<a href="#section51314823813">IVFSP训练算子模型文件生成</a>中的&lt;k&gt;保持一致，默认值为“1024”。<br>&lt;handle_batch&gt;：检索时每次下发计算的候选桶数量，默认值为“32”。<br>&lt;code_num&gt;：检索时每次下发计算的每个桶的最大样本数量，若桶太大，程序会自动根据code_num将桶拆成多次算子下发计算距离。与<a href="#section51314823813">IVFSP训练算子模型文件生成</a>中的&lt;codebook_batch_size&gt;保持一致，默认值为“32768”。<br>&lt;process_id&gt;：批量生成算子多进程调度的进程ID，默认值为“0”，无需设置。<br>&lt;pool_size&gt;：批量生成算子多进程调度的进程池大小，默认值为“16”。<br>--help | -h：查询帮助信息。</td></tr>
+<tr><td width="140" align="center" valign="middle">说明</td><td valign="middle">执行此命令，用户可以得到一组用于IVFSP检索时的AI Core算子模型文件，用户需要自行修改命令中的参数。例如对于Atlas 推理系列产品 生成256维，压缩后维度为32，聚类中心为1024，桶数量为32，样本数量为32768的算子：python3 ivfsp_generate_model.py -d 256 -nonzero_num 32 -nlist 1024 -handle_batch 32 -code_num 32768</td></tr>
+<tr><td width="140" align="center" valign="middle">约束说明</td><td valign="middle">● 当dim ∈ {64, 128, 256}时，k∈ {256, 512, 1024, 2048, 4096, 8192, 16384}；当dim ∈ {512, 768}时，k∈ {256, 512, 1024, 2048}。<br>● low_dim需为16的倍数且小于等于min(128, dim)。<br>● handle_batch需为16的倍数，且16 ≤ handle_batch ≤ 240。<br>● 1 ≤ pool_size ≤ 32。</td></tr>
+</tbody></table>
 
 **IVFSP AICPU算子模型文件生成<a id="section10476137113814"></a>**
 
 <a name="table1844216303913"></a>
-<table><tbody><tr id="row124438353916"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.1.1"><p id="p1944314323914"><a name="p1944314323914"></a><a name="p1944314323914"></a>用法</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.1.1 "><p id="p164439315396"><a name="p164439315396"></a><a name="p164439315396"></a>python3 ivfsp_aicpu_generate_model.py --cores &lt;core_num&gt; -p &lt;process_id&gt;</p>
-</td>
-</tr>
-<tr id="row1344373183918"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.2.1"><p id="p244314363910"><a name="p244314363910"></a><a name="p244314363910"></a>参数名称</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.2.1 "><p id="p11745153613262"><a name="p11745153613262"></a><a name="p11745153613262"></a>&lt;core_num&gt;：AI Core的个数，默认值为“8”，无需设置。</p>
-<p id="p13745113617269"><a name="p13745113617269"></a><a name="p13745113617269"></a>&lt;process_id&gt;：批量生成算子多进程调度的进程ID，默认值为<span class="parmvalue" id="parmvalue1134717100258"><a name="parmvalue1134717100258"></a><a name="parmvalue1134717100258"></a>“0”</span>，无需设置。</p>
-<p id="p31671221377"><a name="p31671221377"></a><a name="p31671221377"></a>--help | -h：查询帮助信息。</p>
-</td>
-</tr>
-<tr id="row44439314393"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.3.1"><p id="p1444316303912"><a name="p1444316303912"></a><a name="p1444316303912"></a>说明</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.3.1 "><p id="p144431434393"><a name="p144431434393"></a><a name="p144431434393"></a>执行此命令，用户可以得到一组用于IVFSP检索时的AICPU算子模型文件。例如对于Atlas 推理系列产品 生成aicpu算子：python3 ivfsp_aicpu_generate_model.py --cores 8。</p>
-</td>
-</tr>
-</tbody>
-</table>
+<table><tbody>
+<tr><td width="140" align="center" valign="middle">用法</td><td valign="middle"><strong><code>python3 ivfsp_aicpu_generate_model.py --cores &lt;core_num&gt; -p &lt;process_id&gt;</code></strong></td></tr>
+<tr><td width="140" align="center" valign="middle">参数名称</td><td valign="middle">&lt;core_num&gt;：AI Core的个数，默认值为“8”，无需设置。<br>&lt;process_id&gt;：批量生成算子多进程调度的进程ID，默认值为“0”，无需设置。<br>--help | -h：查询帮助信息。</td></tr>
+<tr><td width="140" align="center" valign="middle">说明</td><td valign="middle">执行此命令，用户可以得到一组用于IVFSP检索时的AICPU算子模型文件。例如对于Atlas 推理系列产品 生成aicpu算子：python3 ivfsp_aicpu_generate_model.py --cores 8。</td></tr>
+</tbody></table>
 
 **IVFSP训练算子模型文件生成<a id="section51314823813"></a>**
 
 <a name="table142311552394"></a>
-<table><tbody><tr id="row12231105113915"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.1.1"><p id="p62311050394"><a name="p62311050394"></a><a name="p62311050394"></a>用法</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.1.1 "><p id="p192321351392"><a name="p192321351392"></a><a name="p192321351392"></a>python3 ivfsp_generate_pyacl_model.py --cores &lt;core_num&gt; -d &lt;dim&gt; -nonzero_num &lt;low_dim&gt; -nlist &lt;k&gt; -batch_size &lt;batch_size&gt; -code_num &lt;codebook_batch_size&gt; -p &lt;process_id&gt;</p>
-</td>
-</tr>
-<tr id="row723219523911"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.2.1"><p id="p1023265163915"><a name="p1023265163915"></a><a name="p1023265163915"></a>参数名称</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.2.1 "><p id="p27921438102719"><a name="p27921438102719"></a><a name="p27921438102719"></a>&lt;core_num&gt;：AI Core的个数，默认值为“8”，无需设置。</p>
-<p id="p19792438182711"><a name="p19792438182711"></a><a name="p19792438182711"></a>&lt;dim&gt;：特征向量维度，默认值为“256”。</p>
-<p id="p0792163819273"><a name="p0792163819273"></a><a name="p0792163819273"></a>&lt;low_dim&gt;：特征向量压缩后非零维度个数，默认值为“32”。</p>
-<p id="p20792133842718"><a name="p20792133842718"></a><a name="p20792133842718"></a>&lt;k&gt;：簇聚类中心个数。与<a href="#section11272703813">IVFSP业务算子模型文件生成</a>中的&lt;k&gt;保持一致，默认值为“1024”。</p>
-<p id="p15792438122717"><a name="p15792438122717"></a><a name="p15792438122717"></a>&lt;batch_size&gt;：训练时以batch_size大小执行训练，默认值为“32768”。</p>
-<p id="p87921838132719"><a name="p87921838132719"></a><a name="p87921838132719"></a>&lt;codebook_batch_size&gt;：训练时每次最大按codebook_batch_size样本数量操作码本，必须为2的幂次。与<a href="#section11272703813">IVFSP业务算子模型文件生成</a>中的&lt;code_num&gt;保持一致，默认值为“32768”。</p>
-<p id="p17792838132718"><a name="p17792838132718"></a><a name="p17792838132718"></a>&lt;process_id&gt;：批量生成算子多进程调度的进程ID，默认值为<span class="parmvalue" id="parmvalue11499918132520"><a name="parmvalue11499918132520"></a><a name="parmvalue11499918132520"></a>“0”</span>，无需设置。</p>
-<p id="p194632813370"><a name="p194632813370"></a><a name="p194632813370"></a>--help | -h：查询帮助信息。</p>
-</td>
-</tr>
-<tr id="row182322051393"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.3.1"><p id="p1223218512395"><a name="p1223218512395"></a><a name="p1223218512395"></a>说明</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.3.1 "><p id="p12232650398"><a name="p12232650398"></a><a name="p12232650398"></a>执行此命令，用户可以得到一组用于IVFSP检索时的算子模型文件，用户需要自行修改命令中的参数。生成的IVFSP训练算子模型文件，保存在当前目录的子目录op_models_pyacl下。例如对于Atlas 推理系列产品 生成256维 压缩后维度为32，nlist聚类中心1024，查询数量为32768，样本数量为32768算子：python3 ivfsp_generate_pyacl_model.py -d 256 -nonzero_num 32 -nlist 1024 -batch_size 32768 -code_num 32768</p>
-</td>
-</tr>
-<tr id="row1265606112615"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.4.1"><p id="p10656267261"><a name="p10656267261"></a><a name="p10656267261"></a>约束说明</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.4.1 "><a name="ul18345712132414"></a><a name="ul18345712132414"></a><ul id="ul18345712132414"><li>当dim ∈ {64, 128, 256}时，k∈ {256, 512, 1024, 2048, 4096, 8192, 16384}；当dim ∈ {512, 768}时，k∈ {256, 512, 1024, 2048}。</li><li>low_dim需为16的倍数且小于等于min(128, dim)。</li><li>batch_size需为16的倍数。</li><li>codebook_batch_size需为16的倍数。</li></ul>
-</td>
-</tr>
-</tbody>
-</table>
+<table><tbody>
+<tr><td width="140" align="center" valign="middle">用法</td><td valign="middle"><strong><code>python3 ivfsp_generate_pyacl_model.py --cores &lt;core_num&gt; -d &lt;dim&gt; -nonzero_num &lt;low_dim&gt; -nlist &lt;k&gt; -batch_size &lt;batch_size&gt; -code_num &lt;codebook_batch_size&gt; -p &lt;process_id&gt;</code></strong></td></tr>
+<tr><td width="140" align="center" valign="middle">参数名称</td><td valign="middle">&lt;core_num&gt;：AI Core的个数，默认值为“8”，无需设置。<br>&lt;dim&gt;：特征向量维度，默认值为“256”。<br>&lt;low_dim&gt;：特征向量压缩后非零维度个数，默认值为“32”。<br>&lt;k&gt;：簇聚类中心个数。与<a href="#section11272703813">IVFSP业务算子模型文件生成</a>中的&lt;k&gt;保持一致，默认值为“1024”。<br>&lt;batch_size&gt;：训练时以batch_size大小执行训练，默认值为“32768”。<br>&lt;codebook_batch_size&gt;：训练时每次最大按codebook_batch_size样本数量操作码本，必须为2的幂次。与<a href="#section11272703813">IVFSP业务算子模型文件生成</a>中的&lt;code_num&gt;保持一致，默认值为“32768”。<br>&lt;process_id&gt;：批量生成算子多进程调度的进程ID，默认值为“0”，无需设置。<br>--help | -h：查询帮助信息。</td></tr>
+<tr><td width="140" align="center" valign="middle">说明</td><td valign="middle">执行此命令，用户可以得到一组用于IVFSP检索时的算子模型文件，用户需要自行修改命令中的参数。生成的IVFSP训练算子模型文件，保存在当前目录的子目录op_models_pyacl下。例如对于Atlas 推理系列产品 生成256维 压缩后维度为32，nlist聚类中心1024，查询数量为32768，样本数量为32768算子：python3 ivfsp_generate_pyacl_model.py -d 256 -nonzero_num 32 -nlist 1024 -batch_size 32768 -code_num 32768</td></tr>
+<tr><td width="140" align="center" valign="middle">约束说明</td><td valign="middle">● 当dim ∈ {64, 128, 256}时，k∈ {256, 512, 1024, 2048, 4096, 8192, 16384}；当dim ∈ {512, 768}时，k∈ {256, 512, 1024, 2048}。<br>● low_dim需为16的倍数且小于等于min(128, dim)。<br>● batch_size需为16的倍数。<br>● codebook_batch_size需为16的倍数。</td></tr>
+</tbody></table>
 
 #### VSTAR<a name="ZH-CN_TOPIC_0000002044867041"></a>
 
@@ -702,35 +442,12 @@ VSTAR检索当前只支持<term>Atlas 推理系列产品</term>，涉及VSTAR业
 **VSTAR业务算子模型文件生成<a name="section11272703813"></a>**
 
 <a name="table4331184817108"></a>
-<table><tbody><tr id="row1433117485104"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.1.1"><p id="p733211482108"><a name="p733211482108"></a><a name="p733211482108"></a>用法</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.1.1 "><p id="p828815402278"><a name="p828815402278"></a><a name="p828815402278"></a>python3 vstar_generate_models.py --dim &lt;dim&gt; --nlistL1 &lt;nlist1&gt;  --subDimL1 &lt;sub_dim1&gt;  --nProbeL1 &lt;nprobe1&gt; --nProbeL2 &lt;nprobe2&gt; --segmentNumL3 &lt;segment&gt; --pool &lt;pool_size&gt;</p>
-</td>
-</tr>
-<tr id="row2033244801010"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.2.1"><p id="p4332164821010"><a name="p4332164821010"></a><a name="p4332164821010"></a>参数名称</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.2.1 "><p id="p472394917248"><a name="p472394917248"></a><a name="p472394917248"></a>&lt;dim&gt;：特征向量维度，默认值为“256”。</p>
-<p id="p1572494913240"><a name="p1572494913240"></a><a name="p1572494913240"></a>&lt;nlist1&gt;：一级簇聚类中心个数。默认值为“1024”。</p>
-<p id="p1972464912414"><a name="p1972464912414"></a><a name="p1972464912414"></a>&lt;nprobe1&gt;：检索时每次下发计算时的一级候选桶数量，默认值为“[72]”。</p>
-<p id="p75549202383"><a name="p75549202383"></a><a name="p75549202383"></a>&lt;nprobe2&gt;：检索时每次下发计算时的二级候选桶数量，默认值为“[64, 296]”。</p>
-<p id="p193458505381"><a name="p193458505381"></a><a name="p193458505381"></a>&lt;sub_dim1&gt;：检索时一级降维后的维度大小，默认值为“32”。</p>
-<p id="p686818358392"><a name="p686818358392"></a><a name="p686818358392"></a>&lt;segment&gt;：检索时从nprobe2中用于搜索数据段数，默认值“[512, 1000, 1504]”。</p>
-<p id="p14215717122817"><a name="p14215717122817"></a><a name="p14215717122817"></a>&lt;pool_size&gt;：批量生成算子多进程调度的进程池大小，默认“16”。</p>
-<p id="p2216353369"><a name="p2216353369"></a><a name="p2216353369"></a>--help | -h：查询帮助信息。</p>
-</td>
-</tr>
-<tr id="row1333284817107"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.3.1"><p id="p103329483101"><a name="p103329483101"></a><a name="p103329483101"></a>说明</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.3.1 "><p id="p3370256123818"><a name="p3370256123818"></a><a name="p3370256123818"></a>执行此命令，用户可以得到一组用于VSTAR检索时的AI Core和AICPU算子模型文件，用户需要自行修改命令中的参数。例如对于Atlas 推理系列产品 生成256维 nlist聚类中心为1024，一级候选桶nprobe1为72，二级候选桶nprobe2为64，降维后32，搜索段segment512的算子：python3 vstar_generate_models.py --dim 256 --nlistL1 1024 --subDimL1 32 --nProbeL1 72 --nProbeL2 64 --segmentNumL3 512</p>
-</td>
-</tr>
-<tr id="row1827720142259"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.4.1"><p id="p327810141252"><a name="p327810141252"></a><a name="p327810141252"></a>约束说明</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.4.1 "><a name="ul144021537172510"></a><a name="ul144021537172510"></a><ul id="ul144021537172510"><li>dim ∈ {128, 256, 512, 1024}。</li><li>nlist1 ∈ {256, 512, 1024}。</li><li>sub_dim1 ∈ {32，64，128}。sub_dim1必须小于dim。</li><li>nprobe1 ∈ (16, nlist1]。nprobe1是int类型的列表，且列表中的数值必须是8的整数倍。</li><li>nprobe2 ∈ [16, nprobe1 * n]。当dim为1024时n为16，其余维度n为32，nprobe2是int类型的列表，且列表中的数值必须是8的整数倍。</li><li>segment ∈ (100, 5000]。segment是int类型的列表，且segment必须是8的整数倍。</li><li>pool_size∈[1, 32]。运行脚本前请先确定宿主机最大能支持的进程数量合理设置。</li></ul>
-</td>
-</tr>
-</tbody>
-</table>
+<table><tbody>
+<tr><td width="140" align="center" valign="middle">用法</td><td valign="middle"><strong><code>python3 vstar_generate_models.py --dim &lt;dim&gt; --nlistL1 &lt;nlist1&gt; --subDimL1 &lt;sub_dim1&gt; --nProbeL1 &lt;nprobe1&gt; --nProbeL2 &lt;nprobe2&gt; --segmentNumL3 &lt;segment&gt; --pool &lt;pool_size&gt;</code></strong></td></tr>
+<tr><td width="140" align="center" valign="middle">参数名称</td><td valign="middle">&lt;dim&gt;：特征向量维度，默认值为“256”。<br>&lt;nlist1&gt;：一级簇聚类中心个数。默认值为“1024”。<br>&lt;nprobe1&gt;：检索时每次下发计算时的一级候选桶数量，默认值为“[72]”。<br>&lt;nprobe2&gt;：检索时每次下发计算时的二级候选桶数量，默认值为“[64, 296]”。<br>&lt;sub_dim1&gt;：检索时一级降维后的维度大小，默认值为“32”。<br>&lt;segment&gt;：检索时从nprobe2中用于搜索数据段数，默认值“[512, 1000, 1504]”。<br>&lt;pool_size&gt;：批量生成算子多进程调度的进程池大小，默认“16”。<br>--help | -h：查询帮助信息。</td></tr>
+<tr><td width="140" align="center" valign="middle">说明</td><td valign="middle">执行此命令，用户可以得到一组用于VSTAR检索时的AI Core和AICPU算子模型文件，用户需要自行修改命令中的参数。例如对于Atlas 推理系列产品 生成256维 nlist聚类中心为1024，一级候选桶nprobe1为72，二级候选桶nprobe2为64，降维后32，搜索段segment512的算子：python3 vstar_generate_models.py --dim 256 --nlistL1 1024 --subDimL1 32 --nProbeL1 72 --nProbeL2 64 --segmentNumL3 512</td></tr>
+<tr><td width="140" align="center" valign="middle">约束说明</td><td valign="middle">● dim ∈ {128, 256, 512, 1024}。<br>● nlist1 ∈ {256, 512, 1024}。<br>● sub_dim1 ∈ {32，64，128}。sub_dim1必须小于dim。<br>● nprobe1 ∈ (16, nlist1]。nprobe1是int类型的列表，且列表中的数值必须是8的整数倍。<br>● nprobe2 ∈ [16, nprobe1 * n]。当dim为1024时n为16，其余维度n为32，nprobe2是int类型的列表，且列表中的数值必须是8的整数倍。<br>● segment ∈ (100, 5000]。segment是int类型的列表，且segment必须是8的整数倍。<br>● pool_size∈[1, 32]。运行脚本前请先确定宿主机最大能支持的进程数量合理设置。</td></tr>
+</tbody></table>
 
 **涉及算法<a name="section16686174317488"></a>**
 
@@ -741,34 +458,12 @@ VSTAR检索当前只支持<term>Atlas 推理系列产品</term>，涉及VSTAR业
 #### IVFFLAT<a name="ZH-CN_TOPIC_0000002478096638"></a>
 
 <a name="table4331184817108"></a>
-<table><tbody><tr id="row1433117485104"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.1.1"><p id="p733211482108"><a name="p733211482108"></a><a name="p733211482108"></a>用法</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.1.1 "><p id="p828815402278"><a name="p828815402278"></a><a name="p828815402278"></a>python3 ivfflat_generate_model.py -d &lt;dim&gt; -c &lt;coarse_centroid_num&gt; --cores &lt;core_num&gt; -p &lt;process_id&gt; -pool &lt;pool_size&gt; -t &lt;npu_type&gt;</p>
-</td>
-</tr>
-<tr id="row2033244801010"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.2.1"><p id="p4332164821010"><a name="p4332164821010"></a><a name="p4332164821010"></a>参数名称</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.2.1 "><p id="p472394917248"><a name="p472394917248"></a><a name="p472394917248"></a>&lt;dim&gt;：特征向量维度，默认值为“128”。</p>
-<p id="p1572494913240"><a name="p1572494913240"></a><a name="p1572494913240"></a>&lt;coarse_centroid_num&gt;：一级簇聚类中心个数。默认值为“<span id="ph1658923911236"><a name="ph1658923911236"></a><a name="ph1658923911236"></a>1024</span>”。</p>
-<p id="p1149272010268"><a name="p1149272010268"></a><a name="p1149272010268"></a>&lt;core_num&gt;：<span id="ph129021410310"><a name="ph129021410310"></a><a name="ph129021410310"></a>昇腾AI处理器</span>AI Core的个数，默认为“40”。不指定该值时，根据&lt;npu_type&gt;配置：当&lt;npu_type&gt;配置为910B3时，&lt;core_num&gt;配置为40。</p>
-<p id="p1849218206267"><a name="p1849218206267"></a><a name="p1849218206267"></a>&lt;process_id&gt;：批量生成算子多进程调度的进程ID，默认值为“0”，无需设置。</p>
-<p id="p849220202265"><a name="p849220202265"></a><a name="p849220202265"></a>&lt;pool_size&gt;：批量生成算子多进程调度的进程池大小，默认值为“10”。</p>
-<p id="p174921720102611"><a name="p174921720102611"></a><a name="p174921720102611"></a>&lt;npu_type&gt;：硬件形态，当前&lt;npu_type&gt;支持<span id="ph996833614580"><a name="ph996833614580"></a><a name="ph996833614580"></a><term>Atlas A2 推理系列产品</term>，<term>Atlas A3 推理系列产品</term>和<term>Ascend 950 系列产品</term></span>，默认值为“910B4”。如果无法确定具体的npu_type，则在安装<span id="ph16510123015103"><a name="ph16510123015103"></a><a name="ph16510123015103"></a>昇腾AI处理器</span>的服务器执行<strong id="b1611533911102"><a name="b1611533911102"></a><a name="b1611533911102"></a>npu-smi info</strong>命令进行查询，将查询到的“Name”最后一位数字删除，即是npu_type的取值。对于<span id="ph1411710191414"><a name="ph1411710191414"></a><a name="ph1411710191414"></a>Atlas 800I A3 超节点服务器</span>，可以通过<strong id="b12401152416117"><a name="b12401152416117"></a><a name="b12401152416117"></a>npu-smi info -t board -i 0 -c 0</strong>命令进行查询，获取NPU Name信息，910_NPU Name即是npu_type的取值。对于 Ascend 950 超节点服务器请将npu_type设置为“Ascend950PR”。</p>
-<p id="p2216353369"><a name="p2216353369"></a><a name="p2216353369"></a>--help | -h：查询帮助信息。</p>
-</td>
-</tr>
-<tr id="row1333284817107"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.3.1"><p id="p103329483101"><a name="p103329483101"></a><a name="p103329483101"></a>说明</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.3.1 "><p id="p3370256123818"><a name="p3370256123818"></a><a name="p3370256123818"></a>执行此命令，用户可以得到一组算子模型文件，用户需要自行修改命令中的参数。例如对于Atlas 800I A2 生成256维，聚类中心nlist为1024算子：python3 ivfflat_generate_model.py -c 1024 -t 910B4</p>
-</td>
-</tr>
-<tr id="row1827720142259"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.4.1"><p id="p327810141252"><a name="p327810141252"></a><a name="p327810141252"></a>约束说明</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.4.1 "><a name="ul144021537172510"></a><a name="ul144021537172510"></a><ul id="ul144021537172510"><li>dim ∈ {64, 128, 256, 384, 512}。</li><li>&lt;coarse_centroid_num&gt; ∈ {1024, 2048, 4096, 8192, 16384, 32768}</li><li>1 ≤ &lt;pool_size&gt; ≤ 32</li></ul>
-</td>
-</tr>
-</tbody>
-</table>
+<table><tbody>
+<tr><td width="140" align="center" valign="middle">用法</td><td valign="middle"><strong><code>python3 ivfflat_generate_model.py -d &lt;dim&gt; -c &lt;coarse_centroid_num&gt; --cores &lt;core_num&gt; -p &lt;process_id&gt; -pool &lt;pool_size&gt; -t &lt;npu_type&gt;</code></strong></td></tr>
+<tr><td width="140" align="center" valign="middle">参数名称</td><td valign="middle">&lt;dim&gt;：特征向量维度，默认值为“128”。<br>&lt;coarse_centroid_num&gt;：一级簇聚类中心个数。默认值为“1024”。<br>&lt;core_num&gt;：昇腾AI处理器AI Core的个数，默认为“40”。不指定该值时，根据&lt;npu_type&gt;配置：当&lt;npu_type&gt;配置为910B3时，&lt;core_num&gt;配置为40。<br>&lt;process_id&gt;：批量生成算子多进程调度的进程ID，默认值为“0”，无需设置。<br>&lt;pool_size&gt;：批量生成算子多进程调度的进程池大小，默认值为“10”。<br>&lt;npu_type&gt;：硬件形态，当前&lt;npu_type&gt;支持Atlas A2 推理系列产品，Atlas A3 推理系列产品和Ascend 950 系列产品，默认值为“910B4”。如果无法确定具体的npu_type，则在安装昇腾AI处理器的服务器执行<strong><code>npu-smi info</code></strong>命令进行查询，将查询到的“Name”最后一位数字删除，即是npu_type的取值。对于Atlas 800I A3 超节点服务器，可以通过<strong><code>npu-smi info -t board -i 0 -c 0</code></strong>命令进行查询，获取NPU Name信息，910_NPU Name即是npu_type的取值。对于 Ascend 950 超节点服务器请将npu_type设置为“Ascend950PR”。<br>--help | -h：查询帮助信息。</td></tr>
+<tr><td width="140" align="center" valign="middle">说明</td><td valign="middle">执行此命令，用户可以得到一组算子模型文件，用户需要自行修改命令中的参数。例如对于Atlas 800I A2 生成256维，聚类中心nlist为1024算子：python3 ivfflat_generate_model.py -c 1024 -t 910B4</td></tr>
+<tr><td width="140" align="center" valign="middle">约束说明</td><td valign="middle">● dim ∈ {64, 128, 256, 384, 512}。<br>● &lt;coarse_centroid_num&gt; ∈ {1024, 2048, 4096, 8192, 16384, 32768}<br>● 1 ≤ &lt;pool_size&gt; ≤ 32</td></tr>
+</tbody></table>
 
 **涉及算法<a name="section16686174317488"></a>**
 
@@ -777,37 +472,12 @@ VSTAR检索当前只支持<term>Atlas 推理系列产品</term>，涉及VSTAR业
 #### IVFPQ<a name="ZH-CN_TOPIC_0000002478096638"></a>
 
 <a name="table4331184817108"></a>
-<table><tbody><tr id="row1433117485104"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.1.1"><p id="p733211482108"><a name="p733211482108"></a><a name="p733211482108"></a>用法</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.1.1 "><p id="p828815402278"><a name="p828815402278"></a><a name="p828815402278"></a>python3 ivfpq_generate_model.py -d &lt;dim&gt; -c &lt;nlist&gt; --cores &lt;core_num&gt; -m &lt;m&gt; -n &lt;nbit&gt; -topK &lt;topK&gt; -b &lt;blockNum&gt; -p &lt;process_id&gt; -t &lt;npu_type&gt;</p>
-</td>
-</tr>
-<tr id="row2033244801010"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.2.1"><p id="p4332164821010"><a name="p4332164821010"></a><a name="p4332164821010"></a>参数名称</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.2.1 "><p id="p472394917248"><a name="p472394917248"></a><a name="p472394917248"></a>&lt;dim&gt;：特征向量维度，默认值为“128”。</p>
-<p id="p1572494913240"><a name="p1572494913240"></a><a name="p1572494913240"></a>&lt;nlist&gt;：一级簇聚类中心个数。默认值为“<span id="ph1658923911236"><a name="ph1658923911236"></a><a name="ph1658923911236"></a>1024</span>”。</p>
-<p id="p1149272010268"><a name="p1149272010268"></a><a name="p1149272010268"></a>&lt;core_num&gt;：<span id="ph129021410310"><a name="ph129021410310"></a><a name="ph129021410310"></a>昇腾AI处理器</span>AI Core的个数，默认为“40”。不指定该值时，根据&lt;npu_type&gt;配置。</p>
-<p id="p849220202265"><a name="p849220202265"></a><a name="p849220202265"></a>&lt;m&gt;：子空间个数，默认值为“4”。</p>
-<p id="p849220202265"><a name="p849220202265"></a><a name="p849220202265"></a>&lt;nbit&gt;：每个子空间量化中心比特数，默认值为“8”，无需设置。同时会决定码本聚类中心数量ksub = 1 << nbit，当nbit为8时，ksub为256</p>
-<p id="p849220202265"><a name="p849220202265"></a><a name="p849220202265"></a>&lt;topK&gt;：针对每条查询向量所返回的最相近候选向量的个数，默认值为“320”，无需设置。</p>
-<p id="p849220202265"><a name="p849220202265"></a><a name="p849220202265"></a>&lt;blockNum&gt;：所处理候选向量block的个数，默认值为“128”，无需设置。</p>
-<p id="p1849218206267"><a name="p1849218206267"></a><a name="p1849218206267"></a>&lt;process_id&gt;：批量生成算子多进程调度的进程ID，默认值为“0”，无需设置。</p>
-<p id="p174921720102611"><a name="p174921720102611"></a><a name="p174921720102611"></a>&lt;npu_type&gt;：硬件形态，当前&lt;npu_type&gt;仅支持Ascend950 系列产品，默认值为“Ascend950PR”，无需设置。</p>
-<p id="p2216353369"><a name="p2216353369"></a><a name="p2216353369"></a>--help | -h：查询帮助信息。</p>
-</td>
-</tr>
-<tr id="row1333284817107"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.3.1"><p id="p103329483101"><a name="p103329483101"></a><a name="p103329483101"></a>说明</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.3.1 "><p id="p3370256123818"><a name="p3370256123818"></a><a name="p3370256123818"></a>执行此命令，用户可以得到一组算子模型文件，用户需要自行修改命令中的参数。例如生成128维，聚类中心nlist为1024，子空间个数4，比特数8算子：python3 ivfpq_generate_model.py -d 128 -c 1024 -m 4 -n 8</p>
-</td>
-</tr>
-<tr id="row1827720142259"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.4.1"><p id="p327810141252"><a name="p327810141252"></a><a name="p327810141252"></a>约束说明</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.4.1 "><a name="ul144021537172510"></a><a name="ul144021537172510"></a><ul id="ul144021537172510"><li>dim ∈ {128}</li><li>nlist ∈ {1024, 2048, 4096, 8192, 16384, 262144, 524288}</li><li>m ∈ {2, 4, 8, 16, 32}</li><li>n ∈ {8}</li></ul>
-</td>
-</tr>
-</tbody>
-</table>
+<table><tbody>
+<tr><td width="140" align="center" valign="middle">用法</td><td valign="middle"><strong><code>python3 ivfpq_generate_model.py -d &lt;dim&gt; -c &lt;nlist&gt; --cores &lt;core_num&gt; -m &lt;m&gt; -n &lt;nbit&gt; -topK &lt;topK&gt; -b &lt;blockNum&gt; -p &lt;process_id&gt; -t &lt;npu_type&gt;</code></strong></td></tr>
+<tr><td width="140" align="center" valign="middle">参数名称</td><td valign="middle">&lt;dim&gt;：特征向量维度，默认值为“128”。<br>&lt;nlist&gt;：一级簇聚类中心个数。默认值为“1024”。<br>&lt;core_num&gt;：昇腾AI处理器AI Core的个数，默认为“40”。不指定该值时，根据&lt;npu_type&gt;配置。<br>&lt;m&gt;：子空间个数，默认值为“4”。<br>&lt;nbit&gt;：每个子空间量化中心比特数，默认值为“8”，无需设置。同时会决定码本聚类中心数量ksub = 1 &lt;&lt; nbit，当nbit为8时，ksub为256<br>&lt;topK&gt;：针对每条查询向量所返回的最相近候选向量的个数，默认值为“320”，无需设置。<br>&lt;blockNum&gt;：所处理候选向量block的个数，默认值为“128”，无需设置。<br>&lt;process_id&gt;：批量生成算子多进程调度的进程ID，默认值为“0”，无需设置。<br>&lt;npu_type&gt;：硬件形态，当前&lt;npu_type&gt;仅支持Ascend950 系列产品，默认值为“Ascend950PR”，无需设置。<br>--help | -h：查询帮助信息。</td></tr>
+<tr><td width="140" align="center" valign="middle">说明</td><td valign="middle">执行此命令，用户可以得到一组算子模型文件，用户需要自行修改命令中的参数。例如生成128维，聚类中心nlist为1024，子空间个数4，比特数8算子：python3 ivfpq_generate_model.py -d 128 -c 1024 -m 4 -n 8</td></tr>
+<tr><td width="140" align="center" valign="middle">约束说明</td><td valign="middle">● dim ∈ {128}<br>● nlist ∈ {1024, 2048, 4096, 8192, 16384, 262144, 524288}<br>● m ∈ {2, 4, 8, 16, 32}<br>● n ∈ {8}</td></tr>
+</tbody></table>
 
 **涉及算法<a name="section16686174317488"></a>**
 
@@ -816,35 +486,12 @@ VSTAR检索当前只支持<term>Atlas 推理系列产品</term>，涉及VSTAR业
 #### IVFRaBitQ<a name="ZH-CN_TOPIC_0000002513317244"></a>
 
 <a name="table1844216303913"></a>
-<table><tbody><tr id="row124438353916"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.1.1"><p id="p1944314323914"><a name="p1944314323914"></a><a name="p1944314323914"></a>用法</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.1.1 "><p id="p033194912546"><a name="p033194912546"></a><a name="p033194912546"></a>python3 ivfrabitq_generate_model.py -d &lt;dim&gt; -c &lt;coarse_centroid_num&gt; --cores &lt;core_num&gt; -p &lt;process_id&gt; -pool &lt;pool_size&gt; -t &lt;npu_type&gt; -m &lt;metric_type&gt;</p>
-</td>
-</tr>
-<tr id="row1344373183918"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.2.1"><p id="p244314363910"><a name="p244314363910"></a><a name="p244314363910"></a>参数名称</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.2.1 "><p id="p472394917248"><a name="p472394917248"></a><a name="p472394917248"></a>&lt;dim&gt;：特征向量维度，默认值为“128”。</p>
-<p id="p1572494913240"><a name="p1572494913240"></a><a name="p1572494913240"></a>&lt;coarse_centroid_num&gt;：一级簇聚类中心个数。默认值为“16384”。</p>
-<p id="p113021935175610"><a name="p113021935175610"></a><a name="p113021935175610"></a>&lt;core_num&gt;：<span id="ph83021535135613"><a name="ph83021535135613"></a><a name="ph83021535135613"></a>昇腾AI处理器</span>AI Core的个数，默认为“40”。不指定该值时，根据&lt;npu_type&gt;配置：当&lt;npu_type&gt;配置为910B3时，&lt;core_num&gt;配置为40。</p>
-<p id="p10302153517569"><a name="p10302153517569"></a><a name="p10302153517569"></a>&lt;process_id&gt;：批量生成算子多进程调度的进程ID，默认值为“0”，无需设置。</p>
-<p id="p849220202265"><a name="p849220202265"></a><a name="p849220202265"></a>&lt;pool_size&gt;：批量生成算子多进程调度的进程池大小，默认值为“10”。</p>
-<p id="p174921720102611"><a name="p174921720102611"></a><a name="p174921720102611"></a>&lt;npu_type&gt;：硬件形态，当前&lt;npu_type&gt;支持<term>Atlas A2 推理系列产品</term>，<term>Atlas A3 推理系列产品</term>，默认值为“910B4”。如果无法确定具体的npu_type，则在安装<span id="ph16510123015103"><a name="ph16510123015103"></a><a name="ph16510123015103"></a>昇腾AI处理器</span>的服务器执行<strong id="b1611533911102"><a name="b1611533911102"></a><a name="b1611533911102"></a>npu-smi info</strong>命令进行查询，将查询到的“Name”最后一位数字删除，即是npu_type的取值。对于<span id="ph1411710191414"><a name="ph1411710191414"></a><a name="ph1411710191414"></a>Atlas 800I A3 超节点服务器</span>，可以通过<strong id="b12401152416117"><a name="b12401152416117"></a><a name="b12401152416117"></a>npu-smi info -t board -i 0 -c 0</strong>命令进行查询，获取NPU Name信息，910_NPU Name即是npu_type的取值。</p>
-<p id="p116211110135912"><a name="p116211110135912"></a><a name="p116211110135912"></a>&lt;metric_type&gt;：向量计算方式，用于显式指定使用“L2”还是“IP”距离进行计算，默认为“L2”。</p>
-<p id="p4302153511569"><a name="p4302153511569"></a><a name="p4302153511569"></a>--help | -h：查询帮助信息。</p>
-</td>
-</tr>
-<tr id="row44439314393"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.3.1"><p id="p1444316303912"><a name="p1444316303912"></a><a name="p1444316303912"></a>说明</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.3.1 "><p id="p144431434393"><a name="p144431434393"></a><a name="p144431434393"></a>执行此命令，用户可以得到一组算子模型文件，用户需要自行修改命令中的参数。例如对于Atlas 800I A2 生成128维，聚类中心nlist1024，L2距离算子：python3 ivfrabitq_generate_model.py -d 128 -c 1024 -t 910B4 -m L2</p>
-</td>
-</tr>
-<tr id="row19923139133710"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.4.1"><p id="p68850165377"><a name="p68850165377"></a><a name="p68850165377"></a>约束说明</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.4.1 "><a name="ul16885121613379"></a><a name="ul16885121613379"></a><ul id="ul16885121613379"><li>dim ∈ {128}</li><li>&lt;coarse_centroid_num&gt; ∈ {1024, 2048, 4096, 8192, 10048, 16384, 32768}</li><li>1 ≤ &lt;pool_size&gt; ≤ 32</li></ul>
-</td>
-</tr>
-</tbody>
-</table>
+<table><tbody>
+<tr><td width="140" align="center" valign="middle">用法</td><td valign="middle"><strong><code>python3 ivfrabitq_generate_model.py -d &lt;dim&gt; -c &lt;coarse_centroid_num&gt; --cores &lt;core_num&gt; -p &lt;process_id&gt; -pool &lt;pool_size&gt; -t &lt;npu_type&gt; -m &lt;metric_type&gt;</code></strong></td></tr>
+<tr><td width="140" align="center" valign="middle">参数名称</td><td valign="middle">&lt;dim&gt;：特征向量维度，默认值为“128”。<br>&lt;coarse_centroid_num&gt;：一级簇聚类中心个数。默认值为“16384”。<br>&lt;core_num&gt;：昇腾AI处理器AI Core的个数，默认为“40”。不指定该值时，根据&lt;npu_type&gt;配置：当&lt;npu_type&gt;配置为910B3时，&lt;core_num&gt;配置为40。<br>&lt;process_id&gt;：批量生成算子多进程调度的进程ID，默认值为“0”，无需设置。<br>&lt;pool_size&gt;：批量生成算子多进程调度的进程池大小，默认值为“10”。<br>&lt;npu_type&gt;：硬件形态，当前&lt;npu_type&gt;支持Atlas A2 推理系列产品，Atlas A3 推理系列产品，默认值为“910B4”。如果无法确定具体的npu_type，则在安装昇腾AI处理器的服务器执行<strong><code>npu-smi info</code></strong>命令进行查询，将查询到的“Name”最后一位数字删除，即是npu_type的取值。对于Atlas 800I A3 超节点服务器，可以通过<strong><code>npu-smi info -t board -i 0 -c 0</code></strong>命令进行查询，获取NPU Name信息，910_NPU Name即是npu_type的取值。<br>&lt;metric_type&gt;：向量计算方式，用于显式指定使用“L2”还是“IP”距离进行计算，默认为“L2”。<br>--help | -h：查询帮助信息。</td></tr>
+<tr><td width="140" align="center" valign="middle">说明</td><td valign="middle">执行此命令，用户可以得到一组算子模型文件，用户需要自行修改命令中的参数。例如对于Atlas 800I A2 生成128维，聚类中心nlist1024，L2距离算子：python3 ivfrabitq_generate_model.py -d 128 -c 1024 -t 910B4 -m L2</td></tr>
+<tr><td width="140" align="center" valign="middle">约束说明</td><td valign="middle">● dim ∈ {128}<br>● &lt;coarse_centroid_num&gt; ∈ {1024, 2048, 4096, 8192, 10048, 16384, 32768}<br>● 1 ≤ &lt;pool_size&gt; ≤ 32</td></tr>
+</tbody></table>
 
 **涉及算法<a name="section16686174317488"></a>**
 
@@ -857,34 +504,12 @@ VSTAR检索当前只支持<term>Atlas 推理系列产品</term>，涉及VSTAR业
 #### Cagra<a name="ZH-CN_TOPIC_0000002513317245"></a>
 
 <a name="table_cagra_op"></a>
-<table><tbody><tr id="row_cagra_op_1"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.1.1"><p id="p_cagra_op_1"><a name="p_cagra_op_1"></a><a name="p_cagra_op_1"></a>用法</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.1.1 "><p id="p_cagra_op_2"><a name="p_cagra_op_2"></a><a name="p_cagra_op_2"></a>python3 cagra_generate_model.py -d &lt;dim&gt; -data_base &lt;data_base&gt; -degree &lt;degree&gt; -topK &lt;topK&gt; -p &lt;process_id&gt; -t &lt;npu_type&gt;</p>
-</td>
-</tr>
-<tr id="row_cagra_op_2"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.2.1"><p id="p_cagra_op_3"><a name="p_cagra_op_3"></a><a name="p_cagra_op_3"></a>参数名称</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.2.1 "><p id="p_cagra_op_4"><a name="p_cagra_op_4"></a><a name="p_cagra_op_4"></a>&lt;dim&gt;：特征向量维度，默认值为"128"。</p>
-<p id="p_cagra_op_5"><a name="p_cagra_op_5"></a><a name="p_cagra_op_5"></a>&lt;data_base&gt;：底库数据量，默认值为"1000000"。</p>
-<p id="p_cagra_op_6"><a name="p_cagra_op_6"></a><a name="p_cagra_op_6"></a>&lt;degree&gt;：图度数，默认值为"64"。</p>
-<p id="p_cagra_op_7"><a name="p_cagra_op_7"></a><a name="p_cagra_op_7"></a>&lt;topK&gt;：检索返回的最近邻个数，默认值为"64"。</p>
-<p id="p_cagra_op_8"><a name="p_cagra_op_8"></a><a name="p_cagra_op_8"></a>&lt;process_id&gt;：批量生成算子多进程调度的进程ID，默认值为"0"，无需设置。</p>
-<p id="p_cagra_op_9"><a name="p_cagra_op_9"></a><a name="p_cagra_op_9"></a>&lt;npu_type&gt;：硬件形态，默认值为"Ascend950PR"。</p>
-<p id="p_cagra_op_10"><a name="p_cagra_op_10"></a><a name="p_cagra_op_10"></a>--help | -h：查询帮助信息。</p>
-</td>
-</tr>
-<tr id="row_cagra_op_3"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.3.1"><p id="p_cagra_op_11"><a name="p_cagra_op_11"></a><a name="p_cagra_op_11"></a>说明</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.3.1 "><p id="p_cagra_op_12"><a name="p_cagra_op_12"></a><a name="p_cagra_op_12"></a>执行此命令，用户可以得到一组算子模型文件，用户需要自行修改命令中的参数。例如对于<term>Ascend 950 系列产品</term> 生成128维，底库100万，图度数64，topK 64的算子：python3 cagra_generate_model.py -d 128 -data_base 1000000 -degree 64 -topK 64 -t Ascend950PR</p>
-</td>
-</tr>
-<tr id="row_cagra_op_4"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.4.1"><p id="p_cagra_op_13"><a name="p_cagra_op_13"></a><a name="p_cagra_op_13"></a>约束说明</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.4.1 "><a name="ul_cagra_op_1"></a><a name="ul_cagra_op_1"></a><ul id="ul_cagra_op_1"><li>仅支持<term>Ascend 950 系列产品</term></li><li>dim ∈ {64, 128, 256, 512}</li><li>degree ∈ {64, 128, 256, 512}</li></ul>
-</td>
-</tr>
-</tbody>
-</table>
+<table><tbody>
+<tr><td width="140" align="center" valign="middle">用法</td><td valign="middle"><strong><code>python3 cagra_generate_model.py -d &lt;dim&gt; -data_base &lt;data_base&gt; -degree &lt;degree&gt; -topK &lt;topK&gt; -p &lt;process_id&gt; -t &lt;npu_type&gt;</code></strong></td></tr>
+<tr><td width="140" align="center" valign="middle">参数名称</td><td valign="middle">&lt;dim&gt;：特征向量维度，默认值为&quot;128&quot;。<br>&lt;data_base&gt;：底库数据量，默认值为&quot;1000000&quot;。<br>&lt;degree&gt;：图度数，默认值为&quot;64&quot;。<br>&lt;topK&gt;：检索返回的最近邻个数，默认值为&quot;64&quot;。<br>&lt;process_id&gt;：批量生成算子多进程调度的进程ID，默认值为&quot;0&quot;，无需设置。<br>&lt;npu_type&gt;：硬件形态，默认值为&quot;Ascend950PR&quot;。<br>--help | -h：查询帮助信息。</td></tr>
+<tr><td width="140" align="center" valign="middle">说明</td><td valign="middle">执行此命令，用户可以得到一组算子模型文件，用户需要自行修改命令中的参数。例如对于Ascend 950 系列产品 生成128维，底库100万，图度数64，topK 64的算子：python3 cagra_generate_model.py -d 128 -data_base 1000000 -degree 64 -topK 64 -t Ascend950PR</td></tr>
+<tr><td width="140" align="center" valign="middle">约束说明</td><td valign="middle">● 仅支持Ascend 950 系列产品<br>● dim ∈ {64, 128, 256, 512}<br>● degree ∈ {64, 128, 256, 512}</td></tr>
+</tbody></table>
 
 ##### Cagra构图脚本<a name="section_cagra_build"></a>
 
@@ -905,34 +530,12 @@ pip install joblib
 Cagra构图脚本 "graph_build.py" 用于构建CAGRA图检索算法所需的图文件（脚本位于安装目录下的"tools/train"文件夹中）。
 
 <a name="table_cagra_build"></a>
-<table><tbody><tr id="row_cagra_build_1"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.1.1"><p id="p_cagra_build_1"><a name="p_cagra_build_1"></a><a name="p_cagra_build_1"></a>命令参考</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.1.1 "><p id="p_cagra_build_2"><a name="p_cagra_build_2"></a><a name="p_cagra_build_2"></a>python3 graph_build.py --input_filepath &lt;input_filepath&gt; --output_filepath &lt;output_filepath&gt; --graph_degree &lt;graph_degree&gt; --intermediate_degree &lt;intermediate_degree&gt; --nn_descent_niter &lt;nn_descent_niter&gt; --eval_samples &lt;eval_samples&gt;</p>
-</td>
-</tr>
-<tr id="row_cagra_build_2"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.2.1"><p id="p_cagra_build_3"><a name="p_cagra_build_3"></a><a name="p_cagra_build_3"></a>参数名称</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.2.1 "><p id="p_cagra_build_4"><a name="p_cagra_build_4"></a><a name="p_cagra_build_4"></a>&lt;input_filepath&gt;：输入目录路径，需包含"sift_base.fvecs"（底库数据）和"sift_query.fvecs"（查询数据）。该参数为必填项。</p>
-<p id="p_cagra_build_5"><a name="p_cagra_build_5"></a><a name="p_cagra_build_5"></a>&lt;output_filepath&gt;：输出目录路径，生成的KNN图文件存储在该目录下。该参数为必填项。</p>
-<p id="p_cagra_build_6"><a name="p_cagra_build_6"></a><a name="p_cagra_build_6"></a>&lt;graph_degree&gt;：最终图的出度，建议与搜索算子的GRAPH_DEGREE保持一致。类型为int，默认值为"64"。要求大于0。</p>
-<p id="p_cagra_build_7"><a name="p_cagra_build_7"></a><a name="p_cagra_build_7"></a>&lt;intermediate_degree&gt;：中间图的出度，必须大于等于&lt;graph_degree&gt;。若该值不是32的倍数，将自动向上取整为最近的32的倍数。类型为int，默认值为"128"。</p>
-<p id="p_cagra_build_8"><a name="p_cagra_build_8"></a><a name="p_cagra_build_8"></a>&lt;nn_descent_niter&gt;：NN-Descent迭代次数。迭代次数越大，图质量越高但构建时间越长。建议设置足够的迭代次数使得R@1/10/32/64均不低于0.995。类型为int，默认值为"10"。要求大于0。</p>
-<p id="p_cagra_build_9"><a name="p_cagra_build_9"></a><a name="p_cagra_build_9"></a>&lt;eval_samples&gt;：评估图质量时使用的采样点数。设为"0"则跳过评估。类型为int，默认值为"1000"。</p>
-<p id="p_cagra_build_10"><a name="p_cagra_build_10"></a><a name="p_cagra_build_10"></a>--help | -h：查询帮助信息。</p>
-</td>
-</tr>
-<tr id="row_cagra_build_3"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.3.1"><p id="p_cagra_build_11"><a name="p_cagra_build_11"></a><a name="p_cagra_build_11"></a>使用说明</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.3.1 "><a name="ul_cagra_build_1"></a><a name="ul_cagra_build_1"></a><ul id="ul_cagra_build_1"><li>执行此命令，在&lt;output_filepath&gt;对应的目录下生成以下文件：knn_graph.bin（KNN图文件）、data_ptr.bin（底库数据文件）、visited_map.bin（访问标记文件）和queries.bin（查询数据文件）。</li><li>当输出文件存在时，将执行覆盖写，此种情况程序执行用户应该是文件的属主。</li><li>&lt;intermediate_degree&gt;必须大于等于&lt;graph_degree&gt;，否则程序将报错。</li><li>构建过程中会打印每次迭代后的R@1/10/32/64召回率，建议持续迭代直至召回率稳定（建议R@1/10/32/64均不低于0.995）。</li><li>构图过程中会占用较多CPU和内存资源，建议在内存充足的环境下执行。</li></ul>
-</td>
-</tr>
-<tr id="row_cagra_build_4"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.4.1"><p id="p_cagra_build_12"><a name="p_cagra_build_12"></a><a name="p_cagra_build_12"></a>调用示例</p>
-</th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.4.1 "><p id="p_cagra_build_13"><a name="p_cagra_build_13"></a><a name="p_cagra_build_13"></a>python3 graph_build.py --input_filepath /home/user/data/sift_origin --output_filepath /home/user/output/iter_64_192 --graph_degree 64 --intermediate_degree 128 --nn_descent_niter 10</p>
-</td>
-</tr>
-</tbody>
-</table>
+<table><tbody>
+<tr><td width="140" align="center" valign="middle">命令参考</td><td valign="middle"><strong><code>python3 graph_build.py --input_filepath &lt;input_filepath&gt; --output_filepath &lt;output_filepath&gt; --graph_degree &lt;graph_degree&gt; --intermediate_degree &lt;intermediate_degree&gt; --nn_descent_niter &lt;nn_descent_niter&gt; --eval_samples &lt;eval_samples&gt;</code></strong></td></tr>
+<tr><td width="140" align="center" valign="middle">参数名称</td><td valign="middle">&lt;input_filepath&gt;：输入目录路径，需包含&quot;sift_base.fvecs&quot;（底库数据）和&quot;sift_query.fvecs&quot;（查询数据）。该参数为必填项。<br>&lt;output_filepath&gt;：输出目录路径，生成的KNN图文件存储在该目录下。该参数为必填项。<br>&lt;graph_degree&gt;：最终图的出度，建议与搜索算子的GRAPH_DEGREE保持一致。类型为int，默认值为&quot;64&quot;。要求大于0。<br>&lt;intermediate_degree&gt;：中间图的出度，必须大于等于&lt;graph_degree&gt;。若该值不是32的倍数，将自动向上取整为最近的32的倍数。类型为int，默认值为&quot;128&quot;。<br>&lt;nn_descent_niter&gt;：NN-Descent迭代次数。迭代次数越大，图质量越高但构建时间越长。建议设置足够的迭代次数使得R@1/10/32/64均不低于0.995。类型为int，默认值为&quot;10&quot;。要求大于0。<br>&lt;eval_samples&gt;：评估图质量时使用的采样点数。设为&quot;0&quot;则跳过评估。类型为int，默认值为&quot;1000&quot;。<br>--help | -h：查询帮助信息。</td></tr>
+<tr><td width="140" align="center" valign="middle">使用说明</td><td valign="middle">● 执行此命令，在&lt;output_filepath&gt;对应的目录下生成以下文件：knn_graph.bin（KNN图文件）、data_ptr.bin（底库数据文件）、visited_map.bin（访问标记文件）和queries.bin（查询数据文件）。<br>● 当输出文件存在时，将执行覆盖写，此种情况程序执行用户应该是文件的属主。<br>● &lt;intermediate_degree&gt;必须大于等于&lt;graph_degree&gt;，否则程序将报错。<br>● 构建过程中会打印每次迭代后的R@1/10/32/64召回率，建议持续迭代直至召回率稳定（建议R@1/10/32/64均不低于0.995）。<br>● 构图过程中会占用较多CPU和内存资源，建议在内存充足的环境下执行。</td></tr>
+<tr><td width="140" align="center" valign="middle">调用示例</td><td valign="middle">python3 graph_build.py --input_filepath /home/user/data/sift_origin --output_filepath /home/user/output/iter_64_192 --graph_degree 64 --intermediate_degree 128 --nn_descent_niter 10</td></tr>
+</tbody></table>
 
 **涉及算法<a name="section_cagra_algo"></a>**
 
@@ -1082,32 +685,11 @@ CANN 8.5.0之前版本需要单独安装nnae。具体安装步骤如下：
 训练涉及“vstar\_train\_codebook.py”脚本（训练脚本位于安装目录下的“tools/train”文件夹中），注意Python版本为3.9。
 
 <a name="table48723587152"></a>
-<table><tbody><tr id="row4899125881510"><th class="firstcol" valign="top" width="13.62%" id="mcps1.1.3.1.1"><p id="p1089905812153"><a name="p1089905812153"></a><a name="p1089905812153"></a>命令参考</p>
-</th>
-<td class="cellrowborder" valign="top" width="86.38%" headers="mcps1.1.3.1.1 "><p id="p989945810152"><a name="p989945810152"></a><a name="p989945810152"></a>python3 vstar_train_codebook.py --dataPath &lt;data_path&gt; --dim &lt;dim&gt; --codebookPath &lt;codebook_output_dir&gt; --nlistL1 &lt;nlist1&gt; --subDimL1 &lt;sub_dim1&gt;  --device &lt;device&gt; --batchSize &lt;batch_size&gt; --sample &lt;sample&gt; --useOfflineCompile</p>
-</td>
-</tr>
-<tr id="row13899195817158"><th class="firstcol" valign="top" width="13.62%" id="mcps1.1.3.2.1"><p id="p198995588156"><a name="p198995588156"></a><a name="p198995588156"></a>参数名称</p>
-</th>
-<td class="cellrowborder" valign="top" width="86.38%" headers="mcps1.1.3.2.1 "><p id="p112782011172018"><a name="p112782011172018"></a><a name="p112782011172018"></a>&lt;data_path&gt;：需要训练码本的原始数据路径，需要保证数据真实存在。该参数为必填项。</p>
-<p id="p4899195861514"><a name="p4899195861514"></a><a name="p4899195861514"></a>&lt;dim&gt;：特征向量维度。与VSTAR训练算子模型文件生成的&lt;dim&gt;保持一致，默认值为<span class="parmvalue" id="parmvalue9207155164317"><a name="parmvalue9207155164317"></a><a name="parmvalue9207155164317"></a>“256”</span>。</p>
-<p id="p9584201083120"><a name="p9584201083120"></a><a name="p9584201083120"></a>&lt;codebook_output_dir&gt;：最终生成的码本文件所存储的路径，生成的码本文件输出到的目录，用户应该保证此目录存在，且程序的执行用户对此目录具有写权限。出于安全加固考虑，目录层级中不能含有软链接。</p>
-<p id="p689915891520"><a name="p689915891520"></a><a name="p689915891520"></a>&lt;nlist1&gt;：一级簇聚类中心个数。与VSTAR训练算子模型文件生成的&lt;nlist1&gt;保持一致，默认值为“1024”。</p>
-<p id="p193458505381"><a name="p193458505381"></a><a name="p193458505381"></a>&lt;sub_dim1&gt;：检索时一级降维后的维度大小，与VSTAR训练算子模型文件生成的&lt;sub_dim1&gt;保持一致，默认值为“32”。</p>
-<p id="p68991758111519"><a name="p68991758111519"></a><a name="p68991758111519"></a>&lt;device&gt;：设备逻辑ID，在指定的Device上执行训练，默认值为“1”。</p>
-<p id="p089915814155"><a name="p089915814155"></a><a name="p089915814155"></a>&lt;batch_size&gt;：训练时以batch_size大小执行训练，参数范围(0，10240]，默认值为<span class="parmvalue" id="parmvalue17103111818276"><a name="parmvalue17103111818276"></a><a name="parmvalue17103111818276"></a>“10240”</span>。</p>
-<p id="p168991358141520"><a name="p168991358141520"></a><a name="p168991358141520"></a>&lt;sample&gt;：训练用原始样本的采样率，0 &lt; sample ≤ 1.0，默认为<span class="parmvalue" id="parmvalue497014364412"><a name="parmvalue497014364412"></a><a name="parmvalue497014364412"></a>“1.0”</span>。</p>
-<p id="p1581627174815"><a name="p1581627174815"></a><a name="p1581627174815"></a>--useOfflineCompile：控制是否选择依赖算子包，使用离线算子编译，以获得性能提升。默认不开启。若开启，在命令行结尾增加该选项即可。详细说明请参见:VSTAR生成码本文件-总体说明- --useOfflineCompile选项详细说明。</p>
-<p id="p575632015367"><a name="p575632015367"></a><a name="p575632015367"></a>--help | -h：查询帮助信息。</p>
-</td>
-</tr>
-<tr id="row789917582151"><th class="firstcol" valign="top" width="13.62%" id="mcps1.1.3.3.1"><p id="p789955811157"><a name="p789955811157"></a><a name="p789955811157"></a>使用说明</p>
-</th>
-<td class="cellrowborder" valign="top" width="86.38%" headers="mcps1.1.3.3.1 "><a name="ul18156187102113"></a><a name="ul18156187102113"></a><ul id="ul18156187102113"><li>&lt;data_path&gt;原始数据大小需≤一千万1024维数据，即10,000,000 * 1024 * 4 = 40,960,000,000。</li><li>执行此命令，在&lt;codebook_output_dir&gt;对应的目录下生成新目录codebook_&lt;dim&gt;_&lt;nlist1&gt;_&lt;sub_dim1&gt;.bin，即为AscendIndexVStar和AscendIndexGreat所需使用到的码本文件。</li><li>当码本文件存在时，将执行覆盖写，此种情况程序执行用户应该是文件的属主。</li><li>在执行训练生成码本前，请先参考VSTAR，生成训练算子模型文件。</li></ul>
-</td>
-</tr>
-</tbody>
-</table>
+<table><tbody>
+<tr><td width="140" align="center" valign="middle">命令参考</td><td valign="middle"><strong><code>python3 vstar_train_codebook.py --dataPath &lt;data_path&gt; --dim &lt;dim&gt; --codebookPath &lt;codebook_output_dir&gt; --nlistL1 &lt;nlist1&gt; --subDimL1 &lt;sub_dim1&gt; --device &lt;device&gt; --batchSize &lt;batch_size&gt; --sample &lt;sample&gt; --useOfflineCompile</code></strong></td></tr>
+<tr><td width="140" align="center" valign="middle">参数名称</td><td valign="middle">&lt;data_path&gt;：需要训练码本的原始数据路径，需要保证数据真实存在。该参数为必填项。<br>&lt;dim&gt;：特征向量维度。与VSTAR训练算子模型文件生成的&lt;dim&gt;保持一致，默认值为“256”。<br>&lt;codebook_output_dir&gt;：最终生成的码本文件所存储的路径，生成的码本文件输出到的目录，用户应该保证此目录存在，且程序的执行用户对此目录具有写权限。出于安全加固考虑，目录层级中不能含有软链接。<br>&lt;nlist1&gt;：一级簇聚类中心个数。与VSTAR训练算子模型文件生成的&lt;nlist1&gt;保持一致，默认值为“1024”。<br>&lt;sub_dim1&gt;：检索时一级降维后的维度大小，与VSTAR训练算子模型文件生成的&lt;sub_dim1&gt;保持一致，默认值为“32”。<br>&lt;device&gt;：设备逻辑ID，在指定的Device上执行训练，默认值为“1”。<br>&lt;batch_size&gt;：训练时以batch_size大小执行训练，参数范围(0，10240]，默认值为“10240”。<br>&lt;sample&gt;：训练用原始样本的采样率，0 &lt; sample ≤ 1.0，默认为“1.0”。<br>--useOfflineCompile：控制是否选择依赖算子包，使用离线算子编译，以获得性能提升。默认不开启。若开启，在命令行结尾增加该选项即可。详细说明请参见:VSTAR生成码本文件-总体说明- --useOfflineCompile选项详细说明。<br>--help | -h：查询帮助信息。</td></tr>
+<tr><td width="140" align="center" valign="middle">使用说明</td><td valign="middle">● &lt;data_path&gt;原始数据大小需≤一千万1024维数据，即10,000,000 * 1024 * 4 = 40,960,000,000。<br>● 执行此命令，在&lt;codebook_output_dir&gt;对应的目录下生成新目录codebook_&lt;dim&gt;_&lt;nlist1&gt;_&lt;sub_dim1&gt;.bin，即为AscendIndexVStar和AscendIndexGreat所需使用到的码本文件。<br>● 当码本文件存在时，将执行覆盖写，此种情况程序执行用户应该是文件的属主。<br>● 在执行训练生成码本前，请先参考VSTAR，生成训练算子模型文件。</td></tr>
+</tbody></table>
 
 #### （可选）Python方式生成码本文件<a name="ZH-CN_TOPIC_0000001649848464"></a>
 
@@ -1141,34 +723,11 @@ Index SDK提供两种训练脚本方式：
 - 使用“ivfsp\_train\_codebook.py”脚本进行训练。训练脚本位于安装目录下的“tools/train”文件夹中，注意Python版本为3.9.11。为了用户执行方便，提供了“ivfsp\_train\_codebook\_example.sh”样例脚本（脚本位于安装目录下的“tools/train”文件夹中），用户可在此文件上根据实际场景修改参数值，然后执行此脚本生成码本文件。
 
 <a name="table48723587152"></a>
-<table><tbody><tr id="row4899125881510"><th class="firstcol" valign="top" width="13.63%" id="mcps1.1.3.1.1"><p id="p1089905812153"><a name="p1089905812153"></a><a name="p1089905812153"></a>命令参考</p>
-</th>
-<td class="cellrowborder" valign="top" width="86.37%" headers="mcps1.1.3.1.1 "><p id="p989945810152"><a name="p989945810152"></a><a name="p989945810152"></a>python3 ivfsp_train_codebook.py --dim &lt;dim&gt; --nonzero_num &lt;nonzero_num&gt; --nlist &lt;nlist&gt; --num_iter &lt;num_iter&gt; --device &lt;device&gt; --batch_size &lt;batch_size&gt; --code_num &lt;code_num&gt; --ratio &lt;ratio&gt; --learn_data_path &lt;learn_data_path&gt; --codebook_output_dir &lt;codebook_output_dir&gt; --train_model_dir &lt;train_model_dir&gt;</p>
-</td>
-</tr>
-<tr id="row13899195817158"><th class="firstcol" valign="top" width="13.63%" id="mcps1.1.3.2.1"><p id="p198995588156"><a name="p198995588156"></a><a name="p198995588156"></a>参数名称</p>
-</th>
-<td class="cellrowborder" valign="top" width="86.37%" headers="mcps1.1.3.2.1 "><p id="p4899195861514"><a name="p4899195861514"></a><a name="p4899195861514"></a>&lt;dim&gt;：特征向量维度。与IVFSP训练算子模型文件生成的&lt;dim&gt;保持一致，要求大于0。</p>
-<p id="p1226910612333"><a name="p1226910612333"></a><a name="p1226910612333"></a>&lt;nonzero_num&gt;：特征向量压缩后非零维度个数，与IVFSP训练算子模型文件生成的&lt;low_dim&gt;保持一致，要求大于0。</p>
-<p id="p689915891520"><a name="p689915891520"></a><a name="p689915891520"></a>&lt;nlist&gt;：簇聚类中心个数。与IVFSP训练算子模型文件生成的&lt;k&gt;保持一致，要求大于0。</p>
-<p id="p089935861513"><a name="p089935861513"></a><a name="p089935861513"></a>&lt;num_iter&gt;：训练迭代次数参数，默认为20。迭代次数设置过大，会导致训练时长增加，要求大于0。</p>
-<p id="p68991758111519"><a name="p68991758111519"></a><a name="p68991758111519"></a>&lt;device&gt;：设备逻辑ID，在指定的Device上执行训练，默认值为“0”。</p>
-<p id="p089915814155"><a name="p089915814155"></a><a name="p089915814155"></a>&lt;batch_size&gt;：训练时以batch_size大小执行训练。与IVFSP训练算子模型文件生成的&lt;batch_size&gt;保持一致，要求大于0，小于等于32768，默认值为<span class="parmvalue" id="parmvalue17103111818276"><a name="parmvalue17103111818276"></a><a name="parmvalue17103111818276"></a>“32768”</span>。</p>
-<p id="p9899195814150"><a name="p9899195814150"></a><a name="p9899195814150"></a>&lt;code_num&gt;：每次最大按code_num样本数量操作码本，必须为2的幂次。与IVFSP训练算子模型文件生成的&lt;codebook_batch_size&gt;保持一致，要求大于0，小于等于32768，默认值为<span class="parmvalue" id="parmvalue13486113643711"><a name="parmvalue13486113643711"></a><a name="parmvalue13486113643711"></a>“32768”</span>。</p>
-<p id="p168991358141520"><a name="p168991358141520"></a><a name="p168991358141520"></a>&lt;ratio&gt;：训练用原始样本的采样率，0 &lt; ratio ≤ 1.0，默认为1.0。</p>
-<p id="p1889985811157"><a name="p1889985811157"></a><a name="p1889985811157"></a>&lt;learn_data_path&gt;：训练用的原始特征文件路径，支持bin、npy格式，bin存储方式为行优先，数据类型为float32。</p>
-<p id="p1089935810157"><a name="p1089935810157"></a><a name="p1089935810157"></a>&lt;codebook_output_dir&gt;：生成的码本文件输出到的目录，用户应该保证此目录存在，且程序的执行用户对此目录具有写权限；出于安全加固的考虑，此目录层级中不能含有软链接。</p>
-<p id="p168997585150"><a name="p168997585150"></a><a name="p168997585150"></a>&lt;train_model_dir&gt;：IVFSP训练算子模型文件所在目录。</p>
-<p id="p11852192143213"><a name="p11852192143213"></a><a name="p11852192143213"></a>--help | -h：查询帮助信息。</p>
-</td>
-</tr>
-<tr id="row789917582151"><th class="firstcol" valign="top" width="13.63%" id="mcps1.1.3.3.1"><p id="p789955811157"><a name="p789955811157"></a><a name="p789955811157"></a>使用说明</p>
-</th>
-<td class="cellrowborder" valign="top" width="86.37%" headers="mcps1.1.3.3.1 "><a name="ul18156187102113"></a><a name="ul18156187102113"></a><ul id="ul18156187102113"><li>执行此命令，在&lt;codebook_output_dir&gt;对应的目录下生成文件codebook_&lt;dim&gt;_&lt;nonzero_num&gt;_&lt;nlist&gt;.bin和codebook_&lt;dim&gt;_&lt;nonzero_num&gt;_&lt;nlist&gt;.npy，codebook_&lt;dim&gt;_&lt;nonzero_num&gt;_&lt;nlist&gt;.bin即为AscendIndexIVFSP所需使用到的码本文件。</li><li>当码本文件存在时，将执行覆盖写，此种情况程序执行用户应该是文件的属主。</li><li>在执行训练生成码本前，请先参考IVFSP训练算子模型文件生成，生成训练算子模型文件。</li><li>learn_data_path指定的数据大小必须大于等于nonzero_num * nlist * sizeof(float32) 字节。</li></ul>
-</td>
-</tr>
-</tbody>
-</table>
+<table><tbody>
+<tr><td width="140" align="center" valign="middle">命令参考</td><td valign="middle"><strong><code>python3 ivfsp_train_codebook.py --dim &lt;dim&gt; --nonzero_num &lt;nonzero_num&gt; --nlist &lt;nlist&gt; --num_iter &lt;num_iter&gt; --device &lt;device&gt; --batch_size &lt;batch_size&gt; --code_num &lt;code_num&gt; --ratio &lt;ratio&gt; --learn_data_path &lt;learn_data_path&gt; --codebook_output_dir &lt;codebook_output_dir&gt; --train_model_dir &lt;train_model_dir&gt;</code></strong></td></tr>
+<tr><td width="140" align="center" valign="middle">参数名称</td><td valign="middle">&lt;dim&gt;：特征向量维度。与IVFSP训练算子模型文件生成的&lt;dim&gt;保持一致，要求大于0。<br>&lt;nonzero_num&gt;：特征向量压缩后非零维度个数，与IVFSP训练算子模型文件生成的&lt;low_dim&gt;保持一致，要求大于0。<br>&lt;nlist&gt;：簇聚类中心个数。与IVFSP训练算子模型文件生成的&lt;k&gt;保持一致，要求大于0。<br>&lt;num_iter&gt;：训练迭代次数参数，默认为20。迭代次数设置过大，会导致训练时长增加，要求大于0。<br>&lt;device&gt;：设备逻辑ID，在指定的Device上执行训练，默认值为“0”。<br>&lt;batch_size&gt;：训练时以batch_size大小执行训练。与IVFSP训练算子模型文件生成的&lt;batch_size&gt;保持一致，要求大于0，小于等于32768，默认值为“32768”。<br>&lt;code_num&gt;：每次最大按code_num样本数量操作码本，必须为2的幂次。与IVFSP训练算子模型文件生成的&lt;codebook_batch_size&gt;保持一致，要求大于0，小于等于32768，默认值为“32768”。<br>&lt;ratio&gt;：训练用原始样本的采样率，0 &lt; ratio ≤ 1.0，默认为1.0。<br>&lt;learn_data_path&gt;：训练用的原始特征文件路径，支持bin、npy格式，bin存储方式为行优先，数据类型为float32。<br>&lt;codebook_output_dir&gt;：生成的码本文件输出到的目录，用户应该保证此目录存在，且程序的执行用户对此目录具有写权限；出于安全加固的考虑，此目录层级中不能含有软链接。<br>&lt;train_model_dir&gt;：IVFSP训练算子模型文件所在目录。<br>--help | -h：查询帮助信息。</td></tr>
+<tr><td width="140" align="center" valign="middle">使用说明</td><td valign="middle">● 执行此命令，在&lt;codebook_output_dir&gt;对应的目录下生成文件codebook_&lt;dim&gt;_&lt;nonzero_num&gt;_&lt;nlist&gt;.bin和codebook_&lt;dim&gt;_&lt;nonzero_num&gt;_&lt;nlist&gt;.npy，codebook_&lt;dim&gt;_&lt;nonzero_num&gt;_&lt;nlist&gt;.bin即为AscendIndexIVFSP所需使用到的码本文件。<br>● 当码本文件存在时，将执行覆盖写，此种情况程序执行用户应该是文件的属主。<br>● 在执行训练生成码本前，请先参考IVFSP训练算子模型文件生成，生成训练算子模型文件。<br>● learn_data_path指定的数据大小必须大于等于nonzero_num * nlist * sizeof(float32) 字节。</td></tr>
+</tbody></table>
 
 ##### 降维训练脚本<a name="ZH-CN_TOPIC_0000001681635905"></a>
 

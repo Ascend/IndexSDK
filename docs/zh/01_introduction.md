@@ -75,45 +75,14 @@ Index SDK软件架构如[图1](#fig883164172512)所示，架构图中的关键�
 
 ## 支持的硬件和操作系统<a name="ZH-CN_TOPIC_0000001649663880"></a>
 
-<table>
-<tr>
-<th>产品系列</th>
-<th>产品型号</th>
-<th>操作系统版本（仅支持64位的操作系统）</th>
-</tr>
-<tr>
-<td rowspan="5"><term>Atlas 推理系列产品</term></td>
-<td>Atlas 300I Pro 推理卡</td>
-<td><li>CentOS 7.6</li><li>openEuler 20.03</li><li>
-openEuler 22.03</li><li>openEuler 24.03</li><li>Ubuntu 18.04</li><li>Ubuntu 20.04</li><li>EulerOS 2.12</li><li>EulerOS 2.15</li><li>KylinOS V10 SP3 2403</li><li>KylinOS V11</li><li>CTyunOS 23.01</li><li>UOS V20</li></td>
-</tr>
-<tr>
-<td>Atlas 300V 视频解析卡</td>
-<td><li>CentOS 7.6</li><li>openEuler 20.03</li><li>openEuler 22.03</li><li>Ubuntu 18.04</li><li>Ubuntu 20.04</li><li>EulerOS 2.12</li><li>UOS V20</li></td>
-</tr>
-<tr>
-<td>Atlas 300V Pro 视频解析卡</td>
-<td><li>CentOS 7.6</li><li>openEuler 20.03</li><li>openEuler 22.03</li><li>openEuler 24.03</li><li>Ubuntu 18.04</li><li>Ubuntu 20.04</li><li>EulerOS 2.12</li><li>CTyunOS 23.01</li><li>UOS V20</li></td>
-</tr>
-<tr>
-<td>Atlas 300I Duo 推理卡</td>
-<td><li>CentOS 7.6</li><li>Ubuntu 18.04</li><li>Ubuntu 20.04</li><li>EulerOS 2.12</li><li>EulerOS 2.15</li><li>KylinOS V10 SP3 2403</li><li>KylinOS V11</li><li>openEuler 24.03</li><li>CTyunOS 23.01</li><li>UOS V20</li><li>UOS V25</li></td>
-</tr>
-<tr>
-<td>Atlas 200I SoC A1 核心板</td>
-<td><li>CentOS 7.6</li><li>openEuler 20.03</li><li>EulerOS 2.12</li></td>
-</tr>
-<tr>
-</tr>
-<tr>
-<td><term>Atlas A2 推理系列产品</term>
-<br>说明：<term>Atlas A2 推理系列产品</term>支持AscendIndexFlat，AscendIndexInt8Flat算法，AscendIndexTS-FlatIP算法，AscendIndexTS-Int8Cos算法，AscendIndexIVFFlat算法，AscendIndexIVFRaBitQ算法。</td>
-<td>Atlas 800I A2 推理服务器</td>
-<td><li>CentOS 7.6</li><li>openEuler 20.03</li><li>openEuler 22.03</li><li>openEuler 24.03</li><li>Ubuntu 18.04</li><li>Ubuntu 20.04</li><li>Ubuntu 24.04</li><li>EulerOS 2.12</li><li>EulerOS 2.15</li><li>UOS V20</li><li>UOS V25</li><li>KylinOS V10 SP3</li><li>KylinOS V11</li><li>BC-Linux_21.10 U4</li></td>
-</tr>
-<tr>
-<td><term>Atlas A3 推理系列产品</term><br>说明：当前支持AscendIndexFlat算法，AscendIndexTS-FlatIP算法，AscendIndexTS-Int8Cos算法，AscendIndexIVFFlat算法，AscendIndexIVFRaBitQ算法。</td>
-<td>Atlas 800I A3 超节点服务器</td>
-<td><li>Ubuntu 18.04</li><li>CUlinux 3.0</li><li>KylinOS V10 SP3 2403</li><li>KylinOS V11</li><li>CTyunOS 4</li><li>UOS V25</li></td>
-</tr>
-</table>
+<table><tbody>
+<tr><th valign="middle" width="450">产品系列</th><th valign="middle" width="250">产品型号</th><th valign="middle">操作系统版本（仅支持64位的操作系统）</th></tr>
+<tr><td rowspan="5" valign="middle" width="450">Atlas 推理系列产品</td><td valign="middle" width="250">Atlas 300I Pro 推理卡</td><td valign="middle">● CentOS 7.6<br>● openEuler 20.03<br>● openEuler 22.03<br>● openEuler 24.03<br>● Ubuntu 18.04<br>● Ubuntu 20.04<br>● EulerOS 2.12<br>● EulerOS 2.15<br>● KylinOS V10 SP3 2403<br>● KylinOS V11<br>● CTyunOS 23.01<br>● UOS V20</td></tr>
+<tr><td valign="middle" width="250">Atlas 300V 视频解析卡</td><td valign="middle">● CentOS 7.6<br>● openEuler 20.03<br>● openEuler 22.03<br>● Ubuntu 18.04<br>● Ubuntu 20.04<br>● EulerOS 2.12<br>● UOS V20</td></tr>
+<tr><td valign="middle" width="250">Atlas 300V Pro 视频解析卡</td><td valign="middle">● CentOS 7.6<br>● openEuler 20.03<br>● openEuler 22.03<br>● openEuler 24.03<br>● Ubuntu 18.04<br>● Ubuntu 20.04<br>● EulerOS 2.12<br>● CTyunOS 23.01<br>● UOS V20</td></tr>
+<tr><td valign="middle" width="250">Atlas 300I Duo 推理卡</td><td valign="middle">● CentOS 7.6<br>● Ubuntu 18.04<br>● Ubuntu 20.04<br>● EulerOS 2.12<br>● EulerOS 2.15<br>● KylinOS V10 SP3 2403<br>● KylinOS V11<br>● openEuler 24.03<br>● CTyunOS 23.01<br>● UOS V20<br>● UOS V25</td></tr>
+<tr><td valign="middle" width="250">Atlas 200I SoC A1 核心板</td><td valign="middle">● CentOS 7.6<br>● openEuler 20.03<br>● EulerOS 2.12</td></tr>
+<tr></tr>
+<tr><td valign="middle" width="450">Atlas A2 推理系列产品 <br>说明：Atlas A2 推理系列产品支持AscendIndexFlat，AscendIndexInt8Flat算法，AscendIndexTS-FlatIP算法，AscendIndexTS-Int8Cos算法，AscendIndexIVFFlat算法，AscendIndexIVFRaBitQ算法。</td><td valign="middle" width="250">Atlas 800I A2 推理服务器</td><td valign="middle">● CentOS 7.6<br>● openEuler 20.03<br>● openEuler 22.03<br>● openEuler 24.03<br>● Ubuntu 18.04<br>● Ubuntu 20.04<br>● Ubuntu 24.04<br>● EulerOS 2.12<br>● EulerOS 2.15<br>● UOS V20<br>● UOS V25<br>● KylinOS V10 SP3<br>● KylinOS V11<br>● BC-Linux_21.10 U4</td></tr>
+<tr><td valign="middle" width="450">Atlas A3 推理系列产品<br>说明：当前支持AscendIndexFlat算法，AscendIndexTS-FlatIP算法，AscendIndexTS-Int8Cos算法，AscendIndexIVFFlat算法，AscendIndexIVFRaBitQ算法。</td><td valign="middle" width="250">Atlas 800I A3 超节点服务器</td><td valign="middle">● Ubuntu 18.04<br>● CUlinux 3.0<br>● KylinOS V10 SP3 2403<br>● KylinOS V11<br>● CTyunOS 4<br>● UOS V25</td></tr>
+</tbody></table>

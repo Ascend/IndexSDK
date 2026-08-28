@@ -5,31 +5,20 @@
 ### 产品版本信息
 
 <a name="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108__Ref249955742"></a>
-<table><tbody><tr id="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_row244mcpsimp"><th class="firstcol" valign="top" width="25%" id="mcps1.1.3.1.1"><p id="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p246mcpsimp"><a name="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p246mcpsimp"></a><a name="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p246mcpsimp"></a>产品名称</p>
-</th>
-<td class="cellrowborder" valign="top" width="75%" headers="mcps1.1.3.1.1 "><p id="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p1684675795511"><a name="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p1684675795511"></a><a name="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p1684675795511"></a><span id="ph925512229126"><a name="ph925512229126"></a><a name="ph925512229126"></a>Index SDK</span></p>
-</td>
-</tr>
-<tr id="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_row255mcpsimp"><th class="firstcol" valign="top" width="25%" id="mcps1.1.3.2.1"><p id="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p257mcpsimp"><a name="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p257mcpsimp"></a><a name="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p257mcpsimp"></a>产品版本</p>
-</th>
-<td class="cellrowborder" valign="top" width="75%" headers="mcps1.1.3.2.1 "><p id="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p233mcpsimp"><a name="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p233mcpsimp"></a><a name="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p233mcpsimp"></a>26.1.0</p>
-</td>
-</tr>
-<tr id="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_row7259721105019"><th class="firstcol" valign="top" width="25%" id="mcps1.1.3.3.1"><p id="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p7260182135013"><a name="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p7260182135013"></a><a name="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p7260182135013"></a>版本类型</p>
-</th>
-<td class="cellrowborder" valign="top" width="75%" headers="mcps1.1.3.3.1 "><p id="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p72606219501"><a name="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p72606219501"></a><a name="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p72606219501"></a>Release版本</p>
-</td>
-</tr>
-</tbody>
-</table>
+<table><tbody>
+<tr><td width="140" align="center" valign="middle">产品名称</td><td valign="middle">Index SDK</td></tr>
+<tr><td width="140" align="center" valign="middle">产品版本</td><td valign="middle">26.1.0</td></tr>
+<tr><td width="140" align="center" valign="middle">版本类型</td><td valign="middle">Release版本</td></tr>
+</tbody></table>
 
 ### 相关产品版本配套说明
 
 **表 1** Index SDK 软件版本配套表
 
-| Index SDK | CANN 版本 | Ascend HDK 版本 |
-| ------------ | ------------- | ------------ |
-| 26.1.0       | 9.1.0           | 26.1.0       |
+<table><tbody>
+<tr><th width="110" align="center" valign="middle">Index SDK</th><th width="110" align="center" valign="middle">CANN 版本</th><th width="160" align="center" valign="middle">Ascend HDK 版本</th></tr>
+<tr><td width="110" align="center" valign="middle">26.1.0</td><td width="110" align="center" valign="middle">9.1.0</td><td width="160" align="center" valign="middle">26.1.0</td></tr>
+</tbody></table>
 
 ## 版本兼容性说明
 
@@ -39,80 +28,70 @@
 
 **表 2** Index SDK 与 CANN 版本兼容
 
-<table style="table-layout: fixed; width: 433px"><colgroup>
-<col style="width: 156px">
-<col style="width: 88px">
-<col style="width: 91px">
-<col style="width: 98px">
-</colgroup>
+<table>
 <thead>
   <tr>
-    <th rowspan="2">Index SDK</th>
-    <th colspan="3">CANN 版本</th>
+    <th rowspan="2" valign="middle" align="center">Index SDK</th>
+    <th colspan="3" valign="middle" align="center">CANN 版本</th>
   </tr>
   <tr>
-    <th>8.5.0</th>
-    <th>9.0.0</th>
-    <th>9.1.0</th>
+    <th valign="middle" align="center">8.5.0</th>
+    <th valign="middle" align="center">9.0.0</th>
+    <th valign="middle" align="center">9.1.0</th>
   </tr></thead>
 <tbody>
   <tr>
-    <td>7.3.0</td>
-    <td>Y</td>
-    <td>/</td>
-    <td>/</td>
+    <td valign="middle" align="center">7.3.0</td>
+    <td valign="middle" align="center">Y</td>
+    <td valign="middle" align="center">/</td>
+    <td valign="middle" align="center">/</td>
   </tr>
   <tr>
-    <td>26.0.0</td>
-    <td>Y</td>
-    <td>Y</td>
-    <td>/</td>
+    <td valign="middle" align="center">26.0.0</td>
+    <td valign="middle" align="center">Y</td>
+    <td valign="middle" align="center">Y</td>
+    <td valign="middle" align="center">/</td>
   </tr>
   <tr>
-    <td>26.1.0</td>
-    <td>Y</td>
-    <td>Y</td>
-    <td>Y</td>
+    <td valign="middle" align="center">26.1.0</td>
+    <td valign="middle" align="center">Y</td>
+    <td valign="middle" align="center">Y</td>
+    <td valign="middle" align="center">Y</td>
   </tr>
 </tbody>
 </table>
 
 **表 3** Index SDK 与 Ascend HDK 版本兼容
 
-<table style="table-layout: fixed; width: 433px"><colgroup>
-<col style="width: 156px">
-<col style="width: 88px">
-<col style="width: 91px">
-<col style="width: 98px">
-</colgroup>
+<table>
 <thead>
   <tr>
-    <th rowspan="2">Index SDK</th>
-    <th colspan="3">Ascend HDK 版本</th>
+    <th rowspan="2" valign="middle" align="center">Index SDK</th>
+    <th colspan="3" valign="middle" align="center">Ascend HDK 版本</th>
   </tr>
   <tr>
-    <th>25.5.0</th>
-    <th>26.0.RC1</th>
-    <th>26.1.0</th>
+    <th valign="middle" align="center">25.5.0</th>
+    <th valign="middle" align="center">26.0.RC1</th>
+    <th valign="middle" align="center">26.1.0</th>
   </tr></thead>
 <tbody>
   <tr>
-    <td>7.3.0</td>
-    <td>Y</td>
-    <td>/</td>
-    <td>/</td>
+    <td valign="middle" align="center">7.3.0</td>
+    <td valign="middle" align="center">Y</td>
+    <td valign="middle" align="center">/</td>
+    <td valign="middle" align="center">/</td>
   </tr>
   <tr>
-    <td>26.0.0</td>
-    <td>Y</td>
-    <td>Y</td>
-    <td>/</td>
+    <td valign="middle" align="center">26.0.0</td>
+    <td valign="middle" align="center">Y</td>
+    <td valign="middle" align="center">Y</td>
+    <td valign="middle" align="center">/</td>
   </tr>
   <tr>
-    <td>26.1.0</td>
-    <td>Y</td>
-    <td>Y</td>
-    <td>Y</td>
+    <td valign="middle" align="center">26.1.0</td>
+    <td valign="middle" align="center">Y</td>
+    <td valign="middle" align="center">Y</td>
+    <td valign="middle" align="center">Y</td>
   </tr>
 </tbody>
 </table>
