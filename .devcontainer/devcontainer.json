@@ -11,6 +11,7 @@
         }
     },
     "workspaceFolder": "/workspace",
+    "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",
     "runArgs": [
         "--ipc=host",
         "--device=/dev/davinci0",
