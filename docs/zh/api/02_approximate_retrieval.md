@@ -6997,7 +6997,7 @@ AscendIndexIVFRaBitQ利用IVF进行加速，是二级近似检索算法。当前
 </tr>
 <tr id="row_ivfrabitq_search_desc"><th class="firstcol" valign="top" width="20.07%" id="mcps1.1.3.2.1"><p id="p_ivfrabitq_search_desc">功能描述</p>
 </th>
-<td class="cellrowborder" valign="top" width="79.93%" headers="mcps1.1.3.2.1 "><p id="p_ivfrabitq_search_desc_body">实现AscendIndexIVFRaBitQ特征向量查询。支持通过Faiss SearchParameters.sel传入IDSelector，在L2 TopK阶段按ID过滤（多卡场景下各卡对本地候选做同一全局ID语义过滤后合并）。</p>
+<td class="cellrowborder" valign="top" width="79.93%" headers="mcps1.1.3.2.1 "><p id="p_ivfrabitq_search_desc_body">实现AscendIndexIVFRaBitQ特征向量查询。支持通过Faiss SearchParameters.sel传入IDSelector，在查询阶段按ID过滤（多卡场景下各卡对本地候选做同一全局ID语义过滤后合并）。</p>
 </td>
 </tr>
 <tr id="row_ivfrabitq_search_in"><th class="firstcol" valign="top" width="20.07%" id="mcps1.1.3.3.1"><p id="p_ivfrabitq_search_in">输入</p>
@@ -7021,7 +7021,7 @@ AscendIndexIVFRaBitQ利用IVF进行加速，是二级近似检索算法。当前
 </tr>
 <tr id="row_ivfrabitq_search_const"><th class="firstcol" valign="top" width="20.07%" id="mcps1.1.3.6.1"><p id="p_ivfrabitq_search_const">约束说明</p>
 </th>
-<td class="cellrowborder" valign="top" width="79.93%" headers="mcps1.1.3.6.1 "><ul id="ul_ivfrabitq_search_const"><li>过滤在AICPU TopK阶段执行（late-filter），不增加持久化底库内存；filter 仅在查询期临时物化。</li><li>多卡检索时同一 IDSelector 按全局ID语义应用到每张卡，再在Host侧合并 top-k。</li><li>高过滤比场景下L2距离仍按 probed lists 全量计算，membership 检查相对廉价。</li><li>Array/Bitmap 查询期缓存按 buffer 指针与长度命中，不扫描内容；原地修改 ids/bitmap 后仍传入同一指针会复用旧过滤结果。</li></ul>
+<td class="cellrowborder" valign="top" width="79.93%" headers="mcps1.1.3.6.1 "><ul id="ul_ivfrabitq_search_const"><li>IDSelector过滤阶段可通过环境变量 IVFRABITQ_SELECTOR_FILTER_STAGE 配置，取值为 auto、pre、post、both；默认 auto，在支持L2前置过滤的普通kernel路径使用pre，在310P/SIMT路径自动使用post。</li><li>pre表示仅在L2距离阶段执行前置过滤；post表示仅在AICPU TopK阶段执行后置过滤；both表示前后两阶段均执行，主要用于对比验证。</li><li>310P/SIMT路径暂不支持L2前置过滤，设置为pre时会返回参数错误；如需在310P/SIMT路径使用IDSelector，请设置为auto或post。</li><li>多卡检索时同一 IDSelector 按全局ID语义应用到每张卡，再在Host侧合并 top-k。</li><li>Array/Bitmap 查询期缓存按 buffer 指针与长度命中，不扫描内容；原地修改 ids/bitmap 后仍传入同一指针会复用旧过滤结果。</li></ul>
 </td>
 </tr>
 </tbody>

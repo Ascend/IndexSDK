@@ -24,6 +24,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <mutex>
 #include <random>
 #include <unordered_set>
@@ -694,6 +695,8 @@ namespace
 constexpr size_t kBitmapMaxBytes = 128ULL * 1024 * 1024;  // 128MB, covers up to ~1.07B IDs
 constexpr size_t kParallelIdThreshold = 65536;
 constexpr int kIdScanMaxThreads = 8;
+// Caps Prefix Directory at 2^16 buckets to balance sparse selector lookup cost and payload size.
+constexpr int kDefaultPrefixBits = 16;
 
 bool PreferBitmap(int64_t maxId, size_t nIds, bool hasNegative)
 {
@@ -721,11 +724,98 @@ void InitBitmap(::ascend::RabitqIdFilterHost& out, int64_t maxId)
     out.bitmap.assign(bitmapBytes, 0);
 }
 
+void SetEmptyFilter(::ascend::RabitqIdFilterHost& out)
+{
+    out.mode = aicpu::RABITQ_ID_FILTER_RANGE;
+    out.aux0 = 0;
+    out.aux1 = 0;
+    out.bitmapView = nullptr;
+    out.sortedView = nullptr;
+    out.viewBytes = 0;
+}
+
 void AppendSortedUnique(std::vector<int64_t>& out, const idx_t* ids, size_t n)
 {
     out.assign(ids, ids + n);
     std::sort(out.begin(), out.end());
     out.erase(std::unique(out.begin(), out.end()), out.end());
+}
+
+size_t AlignUp(size_t value, size_t align) { return (value + align - 1) / align * align; }
+
+int CeilLog2(uint64_t value)
+{
+    int bits = 0;
+    uint64_t cur = 1;
+    while (cur < value)
+    {
+        cur <<= 1;
+        ++bits;
+    }
+    return bits;
+}
+
+void BuildPrefix(const std::vector<int64_t>& sortedIds, int requestedPrefixBits, std::vector<uint32_t>& offsets,
+                 int64_t& prefixBits, int64_t& prefixShift, int64_t& prefixBucketCount)
+{
+    const uint64_t maxId = sortedIds.empty() ? 0 : static_cast<uint64_t>(std::max<int64_t>(0, sortedIds.back()));
+    const int idBits = std::max(1, CeilLog2(maxId + 1));
+    const int countBits = std::max(1, CeilLog2(static_cast<uint64_t>(sortedIds.size() + 1)));
+    prefixBits = std::min<int64_t>({requestedPrefixBits, idBits, countBits});
+    prefixShift = idBits - prefixBits;
+    prefixBucketCount = 1LL << prefixBits;
+    offsets.assign(static_cast<size_t>(prefixBucketCount) + 1, 0);
+
+    size_t pos = 0;
+    for (int64_t bucket = 0; bucket < prefixBucketCount; ++bucket)
+    {
+        offsets[static_cast<size_t>(bucket)] = static_cast<uint32_t>(pos);
+        while (pos < sortedIds.size())
+        {
+            const uint64_t prefix = static_cast<uint64_t>(sortedIds[pos]) >> static_cast<uint64_t>(prefixShift);
+            if (prefix != static_cast<uint64_t>(bucket))
+            {
+                break;
+            }
+            ++pos;
+        }
+    }
+    offsets[static_cast<size_t>(prefixBucketCount)] = static_cast<uint32_t>(pos);
+}
+
+void BuildSortedPrefixPayload(::ascend::RabitqIdFilterHost& out)
+{
+    out.sortedPrefixPayload.clear();
+    if (out.sortedIds.empty() || out.sortedIds.front() < 0)
+    {
+        return;
+    }
+
+    std::vector<uint32_t> prefixOffsets;
+    int64_t prefixBits = 0;
+    int64_t prefixShift = 0;
+    int64_t prefixBucketCount = 0;
+    BuildPrefix(out.sortedIds, kDefaultPrefixBits, prefixOffsets, prefixBits, prefixShift, prefixBucketCount);
+
+    const size_t headerBytes = sizeof(aicpu::RabitqSortedPrefixPayloadHeader);
+    const size_t sortedBytes = out.sortedIds.size() * sizeof(int64_t);
+    const size_t prefixBytes = prefixOffsets.size() * sizeof(uint32_t);
+    const size_t sortedOffset = AlignUp(headerBytes, alignof(int64_t));
+    const size_t prefixOffset = AlignUp(sortedOffset + sortedBytes, alignof(uint32_t));
+
+    out.sortedPrefixPayload.assign(prefixOffset + prefixBytes, 0);
+    aicpu::RabitqSortedPrefixPayloadHeader header{};
+    header.magic = aicpu::RABITQ_SORTED_PREFIX_MAGIC;
+    header.sortedCount = static_cast<int64_t>(out.sortedIds.size());
+    header.sortedOffsetBytes = static_cast<int64_t>(sortedOffset);
+    header.prefixBits = prefixBits;
+    header.prefixShift = prefixShift;
+    header.prefixBucketCount = prefixBucketCount;
+    header.prefixOffsetBytes = static_cast<int64_t>(prefixOffset);
+
+    std::memcpy(out.sortedPrefixPayload.data(), &header, sizeof(header));
+    std::memcpy(out.sortedPrefixPayload.data() + sortedOffset, out.sortedIds.data(), sortedBytes);
+    std::memcpy(out.sortedPrefixPayload.data() + prefixOffset, prefixOffsets.data(), prefixBytes);
 }
 
 int IdScanThreadCount()
@@ -818,6 +908,7 @@ void SetSortedFromIds(::ascend::RabitqIdFilterHost& out, const idx_t* ids, size_
     out.viewBytes = 0;
     AppendSortedUnique(out.sortedIds, ids, n);
     out.aux0 = static_cast<int64_t>(out.sortedIds.size());
+    BuildSortedPrefixPayload(out);
 }
 
 void MaterializeFromIdsTwoPass(const idx_t* ids, size_t n, ::ascend::RabitqIdFilterHost& out)
@@ -860,6 +951,11 @@ void MaterializeFromIdSetTwoPass(const std::unordered_set<idx_t>& ids, ::ascend:
 
 void MaterializeFromIds(const idx_t* ids, size_t n, int64_t ntotal, ::ascend::RabitqIdFilterHost& out)
 {
+    if (n == 0)
+    {
+        SetEmptyFilter(out);
+        return;
+    }
     if (TryMaterializeBitmapByNtotal(out, ntotal, n) && FillBitmapChecked(out.bitmap, ids, n))
     {
         return;
@@ -870,6 +966,11 @@ void MaterializeFromIds(const idx_t* ids, size_t n, int64_t ntotal, ::ascend::Ra
 
 void MaterializeFromIdSet(const std::unordered_set<idx_t>& ids, int64_t ntotal, ::ascend::RabitqIdFilterHost& out)
 {
+    if (ids.empty())
+    {
+        SetEmptyFilter(out);
+        return;
+    }
     if (TryMaterializeBitmapByNtotal(out, ntotal, ids.size()) && FillBitmapCheckedFromSet(out.bitmap, ids))
     {
         return;
