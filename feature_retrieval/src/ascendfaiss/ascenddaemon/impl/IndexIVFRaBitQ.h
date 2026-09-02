@@ -158,6 +158,7 @@ class IndexIVFRaBitQ : public IndexIVF
                      AscendTensor<float, DIMS_1, size_t> &subIndexl2, AscendTensor<float, DIMS_1, size_t> &subIndexl1,
                      AscendTensor<uint64_t, DIMS_1, size_t> &subIndexl2Offset,
                      AscendTensor<uint64_t, DIMS_1, size_t> &subIndexl1Offset,
+                     AscendTensor<int64_t, DIMS_1, size_t> &subIds, AscendTensor<int64_t, DIMS_1> &distFilterAttrs,
                      AscendTensor<float, DIMS_2, size_t> &subDis, AscendTensor<float, DIMS_2, size_t> &subVcMaxDis,
                      AscendTensor<uint16_t, DIMS_2, size_t> &subOpFlag, aclrtStream stream);
     APP_ERROR resetL2TopkOp();
@@ -200,7 +201,8 @@ class IndexIVFRaBitQ : public IndexIVF
         AscendTensor<uint64_t, DIMS_2, size_t> &indexl1offset, AscendTensor<uint16_t, DIMS_2, size_t> &opFlag,
         AscendTensor<float, DIMS_2, size_t> &disVec, AscendTensor<float, DIMS_2, size_t> &vcMaxDisVec,
         AscendTensor<uint8_t, DIMS_2, size_t> &codeVec, AscendTensor<float, DIMS_1, size_t> &Indexl2,
-        AscendTensor<float, DIMS_1, size_t> &Indexl1, aclrtStream &stream);
+        AscendTensor<float, DIMS_1, size_t> &Indexl1, AscendTensor<int64_t, DIMS_2, size_t> &ids,
+        AscendTensor<int64_t, DIMS_1> &distFilterAttrs, aclrtStream &stream);
     size_t getMaxListNum(size_t batch, AscendTensor<int64_t, DIMS_2> &l1TopNprobeIndicesHost) const;
     size_t getMaxListNum(size_t batch, AscendTensor<int64_t, DIMS_2> &l1TopNprobeIndicesHost, int k, float *distances,
                          idx_t *labels) const;
@@ -208,6 +210,7 @@ class IndexIVFRaBitQ : public IndexIVF
                             float *distances, idx_t *labels) const;
 
     APP_ERROR EnsureFilterPayloadOnDevice(const RabitqIdFilterHost *idFilter, int64_t &selPtr);
+    APP_ERROR EnsurePrefixFilterPayloadOnDevice(const RabitqIdFilterHost *idFilter, int64_t &selPtr);
     void ClearCachedFilterPayload();
 
     void moveVectorForward(int listId, idx_t srcIdx, idx_t dstIdx);
@@ -252,6 +255,10 @@ class IndexIVFRaBitQ : public IndexIVF
     int64_t cachedFilterAux0 = 0;
     int64_t cachedFilterAux1 = 0;
     uint64_t cachedFilterGeneration = 0;
+    std::unique_ptr<DeviceVector<uint8_t>> cachedPrefixFilterPayload;
+    const void *cachedPrefixFilterSrc = nullptr;
+    size_t cachedPrefixFilterBytes = 0;
+    uint64_t cachedPrefixFilterGeneration = 0;
 };
 }  // namespace ascend
 

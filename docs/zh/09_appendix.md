@@ -31,6 +31,7 @@
 |IVFRABITQ\_VERIFY\_COARSE\_CENTER|设为非 `0` 值时，在 coarse centroid 上传各阶段（H2D、rotate、LUT）执行 D2H 抽样/全量校验。|
 |IVFRABITQ\_DEBUG\_L1\_PROBE|设为 `1` 打印 probe 列表；`stats` 打印 tile 分布；`full` 含 golden 对比与完整统计。|
 |IVFRABITQ\_VERIFY\_L1\_DIST|设为非 `0` 值时，在 L1 search 阶段对比 CPU golden 与 NPU 距离/probe。|
+|IVFRABITQ\_SELECTOR\_FILTER\_STAGE|配置 AscendIndexIVFRaBitQ IDSelector 过滤阶段，取值为 `auto`、`pre`、`post`、`both`。默认 `auto`：支持 L2 前置过滤的普通 kernel 路径使用 `pre`，310P/SIMT 路径使用 `post`。310P/SIMT 路径暂不支持 L2 前置过滤，强制设置为 `pre` 时会返回参数错误。|
 
 ### Device 内存调试环境变量<a name="ascendfaiss-mem-debug-env"></a>
 

@@ -42,6 +42,43 @@ namespace ascend
 {
 namespace
 {
+enum class RabitqSelectorFilterStage
+{
+    AUTO,
+    PRE,
+    POST,
+    BOTH
+};
+
+RabitqSelectorFilterStage GetRabitqSelectorFilterStage()
+{
+    const char *env = std::getenv("IVFRABITQ_SELECTOR_FILTER_STAGE");
+    if (env == nullptr || env[0] == '\0' || std::strcmp(env, "auto") == 0)
+    {
+        return RabitqSelectorFilterStage::AUTO;
+    }
+    if (std::strcmp(env, "pre") == 0 || std::strcmp(env, "prefilter") == 0)
+    {
+        return RabitqSelectorFilterStage::PRE;
+    }
+    if (std::strcmp(env, "post") == 0 || std::strcmp(env, "postfilter") == 0)
+    {
+        return RabitqSelectorFilterStage::POST;
+    }
+    if (std::strcmp(env, "both") == 0)
+    {
+        return RabitqSelectorFilterStage::BOTH;
+    }
+    APP_LOG_WARNING("Invalid IVFRABITQ_SELECTOR_FILTER_STAGE=%s, use auto instead.\n", env);
+    return RabitqSelectorFilterStage::AUTO;
+}
+
+bool IsRabitqL2PrefilterKernelSupported()
+{
+    const auto &soc = faiss::ascend::SocUtils::GetInstance();
+    return !soc.IsAscend310P() && !soc.IsAscendA5();
+}
+
 float CpuL2Sq(const float *a, const float *b, int dim)
 {
     float sum = 0.0f;
@@ -325,6 +362,13 @@ void IndexIVFRaBitQ::ClearCachedFilterPayload()
     cachedFilterAux0 = 0;
     cachedFilterAux1 = 0;
     cachedFilterGeneration = 0;
+    if (cachedPrefixFilterPayload != nullptr)
+    {
+        cachedPrefixFilterPayload->clear();
+    }
+    cachedPrefixFilterSrc = nullptr;
+    cachedPrefixFilterBytes = 0;
+    cachedPrefixFilterGeneration = 0;
 }
 
 APP_ERROR IndexIVFRaBitQ::EnsureFilterPayloadOnDevice(const RabitqIdFilterHost *idFilter, int64_t &selPtr)
@@ -368,6 +412,43 @@ APP_ERROR IndexIVFRaBitQ::EnsureFilterPayloadOnDevice(const RabitqIdFilterHost *
     cachedFilterAux1 = idFilter->aux1;
     cachedFilterGeneration = idFilter->generation;
     selPtr = static_cast<int64_t>(reinterpret_cast<uintptr_t>(cachedFilterPayload->data()));
+    return APP_ERR_OK;
+}
+
+APP_ERROR IndexIVFRaBitQ::EnsurePrefixFilterPayloadOnDevice(const RabitqIdFilterHost *idFilter, int64_t &selPtr)
+{
+    selPtr = 0;
+    APPERR_RETURN_IF(idFilter == nullptr || idFilter->sortedPrefixPayload.empty(), APP_ERR_OK);
+
+    const void *src = idFilter->sortedPrefixPayload.data();
+    const size_t payloadBytes = idFilter->sortedPrefixPayload.size();
+    const bool cacheHit = (cachedPrefixFilterPayload != nullptr) &&
+                          (cachedPrefixFilterPayload->size() >= payloadBytes) && (cachedPrefixFilterSrc == src) &&
+                          (cachedPrefixFilterBytes == payloadBytes) &&
+                          (cachedPrefixFilterGeneration == idFilter->generation);
+    if (cacheHit)
+    {
+        selPtr = static_cast<int64_t>(reinterpret_cast<uintptr_t>(cachedPrefixFilterPayload->data()));
+        return APP_ERR_OK;
+    }
+
+    if (cachedPrefixFilterPayload == nullptr)
+    {
+        cachedPrefixFilterPayload = std::make_unique<DeviceVector<uint8_t>>();
+    }
+    if (cachedPrefixFilterPayload->size() < payloadBytes)
+    {
+        cachedPrefixFilterPayload->resize(payloadBytes, true);
+    }
+    auto retCopy =
+        aclrtMemcpy(cachedPrefixFilterPayload->data(), payloadBytes, src, payloadBytes, ACL_MEMCPY_HOST_TO_DEVICE);
+    APPERR_RETURN_IF_NOT_FMT(retCopy == ACL_SUCCESS, APP_ERR_INNER_ERROR,
+                             "copy prefix id filter payload to device failed %d", retCopy);
+
+    cachedPrefixFilterSrc = src;
+    cachedPrefixFilterBytes = payloadBytes;
+    cachedPrefixFilterGeneration = idFilter->generation;
+    selPtr = static_cast<int64_t>(reinterpret_cast<uintptr_t>(cachedPrefixFilterPayload->data()));
     return APP_ERR_OK;
 }
 
@@ -1185,6 +1266,8 @@ bool IndexIVFRaBitQ::l2DisOpReset(std::unique_ptr<AscendOperator> &op, int64_t b
     std::vector<int64_t> indexl1Shape({IVF_RABITQ_BLOCK_SIZE});
     std::vector<int64_t> indexesl2offsetShape({CORE_NUM});
     std::vector<int64_t> indexesl1offsetShape({CORE_NUM});
+    std::vector<int64_t> idsShape({CORE_NUM});
+    std::vector<int64_t> distFilterAttrsShape({5});
     std::vector<int64_t> distResultShape({CORE_NUM, IVF_RABITQ_BLOCK_SIZE});
     std::vector<int64_t> mixResultShape(
         {CORE_NUM, (IVF_RABITQ_BLOCK_SIZE + IVF_RABITQ_BURST_LEN - 1) / IVF_RABITQ_BURST_LEN * 2});
@@ -1210,6 +1293,8 @@ bool IndexIVFRaBitQ::l2DisOpReset(std::unique_ptr<AscendOperator> &op, int64_t b
     desc.addInputTensorDesc(ACL_FLOAT, indexl1Shape.size(), indexl1Shape.data(), ACL_FORMAT_ND);
     desc.addInputTensorDesc(ACL_UINT64, indexesl2offsetShape.size(), indexesl2offsetShape.data(), ACL_FORMAT_ND);
     desc.addInputTensorDesc(ACL_UINT64, indexesl1offsetShape.size(), indexesl1offsetShape.data(), ACL_FORMAT_ND);
+    desc.addInputTensorDesc(ACL_INT64, idsShape.size(), idsShape.data(), ACL_FORMAT_ND);
+    desc.addInputTensorDesc(ACL_INT64, distFilterAttrsShape.size(), distFilterAttrsShape.data(), ACL_FORMAT_ND);
     desc.addOutputTensorDesc(ACL_FLOAT, distResultShape.size(), distResultShape.data(), ACL_FORMAT_ND);
     desc.addOutputTensorDesc(ACL_FLOAT, mixResultShape.size(), mixResultShape.data(), ACL_FORMAT_ND);
     desc.addOutputTensorDesc(ACL_UINT16, flagShapeShape.size(), flagShapeShape.data(), ACL_FORMAT_ND);
@@ -1244,7 +1329,8 @@ void IndexIVFRaBitQ::runL2DistOp(
     AscendTensor<uint8_t, DIMS_2, size_t> &codeVec, AscendTensor<uint64_t, DIMS_1, size_t> &subOffset,
     AscendTensor<uint32_t, DIMS_1, size_t> &subBaseSize, AscendTensor<float, DIMS_1, size_t> &indexl2,
     AscendTensor<float, DIMS_1, size_t> &indexl1, AscendTensor<uint64_t, DIMS_1, size_t> &subIndexl2Offset,
-    AscendTensor<uint64_t, DIMS_1, size_t> &subIndexl1Offset, AscendTensor<float, DIMS_2, size_t> &subDis,
+    AscendTensor<uint64_t, DIMS_1, size_t> &subIndexl1Offset, AscendTensor<int64_t, DIMS_1, size_t> &subIds,
+    AscendTensor<int64_t, DIMS_1> &distFilterAttrs, AscendTensor<float, DIMS_2, size_t> &subDis,
     AscendTensor<float, DIMS_2, size_t> &subVcMaxDis, AscendTensor<uint16_t, DIMS_2, size_t> &subOpFlag,
     aclrtStream stream)
 {
@@ -1271,6 +1357,8 @@ void IndexIVFRaBitQ::runL2DistOp(
     topkOpInput->emplace_back(aclCreateDataBuffer(indexl1.data(), indexl1.getSizeInBytes()));
     topkOpInput->emplace_back(aclCreateDataBuffer(subIndexl2Offset.data(), subIndexl2Offset.getSizeInBytes()));
     topkOpInput->emplace_back(aclCreateDataBuffer(subIndexl1Offset.data(), subIndexl1Offset.getSizeInBytes()));
+    topkOpInput->emplace_back(aclCreateDataBuffer(subIds.data(), subIds.getSizeInBytes()));
+    topkOpInput->emplace_back(aclCreateDataBuffer(distFilterAttrs.data(), distFilterAttrs.getSizeInBytes()));
 
     std::shared_ptr<std::vector<aclDataBuffer *>> topkOpOutput(new std::vector<aclDataBuffer *>(),
                                                                CommonUtils::AclOutputBufferDelete);
@@ -1455,7 +1543,8 @@ void IndexIVFRaBitQ::callL2DistanceOp(
     AscendTensor<uint64_t, DIMS_2, size_t> &indexl1offset, AscendTensor<uint16_t, DIMS_2, size_t> &opFlag,
     AscendTensor<float, DIMS_2, size_t> &disVec, AscendTensor<float, DIMS_2, size_t> &vcMaxDisVec,
     AscendTensor<uint8_t, DIMS_2, size_t> &codeVec, AscendTensor<float, DIMS_1, size_t> &Indexl2,
-    AscendTensor<float, DIMS_1, size_t> &Indexl1, aclrtStream &stream)
+    AscendTensor<float, DIMS_1, size_t> &Indexl1, AscendTensor<int64_t, DIMS_2, size_t> &ids,
+    AscendTensor<int64_t, DIMS_1> &distFilterAttrs, aclrtStream &stream)
 {
     VALUE_UNUSED(batch);
     size_t ivfRabitqBlockSize = static_cast<size_t>(IVF_RABITQ_BLOCK_SIZE);
@@ -1469,13 +1558,14 @@ void IndexIVFRaBitQ::callL2DistanceOp(
         AscendTensor<uint32_t, DIMS_1, size_t> subBaseSize(baseSize[iter].data(), {coreNum});
         AscendTensor<uint64_t, DIMS_1, size_t> subIndexl2Offset(indexl2offset[iter].data(), {coreNum});
         AscendTensor<uint64_t, DIMS_1, size_t> subIndexl1Offset(indexl1offset[iter].data(), {coreNum});
+        AscendTensor<int64_t, DIMS_1, size_t> subIds(ids[iter].data(), {coreNum});
         AscendTensor<uint16_t, DIMS_2, size_t> subOpFlag(opFlag[iter].data(), {coreNum, 32});
         AscendTensor<float, DIMS_2, size_t> subDis(disVec[iter].data(), {coreNum, ivfRabitqBlockSize});
         AscendTensor<float, DIMS_2, size_t> subVcMaxDis(vcMaxDisVec[iter].data(), {coreNum, vcMaxLen});
 
         runL2DistOp(queryL2Vec, queryLutVec, centroidsLutVec, subQueryid, subCentroidsid, subCentroidsl2, codeVec,
-                    subOffset, subBaseSize, Indexl2, Indexl1, subIndexl2Offset, subIndexl1Offset, subDis, subVcMaxDis,
-                    subOpFlag, stream);
+                    subOffset, subBaseSize, Indexl2, Indexl1, subIndexl2Offset, subIndexl1Offset, subIds,
+                    distFilterAttrs, subDis, subVcMaxDis, subOpFlag, stream);
     }
 }
 
@@ -1583,26 +1673,132 @@ APP_ERROR IndexIVFRaBitQ::searchImplL2(AscendTensor<float, DIMS_2> &queries, Asc
     AscendTensor<int64_t, DIMS_1, size_t> blocknumPerQ(mem, {batch}, stream);
     AscendTensor<float, DIMS_2, size_t> vcMaxDisVec(mem, {iterNum, coreNum * vcMaxLen}, stream);
     AscendTensor<int64_t, DIMS_1> attrs(mem, {aicpu::TOPK_IVF_RABITQ_ATTR_IDX_COUNT}, stream);
+    AscendTensor<int64_t, DIMS_1> distFilterAttrs(mem, {5}, stream);
 
-    aicpu::RabitqIdFilterMode selMode = aicpu::RABITQ_ID_FILTER_NONE;
-    int64_t selPtr = 0;
-    int64_t selAux0 = 0;
-    int64_t selAux1 = 0;
-    int64_t selNegate = 0;
+    aicpu::RabitqIdFilterMode filterMode = aicpu::RABITQ_ID_FILTER_NONE;
+    int64_t filterAux0 = 0;
+    int64_t filterAux1 = 0;
+    int64_t filterNegate = 0;
+    int64_t requestedDistSelMode = aicpu::RABITQ_ID_FILTER_NONE;
     if (idFilter != nullptr && idFilter->mode != aicpu::RABITQ_ID_FILTER_NONE)
     {
-        selMode = static_cast<aicpu::RabitqIdFilterMode>(idFilter->mode);
-        selNegate = idFilter->negate;
-        selAux0 = idFilter->aux0;
-        selAux1 = idFilter->aux1;
-        auto retFilter = EnsureFilterPayloadOnDevice(idFilter, selPtr);
-        APPERR_RETURN_IF_NOT_FMT(retFilter == APP_ERR_OK, retFilter, "ensure id filter payload on device failed %d",
-                                 retFilter);
+        filterMode = static_cast<aicpu::RabitqIdFilterMode>(idFilter->mode);
+        filterAux0 = idFilter->aux0;
+        filterAux1 = idFilter->aux1;
+        filterNegate = idFilter->negate;
+        if (idFilter->mode == aicpu::RABITQ_ID_FILTER_BITMAP)
+        {
+            requestedDistSelMode = aicpu::RABITQ_ID_FILTER_BITMAP;
+        }
+        else if (idFilter->mode == aicpu::RABITQ_ID_FILTER_RANGE)
+        {
+            requestedDistSelMode = aicpu::RABITQ_ID_FILTER_RANGE;
+        }
+        else if (idFilter->mode == aicpu::RABITQ_ID_FILTER_SORTED && !idFilter->sortedPrefixPayload.empty())
+        {
+            requestedDistSelMode = aicpu::RABITQ_ID_FILTER_SORTED_PREFIX;
+        }
     }
+
+    const bool hasFilter = (filterMode != aicpu::RABITQ_ID_FILTER_NONE);
+    const bool canUseL2Prefilter =
+        hasFilter && requestedDistSelMode != aicpu::RABITQ_ID_FILTER_NONE && IsRabitqL2PrefilterKernelSupported();
+    const RabitqSelectorFilterStage filterStage = GetRabitqSelectorFilterStage();
+    APPERR_RETURN_IF_NOT_LOG(filterStage != RabitqSelectorFilterStage::PRE || !hasFilter || canUseL2Prefilter,
+                             APP_ERR_INVALID_PARAM,
+                             "IVFRABITQ_SELECTOR_FILTER_STAGE=pre requires an L2 prefilter path, which is not "
+                             "supported on 310P/SIMT");
+
+    bool useTopkFilter = false;
+    bool useDistFilter = false;
+    switch (filterStage)
+    {
+        case RabitqSelectorFilterStage::PRE:
+            useDistFilter = canUseL2Prefilter;
+            break;
+        case RabitqSelectorFilterStage::POST:
+            useTopkFilter = hasFilter;
+            break;
+        case RabitqSelectorFilterStage::BOTH:
+            useDistFilter = canUseL2Prefilter;
+            useTopkFilter = hasFilter;
+            break;
+        case RabitqSelectorFilterStage::AUTO:
+        default:
+            useDistFilter = canUseL2Prefilter;
+            useTopkFilter = hasFilter && !useDistFilter;
+            break;
+    }
+
+    aicpu::RabitqIdFilterMode topkSelMode = aicpu::RABITQ_ID_FILTER_NONE;
+    int64_t topkSelPtr = 0;
+    int64_t topkSelAux0 = 0;
+    int64_t topkSelAux1 = 0;
+    int64_t topkSelNegate = 0;
+    int64_t distSelMode = aicpu::RABITQ_ID_FILTER_NONE;
+    int64_t distSelPtr = 0;
+    int64_t distSelAux0 = 0;
+    int64_t distSelAux1 = 0;
+    int64_t distSelNegate = 0;
+
+    if (useTopkFilter)
+    {
+        topkSelMode = filterMode;
+        topkSelAux0 = filterAux0;
+        topkSelAux1 = filterAux1;
+        topkSelNegate = filterNegate;
+        if (topkSelMode == aicpu::RABITQ_ID_FILTER_SORTED || topkSelMode == aicpu::RABITQ_ID_FILTER_BITMAP)
+        {
+            auto retFilter = EnsureFilterPayloadOnDevice(idFilter, topkSelPtr);
+            APPERR_RETURN_IF_NOT_FMT(retFilter == APP_ERR_OK, retFilter, "ensure id filter payload on device failed %d",
+                                     retFilter);
+        }
+    }
+
+    if (useDistFilter)
+    {
+        distSelMode = requestedDistSelMode;
+        distSelNegate = filterNegate;
+        distSelAux0 = filterAux0;
+        distSelAux1 = filterAux1;
+        if (distSelMode == aicpu::RABITQ_ID_FILTER_BITMAP)
+        {
+            if (topkSelPtr != 0)
+            {
+                distSelPtr = topkSelPtr;
+            }
+            else
+            {
+                auto retFilter = EnsureFilterPayloadOnDevice(idFilter, distSelPtr);
+                APPERR_RETURN_IF_NOT_FMT(retFilter == APP_ERR_OK, retFilter,
+                                         "ensure id filter payload on device failed %d", retFilter);
+            }
+        }
+        else if (distSelMode == aicpu::RABITQ_ID_FILTER_SORTED_PREFIX)
+        {
+            auto retPrefixFilter = EnsurePrefixFilterPayloadOnDevice(idFilter, distSelPtr);
+            APPERR_RETURN_IF_NOT_FMT(retPrefixFilter == APP_ERR_OK, retPrefixFilter,
+                                     "ensure prefix id filter payload on device failed %d", retPrefixFilter);
+        }
+    }
+    std::vector<int64_t> distFilterAttrHost(5, 0);
+    if (distSelMode != aicpu::RABITQ_ID_FILTER_NONE)
+    {
+        distFilterAttrHost[0] = distSelMode;
+        distFilterAttrHost[1] = distSelPtr;
+        distFilterAttrHost[2] = distSelAux0;
+        distFilterAttrHost[3] = distSelAux1;
+        distFilterAttrHost[4] = distSelNegate;
+    }
+    auto retCopyDistFilterAttrs =
+        aclrtMemcpy(distFilterAttrs.data(), distFilterAttrs.getSizeInBytes(), distFilterAttrHost.data(),
+                    distFilterAttrHost.size() * sizeof(int64_t), ACL_MEMCPY_HOST_TO_DEVICE);
+    APPERR_RETURN_IF_NOT_FMT(retCopyDistFilterAttrs == ACL_SUCCESS, APP_ERR_INNER_ERROR,
+                             "copy dist filter attrs to device failed %d", retCopyDistFilterAttrs);
 
     fillDisOpInputData(k, batch, totalBlockNum, coreNum, offset, indexl2offset, indexl1offset, queryid, centroidsid,
                        centroidsl2, baseSize, ids, blocknumPerQ, attrs, l1TopNprobeIndicesHost, l1TopNprobeDistsHost,
-                       selMode, selPtr, selAux0, selAux1, selNegate);
+                       topkSelMode, topkSelPtr, topkSelAux0, topkSelAux1, topkSelNegate);
     AscendTensor<float, DIMS_2, size_t> outDist(mem, {batch, static_cast<size_t>(k)}, stream);
     AscendTensor<idx_t, DIMS_2, size_t> outLabel(mem, {batch, static_cast<size_t>(k)}, stream);
     auto ret = synchronizeStream(stream);
@@ -1610,7 +1806,7 @@ APP_ERROR IndexIVFRaBitQ::searchImplL2(AscendTensor<float, DIMS_2> &queries, Asc
     runL2TopkOp(batch, disVec, vcMaxDisVec, ids, baseSize, blocknumPerQ, opFlag, attrs, outDist, outLabel, streamAicpu);
     callL2DistanceOp(batch, totalBlockNum, coreNum, vcMaxLen, queryL2, queriesLut, centroidsLutVec, queryid,
                      centroidsid, centroidsl2, offset, baseSize, indexl2offset, indexl1offset, opFlag, disVec,
-                     vcMaxDisVec, codeVec, Indexl2, Indexl1, stream);
+                     vcMaxDisVec, codeVec, Indexl2, Indexl1, ids, distFilterAttrs, stream);
     ret = synchronizeStream(stream);
     APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "synchronizeStream default stream: %i\n", ret);
     ret = synchronizeStream(streamAicpu);

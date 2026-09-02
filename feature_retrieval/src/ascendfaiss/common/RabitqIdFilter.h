@@ -37,6 +37,7 @@ struct RabitqIdFilterHost
     int64_t aux1 = 0;  // imax
     std::vector<int64_t> sortedIds;
     std::vector<uint8_t> bitmap;
+    std::vector<uint8_t> sortedPrefixPayload;
     const int64_t *sortedView = nullptr;
     const uint8_t *bitmapView = nullptr;  // user buffer; must stay valid until search returns
     size_t viewBytes = 0;
@@ -49,6 +50,10 @@ struct RabitqIdFilterHost
         {
             return sortedView != nullptr ? static_cast<const void *>(sortedView) : sortedIds.data();
         }
+        if (mode == aicpu::RABITQ_ID_FILTER_SORTED_PREFIX)
+        {
+            return sortedPrefixPayload.data();
+        }
         if (mode == aicpu::RABITQ_ID_FILTER_BITMAP)
         {
             return bitmapView != nullptr ? static_cast<const void *>(bitmapView) : bitmap.data();
@@ -58,6 +63,10 @@ struct RabitqIdFilterHost
 
     size_t payloadBytes() const
     {
+        if (mode == aicpu::RABITQ_ID_FILTER_SORTED_PREFIX)
+        {
+            return sortedPrefixPayload.size();
+        }
         if (mode == aicpu::RABITQ_ID_FILTER_SORTED)
         {
             return sortedView != nullptr ? viewBytes : sortedIds.size() * sizeof(int64_t);
@@ -77,6 +86,7 @@ struct RabitqIdFilterHost
         aux1 = 0;
         sortedIds.clear();
         bitmap.clear();
+        sortedPrefixPayload.clear();
         sortedView = nullptr;
         bitmapView = nullptr;
         viewBytes = 0;
