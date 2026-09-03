@@ -4,7 +4,7 @@
 
 ### 功能介绍<a name="ZH-CN_TOPIC_0000001506615161"></a>
 
-IReduction是特征检索组件中降维方法的统一接口，目前支持**PCAR**和**NN**两种降维算法。
+IReduction是特征检索组件中降维方法的统一接口，目前支持**PCA**和**NN**两种降维算法。
 
 ### CreateReduction接口<a name="ZH-CN_TOPIC_0000001456695108"></a>
 
@@ -293,7 +293,7 @@ IReduction是特征检索组件中降维方法的统一接口，目前支持**PC
 </tr>
 <tr id="row164624102073"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.2.1"><p id="p12462161014713"><a name="p12462161014713"></a><a name="p12462161014713"></a>功能描述</p>
 </th>
-<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.2.1 "><p id="p1462161010718"><a name="p1462161010718"></a><a name="p1462161010718"></a>声明此index拷贝构造函数为空，即不可拷贝类型。</p>
+<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.2.1 "><p id="p1462161010718"><a name="p1462161010718"></a><a name="p1462161010718"></a>声明此AscendNNInference拷贝构造函数为空，即不可拷贝类型。</p>
 </td>
 </tr>
 <tr id="row5462101013718"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.3.1"><p id="p04623106716"><a name="p04623106716"></a><a name="p04623106716"></a>输入</p>
@@ -582,7 +582,7 @@ IReduction是特征检索组件中降维方法的统一接口，目前支持**PC
 </tr>
 <tr id="row421759103816"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.2.1"><p id="p1212599383"><a name="p1212599383"></a><a name="p1212599383"></a>功能描述</p>
 </th>
-<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.2.1 "><p id="p131714208358"><a name="p131714208358"></a><a name="p131714208358"></a>声明此Index赋值构造函数为空，即不可拷贝类型。</p>
+<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.2.1 "><p id="p131714208358"><a name="p131714208358"></a><a name="p131714208358"></a>声明此AscendNNInference赋值构造函数为空，即不可拷贝类型。</p>
 </td>
 </tr>
 <tr id="row122155911383"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.3.1"><p id="p112195910383"><a name="p112195910383"></a><a name="p112195910383"></a>输入</p>
@@ -621,7 +621,7 @@ AscendCloner接口的配置参数。
 |reserveVecs|long|当前无效，预留内存的特征数。|
 |verbose|bool|是否打印拷贝日志。|
 |resourceSize|int64_t|资源池大小。|
-|slim|bool|AscendIndexSQConfig成员变量，是否动态增加内存。默认为false。|
+|slim|bool|AscendClonerOptions成员变量，是否动态增加内存。默认为false。|
 |filterable|bool|AscendIndexSQConfig成员变量，是否按照id进行过滤。默认为false。|
 |indexMode|uint32_t|Index int8检索模式，默认值为0 （DEFAULT_MODE）。|
 |blockSize|uint32_t|配置Device侧的blockSize，默认值“BLOCK_SIZE”为16384 * 16 = 262144。|

@@ -145,6 +145,9 @@ Assume that on Atlas Inference Series products, a service uses the brute-force s
     #include <faiss/ascend/AscendIndexFlat.h>
     #include <sys/time.h>
     #include <random>
+    #include <cmath>
+    #include <cstdio>
+    #include <vector>
     // Get the current time.
     inline double GetMillisecs()
     {
@@ -843,7 +846,7 @@ The default path of the scripts in this section is `tools/train/reduction`.
         bash atc_16.sh {save_path} {om_name} {input_shape}
         ```
 
-    - `{save_path}`: Required. Indicates the path where the model is stored. The file name in the path must end with `.onnx` or `.pb`. Otherwise, the script reads environment variable values such as `framework` and `input_format`, which causes the script to fail.
-    - `{om_name}`: Optional. Indicates the name of the generated OM model. The default is the same as the ONNX model name.
-    - `{input_shape}`: Optional. The default is the input dimension of the ONNX model, in the format `actual_input_1:infer_batch_size,dim`. The default value is recommended, and changing it is not recommended.
+    - {`save_path`}: Required. Indicates the path where the model is stored. The file name in the path must end with `.onnx` or `.pb`. Otherwise, the script reads environment variable values such as `framework` and `input_format`, which causes the script to fail.
+    - {`om_name`}: Optional. Indicates the name of the generated OM model. The default is the same as the ONNX model name.
+    - {`input_shape`}: Optional. The default is the input dimension of the ONNX model, in the format `actual_input_1:infer_batch_size,dim`. The default value is recommended, and changing it is not recommended.
     - `bash atc.sh` and `bash atc_16.sh` support only Atlas Inference Series products.

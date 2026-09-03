@@ -7,6 +7,7 @@
 #### PQ量化相关结构体
 
 ```c++
+
 typedef struct DiskPQParams {
     int pqChunks = 512;
     int funcType = 0;
@@ -57,10 +58,10 @@ typedef struct DiskPQParams {
 
     * 码字构建（底库压缩）阶段和检索阶段，centroids必须指向内存大小为 `dim * sizeof(使用的数据类型)` 字节数的centroids数据。用户需要保证指向的内存大小符合，否则有段错误风险。
 
-
 #### 向量包装结构体
 
 ```c++
+
 typedef struct VectorArrayData {
     int length;
     int maxlen;
@@ -68,7 +69,9 @@ typedef struct VectorArrayData {
     size_t itemsize;
     char *items;
 } VectorArrayData;
+
 ```
+
 参数：
 
 * `length`: int类型，结构体中存储的向量条数。用户需保证`items`指向的数据字节大小等于 `dim * length * itemSize`。默认值为0，范围限制：`暂无，待补充`。
@@ -84,11 +87,15 @@ typedef struct VectorArrayData {
 #### ComputePQTable
 
 ```c++
+
 int ComputePQTable(VectorArrayData *sample, DiskPQParams *params);
+
 ```
+
 使用sample中存储的采样的底库数据计算PQ码本，并将码本相关的数据存储在参数`params`中的对应参数中。`params`中参数的具体内容见上。
 
 参数：
+
 * `sample`: 指向填充好采样底库数据的`VectorArrayData`实例的指针。不能为空指针。数据填充要求见上。
 
 * `params`: 指向仅包含PQ参数，未填充训练好的PQ数据的`DiskPQParams`实例的指针。不能为空指针。数据填充要求见上。
@@ -100,8 +107,11 @@ int ComputePQTable(VectorArrayData *sample, DiskPQParams *params);
 #### ComputeVectorPQCode
 
 ```c++
+
 int ComputeVectorPQCode(VectorArrayData *baseData, const DiskPQParams *params, uint8_t *pqCode);
+
 ```
+
 使用填充好PQ数据的params，对baseData中的底库数据进行量化，并将量化数据写入pqCode指向的缓存区中。
 
 参数：
@@ -115,8 +125,11 @@ int ComputeVectorPQCode(VectorArrayData *baseData, const DiskPQParams *params, u
 返回值：返回值为0时表示流程正常，返回值为-1时表示流程异常，且会将异常日志信息打印到cerr中。
 
 #### GetPQDistanceTable
+
 ```c++
+
 int GetPQDistanceTable(char *vec, const DiskPQParams *params, float *pqDistanceTable);
+
 ```
 
 使用填充好PQ数据的params，对vec指向的query数据进行ADC PQ距离计算，并将pq距离表写入pqDistanceTable指向的缓存区中。
@@ -129,14 +142,16 @@ int GetPQDistanceTable(char *vec, const DiskPQParams *params, float *pqDistanceT
 
 * `pqDistanceTable`: float*类型，接收返回的query与每个chunk内每个centroid距离的指针。用户需保证 pqDistanceTable 指向的空间至少有 `pqChunks * 256 * sizeof(float)` 字节数大小。
 
-
 返回值：返回值为0时表示流程正常，返回值为-1时表示流程异常，且会将异常日志信息打印到cerr中。
 
 #### GetPQDistance
 
 ```c++
+
 int GetPQDistance(const uint8_t *basecode, const DiskPQParams *params, const float *pqDistanceTable, float &pqDistance);
+
 ```
+
 使用`baseCode`指向的底库向量对应的压缩码字数据和 `GetPQDistanceTable`接口中获取的pqDistanceTable，计算query与这个底库向量的PQ距离。（OpenGauss侧需确认是否需要提供一个计算query和一组底库向量距离的接口。）
 
 参数：
@@ -145,20 +160,22 @@ int GetPQDistance(const uint8_t *basecode, const DiskPQParams *params, const flo
 
 * `params`: 指向至少填充好`pqChunks`数值的`DiskPQParams`实例的指针。不能为空指针。
 
-* `pqDistanceTable`: float*类型，指向query对应的ADC PQ距离表的指针。用户需保证 pqDistanceTable 指向的数据至少有 `pqChunks * 256 * sizeof(float)` 字节数大小。 
+* `pqDistanceTable`: float*类型，指向query对应的ADC PQ距离表的指针。用户需保证 pqDistanceTable 指向的数据至少有 `pqChunks * 256 * sizeof(float)` 字节数大小。
 
 * `pqDistance`: float&类型，接收最终输出的pq距离的引用值。内部不会在使用前对 `pqDistance`置零，pqDistance最终结果为原 pqDistance 值 + 输出的query与baseCode的PQ距离，因此推荐输入该值为0。
 
 返回值：返回值为0时表示流程正常，返回值为-1时表示流程异常，且会将异常日志信息打印到cerr中。
 
-
 ### Linux侧接口
 
-
 #### 构造函数
+
 ```c++
+
 explicit DiskIndex(diskann_pro::Metric distMetric, int searchListSize, int threadNum, bool verbose);
+
 ```
+
 DiskIndex的构造函数。
 
 *入参：*
@@ -173,11 +190,15 @@ DiskIndex的构造函数。
 无
 
 ***
+
 #### Build
 
 ```c++
+
 void Build(const DiskIndexBuildParams &buildParams);
+
 ```
+
 根据参数构建DiskIndex索引文件并输出至对应前缀下。
 
 *入参：*
@@ -185,6 +206,7 @@ void Build(const DiskIndexBuildParams &buildParams);
 * `buildParams`: 自定义`DiskIndexBuildParams`结构体，该结构体具体定义为：
 
 ```c++
+
 struct DiskIndexBuildParams {
     std::string baseFilePath = "";
     int pqChunkNum = 0;
@@ -192,6 +214,7 @@ struct DiskIndexBuildParams {
     int degree = 64;
     std::string outputPrefix = "";
 };
+
 ```
 
 该结构体各参数说明如下：
@@ -199,7 +222,7 @@ struct DiskIndexBuildParams {
 * `baseFilePath`: c++11字符串类型，索引构建阶段使用的原始数据在磁盘上的路径。该文件规格需要符合以下标准：
     * 文件首1-4字节需为uint32_t类型，描述文件中的总向量数npts (如原始底库为 1000条 * 256维底库向量，则该值需为 1000)；
     * 文件首5-8字节需为uint32_t类型，描述文件中的向量维度dim (如原始底库为 1000条 * 256维底库向量，则该值需为 256)；
-    * 文件剩余字节需满足大小足够 dim * npts * sizeof(float) 字节，即真正待添加的原始底库向量数据；
+    * 文件剩余字节需满足大小足够 dim \* npts \* sizeof(float) 字节，即真正待添加的原始底库向量数据；
 
 * `pqChunkNum`: int类型，对底库向量进行PQ量化时对dim的分段数；默认值为：`代填`，范围限制：`0 < pqChunkNum <= dim`；
 
@@ -208,16 +231,23 @@ struct DiskIndexBuildParams {
 * `degree`: int类型，图索引构建时每个节点的最大邻居数，即图的度数；默认值为：`代填`，范围限制：`待填`；
 
 * `outputPrefix`: c++11字符串类型，索引构建输出文件的前缀。索引最终输出构建文件为：
-```
+
+```text
+
 {prefix}_disk.index // 磁盘索引文件
 {prefix}_disk.index_align // 图索引结构
 {prefix}_pq_compressed.bin // PQ压缩后的底库向量
 {prefix}_pq_pivots.bin // PQ码本
+
 ```
+
  如果`indexMemLimit`小于图索引构建需要的内存导致图索引构建分片的话，则额外输出2个文件：
-```
+
+```text
+
 {prefix}_disk.index.medoids.bin
 {prefix}_disk.index.centroids.bin
+
 ```
 
 *返回值：*
@@ -225,10 +255,15 @@ struct DiskIndexBuildParams {
 无
 
 ***
+
 #### Load
+
 ```c++
+
 void Load(const std::string &inputPrefix);
+
 ```
+
 加载索引内容。
 
 *入参：*
@@ -244,8 +279,11 @@ void Load(const std::string &inputPrefix);
 #### LoadCacheList
 
 ```c++
+
 void LoadCacheList(int cacheNum);
+
 ```
+
 检索阶段，检索前需缓存部分节点于内存内。
 
 *入参：*

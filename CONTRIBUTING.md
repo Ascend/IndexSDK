@@ -18,8 +18,10 @@
 
 2. 将Fork到个人仓的代码克隆到本地进行代码开发
 
-   ```
+   ```text
+
    git clone https://gitcode.com/<your-username>/IndexSDK.git
+
    ```
 
    代码开发请遵循[代码规范](#代码规范)。
@@ -34,7 +36,7 @@
 
 5. 提交Pull Request
 
-   请参见[提交Pull Request流程](#提交Pull-Request流程)。
+   请参见[提交Pull Request流程](#提交pull-request流程)。
 
 ### 代码规范
 
@@ -61,9 +63,12 @@
 在提交代码前，请确保所有测试通过：
 
 ```bash
+
 # 单元测试
+
 cd build
 bash build.sh ut
+
 ```
 
 #### 添加测试
@@ -106,20 +111,26 @@ bash build.sh ut
 1. **创建分支**
 
    ```bash
+
    git checkout -b feature/<your-feature-name>
+
    ```
 
 2. **提交更改**
 
    ```bash
+
    git add .
    git commit
+
    ```
 
 3. **推送到远程仓库**
 
    ```bash
+
    git push origin feature/<your-feature-name>
+
    ```
 
 4. **创建Pull Request**

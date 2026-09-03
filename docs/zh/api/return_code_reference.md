@@ -22,7 +22,7 @@
 |APP_ERR_ACL_GET_DATA_BUF_ADDR_NULL = 1014|ACL: failed to get the address of databuffer|
 |APP_ERR_ACL_OP_NOT_FOUND = 1015|ACL: op model not found|
 |APP_ERR_ACL_OP_LOAD_MODEL_FAILED = 1016|ACL: op model load failed|
-|APP_ERR_ACL_OP_EXEC_FAILED = 1017|ACL: op model execute failed, not running in aicore|
+|APP_ERR_ACL_OP_EXEC_FAILED = 1017|ACL: op model execute failed, not running in AI Core|
 |APP_ERR_ACL_SET_DEVICE_FAILED = 1018|ACL: failed to set device|
 |APP_ERR_ACL_END = 1019|ACL: end of ACL ERR|
 |APP_BASE = 2000|define the APP error code, range: 2001~2999|
@@ -33,7 +33,7 @@
 |APP_ERR_CLUSTERING_NOT_FOUND = 2005|clustering not found|
 |APP_ERR_INFERENCE_NOT_FOUND = 2006|inference not found|
 |APP_ERR_REQUEST_ERROR = 2007|request parameter error|
-|APP_ERR_NOT_IMPLEMENT = 2008|method not implement|
+|APP_ERR_NOT_IMPLEMENT = 2008|method not implemented|
 |APP_ERR_ILLEGAL_OPERATION = 2009|illegal operation|
 |APP_ERR_INNER_ERROR = 2010|internal error|
 |APP_ERR_TIMEOUT = 2011|timeout|
@@ -41,5 +41,5 @@
 |APP_CREATE_TRANSFORM_FAILED = 2013|create transform failed|
 |APP_CREATE_INFERENCE_FAILED = 2014|create inference failed|
 |APP_ERR_INVALID_TABLE_INDEX = 2015|Idx exceeds tableLen, table mapping failed|
-|APP_ERR_INDEX_NOT_INIT = 2016|index not initialize|
+|APP_ERR_INDEX_NOT_INIT = 2016|index not initialized|
 |APP_ERR_END = 2017|end of APP ERR|

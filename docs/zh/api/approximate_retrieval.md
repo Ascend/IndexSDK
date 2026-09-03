@@ -645,7 +645,7 @@ AscendIndexBinaryFlat需要使用对应的AscendIndexBinaryFlatConfig执行对�
 |成员|类型|说明|
 |--|--|--|
 |deviceList|std::vector\<int>|Device侧设备ID。AscendIndexBinaryFlat类仅支持单个Atlas 推理系列产品的加速卡。|
-|resourceSize|int64_t|Device侧内存池大小，单位为字节，默认参数值为1024MB，合法范围为[1024*1024*1024, 32*1024*1024*1024]，10million底库推荐申请5GB。|
+|resourceSize|int64_t|Device侧内存池大小，单位为字节，默认参数值为1024MB，合法范围为[1024*1024*1024, 32*1024*1024*1024]，1000万底库推荐申请5GB。|
 
 **接口说明<a name="section108610580175"></a>**
 
@@ -712,7 +712,7 @@ AscendIndexBinaryFlat需要使用对应的AscendIndexBinaryFlatConfig执行对�
 </tr>
 <tr id="row119241937191814"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.6.1"><p id="p11924193715185"><a name="p11924193715185"></a><a name="p11924193715185"></a>约束说明</p>
 </th>
-<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.6.1 "><a name="ul5609290011"></a><a name="ul5609290011"></a><ul id="ul5609290011"><li><span class="parmname" id="parmname869315371603"><a name="parmname869315371603"></a><a name="parmname869315371603"></a>“devices”</span>需要为合法有效不重复的设备ID，长度为1。</li><li><span class="parmname" id="parmname95620401905"><a name="parmname95620401905"></a><a name="parmname95620401905"></a>“resources”</span>合法范围为[1024*1024*1024, 32*1024*1024*1024]，10million底库推荐申请5GB。</li></ul>
+<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.6.1 "><a name="ul5609290011"></a><a name="ul5609290011"></a><ul id="ul5609290011"><li><span class="parmname" id="parmname869315371603"><a name="parmname869315371603"></a><a name="parmname869315371603"></a>“devices”</span>需要为合法有效不重复的设备ID，长度为1。</li><li><span class="parmname" id="parmname95620401905"><a name="parmname95620401905"></a><a name="parmname95620401905"></a>“resources”</span>合法范围为[1024*1024*1024, 32*1024*1024*1024]，1000万底库推荐申请5GB。</li></ul>
 </td>
 </tr>
 </tbody>
@@ -747,7 +747,7 @@ AscendIndexBinaryFlat需要使用对应的AscendIndexBinaryFlatConfig执行对�
 </tr>
 <tr id="row143717524181"><th class="firstcol" valign="top" width="20.05%" id="mcps1.1.3.6.1"><p id="p1743735241812"><a name="p1743735241812"></a><a name="p1743735241812"></a>约束说明</p>
 </th>
-<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.6.1 "><a name="ul144378526181"></a><a name="ul144378526181"></a><ul id="ul144378526181"><li><span class="parmname" id="parmname1643775216187"><a name="parmname1643775216187"></a><a name="parmname1643775216187"></a>“devices”</span>需要为合法有效不重复的设备ID，长度为1。</li><li><span class="parmname" id="parmname1437115251816"><a name="parmname1437115251816"></a><a name="parmname1437115251816"></a>“resources”</span>合法范围为[1024*1024*1024, 32*1024*1024*1024]，10million底库推荐申请5GB。</li></ul>
+<td class="cellrowborder" valign="top" width="79.95%" headers="mcps1.1.3.6.1 "><a name="ul144378526181"></a><a name="ul144378526181"></a><ul id="ul144378526181"><li><span class="parmname" id="parmname1643775216187"><a name="parmname1643775216187"></a><a name="parmname1643775216187"></a>“devices”</span>需要为合法有效不重复的设备ID，长度为1。</li><li><span class="parmname" id="parmname1437115251816"><a name="parmname1437115251816"></a><a name="parmname1437115251816"></a>“resources”</span>合法范围为[1024*1024*1024, 32*1024*1024*1024]，1000万底库推荐申请5GB。</li></ul>
 </td>
 </tr>
 </tbody>
@@ -1285,7 +1285,7 @@ AscendIndexIVF需要使用对应的AscendIndexIVFConfig执行对应资源的初�
 |cp|ClusteringParameters|聚类相关参数，具体可以参见Faiss相关接口说明。不建议修改此参数，其中训练迭代次数参数默认为16。迭代次数设置过大，会显著增加训练时长。|
 
 > [!NOTE]
-> 
+>
 > AscendIndexIVFSQConfig继承于[AscendIndexConfig](./full_retrieval.md#ascendindexconfig)。
 
 ### AscendIndexIVFConfig接口<a name="ZH-CN_TOPIC_0000001506334629"></a>

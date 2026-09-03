@@ -365,7 +365,7 @@ Python安装好后，pip所需依赖名称、对应版本及获取建议请参�
     若显示如下信息，说明软件包已通过校验。
 
     ```bash
-    Verifying archive integrity...  100%   SHA256 checksums are OK. All good.    
+    Verifying archive integrity...  100%   SHA256 checksums are OK. All good.
     ```
 
 5. 创建软件包的安装路径。
