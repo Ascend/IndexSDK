@@ -27,7 +27,7 @@
     |include|API头文件。|
     |lib|检索动态库，链接到host/lib。|
     |modelpath|算子om文件存放目录。编译好算子之后，需要将om文件放置于此文件夹。|
-    |ops|包含custom_opp_\<arch>.run脚本，用于检索算法算子安装。|
+    |ops|包含custom_opp_\<arch>.run脚本，用于安装算法算子。|
     |script|包含卸载脚本uninstall.sh，用于卸载Index SDK安装包。|
     |tools|包含用于算子生成python脚本。|
     |version.info|包含版本相关信息。|
@@ -140,6 +140,7 @@
     #include <faiss/ascend/AscendIndexFlat.h>
     #include <sys/time.h>
     #include <random>
+    #include <cmath>
     // 获取当前时间
     inline double GetMillisecs()
     {
@@ -253,7 +254,7 @@
 ## 算法介绍<a name="ZH-CN_TOPIC_0000001649848468"></a>
 
 > [!NOTE]
->标准态部署主要使用AI CPU，Ctrl CPU和AI CPU的最佳推荐配比如下。
+>标准态部署主要使用AI Core，Ctrl CPU和AI Core的最佳推荐配比如下。
 >
 >- 使用Atlas 200/300/500 推理产品，建议设置为2:6。
 >- 使用Atlas 推理系列产品，建议设置为1:7。
@@ -665,7 +666,7 @@
 </tr>
 <tr id="row2033244801010"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.2.1"><p id="p4332164821010"><a name="p4332164821010"></a><a name="p4332164821010"></a>参数名称</p>
 </th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.2.1 "><p id="p193321480106"><a name="p193321480106"></a><a name="p193321480106"></a>&lt;dim&gt;：二值化特征向量维度，dim ∈ { 256， 512，1024 }，默认值为“512”。</p>
+<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.2.1 "><p id="p193321480106"><a name="p193321480106"></a><a name="p193321480106"></a>&lt;dim&gt;：二值化特征向量维度，dim ∈ { 256, 512, 1024 }，默认值为“512”。</p>
 <p id="p1474218499117"><a name="p1474218499117"></a><a name="p1474218499117"></a>&lt;query_type&gt;：检索类型，默认为<span class="parmvalue" id="parmvalue12920913153"><a name="parmvalue12920913153"></a><a name="parmvalue12920913153"></a>“uint8”</span>，当AscendIndexBinaryFlat算法的<a href="./api/approximate_retrieval.md#search接口">search接口</a>进行性能提升时，需要设置为<span class="parmvalue" id="parmvalue10202131541419"><a name="parmvalue10202131541419"></a><a name="parmvalue10202131541419"></a>“float”</span>。</p>
 <p id="p43321548181012"><a name="p43321548181012"></a><a name="p43321548181012"></a>&lt;process_id&gt;：批量生成算子多进程调度的进程ID，默认值为<span class="parmvalue" id="parmvalue12408135012357"><a name="parmvalue12408135012357"></a><a name="parmvalue12408135012357"></a>“0”</span>，无需设置。</p>
 <p id="p670916785418"><a name="p670916785418"></a><a name="p670916785418"></a>&lt;pool_size&gt;：批量生成算子多进程调度的进程池大小，默认为16。</p>
@@ -845,7 +846,7 @@ VSTAR检索当前只支持Atlas 推理系列产品，涉及VSTAR业务算子模�
 </tr>
 <tr id="row1827720142259"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.4.1"><p id="p327810141252"><a name="p327810141252"></a><a name="p327810141252"></a>约束说明</p>
 </th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.4.1 "><a name="ul144021537172510"></a><a name="ul144021537172510"></a><ul id="ul144021537172510"><li>dim ∈ {128, 256, 512, 1024}。</li><li>nlist1 ∈ {256, 512, 1024}。</li><li>sub_dim1 ∈ {32，64，128}。sub_dim1必须小于dim。</li><li>nprobe1 ∈ (16, nlist1]。nprobe1是int类型的列表，且列表中的数值必须是8的整数倍。</li><li>nprobe2 ∈ (16, nprobe1 * n]。当dim为1024时n为16，其余维度n为32，nprobe2是int类型的列表，且列表中的数值必须是8的整数倍。</li><li>segment ∈ (100, 5000]。segment是int类型的列表，且segment必须是8的整数倍。</li><li>pool_size∈[1, 32]。运行脚本前请先确定宿主机最大能支持的进程数量合理设置。</li></ul>
+<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.4.1 "><a name="ul144021537172510"></a><a name="ul144021537172510"></a><ul id="ul144021537172510"><li>dim ∈ {128, 256, 512, 1024}。</li><li>nlist1 ∈ {256, 512, 1024}。</li><li>sub_dim1 ∈ {32，64，128}。sub_dim1必须小于dim。</li><li>nprobe1 ∈ (16, nlist1]。nprobe1是int类型的列表，且列表中的数值必须是8的整数倍。</li><li>nprobe2 ∈ (16, nprobe1 * n]。当dim为1024时n为16，其余维度n为32，nprobe2是int类型的列表，且列表中的数值必须是8的整数倍。</li><li>segment ∈ (100, 5000]。segment是int类型的列表，且segment必须是8的整数倍。</li><li>pool_size∈[1, 32]。运行脚本前请先确定宿主机最大能支持的进程数量，合理设置。</li></ul>
 </td>
 </tr>
 </tbody>
@@ -1150,7 +1151,7 @@ Index SDK提供两种训练脚本方式：
 
     |参数|说明|
     |--|--|
-    |dataset_dir|数据集路径，类型为string，必须设置。目前实现默认读取base.npy，query.npy和gt.npy。若数据集为其他名称，可以自行实现数据集读取，并对该脚本get_train_data所在行做对应修改。例如。原代码为：<br>```# load dataset demo before training, modify here if you want to load your own dataset        #####################################################################        learn, base = get_train_data(args.dataset_dir, args.train_size)        #####################################################################```    <br>可修改为：<br>```# load dataset demo before training, modify here if you want to load your own dataset        #####################################################################        # learn, base = get_train_data(args.dataset_dir, args.train_size)        learn = np.fromfile(YOUR_LEARN_DATASET_DIR, dtype=np.float32).reshape((-1, YOUR_DATA_DIM))        base = np.fromfile(YOUR_BASE_DATASET_DIR, dtype=np.float32).reshape((-1, YOUR_DATA_DIM))        #####################################################################```|
+    |dataset_dir|数据集路径，类型为string，必须设置。目前实现默认读取base.npy、query.npy和gt.npy。若数据集为其他名称，可以自行实现数据集读取，并对该脚本get_train_data所在行做对应修改。例如：原代码为：<br>```# load dataset demo before training, modify here if you want to load your own dataset        #####################################################################        learn, base = get_train_data(args.dataset_dir, args.train_size)        #####################################################################```    <br>可修改为：<br>```# load dataset demo before training, modify here if you want to load your own dataset        #####################################################################        # learn, base = get_train_data(args.dataset_dir, args.train_size)        learn = np.fromfile(YOUR_LEARN_DATASET_DIR, dtype=np.float32).reshape((-1, YOUR_DATA_DIM))        base = np.fromfile(YOUR_BASE_DATASET_DIR, dtype=np.float32).reshape((-1, YOUR_DATA_DIM))        #####################################################################```|
     |val_dataset_dir|generate_val为True时有效，生成验证集的存放路径，类型为string，默认值为./validation/。|
     |generate_val|是否生成验证集。首次训练请设置为True。类型为bool，默认为False。|
     |save_path|模型存放路径。类型为string，必须设置。|

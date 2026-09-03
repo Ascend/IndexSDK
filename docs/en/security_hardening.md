@@ -61,7 +61,7 @@ If you need to modify OMP-related configurations, evaluate system resource limit
 
 **Interface usage<a name="section8919813343"></a>**
 
-Most retrieval interfaces use C-style input parameters. Therefore, you must ensure that the length of the input pointer is a valid value. Otherwise, exceptions may occur during operation.
+Most retrieval interfaces use C-style input parameters. Therefore, you must ensure that the length of the data pointed to by the input pointer is valid. Otherwise, exceptions may occur during operation.
 
 **Mutual conversion with `faiss::Index`<a name="section943033715416"></a>**
 

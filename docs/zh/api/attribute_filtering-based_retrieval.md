@@ -332,7 +332,7 @@
 </tr>
 <tr id="row421759103816"><th class="firstcol" valign="top" width="20.03%" id="mcps1.1.3.2.1"><p id="p1212599383"><a name="p1212599383"></a><a name="p1212599383"></a>功能描述</p>
 </th>
-<td class="cellrowborder" valign="top" width="79.97%" headers="mcps1.1.3.2.1 "><p id="p188718287407"><a name="p188718287407"></a><a name="p188718287407"></a>按照位置来删除底库特征。此接口只支持TSFlatIP和TSInt8FlatCos的附加相似度场景。</p>
+<td class="cellrowborder" valign="top" width="79.97%" headers="mcps1.1.3.2.1 "><p id="p188718287407"><a name="p188718287407"></a><a name="p188718287407"></a>按照位置来删除底库特征。此接口只支持TSFlatIP和TSInt8FlatCos的附加相似度场景，其中TSFlatIP对应FP16Flat（IP距离），TSInt8FlatCos对应Int8Flat（cos距离）。</p>
 </td>
 </tr>
 <tr id="row122155911383"><th class="firstcol" valign="top" width="20.03%" id="mcps1.1.3.3.1"><p id="p112195910383"><a name="p112195910383"></a><a name="p112195910383"></a>输入</p>
@@ -369,7 +369,7 @@
 </tr>
 <tr id="row295015292419"><th class="firstcol" valign="top" width="20.03%" id="mcps1.1.3.2.1"><p id="p179503291419"><a name="p179503291419"></a><a name="p179503291419"></a>功能描述</p>
 </th>
-<td class="cellrowborder" valign="top" width="79.97%" headers="mcps1.1.3.2.1 "><p id="p9695104615427"><a name="p9695104615427"></a><a name="p9695104615427"></a>从start位置来批量删除count个底库特征。此接口只支持TSFlatIP和TSInt8FlatCos的附加相似度场景。</p>
+<td class="cellrowborder" valign="top" width="79.97%" headers="mcps1.1.3.2.1 "><p id="p9695104615427"><a name="p9695104615427"></a><a name="p9695104615427"></a>从start位置来批量删除count个底库特征。此接口只支持TSFlatIP和TSInt8FlatCos的附加相似度场景，其中TSFlatIP对应FP16Flat（IP距离），TSInt8FlatCos对应Int8Flat（cos距离）。</p>
 </td>
 </tr>
 <tr id="row119504292414"><th class="firstcol" valign="top" width="20.03%" id="mcps1.1.3.3.1"><p id="p09501729114112"><a name="p09501729114112"></a><a name="p09501729114112"></a>输入</p>
@@ -429,7 +429,7 @@
 </tr>
 <tr id="row22159193815"><th class="firstcol" valign="top" width="19.919999999999998%" id="mcps1.1.3.6.1"><p id="p423590386"><a name="p423590386"></a><a name="p423590386"></a>约束说明</p>
 </th>
-<td class="cellrowborder" valign="top" width="80.08%" headers="mcps1.1.3.6.1 "><a name="ul1652965944519"></a><a name="ul1652965944519"></a><ul id="ul1652965944519"><li>0＜ offset ≤8.0e8</li><li>0＜ num ≤8.0e8</li><li>offset＋num ≤ ntotal</li><li><span class="parmname" id="parmname204541533928"><a name="parmname204541533928"></a><a name="parmname204541533928"></a>“labels”</span>长度为num，否则可能出现越界读写错误并引起程序崩溃。</li><li><span class="parmname" id="parmname1443963511216"><a name="parmname1443963511216"></a><a name="parmname1443963511216"></a>“features”</span>长度为num * 向量维度dim，否则可能出现越界读写错误并引起程序崩溃。</li><li><span class="parmname" id="parmname1481821245019"><a name="parmname1481821245019"></a><a name="parmname1481821245019"></a>“attributes”</span>长度为num，否则可能出现越界读写错误并引起程序崩溃。</li></ul>
+<td class="cellrowborder" valign="top" width="80.08%" headers="mcps1.1.3.6.1 "><a name="ul1652965944519"></a><a name="ul1652965944519"></a><ul id="ul1652965944519"><li>0≤ offset ≤8.0e8</li><li>0＜ num ≤8.0e8</li><li>offset＋num ≤ ntotal</li><li><span class="parmname" id="parmname204541533928"><a name="parmname204541533928"></a><a name="parmname204541533928"></a>“labels”</span>长度为num，否则可能出现越界读写错误并引起程序崩溃。</li><li><span class="parmname" id="parmname1443963511216"><a name="parmname1443963511216"></a><a name="parmname1443963511216"></a>“features”</span>长度为num * 向量维度dim，否则可能出现越界读写错误并引起程序崩溃。</li><li><span class="parmname" id="parmname1481821245019"><a name="parmname1481821245019"></a><a name="parmname1481821245019"></a>“attributes”</span>长度为num，否则可能出现越界读写错误并引起程序崩溃。</li></ul>
 </td>
 </tr>
 </tbody>

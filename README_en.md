@@ -66,9 +66,15 @@ This section describes how to install Index SDK. For details, see [Installation 
 
 3. Install Index SDK.
 
+    Run the following command to install the SDK:
+
+    ```bash
+    bash build/build.sh
+    ```
+
 # Build Process
 
-This section uses the matching packages for CANN 8.3.RC2 as an example to describe how to build Index SDK from source. The NPU driver, firmware, and CANN package can be downloaded from the Ascend Community. For the open-mode scenario package, log in to `https://support.huawei.com`, search for CANN 8.3.RC2, and request the commercial-version download on the relevant page.
+This section uses the matching packages for CANN 8.3RC2 as an example to describe how to build Index SDK from source. The NPU driver, firmware, and CANN package can be downloaded from the Ascend Community. For the open-mode scenario package, log in to `https://support.huawei.com`, search for CANN 8.3RC2, and request the commercial-version download on the relevant page.
 
 1. Run the build process.
 

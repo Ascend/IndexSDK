@@ -4,7 +4,7 @@
 - [Installation and Deployment](./installation_guide.md)
 - [Security Hardening](./security_hardening.md)
 - [Usage Guide](./user_guide.md)
-- [API Reference]()
+- [API Reference](./api/README.md)
   - [API Reference](./api/README.md)
   - [Full Retrieval](./api/full_retrieval.md)
   - [Approximate Retrieval](./api/approximate_retrieval.md)

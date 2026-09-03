@@ -32,7 +32,7 @@
         ```bash
         # 安装过程中遇到：
         # 选择1
-        Do you accept the license? [y/n]: 
+        Do you accept the license? [y/n]:
         # 输入 y
         # 选择2
         By default the CMake will be installed in:
@@ -70,7 +70,7 @@
         ```bash
         # 安装过程中遇到：
         # 选择1
-        Do you accept the license? [y/n]: 
+        Do you accept the license? [y/n]:
         # 输入 y
         # 选择2
         By default the CMake will be installed in:
@@ -197,7 +197,7 @@ export LD_PRELOAD={…/libgomp.so}  # 请将{}里的内容替换成libgomp.so文
 您需要手动将系统实际的 C++ 头文件路径添加到环境变量 CPLUS_INCLUDE_PATH 中，以指引编译器找到正确的文件。以 Kylin 系统（GCC 12）为例，请执行以下命令：
 
 ```bash
-export CPLUS_INCLUDE_PATH=/usr/include/c++/12/aarch64-kylin-linux:/usr/include/c++/12:$CPLUS_INCLUDE_PATH 
+export CPLUS_INCLUDE_PATH=/usr/include/c++/12/aarch64-kylin-linux:/usr/include/c++/12:$CPLUS_INCLUDE_PATH
 ```
 
 ## 运行推理常见问题<a name="ZH-CN_TOPIC_0000002283277033"></a>
@@ -234,12 +234,12 @@ Host侧CPU并发处理时，调度到非亲和性的CPU核上，导致耗时增�
 
 1. 获取对应的NUMA node信息。如[图1](#fig7992105655611)可以看到当前查询的NPU属于“NUMA node 0”。
 
-    **图 1**  获取NUMA node信息<a id="fig7992105655611"></a>  
+    **图 1**  获取NUMA node信息<a id="fig7992105655611"></a>
     ![](figures/获取NUMA-node信息.png "获取NUMA-node信息")
 
 2. 使用**lscpu**查看NUMA node 0上包含的CPU核信息，如[图2](#fig1614971412517)所示，可以看到“NUMA node 0”所拥有的CPU核为“0-13,28-41”。
 
-    **图 2**  使用命令确认CPU核信息<a id="fig1614971412517"></a>  
+    **图 2**  使用命令确认CPU核信息<a id="fig1614971412517"></a>
     ![](figures/使用命令确认CPU核信息.png "使用命令确认CPU核信息")
 
 3. 对当前的检索应用与确认完成的CPU进行绑核，命令参考如下。
@@ -268,12 +268,12 @@ Host侧CPU并发处理时，调度到非亲和性的CPU核上，导致耗时增�
 
 ### 链接libfaiss.so时，返回**undefined reference**错误。<a name="ZH-CN_TOPIC_0000002287001049"></a>
 
-在openEuler release 22.03 \(LTS\)系统中，通过系统默认的Cmake和gcc编译安装Faiss后，在链接“libfaiss.so”时，返回**undefined reference**错误。
+在openEuler release 22.03 \(LTS\)系统中，通过系统默认的CMake和gcc编译安装Faiss后，在链接“libfaiss.so”时，返回**undefined reference**错误。
 
 **问题原因<a name="section5819920577"></a>**
 
-openEuler release 22.03 \(LTS\)系统默认安装或使用yum工具安装的Cmake存在兼容性问题。
+openEuler release 22.03 \(LTS\)系统默认安装或使用yum工具安装的CMake存在兼容性问题。
 
 **解决方案<a name="section1165542813712"></a>**
 
-请访问组件官网，获取对应版本的Cmake源码，重新编译安装。
+请访问组件官网，获取对应版本的CMake源码，重新编译安装。

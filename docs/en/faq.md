@@ -96,7 +96,7 @@ Install CMake 3.24.0 or later. The following example uses CMake 3.24.0:
 
 **Symptom**
 
-After you upgrade from Faiss 1.7.1 to Faiss 1.10.0, the update interface performance of the IVFSQT algorithm degrades after you add a large base library.
+After you upgrade from Faiss 1.7.1 to Faiss 1.10.0, the update interface performance of AscendIndexIVFSQT degrades after you add a large base library.
 
 **Cause**
 
@@ -177,7 +177,7 @@ There is a GCC-related bug in earlier OS versions. For details about this bug, s
 Run the following command to set the environment variable.
 
 ```bash
-export LD_PRELOAD={.../libgomp.so}  # Replace the content in {} with the actual path of the `libgomp.so` file.
+export LD_PRELOAD=/path/to/libgomp.so  # Replace /path/to with the actual path of libgomp.so.
 ```
 
 ### Generation Operator Fails on Some OSs

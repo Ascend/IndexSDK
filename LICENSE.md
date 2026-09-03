@@ -1,4 +1,4 @@
-## 木兰宽松许可证， 第2版<a name="section172581412918"></a>
+# 木兰宽松许可证， 第2版<a name="section172581412918"></a>
 
 2020年1月  [http://license.coscl.org.cn/MulanPSL2](http://license.coscl.org.cn/MulanPSL2)
 
@@ -52,7 +52,8 @@
 2,&emsp;  请您在软件包的一级目录下创建以“LICENSE”为名的文件，将整个许可证文本放入该文件中；<br>
 3,&emsp;  请将如下声明文本放入每个源文件的头部注释中。
 
-```
+```text
+
 Copyright (c) Huawei Technologies Co., Ltd. [Year of First Publication]-[Year of Latest Update]. All Rights Reserved.
 IndexSDK is licensed under Mulan PSL v2.
 You can use this software according to the terms and conditions of the Mulan PSL v2.
@@ -62,13 +63,14 @@ THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND,
 EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
 MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 See the Mulan PSL v2 for more details.
+
 ```
 
 注意： 模板中的\[Year of First Publication\]、\[Year of Latest Update\]需要更改为贡献者首次创建年份和最近更新年份
 
 ## Mulan Permissive Software License，Version 2<a name="section18273540143715"></a>
 
-**Mulan Permissive Software License，Version 2 \(Mulan PSL v2\)**
+**Mulan Permissive Software License, Version 2 \(Mulan PSL v2\)**
 
 January 2020  [http://license.coscl.org.cn/MulanPSL2](http://license.coscl.org.cn/MulanPSL2)
 
@@ -118,12 +120,12 @@ THIS LICENSE IS WRITTEN IN BOTH CHINESE AND ENGLISH, AND THE CHINESE VERSION AND
 
 To apply the Mulan PSL v2 to your work, for easy identification by recipients, you are suggested to complete following three steps:
 
-&emsp;&emsp;i. Fill in the blanks in following statement, including insert your software name, the year of the first publication of your software, and your name identified as the copyright owner; <br>
-&emsp;&emsp;ii. Create a file named "LICENSE" which contains the whole context of this License in the first directory of your software package;<br>
+&emsp;&emsp;i. Fill in the blanks in the following statement, including inserting your software name, the year of the first publication of your software, and your name identified as the copyright owner; <br>
+&emsp;&emsp;ii. Create a file named "LICENSE" which contains the full content of this License in the first directory of your software package;<br>
 &emsp;&emsp;iii. Attach the statement to the appropriate annotated syntax at the beginning of each source file.
 
+```text
 
-```
 Copyright (c) Huawei Technologies Co., Ltd. [Year of First Publication]-[Year of Latest Update]. All Rights Reserved.
 IndexSDK is licensed under Mulan PSL v2.
 You can use this software according to the terms and conditions of the Mulan PSL v2.
@@ -133,4 +135,5 @@ THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND,
 EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
 MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 See the Mulan PSL v2 for more details.
+
 ```

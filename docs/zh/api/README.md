@@ -21,8 +21,8 @@
 
 |类名/API原型|变更类别|变更说明|变更版本|
 |--|--|--|--|
-|AscendIndexCluster的[Init](./full_retrieval.md#init接口)|修改|AscendIndexCluster算法Init接口resourceSize变量使用默认值128M。|6.0.RC2|
-|AscendIndexBinaryFlat的AscendIndexBinaryFlat构造函数|修改|AscendIndexBinaryFlat构造函数新增参数usedFloat，用于设置入库为二进制、检索特征为float类型的检索方式（search接口）的性能提升。|6.0.RC2|
+|AscendIndexCluster的[Init](./full_retrieval.md#init接口)|修改|AscendIndexCluster算法Init接口resourceSize变量使用默认值128MB。|6.0.RC2|
+|AscendIndexBinaryFlat的AscendIndexBinaryFlat构造函数|修改|AscendIndexBinaryFlat构造函数新增参数usedFloat，用于提升入库为二进制、检索特征为float类型的检索方式（search接口）的性能。|6.0.RC2|
 |AscendIndexBinaryFlat的[search接口](./approximate_retrieval.md#search接口)|新增|AscendIndexBinaryFlat新增入库特征为二进制特征，检索特征为float类型的检索方式。|6.0.RC2|
 |AscendIndexInt8Flat的[AscendIndexInt8FlatConfig](./full_retrieval.md#ascendindexint8flatconfig)（表2）|修改|“resourceSize”配置的值不超过16 \* 1024MB（16 \* 1024 \* 1024 \* 1024字节）。|6.0.RC3|
 |AscendIndexInt8Flat的[AscendIndexInt8FlatConfig](./full_retrieval.md#ascendindexint8flatconfig)（表3）|修改|“resourceSize”配置的值不超过16 \* 1024MB（16 \* 1024 \* 1024 \* 1024字节）。|6.0.RC3|
@@ -52,20 +52,20 @@
 ## 调用流程与继承关系<a name="ZH-CN_TOPIC_0000001506615153"></a>
 
 > [!NOTE]
->Index SDK特征检索组件的C++接口遵循开源的Faiss接口的异常处理机制，故用户必须在**try**/**catch**语句块内进行调用以及异常处理，具体的处理范例请参见[代码参考](../appendix.md#代码参考)中的处理方式，防止在使用的过程中出现异常抛出导致程序退出的情况。
+> Index SDK特征检索组件的C++接口遵循开源的Faiss接口的异常处理机制，故用户必须在**try**/**catch**语句块内进行调用以及异常处理，具体的处理范例请参见[代码参考](../appendix.md#代码参考)中的处理方式，防止在使用的过程中出现异常抛出导致程序退出的情况。
 
 检索接口调用的基本流程如[图1 检索接口调用的基本流程](#fig7270141171511)所示。
 
-**图 1**  检索接口调用的基本流程<a id="fig7270141171511"></a>  
+**图 1**  检索接口调用的基本流程<a id="fig7270141171511"></a>
 
 ![](../figures/8-3-2-2-图片编码接口调用流程.png)
 
 特征检索继承Faiss中的Index，并支持多种检索Index，提供建库、查询、删库等接口，对于各个对象间的继承关系如[图2 部分AscendIndexConfig间继承关系](#fig1028942114236)、[图3 部分AscendIndex间继承关系](#fig13557318153512)所示。
 
-**图 2**  部分AscendIndexConfig间继承关系<a id="fig1028942114236"></a>  
+**图 2**  部分AscendIndexConfig间继承关系<a id="fig1028942114236"></a>
 ![](../figures/部分AscendIndexConfig间继承关系.png "部分AscendIndexConfig间继承关系")
 
-**图 3**  部分AscendIndex间继承关系<a id="fig13557318153512"></a>  
+**图 3**  部分AscendIndex间继承关系<a id="fig13557318153512"></a>
 ![](../figures/部分AscendIndex间继承关系.png "部分AscendIndex间继承关系")
 
 > [!NOTE]
@@ -74,7 +74,7 @@
 >- [Faiss](https://github.com/facebookresearch/faiss)是在业界使用非常广泛的向量检索加速库，为了便于生态用户将向量检索聚类业务快速从CPU/GPU平台迁移到昇腾平台，昇腾平台众多算法的基类AscendIndex继承自faiss::Index类，faiss::Index类中d、ntotal等成员变量为public，在使用AscendIndex和AscendIndexInt8各子类过程中，请勿直接修改此类public成员变量。
 >- 本文档不再描述基类faiss::Index的成员函数和变量。
 >- 关于Config类中的resourceSize变量，其作用是预留特征检索过程存储中间结果的内存大小，单位为Byte，当底库特征较大（如超过300万）且查询请求数较大时需要调大，避免检索过程中因申请临时内存导致性能抖动（衰退），建议设置为1024 \* 1024 \* 1024 Byte。
-> 创建新的Index时，将会与已申请的resources进行对比，如存在差异则会释放原有内存资源并参照最新Index的resources重新申请，建议保持Index整体的resources值一致。
+>- 创建新的Index时，将会与已申请的resources进行对比，如存在差异则会释放原有内存资源并参照最新Index的resources重新申请，建议保持Index整体的resources值一致。
 >- 用户可以通过设置“MX\_INDEX\_SYNCHRONIZE\_STREAM\_TIME”环境变量设置算子执行的超时时间，单位为“ms”，取值范围\[60000, 1800000\]，默认为“300000”。
 
 ## 头文件列表说明<a name="ZH-CN_TOPIC_0000001698168801"></a>

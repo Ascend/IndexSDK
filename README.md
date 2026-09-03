@@ -11,7 +11,7 @@
 - [安全声明](#安全声明)
 - [分支维护策略](#分支维护策略)
 - [版本维护策略](#版本维护策略)
-- [License](#License)
+- [License](#license)
 - [贡献声明](#贡献声明)
 - [建议与交流](#建议与交流)
 
@@ -21,7 +21,7 @@
 
 # 简介
 
-Index SDK是基于Faiss开发的昇腾NPU异构检索加速框架，针对高维空间中的海量数据，提供高性能的检索，采用与Faiss风格一致的C++语言，结合TBE，Ascendc算子开发，支持ARM和x86_64平台。
+Index SDK是基于Faiss开发的昇腾NPU异构检索加速框架，针对高维空间中的海量数据，提供高性能的检索，采用与Faiss风格一致的C++语言，结合TBE，AscendC算子开发，支持ARM和x86_64平台。
 用户可以在此框架上实现面向应用场景的检索系统。更多详情可查看[简介](./docs/zh/introduction.md)。
 <div align="center">
 
@@ -32,18 +32,20 @@ Index SDK是基于Faiss开发的昇腾NPU异构检索加速框架，针对高维
 
 # 目录结构
 
-``` 
+```text
+
 ├── build
 ├── feature_retrieval
 ├── ivfsp_impl
 ├── ivfsp_utils
 ├── vsa_hpp
 └── vstar_great_impl
+
 ```
 
 # 版本说明
 
-Index SDK的版本说明包括软件版本配套关系和每个版本的特性变更说明，详情可查看[版本说明](./docs/zh/release_notes.md)。
+Index SDK的版本说明包括软件版本配套关系和每个版本的特性变更说明，详情可查看[版本说明](./docs/zh/release_notes_index.md)。
 
 # 环境部署
 
@@ -51,41 +53,42 @@ Index SDK的版本说明包括软件版本配套关系和每个版本的特性�
 
 1. 安装NPU驱动固件和CANN
 
- | 软件类型     | 软件包名称                                           | 获取方式     |
- | ------------ | ---------------------------------------------------- | ------------ |
- | NPU驱动      | Ascend-hdk-xxx-npu-driver_{version}_linux-{arch}.run | 昇腾社区下载 |
- | NPU固件      | Ascend-hdk-xxx-npu-firmware_{version}.run            | 昇腾社区下载 |
- | CANN软件包   | Ascend-cann-toolkit_{version}_linux-{arch}.run       | 昇腾社区下载 |
- | 开放态场景包 | Ascend-cann-device-sdk_{version}_linux-{arch}.run    | 昇腾社区商用版资源申请 |
+    | 软件类型     | 软件包名称                                           | 获取方式     |
+    | ------------ | ---------------------------------------------------- | ------------ |
+    | NPU驱动      | Ascend-hdk-xxx-npu-driver_{version}_linux-{arch}.run | 昇腾社区下载 |
+    | NPU固件      | Ascend-hdk-xxx-npu-firmware_{version}.run            | 昇腾社区下载 |
+    | CANN软件包   | Ascend-cann-toolkit_{version}_linux-{arch}.run       | 昇腾社区下载 |
+    | 开放态场景包 | Ascend-cann-device-sdk_{version}_linux-{arch}.run    | 昇腾社区商用版资源申请 |
 
 2. 安装依赖
 
- 若执行后续 `bash build/build.sh` 编译流程可跳过此步骤，脚本下载OpenBLAS或faiss时遇到网络问题，可手动下载安装包到项目根目录下。
+    若执行后续 `bash build/build.sh` 编译流程可跳过此步骤，脚本下载OpenBLAS或faiss时遇到网络问题，可手动下载安装包到项目根目录下。
 
- 手动安装运行和构建依赖可执行 `bash build/install_deps.sh`，安装ut运行依赖可执行 `bash build/install_deps.sh ut`。
-
-3. 安装Index SDK
+    手动安装运行和构建依赖可执行 `bash build/install_deps.sh`，安装ut运行依赖可执行 `bash build/install_deps.sh ut`。
 
 # 编译流程
 
 本节以CANN 8.3.RC2相关配套为例，介绍如何通过源码编译生成Index SDK，其中NPU驱动、固件和CANN软件包可以通过昇腾社区下载，开放态场景包可以通过登录 ```https://support.huawei.com``` 搜索CANN 8.3.RC2，在相关页面申请商业版下载。
 
 1. 执行编译
- 
- 执行以下命令编译：
+
+    执行以下命令编译：
 
     ```bash
     bash build/build.sh
-	```
+    ```
 
 2. 生成的 run 包在 ```build/output``` 下：```Ascend-mindxsdk-mxindex_{version}_linux-{arch}.run```
 
 3. 执行测试用例
 
- 执行以下命令运行测试用例：
- ```bash
- bash build/build.sh ut
- ```
+    执行以下命令运行测试用例：
+
+    ```bash
+
+    bash build/build.sh ut
+
+    ```
 
 # 快速入门
 
@@ -95,7 +98,7 @@ Index SDK提供了一个简单的样例，帮助用户快速体验运用Index SD
 
 - [全量检索](./docs/zh/api/full_retrieval.md)
 - [近似检索](./docs/zh/api/approximate_retrieval.md)
-- [属性过滤](./docs/zh/api/attribute_filtering-based_retrieva.md)
+- [属性过滤](./docs/zh/api/attribute_filtering-based_retrieval.md)
 - [批量检索](./docs/zh/api/multi-index_batch_retrieval.md)
 
 # 安全声明
@@ -105,18 +108,18 @@ Index SDK提供了一个简单的样例，帮助用户快速体验运用Index SD
 更多详情请查看[安全加固](./docs/zh/security_hardening.md)与[附录](./docs/zh/appendix.md)。
 
 # 分支维护策略
- 
+
 版本分支的维护阶段如下：
- 
+
 | 状态                | 时间     | 说明                                                         |
 | ------------------- | -------- | ------------------------------------------------------------ |
 | 计划                | 1-3个月  | 计划特性                                                     |
 | 开发                | 3个月    | 开发新特性并修复问题，定期发布新版本                         |
 | 维护                | 3-12个月 | 常规分支维护3个月，长期支持分支维护12个月。对重大BUG进行修复，不合入新特性，并视BUG的影响发布补丁版本 |
 | 生命周期终止（EOL） | N/A      | 分支不再接受任何修改                                         |
- 
+
 # 版本维护策略
- 
+
 | 版本     | 维护策略 | 当前状态 | 发布日期         | 后续状态                      | EOL日期    |
 | -------- | -------- | -------- | ---------------- | ----------------------------- | ---------- |
 | master   | 长期支持 | 开发     | 2025-12-30       |                               | -          |
@@ -134,15 +137,16 @@ IndexSDK docs目录下的文档适用CC-BY 4.0许可证，具体请参见[LICENS
 3. 解决现有问题：通过查看仓库的Issues列表可以发现需要处理的问题信息, 可以尝试解决其中的某个问题
 4. 如何提出新功能：请使用Issues的Feature标签进行标记，我们会定期处理和确认开发。
 5. 开始贡献：
-	1. Fork本项目的仓库。
-	2. Clone到本地。
-	3. 创建开发分支。
-	4. 本地自测，提交前请通过所有的已经单元测试，以及为您要解决的问题新增单元测试。
-	5. 提交代码。
-	6. 新建Pull Request。
-	7. 代码检视，您需要根据评审意见修改代码，并再次推送更新。此过程可能会有多轮。
-	8. 当您的PR获得足够数量的检视者批准后，Committer会进行最终审核。
-	9. 审核和测试通过后，CI会将您的PR合并入到项目的主干分支。
+
+    1. Fork本项目的仓库。
+    2. Clone到本地。
+    3. 创建开发分支。
+    4. 本地自测，提交前请通过所有的单元测试，以及为您要解决的问题新增单元测试。
+    5. 提交代码。
+    6. 新建Pull Request。
+    7. 代码检视，您需要根据评审意见修改代码，并再次推送更新。此过程可能会有多轮。
+    8. 当您的PR获得足够数量的检视者批准后，Committer会进行最终审核。
+    9. 审核和测试通过后，CI会将您的PR合并入到项目的主干分支。
 
 # 建议与交流
 

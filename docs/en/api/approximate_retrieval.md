@@ -33,7 +33,7 @@ It supports multithreaded concurrent calls. To enable this feature, set the `MX_
 | Input | `idx_t n`: Number of feature vectors to add to the base library.<br>`const uint8_t *x`: Feature vectors to add to the base library.<br>`const idx_t *xids`: IDs of the feature vectors to add to the base library. |
 | Output | None |
 | Returns | None |
-| Constraints | `0 < n`. The `add` operation must ensure that the final base library size `n` is the smaller of the actual chip memory capacity and `1e9`. The length of pointer `x` must be `dims/8 * n`, and the length of pointer `xids` must be `n`. Otherwise, out-of-bounds reads or writes may occur and cause the program to crash. You need to ensure that `xids` is valid according to your service scenario. If duplicate IDs exist in the base library, the labels in the search results cannot be mapped to specific base-library vectors. |
+| Constraints | `0 < n`. The `add` operation must ensure that the final base library size `ntotal` is the smaller of the actual chip memory capacity and `1e9`. The length of pointer `x` must be `dims/8 * n`, and the length of pointer `xids` must be `n`. Otherwise, out-of-bounds reads or writes may occur and cause the program to crash. You need to ensure that `xids` is valid according to your service scenario. If duplicate IDs exist in the base library, the labels in the search results cannot be mapped to specific base-library vectors. |
 
 ### `AscendIndexBinaryFlat`<a name="ZH-CN_TOPIC_0000001456535056"></a>
 
@@ -280,7 +280,7 @@ For IVF algorithms, the linear scaling on the Atlas 300I Duo inference card depe
 | Input | `const faiss::IndexIVF* index`: CPU-side index resource. |
 | Output | None |
 | Returns | None |
-| Constraints | `index` must be a valid CPU `Index` pointer. The `probe` value of this `index` must be greater than 0 and less than or equal to `nlist`. |
+| Constraints | `index` must be a valid CPU `Index` pointer. The `nprobe` value of this `index` must be greater than 0 and less than or equal to `nlist`. |
 
 ### `copyTo`<a name="ZH-CN_TOPIC_0000001506615113"></a>
 
@@ -460,7 +460,7 @@ It supports multithreaded concurrent calls. To enable this feature, set the `MX_
 | Input | `idx_t n`: Number of feature vectors to add to the base library.<br>`const float *x`: Feature vectors to add to the base library. |
 | Output | None |
 | Returns | None |
-| Constraints | The length of pointer `x` must be `dims * n`. Otherwise, out-of-bounds reads or writes may occur and cause the program to crash. The total number of base-library vectors, `n`, is usually greater than 0 and less than `1e9`. The amount of data added at one time must be smaller than or equal to the base-library data size. |
+| Constraints | The length of pointer `x` must be `dims * n`. Otherwise, out-of-bounds reads or writes may occur and cause the program to crash. The total number of base-library vectors (`ntotal`) is usually greater than 0 and less than `1e9`. The amount of data added at one time must be smaller than or equal to the base-library data size. |
 
 > [!NOTE]
 >
@@ -695,7 +695,7 @@ It supports multithreaded concurrent calls. To enable this feature, set the `MX_
 | Input | None |
 | Output | None |
 | Parameter Values | `int numIter:` Number of training iterations. The default value is 1.<br>`int device:` Logical device ID. The default value is 0.<br>`float ratio:` Sampling rate of the original samples used for training. The default value is `1.0`.<br>`int batchSize:` Train with batches of size `batchSize`. This value must match `<batch_size>` in the `IVFSP` training operator model file generation section. The value must be greater than 0, and the default value is 32768.<br>`int codeNum:` Operate on at most `codeNum` samples at a time when updating the codebook. This value must be a power of two and must match `<codebook_batch_size>` in the `IVFSP` training operator model file generation section. The value must be greater than 0, and the default value is 32768.<br>`std::string codeBookOutputDir:` Directory where the generated codebook file is written. Ensure that this directory exists and that the process user has write permission for it. For security hardening, the directory hierarchy must not contain symbolic links.<br>`bool verbose:` Whether to enable additional output. The default value is `true`.<br>`const float *memLearnData:` Pointer to in-memory data. The default value is a null pointer.<br>`size_t memLearnDataSize:` Length of the in-memory data. The default value is 0.<br>`bool isTrainAndAdd:` Whether to add the codebook directly to the `Index` after training. The default value is `false`. |
-| Parameter Constraints | `numIter` ∈ (0, 20]. `ratio` ∈ (0, 1.0]. `memLearnDataSize % dim == 0`. `memLearnDataSize <= 25G`. When the codebook file already exists, it is overwritten. In this case, the process user should be the file owner. Before you run codebook training, refer to the `IVFSP` operator model file generation instructions. When `isTrainAndAdd` is `true`, the trained codebook is added directly to the `Index` and is not written to disk. When `isTrainAndAdd` is `false`, the codebook is saved to `codeBookOutputDir`, and you must call `addCodeBook` manually. `memLearnDataSize` must be the actual length of the `memLearnData` pointer. Otherwise, out-of-bounds reads or writes may occur and cause the program to crash. |
+| Parameter Constraints | `numIter` ∈ (0, 20]. `ratio` ∈ (0, 1.0]. `memLearnDataSize % dims == 0`. `memLearnDataSize <= 25G`. When the codebook file already exists, it is overwritten. In this case, the process user should be the file owner. Before you run codebook training, refer to the `IVFSP` operator model file generation instructions. When `isTrainAndAdd` is `true`, the trained codebook is added directly to the `Index` and is not written to disk. When `isTrainAndAdd` is `false`, the codebook is saved to `codeBookOutputDir`, and you must call `addCodeBook` manually. `memLearnDataSize` must be the actual length of the `memLearnData` pointer. Otherwise, out-of-bounds reads or writes may occur and cause the program to crash. |
 
 ## `AscendIndexIVFSPConfig`<a id="ZH-CN_TOPIC_0000001635696057"></a>
 
@@ -1179,7 +1179,7 @@ It supports concurrent multithreaded calls. You need to set the `MX_INDEX_MULTIT
 
 ### `setUseCpuUpdate`<a name="ZH-CN_TOPIC_0000002167379329"></a>
 
-| API Definition | `setUseCpuUpdate(int numThreads);` |
+| API Definition | `void setUseCpuUpdate(int numThreads);` |
 | --- | --- |
 | Description | Specifies whether to use the CPU for update. |
 | Input | `int numThreads`: The number of CPU cores used for update. The default value is the current number of CPU cores.<br>If the current CPU has more than 96 cores: if the current core count is smaller than the input `numThreads`, set `numThreads` to 96; if `96 < numThreads <=` the current core count, set `numThreads` to 96; if `numThreads <= 96`, keep the input value. If the current CPU has 96 cores or fewer: if the current core count is smaller than the input `numThreads` and `numThreads <= 96`, set `numThreads` to the current core count; if `0 < numThreads <=` the current core count, keep the input value. |
@@ -1215,7 +1215,7 @@ It supports concurrent multithreaded calls. You need to set the `MX_INDEX_MULTIT
 | Input | `int l2Probe`: The number of sub-buckets selected during second-stage retrieval. The default value is 48.<br>`int l3SegmentNum`: The number of segments processed by the L3 operator. This affects the total number of bases to search. The default value is 96. |
 | Output | None |
 | Returns | None |
-| Constraints | `nprobe` ∈ {8, 12, 16, 20, 24, 28, 32, 36, 40, 44, 48, 52, 56, 60, 64}. `l2Probe` ≥ `nprobe`, `l2Probe` ≤ `l3SegmentNum`, and `l2Probe` ≤ `nprobe * 64`.<br>`l3SegmentNum` ∈ {24, 36, 48, 60, 72, 84, 96, 120, 144, 156, 168, 192, 216, 240, 360, 480, 600, 720, 840, 960, 1020}. For details about the `nprobe` setting, see `setSearchParams`. `updateTParams` is expected to be removed in September 2026. Use `setSearchParams` instead. |
+| Constraints | `l2Probe` ≥ `nprobe`, `l2Probe` ≤ `l3SegmentNum`, and `l2Probe` ≤ `nprobe * 64`.<br>`l3SegmentNum` ∈ {24, 36, 48, 60, 72, 84, 96, 120, 144, 156, 168, 192, 216, 240, 360, 480, 600, 720, 840, 960, 1020}. `updateTParams` is expected to be removed in September 2026. Use `setSearchParams` instead. |
 
 ## `AscendIndexIVFSQTConfig`<a name="ZH-CN_TOPIC_0000001506495881"></a>
 
