@@ -17,10 +17,10 @@ MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 See the Mulan PSL v2 for more details.
 -------------------------------------------------------------------------
 """
+
 import os
 import argparse
 import collections
-from multiprocessing import Pool
 
 import common as utils
 from common import OpJsonGenerator
@@ -36,19 +36,21 @@ _BURST_LENGTH = 128
 _BURST_LEN = 64
 _BURST_LEN_LOW = 32
 _CORE_NUM = 8
+_QUERY_NUMS = (256, 128, 64, 32, 16, 8, 7, 6, 5, 4, 3, 2, 1)
 
 
 def arg_parse():
     """
     Parse arguements to the operator model
     """
-    parser = argparse.ArgumentParser(
-        description='generate aicore operator model')
+    parser = argparse.ArgumentParser(description='generate aicore operator model')
 
     utils.op_common_parse(parser, "-d", 'dim', 512, int, "Feature dimension, default 512")
     utils.op_common_parse(parser, "-q", 'query_type', "uint8", str, "Query type, uint8 or float. uint8 by default")
     utils.op_common_parse(parser, "-p", 'process_id', 0, int, "Number of process_id, default 0")
     utils.op_common_parse(parser, "-pool", 'pool_size', 16, int, "Number of pool_size, default 16")
+    utils.op_common_parse(parser, "--cores", 'core_num', _CORE_NUM, int, "Core number")
+    utils.add_npu_type_arg(parser)
     return parser.parse_args()
 
 
@@ -57,8 +59,9 @@ def generate_hamming_distance_json(query_num, dim, z_region_height, burst_length
     hamming_distance_json_obj = []
     generator = OpJsonGenerator("DistanceFlatHamming")
     generator.add_input("ND", [query_num, dim // _BIT_OF_UINT8], "uint8")
-    generator.add_input("ND",
-                [_BLOCK_SIZE // z_region_height, dim // _CUBE_ALIGN, z_region_height, _CUBE_ALIGN_HAMMING], "uint8")
+    generator.add_input(
+        "ND", [_BLOCK_SIZE // z_region_height, dim // _CUBE_ALIGN, z_region_height, _CUBE_ALIGN_HAMMING], "uint8"
+    )
     generator.add_input("ND", [8], "uint32")
     generator.add_output("ND", [_BLOCK_SIZE * query_num], "float16")
     generator.add_output("ND", [query_num * _BLOCK_SIZE // burst_length * 2], "float16")
@@ -72,8 +75,9 @@ def generate_nonshare_masked_hamming_distance_json(query_num, dim, z_region_heig
     masked_hamming_distance_json_obj = []
     generator = OpJsonGenerator("DistanceFlatHammingWithMask")
     generator.add_input("ND", [query_num, dim // _BIT_OF_UINT8], "uint8")
-    generator.add_input("ND",
-                [_BLOCK_SIZE // z_region_height, dim // _CUBE_ALIGN, z_region_height, _CUBE_ALIGN_HAMMING], "uint8")
+    generator.add_input(
+        "ND", [_BLOCK_SIZE // z_region_height, dim // _CUBE_ALIGN, z_region_height, _CUBE_ALIGN_HAMMING], "uint8"
+    )
     generator.add_input("ND", [8], "uint32")
     generator.add_input("ND", [query_num, (_BLOCK_SIZE + 7) // 8], "uint8")
     generator.add_output("ND", [_BLOCK_SIZE * query_num], "float16")
@@ -88,8 +92,9 @@ def generate_share_masked_hamming_distance_json(query_num, dim, z_region_height,
     masked_hamming_distance_json_obj = []
     generator = OpJsonGenerator("DistanceFlatHammingWithMask")
     generator.add_input("ND", [query_num, dim // _BIT_OF_UINT8], "uint8")
-    generator.add_input("ND",
-                [_BLOCK_SIZE // z_region_height, dim // _CUBE_ALIGN, z_region_height, _CUBE_ALIGN_HAMMING], "uint8")
+    generator.add_input(
+        "ND", [_BLOCK_SIZE // z_region_height, dim // _CUBE_ALIGN, z_region_height, _CUBE_ALIGN_HAMMING], "uint8"
+    )
     generator.add_input("ND", [8], "uint32")
     generator.add_input("ND", [1, (_BLOCK_SIZE + 7) // 8], "uint8")
     generator.add_output("ND", [_BLOCK_SIZE * query_num], "float16")
@@ -104,8 +109,11 @@ def generate_distance_binary_float_json(query_num, dim, shape_para, file_path):
     distance_binary_float_json_obj = []
     generator = OpJsonGenerator("DistanceBinaryFloat")
     generator.add_input("ND", [query_num, dim], "float16")
-    generator.add_input("ND", [_BLOCK_SIZE // shape_para.z_region, dim // shape_para.dim_align,
-                               shape_para.z_region, shape_para.dim_batch], "uint8")
+    generator.add_input(
+        "ND",
+        [_BLOCK_SIZE // shape_para.z_region, dim // shape_para.dim_align, shape_para.z_region, shape_para.dim_batch],
+        "uint8",
+    )
     generator.add_input("ND", [_CORE_NUM, 8], "uint32")
     generator.add_output("ND", [query_num, _BLOCK_SIZE], "float16")
     generator.add_output("ND", [query_num, _BLOCK_SIZE // shape_para.burst_len * 2], "float16")
@@ -114,14 +122,47 @@ def generate_distance_binary_float_json(query_num, dim, shape_para, file_path):
     utils.generate_op_config(distance_binary_float_json_obj, file_path)
 
 
+def generate_ascendc_masked_hamming_distance_json(core_num, query_nums, dim, z_region_height, burst_length, file_path):
+    masked_hamming_distance_json_obj = []
+    for query_num in query_nums:
+        for mask_batch in (query_num, 1):
+            generator = OpJsonGenerator("AscendcDistanceFlatHammingWithMask")
+            generator.add_input("ND", [query_num, dim // _BIT_OF_UINT8], "uint8")
+            generator.add_input(
+                "ND",
+                [_BLOCK_SIZE // z_region_height, dim // _CUBE_ALIGN, z_region_height, _CUBE_ALIGN_HAMMING],
+                "uint8",
+            )
+            generator.add_input("ND", [core_num, 8], "uint32")
+            generator.add_input("ND", [mask_batch, (_BLOCK_SIZE + _BIT_OF_UINT8 - 1) // _BIT_OF_UINT8], "uint8")
+            generator.add_input("ND", [1, (_BLOCK_SIZE + _BIT_OF_UINT8 - 1) // _BIT_OF_UINT8], "uint8")
+            generator.add_output("ND", [query_num, _BLOCK_SIZE], "float16")
+            generator.add_output("ND", [query_num, _BLOCK_SIZE // burst_length * 2], "float16")
+            generator.add_output("ND", [core_num, 16], "uint16")
+            masked_hamming_distance_json_obj.append(generator.generate_obj())
+    utils.generate_op_config(masked_hamming_distance_json_obj, file_path)
+
+
+def generate_ascendc_hamming_offline_model(args, config_path, soc_version, z_region_height, burst_length):
+    if args.query_type != "uint8":
+        raise ValueError("AscendC hamming only supports uint8 query type")
+
+    core_num = utils.get_core_num_by_npu_type(args.core_num, args.npu_type)
+    op_name = "ascendc_distance_flat_hamming_with_mask_d{}_pid{}".format(args.dim, args.process_id)
+    file_path = os.path.join(config_path, '{}.json'.format(op_name))
+    generate_ascendc_masked_hamming_distance_json(
+        core_num, _QUERY_NUMS, args.dim, z_region_height, burst_length, file_path
+    )
+    utils.run_generate_model_task(args, [(op_name, soc_version)])
+
+
 def generate_hamming_offline_model():
     utils.set_env()
     args = arg_parse()
     dim = args.dim
     qtype = args.query_type
     utils.check_param_range(dim, [256, 512, 1024], "dim")
-    # hamming当前仅支持310P
-    soc_version = "Ascend310P3"
+    soc_version = utils.get_soc_version_from_npu_type(args.npu_type)
     dim_align = _CUBE_ALIGN
     dim_batch = _CUBE_ALIGN_HAMMING
     if dim == 1024:
@@ -140,7 +181,10 @@ def generate_hamming_offline_model():
     process_id = args.process_id
     work_dir = '.'
     config_path = utils.get_config_path(work_dir)
-    queries = (256, 128, 64, 32, 16, 8, 7, 6, 5, 4, 3, 2, 1)
+    if args.npu_type.find("910") != -1:
+        generate_ascendc_hamming_offline_model(args, config_path, soc_version, z_region_height, burst_length)
+        return
+
     hamming_op_name = "distance_compute_op{}_pid{}"
     nonshare_masked_hamming_op_name = "distance_nonshare_masked_compute_op{}_pid{}"
     share_masked_hamming_op_name = "distance_share_masked_compute_op{}_pid{}"
@@ -148,7 +192,7 @@ def generate_hamming_offline_model():
 
     map_args = []
 
-    for query in queries:
+    for query in _QUERY_NUMS:
         # generate hamming op
         hamming_op_name_ = hamming_op_name.format(query, process_id)
         file_path = os.path.join(config_path, '{}.json'.format(hamming_op_name_))
@@ -173,7 +217,6 @@ def generate_hamming_offline_model():
         shape_para = shape_paras(z_region, burst_len, dim_align, dim_batch)
         generate_distance_binary_float_json(query, dim, shape_para, file_path)
         map_args.append((binary_float_op_name_, soc_version))
-
 
     utils.run_generate_model_task(args, map_args)
 
