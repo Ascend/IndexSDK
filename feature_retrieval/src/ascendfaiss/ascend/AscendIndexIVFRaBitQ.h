@@ -106,6 +106,8 @@ class AscendIndexIVFRaBitQ : public AscendIndexIVF
     void search(idx_t n, const float* x, idx_t k, float* distances, idx_t* labels,
                 const SearchParameters* params = nullptr) const override;
 
+    void invalidateFilterCache() const;
+
    protected:
     std::shared_ptr<AscendIndexIVFRaBitQImpl> impl_;
 };

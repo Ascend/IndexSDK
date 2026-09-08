@@ -19,6 +19,7 @@
 #ifndef AICPU_KERNEL_SHARED_DEF_H
 #define AICPU_KERNEL_SHARED_DEF_H
 
+#include <cstddef>
 #include <cstdint>
 
 namespace aicpu
@@ -86,7 +87,11 @@ enum RabitqIdFilterMode : int64_t
     RABITQ_ID_FILTER_SORTED = 2,         // ptr -> int64[aux0], binary search
     RABITQ_ID_FILTER_BITMAP = 3,         // ptr -> uint8[aux0/8], aux0 = bit count (multiple of 8)
     RABITQ_ID_FILTER_SORTED_PREFIX = 4,  // ptr -> RabitqSortedPrefixPayloadHeader + sorted ids + prefix offsets
+    RABITQ_ID_FILTER_ROARING = 5,        // ptr -> frozen CRoaring bytes, aux0 = byte length
 };
+
+// CRoaring roaring_bitmap_frozen_view requires this alignment on the frozen buffer.
+constexpr size_t RABITQ_ROARING_FROZEN_ALIGN = 32;
 
 constexpr int64_t RABITQ_SORTED_PREFIX_MAGIC = 0x5242515052465831;
 

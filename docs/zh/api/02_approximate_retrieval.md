@@ -7005,7 +7005,7 @@ AscendIndexIVFRaBitQ利用IVF进行加速，是二级近似检索算法。当前
 <td class="cellrowborder" valign="top" width="79.93%" headers="mcps1.1.3.3.1 "><p id="p_ivfrabitq_search_n"><strong>idx_t n</strong>：查询特征向量条数。</p>
 <p id="p_ivfrabitq_search_x"><strong>const float *x</strong>：查询特征向量，长度 n*dim。</p>
 <p id="p_ivfrabitq_search_k"><strong>idx_t k</strong>：返回最相似结果个数。</p>
-<p id="p_ivfrabitq_search_params"><strong>const SearchParameters *params</strong>：可选。params-&gt;sel 支持 IDSelectorRange / IDSelectorBatch / IDSelectorArray / IDSelectorBitmap，以及上述类型的 IDSelectorNot。params 为 nullptr 或 sel 为 nullptr 时不做ID过滤。IDSelectorArray.ids 与 IDSelectorBitmap.bitmap 指向的 buffer 必须在 search 返回前保持有效（Bitmap 为零拷贝）。Array/Bitmap 缓存按 payload 指针和长度命中，不比对内容；原地改写同一 buffer 不会使缓存失效，换过滤集请换指针。传入 SearchParametersIVF 时，nprobe 仅对本次查询生效（须 &gt; 0 且 &lt;= nlist），不修改 index 上的 nprobe；基类 SearchParameters 只过滤时仍使用 index 上的 nprobe。Faiss SearchParametersIVF.nprobe 默认值为 1，只过滤时请继续用基类，或显式把 nprobe 设成 index.getNumProbes()。</p>
+<p id="p_ivfrabitq_search_params"><strong>const SearchParameters *params</strong>：可选。params-&gt;sel 支持 IDSelectorRange / IDSelectorBatch / IDSelectorArray / IDSelectorBitmap / faiss::ascend::IDSelectorRoaring，以及上述类型的 IDSelectorNot。params 为 nullptr 或 sel 为 nullptr 时不做ID过滤。IDSelectorArray.ids、IDSelectorBitmap.bitmap 与 IDSelectorRoaring 的 frozen/live 指针必须在 search 返回前保持有效（Bitmap 与 Roaring frozen 为零拷贝）。Array/Bitmap/Roaring 缓存按 payload 指针和长度命中，不比对内容；原地改写同一 buffer 不会使缓存失效，换过滤集请换指针。IDSelectorBitmap 为稠密字节位图，不会自动转成 Roaring。IDSelectorRoaring 仅接受 CRoaring frozen 序列化（与 SDK 同版本 roaring_bitmap_frozen_serialize）或 live roaring_bitmap_t*（首次 miss 时 freeze）。传入 SearchParametersIVF 时，nprobe 仅对本次查询生效（须 &gt; 0 且 &lt;= nlist），不修改 index 上的 nprobe；基类 SearchParameters 只过滤时仍使用 index 上的 nprobe。Faiss SearchParametersIVF.nprobe 默认值为 1，只过滤时请继续用基类，或显式把 nprobe 设成 index.getNumProbes()。</p>
 </td>
 </tr>
 <tr id="row_ivfrabitq_search_out"><th class="firstcol" valign="top" width="20.07%" id="mcps1.1.3.4.1"><p id="p_ivfrabitq_search_out">输出</p>
@@ -7021,7 +7021,7 @@ AscendIndexIVFRaBitQ利用IVF进行加速，是二级近似检索算法。当前
 </tr>
 <tr id="row_ivfrabitq_search_const"><th class="firstcol" valign="top" width="20.07%" id="mcps1.1.3.6.1"><p id="p_ivfrabitq_search_const">约束说明</p>
 </th>
-<td class="cellrowborder" valign="top" width="79.93%" headers="mcps1.1.3.6.1 "><ul id="ul_ivfrabitq_search_const"><li>IDSelector过滤阶段可通过环境变量 IVFRABITQ_SELECTOR_FILTER_STAGE 配置，取值为 auto、pre、post、both；默认 auto，在支持L2前置过滤的普通kernel路径使用pre，在310P/SIMT路径自动使用post。</li><li>pre表示仅在L2距离阶段执行前置过滤；post表示仅在AICPU TopK阶段执行后置过滤；both表示前后两阶段均执行，主要用于对比验证。</li><li>310P/SIMT路径暂不支持L2前置过滤，设置为pre时会返回参数错误；如需在310P/SIMT路径使用IDSelector，请设置为auto或post。</li><li>多卡检索时同一 IDSelector 按全局ID语义应用到每张卡，再在Host侧合并 top-k。</li><li>Array/Bitmap 查询期缓存按 buffer 指针与长度命中，不扫描内容；原地修改 ids/bitmap 后仍传入同一指针会复用旧过滤结果。</li></ul>
+<td class="cellrowborder" valign="top" width="79.93%" headers="mcps1.1.3.6.1 "><ul id="ul_ivfrabitq_search_const"><li>IDSelector过滤阶段可通过环境变量 IVFRABITQ_SELECTOR_FILTER_STAGE 配置，取值为 auto、pre、post、both；默认 auto，在支持L2前置过滤的普通kernel路径使用pre，在SIMT路径（Ascend 950）自动使用post。</li><li>pre表示仅在L2距离阶段执行前置过滤；post表示仅在AICPU TopK阶段执行后置过滤；both表示前后两阶段均执行，主要用于对比验证。</li><li>SIMT路径（Ascend 950）暂不支持L2前置过滤，设置为pre时会返回参数错误；如需在SIMT路径使用IDSelector，请设置为auto或post。</li><li>IDSelectorRoaring 不走L2前置过滤，默认 auto 时在AICPU TopK阶段后置过滤。</li><li>多卡检索时同一 IDSelector 按全局ID语义应用到每张卡，再在Host侧合并 top-k。</li><li>Array/Bitmap/Roaring 查询期缓存按 buffer 指针与长度命中，不扫描内容；原地修改 ids/bitmap/frozen 后仍传入同一指针会复用旧过滤结果。</li></ul>
 </td>
 </tr>
 </tbody>

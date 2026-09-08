@@ -33,7 +33,7 @@ struct RabitqIdFilterHost
 {
     int64_t mode = aicpu::RABITQ_ID_FILTER_NONE;
     int64_t negate = 0;
-    int64_t aux0 = 0;  // imin / sorted count / bitmap bit-count
+    int64_t aux0 = 0;  // imin / sorted count / bitmap bit-count / roaring frozen bytes
     int64_t aux1 = 0;  // imax
     std::vector<int64_t> sortedIds;
     std::vector<uint8_t> bitmap;
@@ -54,7 +54,7 @@ struct RabitqIdFilterHost
         {
             return sortedPrefixPayload.data();
         }
-        if (mode == aicpu::RABITQ_ID_FILTER_BITMAP)
+        if (mode == aicpu::RABITQ_ID_FILTER_BITMAP || mode == aicpu::RABITQ_ID_FILTER_ROARING)
         {
             return bitmapView != nullptr ? static_cast<const void *>(bitmapView) : bitmap.data();
         }
@@ -71,7 +71,7 @@ struct RabitqIdFilterHost
         {
             return sortedView != nullptr ? viewBytes : sortedIds.size() * sizeof(int64_t);
         }
-        if (mode == aicpu::RABITQ_ID_FILTER_BITMAP)
+        if (mode == aicpu::RABITQ_ID_FILTER_BITMAP || mode == aicpu::RABITQ_ID_FILTER_ROARING)
         {
             return bitmapView != nullptr ? viewBytes : bitmap.size() * sizeof(uint8_t);
         }
