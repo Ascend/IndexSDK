@@ -23,7 +23,11 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <cstdint>
+#include <cstring>
 #include <iostream>
+#include <limits>
 #include <numeric>
 #include <random>
 #include <string>
@@ -31,9 +35,11 @@
 
 #include "Common.h"
 #include "acl.h"
+#include "ascend/AscendIDSelectorRoaring.h"
 #include "common/utils/SocUtils.h"
 #include "faiss/ascend/AscendIndexIVFRaBitQ.h"
 #include "mockcpp/mockcpp.hpp"
+#include "roaring.h"
 
 namespace ascend
 {
@@ -292,6 +298,34 @@ TEST(TestAscendIndexIVFRaBitQ, copyFrom)
     EXPECT_EQ(msg, "");
 }
 
+TEST(TestAscendIndexIVFRaBitQ, IDSelectorRoaringIsMember)
+{
+    roaring_bitmap_t* rb = roaring_bitmap_from_range(0, 10, 1);
+    ASSERT_NE(rb, nullptr);
+    faiss::ascend::IDSelectorRoaring liveSel(rb);
+    EXPECT_TRUE(liveSel.is_member(0));
+    EXPECT_TRUE(liveSel.is_member(9));
+    EXPECT_FALSE(liveSel.is_member(10));
+    EXPECT_FALSE(liveSel.is_member(-1));
+    EXPECT_FALSE(liveSel.is_member(static_cast<faiss::idx_t>(std::numeric_limits<uint32_t>::max()) + 1));
+
+    const size_t frozenBytes = roaring_bitmap_frozen_size_in_bytes(rb);
+    std::vector<uint8_t> frozenBuf(frozenBytes + 32, 0);
+    const uintptr_t base = reinterpret_cast<uintptr_t>(frozenBuf.data());
+    const size_t off = (32U - (base % 32U)) % 32U;
+    uint8_t* aligned = frozenBuf.data() + off;
+    roaring_bitmap_frozen_serialize(rb, reinterpret_cast<char*>(aligned));
+    faiss::ascend::IDSelectorRoaring frozenSel(frozenBytes, aligned);
+    EXPECT_TRUE(frozenSel.is_member(3));
+    EXPECT_FALSE(frozenSel.is_member(11));
+
+    std::vector<uint8_t> unaligned(frozenBytes + 1, 0);
+    std::memcpy(unaligned.data() + 1, aligned, frozenBytes);
+    faiss::ascend::IDSelectorRoaring unalignedSel(frozenBytes, unaligned.data() + 1);
+    EXPECT_TRUE(unalignedSel.is_member(3));
+    roaring_bitmap_free(rb);
+}
+
 TEST(TestAscendIndexIVFRaBitQ, SearchWithIdSelector)
 {
     const int dim = 128;
@@ -340,6 +374,27 @@ TEST(TestAscendIndexIVFRaBitQ, SearchWithIdSelector)
                 ++valid;
                 EXPECT_LT(label[i], ntotal / 2);
                 EXPECT_GE(label[i], 0);
+            }
+            EXPECT_GT(valid, 0);
+        }
+
+        // Contiguous Array -> RANGE fold: keep [0, ntotal/2)
+        {
+            std::vector<faiss::idx_t> allow(ntotal / 2);
+            std::iota(allow.begin(), allow.end(), 0);
+            faiss::IDSelectorArray arraySel(allow.size(), allow.data());
+            faiss::SearchParameters params;
+            params.sel = &arraySel;
+            index.search(nq, data.data(), k, dist.data(), label.data(), &params);
+            int valid = 0;
+            for (int i = 0; i < nq * k; ++i)
+            {
+                if (label[i] < 0)
+                {
+                    continue;
+                }
+                ++valid;
+                EXPECT_LT(label[i], ntotal / 2);
             }
             EXPECT_GT(valid, 0);
         }
@@ -411,11 +466,200 @@ TEST(TestAscendIndexIVFRaBitQ, SearchWithIdSelector)
             }
             EXPECT_GT(valid, 0);
         }
+
+        // Sparse Array (non-contiguous even ids) -> Roaring frozen
+        {
+            std::vector<faiss::idx_t> allow;
+            for (int i = 0; i < ntotal; i += 2)
+            {
+                allow.push_back(i);
+            }
+            faiss::IDSelectorArray arraySel(allow.size(), allow.data());
+            faiss::SearchParameters params;
+            params.sel = &arraySel;
+            index.search(nq, data.data(), k, dist.data(), label.data(), &params);
+            int valid = 0;
+            for (int i = 0; i < nq * k; ++i)
+            {
+                if (label[i] < 0)
+                {
+                    continue;
+                }
+                ++valid;
+                EXPECT_EQ(label[i] % 2, 0);
+            }
+            EXPECT_GT(valid, 0);
+        }
+
+        // Stride-2 Array should match IDSelectorRoaring from_range(..., step=2)
+        {
+            roaring_bitmap_t* rb = roaring_bitmap_from_range(0, static_cast<uint64_t>(ntotal), 2);
+            ASSERT_NE(rb, nullptr);
+            faiss::ascend::IDSelectorRoaring roarSel(rb);
+            faiss::SearchParameters roarParams;
+            roarParams.sel = &roarSel;
+            std::fill(label.begin(), label.end(), -1);
+            index.search(nq, data.data(), k, dist.data(), label.data(), &roarParams);
+            int valid = 0;
+            for (int i = 0; i < nq * k; ++i)
+            {
+                if (label[i] < 0)
+                {
+                    continue;
+                }
+                ++valid;
+                EXPECT_EQ(label[i] % 2, 0);
+            }
+            EXPECT_GT(valid, 0);
+            roaring_bitmap_free(rb);
+        }
+
+        // Non-AP Array still filters correctly (Roaring add_many fallback)
+        {
+            std::vector<faiss::idx_t> irregular = {0, 1, 3, 10, 50, 99};
+            faiss::IDSelectorArray arraySel(irregular.size(), irregular.data());
+            faiss::SearchParameters params;
+            params.sel = &arraySel;
+            std::fill(label.begin(), label.end(), -1);
+            index.search(nq, data.data(), k, dist.data(), label.data(), &params);
+            int valid = 0;
+            for (int i = 0; i < nq * k; ++i)
+            {
+                if (label[i] < 0)
+                {
+                    continue;
+                }
+                ++valid;
+                EXPECT_TRUE(arraySel.is_member(label[i]));
+            }
+            EXPECT_GT(valid, 0);
+        }
+        {
+            roaring_bitmap_t* rb = roaring_bitmap_from_range(0, static_cast<uint64_t>(ntotal / 2), 1);
+            ASSERT_NE(rb, nullptr);
+            faiss::ascend::IDSelectorRoaring liveSel(rb);
+            faiss::SearchParameters liveParams;
+            liveParams.sel = &liveSel;
+            index.search(nq, data.data(), k, dist.data(), label.data(), &liveParams);
+            int valid = 0;
+            for (int i = 0; i < nq * k; ++i)
+            {
+                if (label[i] < 0)
+                {
+                    continue;
+                }
+                ++valid;
+                EXPECT_LT(label[i], ntotal / 2);
+            }
+            EXPECT_GT(valid, 0);
+
+            const size_t frozenBytes = roaring_bitmap_frozen_size_in_bytes(rb);
+            std::vector<uint8_t> frozenBuf(frozenBytes + 32, 0);
+            const uintptr_t base = reinterpret_cast<uintptr_t>(frozenBuf.data());
+            const size_t off = (32U - (base % 32U)) % 32U;
+            uint8_t* aligned = frozenBuf.data() + off;
+            roaring_bitmap_frozen_serialize(rb, reinterpret_cast<char*>(aligned));
+            faiss::ascend::IDSelectorRoaring frozenSel(frozenBytes, aligned);
+            faiss::SearchParameters frozenParams;
+            frozenParams.sel = &frozenSel;
+            std::fill(label.begin(), label.end(), -1);
+            index.search(nq, data.data(), k, dist.data(), label.data(), &frozenParams);
+            valid = 0;
+            for (int i = 0; i < nq * k; ++i)
+            {
+                if (label[i] < 0)
+                {
+                    continue;
+                }
+                ++valid;
+                EXPECT_LT(label[i], ntotal / 2);
+            }
+            EXPECT_GT(valid, 0);
+
+            faiss::IDSelectorNot notLive(&liveSel);
+            faiss::SearchParameters notParams;
+            notParams.sel = &notLive;
+            std::fill(label.begin(), label.end(), -1);
+            index.search(nq, data.data(), k, dist.data(), label.data(), &notParams);
+            valid = 0;
+            for (int i = 0; i < nq * k; ++i)
+            {
+                if (label[i] < 0)
+                {
+                    continue;
+                }
+                ++valid;
+                EXPECT_GE(label[i], ntotal / 2);
+            }
+            EXPECT_GT(valid, 0);
+            roaring_bitmap_free(rb);
+        }
     }
     catch (std::exception& e)
     {
         msg = e.what();
         std::cout << "Exception in SearchWithIdSelector test: " << msg << std::endl;
+    }
+    EXPECT_EQ(msg, "");
+}
+
+TEST(TestAscendIndexIVFRaBitQ, SearchWithIdSelectorOutOfUint32)
+{
+    const int dim = 128;
+    const int nlist = 1024;
+    const int ntotal = 2000;
+    const int nprobe = 64;
+    const int nq = 5;
+    const int k = 10;
+
+    std::string msg = "";
+    faiss::ascend::AscendIndexIVFRaBitQConfig conf({0});
+    conf.useKmeansPP = false;
+    std::vector<float> data(ntotal * dim);
+    std::vector<faiss::idx_t> ids(ntotal);
+    generateData(data.data(), ntotal, dim);
+    const faiss::idx_t idBase = static_cast<faiss::idx_t>(std::numeric_limits<uint32_t>::max()) + 1;
+    for (int i = 0; i < ntotal; ++i)
+    {
+        ids[i] = idBase + i;
+    }
+    const int trainNum = ntotal > nlist * 40 ? nlist * 40 : ntotal;
+
+    try
+    {
+        faiss::ascend::AscendIndexIVFRaBitQ index(dim, faiss::METRIC_L2, nlist, conf);
+        index.setNumProbes(nprobe);
+        index.train(trainNum, data.data());
+        index.add_with_ids(ntotal, data.data(), ids.data());
+
+        std::vector<faiss::idx_t> allow(ntotal / 2);
+        for (int i = 0; i < ntotal / 2; ++i)
+        {
+            allow[static_cast<size_t>(i)] = ids[i];
+        }
+        faiss::IDSelectorArray arraySel(allow.size(), allow.data());
+        faiss::SearchParameters params;
+        params.sel = &arraySel;
+        std::vector<float> dist(nq * k, 0.0f);
+        std::vector<faiss::idx_t> label(nq * k, -1);
+        index.search(nq, data.data(), k, dist.data(), label.data(), &params);
+        int valid = 0;
+        for (int i = 0; i < nq * k; ++i)
+        {
+            if (label[i] < 0)
+            {
+                continue;
+            }
+            ++valid;
+            EXPECT_GE(label[i], idBase);
+            EXPECT_LT(label[i], idBase + ntotal / 2);
+        }
+        EXPECT_GT(valid, 0);
+    }
+    catch (std::exception& e)
+    {
+        msg = e.what();
+        std::cout << "Exception in SearchWithIdSelectorOutOfUint32 test: " << msg << std::endl;
     }
     EXPECT_EQ(msg, "");
 }
@@ -487,6 +731,17 @@ TEST(TestAscendIndexIVFRaBitQ, SearchWithIdSelectorSharedPayload)
             checkKeepHalf(a1, true);
             faiss::IDSelectorArray a2(keepSecond.size(), keepSecond.data());
             checkKeepHalf(a2, false);
+            checkKeepHalf(a0, true);
+        }
+
+        {
+            faiss::IDSelectorBatch batch0(keepFirst.size(), keepFirst.data());
+            faiss::IDSelectorBatch batch1(keepFirst.size(), keepFirst.data());
+            checkKeepHalf(batch0, true);
+            checkKeepHalf(batch1, true);
+            faiss::IDSelectorBatch batch2(keepSecond.size(), keepSecond.data());
+            checkKeepHalf(batch2, false);
+            checkKeepHalf(batch0, true);
         }
 
         const size_t bitmapBytes = static_cast<size_t>(ntotal + 7) / 8;
@@ -505,6 +760,47 @@ TEST(TestAscendIndexIVFRaBitQ, SearchWithIdSelectorSharedPayload)
             checkKeepHalf(b1, true);
             faiss::IDSelectorBitmap b2(bitmapSecond.size(), bitmapSecond.data());
             checkKeepHalf(b2, false);
+        }
+
+        {
+            roaring_bitmap_t* rb = roaring_bitmap_from_range(0, static_cast<uint64_t>(ntotal / 2), 1);
+            ASSERT_NE(rb, nullptr);
+            faiss::ascend::IDSelectorRoaring r0(rb);
+            faiss::ascend::IDSelectorRoaring r1(rb);
+            checkKeepHalf(r0, true);
+            checkKeepHalf(r1, true);
+            roaring_bitmap_free(rb);
+            rb = roaring_bitmap_from_range(static_cast<uint64_t>(ntotal / 2), static_cast<uint64_t>(ntotal), 1);
+            ASSERT_NE(rb, nullptr);
+            faiss::ascend::IDSelectorRoaring r2(rb);
+            checkKeepHalf(r2, false);
+            roaring_bitmap_free(rb);
+        }
+
+        {
+            roaring_bitmap_t* rb = roaring_bitmap_from_range(0, static_cast<uint64_t>(ntotal / 2), 1);
+            ASSERT_NE(rb, nullptr);
+            const size_t frozenBytes = roaring_bitmap_frozen_size_in_bytes(rb);
+            auto fillFrozen = [&](std::vector<uint8_t>& buf) -> uint8_t*
+            {
+                buf.assign(frozenBytes + 32, 0);
+                const uintptr_t base = reinterpret_cast<uintptr_t>(buf.data());
+                const size_t off = (32U - (base % 32U)) % 32U;
+                uint8_t* aligned = buf.data() + off;
+                roaring_bitmap_frozen_serialize(rb, reinterpret_cast<char*>(aligned));
+                return aligned;
+            };
+            std::vector<uint8_t> buf0;
+            std::vector<uint8_t> buf1;
+            uint8_t* p0 = fillFrozen(buf0);
+            uint8_t* p1 = fillFrozen(buf1);
+            faiss::ascend::IDSelectorRoaring f0(frozenBytes, p0);
+            faiss::ascend::IDSelectorRoaring f1(frozenBytes, p0);
+            checkKeepHalf(f0, true);
+            checkKeepHalf(f1, true);
+            faiss::ascend::IDSelectorRoaring fCopy(frozenBytes, p1);
+            checkKeepHalf(fCopy, true);
+            roaring_bitmap_free(rb);
         }
 
         {
