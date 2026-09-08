@@ -381,14 +381,29 @@ APP_ERROR IndexIVFRaBitQ::EnsureFilterPayloadOnDevice(const RabitqIdFilterHost *
     const void *src = idFilter->payloadSrc();
     APPERR_RETURN_IF_NOT_LOG(src != nullptr, APP_ERR_INVALID_PARAM, "id filter payload is empty");
 
-    const bool cacheHit = (cachedFilterPayload != nullptr) && (cachedFilterPayload->size() >= payloadBytes) &&
+    constexpr size_t kRoaringAlign = aicpu::RABITQ_ROARING_FROZEN_ALIGN;
+    const bool needAlign = (idFilter->mode == aicpu::RABITQ_ID_FILTER_ROARING);
+    const size_t allocBytes = needAlign ? (payloadBytes + kRoaringAlign) : payloadBytes;
+
+    const bool cacheHit = (cachedFilterPayload != nullptr) && (cachedFilterPayload->size() >= allocBytes) &&
                           (cachedFilterSrc == src) && (cachedFilterBytes == payloadBytes) &&
                           (cachedFilterMode == idFilter->mode) && (cachedFilterNegate == idFilter->negate) &&
                           (cachedFilterAux0 == idFilter->aux0) && (cachedFilterAux1 == idFilter->aux1) &&
                           (cachedFilterGeneration == idFilter->generation);
+    auto alignedSelPtr = [&]() -> int64_t
+    {
+        uint8_t *base = cachedFilterPayload->data();
+        if (!needAlign)
+        {
+            return static_cast<int64_t>(reinterpret_cast<uintptr_t>(base));
+        }
+        const uintptr_t addr = reinterpret_cast<uintptr_t>(base);
+        const size_t off = (kRoaringAlign - (addr % kRoaringAlign)) % kRoaringAlign;
+        return static_cast<int64_t>(reinterpret_cast<uintptr_t>(base + off));
+    };
     if (cacheHit)
     {
-        selPtr = static_cast<int64_t>(reinterpret_cast<uintptr_t>(cachedFilterPayload->data()));
+        selPtr = alignedSelPtr();
         return APP_ERR_OK;
     }
 
@@ -396,11 +411,18 @@ APP_ERROR IndexIVFRaBitQ::EnsureFilterPayloadOnDevice(const RabitqIdFilterHost *
     {
         cachedFilterPayload = std::make_unique<DeviceVector<uint8_t>>();
     }
-    if (cachedFilterPayload->size() < payloadBytes)
+    if (cachedFilterPayload->size() < allocBytes)
     {
-        cachedFilterPayload->resize(payloadBytes, true);
+        cachedFilterPayload->resize(allocBytes, true);
     }
-    auto retCopy = aclrtMemcpy(cachedFilterPayload->data(), payloadBytes, src, payloadBytes, ACL_MEMCPY_HOST_TO_DEVICE);
+    uint8_t *dst = cachedFilterPayload->data();
+    if (needAlign)
+    {
+        const uintptr_t addr = reinterpret_cast<uintptr_t>(dst);
+        const size_t off = (kRoaringAlign - (addr % kRoaringAlign)) % kRoaringAlign;
+        dst += off;
+    }
+    auto retCopy = aclrtMemcpy(dst, payloadBytes, src, payloadBytes, ACL_MEMCPY_HOST_TO_DEVICE);
     APPERR_RETURN_IF_NOT_FMT(retCopy == ACL_SUCCESS, APP_ERR_INNER_ERROR, "copy id filter payload to device failed %d",
                              retCopy);
 
@@ -411,7 +433,7 @@ APP_ERROR IndexIVFRaBitQ::EnsureFilterPayloadOnDevice(const RabitqIdFilterHost *
     cachedFilterAux0 = idFilter->aux0;
     cachedFilterAux1 = idFilter->aux1;
     cachedFilterGeneration = idFilter->generation;
-    selPtr = static_cast<int64_t>(reinterpret_cast<uintptr_t>(cachedFilterPayload->data()));
+    selPtr = alignedSelPtr();
     return APP_ERR_OK;
 }
 
@@ -1747,7 +1769,8 @@ APP_ERROR IndexIVFRaBitQ::searchImplL2(AscendTensor<float, DIMS_2> &queries, Asc
         topkSelAux0 = filterAux0;
         topkSelAux1 = filterAux1;
         topkSelNegate = filterNegate;
-        if (topkSelMode == aicpu::RABITQ_ID_FILTER_SORTED || topkSelMode == aicpu::RABITQ_ID_FILTER_BITMAP)
+        if (topkSelMode == aicpu::RABITQ_ID_FILTER_SORTED || topkSelMode == aicpu::RABITQ_ID_FILTER_BITMAP ||
+            topkSelMode == aicpu::RABITQ_ID_FILTER_ROARING)
         {
             auto retFilter = EnsureFilterPayloadOnDevice(idFilter, topkSelPtr);
             APPERR_RETURN_IF_NOT_FMT(retFilter == APP_ERR_OK, retFilter, "ensure id filter payload on device failed %d",

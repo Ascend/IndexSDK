@@ -1,5 +1,5 @@
 minimum_pre_commit_version: 4.0.0
-exclude: ^LICENSES/|\.(html|csv|svg)$
+exclude: ^LICENSES/|\.(html|csv|svg)$|^feature_retrieval/src/ascendfaiss/third_party/CRoaring/
 
 default_stages: [pre-commit]
 ci:

@@ -100,5 +100,11 @@ void AscendIndexIVFRaBitQ::search(idx_t n, const float* x, idx_t k, float* dista
     }
     impl_->searchWithSelector(n, x, k, distances, labels, sel, searchNprobe);
 }
+
+void AscendIndexIVFRaBitQ::invalidateFilterCache() const
+{
+    FAISS_THROW_IF_NOT_MSG(impl_ != nullptr, "impl_ is nullptr!");
+    impl_->invalidateFilterCache();
+}
 }  // namespace ascend
 }  // namespace faiss

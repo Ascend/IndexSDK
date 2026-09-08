@@ -85,6 +85,7 @@ class AscendIndexIVFRaBitQImpl : public AscendIndexIVFImpl
     void searchImpl(int n, const float *x, int k, float *distances, idx_t *labels) const override;
     void searchWithSelector(idx_t n, const float *x, idx_t k, float *distances, idx_t *labels, const IDSelector *sel,
                             int searchNprobe = 0) const;
+    void invalidateFilterCache() const;
 
     // Copy data from a CPU IndexIVFRaBitQ
     void copyFrom(const faiss::IndexIVFRaBitQ *index);
@@ -144,7 +145,8 @@ class AscendIndexIVFRaBitQImpl : public AscendIndexIVFImpl
         {
             Object = 0,
             Array,
-            Bitmap
+            Bitmap,
+            Roaring
         };
         Kind kind = Kind::Object;
     };
@@ -156,13 +158,23 @@ class AscendIndexIVFRaBitQImpl : public AscendIndexIVFImpl
 
     static FilterCacheKey MakeFilterCacheKey(const IDSelector *sel);
     static bool IsFilterCacheHit(const FilterCacheKey &cached, const FilterCacheKey &key);
+    static bool IsFilterSlotEmpty(const FilterCacheKey &key);
+    int FindFilterCacheHit(const FilterCacheKey &key) const;
+    int AllocFilterCacheSlot() const;
     void InvalidateFilterCache() const;
 
     AscendIndexIVFRaBitQConfig ivfrabitqConfig;
 
+    static constexpr int kFilterCacheSlots = 2;
+    struct FilterCacheSlot
+    {
+        FilterCacheKey key;
+        ::ascend::RabitqIdFilterHost filter;
+    };
+
     mutable std::mutex filterCacheMutex;
-    mutable FilterCacheKey cachedKey;
-    mutable ::ascend::RabitqIdFilterHost cachedFilter;
+    mutable FilterCacheSlot filterSlots[kFilterCacheSlots];
+    mutable int filterSlotLru = 0;
     mutable uint64_t cachedFilterGeneration = 0;
 
     std::unordered_map<idx_t, idx_t> idToDeviceMap;
