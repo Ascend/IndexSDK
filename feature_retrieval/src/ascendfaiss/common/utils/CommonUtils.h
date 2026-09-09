@@ -164,26 +164,6 @@ class CommonUtils
         return result;
     }
 
-    static APP_ERROR CheckSymLink(struct stat *fileStat, const std::string &filename)
-    {
-        if (filename == "")
-        {
-            return APP_ERR_OK;
-        }
-        int ret = lstat(filename.c_str(), fileStat);
-        if (ret == 0 && ((fileStat->st_mode & S_IFMT) == S_IFLNK))
-        {
-            return APP_ERR_INVALID_PARAM;
-        }
-        auto idx = filename.find_last_of("/");
-        if (idx == std::string::npos)
-        {
-            return APP_ERR_OK;
-        }
-        auto res = CheckSymLink(fileStat, filename.substr(0, idx));
-        return res;
-    }
-
     static bool CheckPathValid(const std::string &path)
     {
         if (access(path.c_str(), R_OK) != EOK)
