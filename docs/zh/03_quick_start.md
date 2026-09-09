@@ -41,7 +41,7 @@
 
 - 驱动与工具链挂载：将宿主机上的驱动文件和工具链目录（如 /usr/local/Ascend/driver 和 /usr/local/bin/npu-smi）以只读方式挂载到容器中，保证容器内的运行环境与宿主机一致。以下样例代码中，/dev/davinci0 表示挂载0号设备。
 
-- 说明：-ti 后接对应的镜像标签，例如：-it swr.cn-south-1.myhuaweicloud.com/ascendhub/indexsdk:26.1.0-cann9.1.0-910b-ubuntu22.04-py3.12
+- 说明：-ti 后接对应的镜像标签，例如：-ti swr.cn-south-1.myhuaweicloud.com/ascendhub/indexsdk:26.1.0-cann9.1.0-910b-ubuntu22.04-py3.12
 
 ```bash
 docker run \
@@ -100,6 +100,7 @@ mv op_models/* $MX_INDEX_MODELPATH
     #include <faiss/ascend/AscendIndexFlat.h>
     #include <sys/time.h>
     #include <random>
+    #include <exception>
     // 获取当前时间
     inline double GetMillisecs()
     {
@@ -134,7 +135,7 @@ mv op_models/* $MX_INDEX_MODELPATH
     int main()
     {
         int dim = 512;
-        std::vector<int> device{0};
+        int deviceId = 0;
         size_t ntotal = 1000000;
         int searchnum = 128;
         std::vector<float> features(dim * ntotal);
@@ -145,14 +146,14 @@ mv op_models/* $MX_INDEX_MODELPATH
         Norm(ntotal, features, dim);
         try {
             // index初始化
-            faiss::ascend::AscendIndexFlatConfig conf(device, resourceSize);
+            faiss::ascend::AscendIndexFlatConfig conf({deviceId}, resourceSize);
             auto metricType = faiss::METRIC_INNER_PRODUCT;
             faiss::ascend::AscendIndexFlat index(dim, metricType, conf);
             index.reset();
             // add底库
             printf("add start!\r\n");
             index.add(ntotal, features.data());
-            size_t tmpTotal = index.getBaseSize(0);
+            size_t tmpTotal = index.getBaseSize(deviceId);
             if (tmpTotal != ntotal) {
                 printf("------- Error -----------------\n");
                 return -1;
@@ -176,8 +177,8 @@ mv op_models/* $MX_INDEX_MODELPATH
                 te - ts,
                 1000 * searchnum * loopTimes / (te - ts));
             return 0;
-        } catch(...) {
-            printf("Exception caught! \r\n");
+        } catch(const std::exception &e) {
+            printf("Exception caught: %s\r\n", e.what());
             return -1;
         }
     }

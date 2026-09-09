@@ -161,9 +161,10 @@ bool AscendOperatorManager::Init(std::string path)
     static std::mutex mtx;
 
     std::lock_guard<std::mutex> lock(mtx);
-    if (std::getenv("MX_INDEX_USE_ONLINEOP"))
+    const char *useOnlineEnv = std::getenv("MX_INDEX_USE_ONLINEOP");
+    if (useOnlineEnv != nullptr)
     {
-        std::string useonline(std::string(std::getenv("MX_INDEX_USE_ONLINEOP")));
+        std::string useonline(useOnlineEnv);
         ASCEND_THROW_IF_NOT_MSG(useonline.size() == 1, "len of MX_INDEX_USE_ONLINEOP more than 1");
         if (useonline == "1")
         {
@@ -177,21 +178,13 @@ bool AscendOperatorManager::Init(std::string path)
 
 #ifdef HOSTCPU
     char *modelpath = std::getenv("MX_INDEX_MODELPATH");
-    struct stat fileStat;
     if (modelpath != nullptr)
     {
-        auto res = CommonUtils::CheckSymLink(&fileStat, std::string(modelpath));
-        ASCEND_THROW_IF_NOT_MSG(res == APP_ERR_OK, "Modelpath from env is symlink");
         path = CommonUtils::RealPath(std::string(modelpath));
         ASCEND_THROW_IF_NOT_MSG(!path.empty(), "Modelpath from env is invalid");
         ASCEND_THROW_IF_NOT_FMT(CommonUtils::CheckPathValid(path), "Modelpath from env: %s must be readable",
                                 path.c_str());
         APP_LOG_INFO("Use env %s as modelpath", path.c_str());
-    }
-    else
-    {
-        auto res = CommonUtils::CheckSymLink(&fileStat, path);
-        ASCEND_THROW_IF_NOT_MSG(res == APP_ERR_OK, "default Modelpath is symlink");
     }
 
 #endif

@@ -126,8 +126,6 @@ cd .. && rm -rf release-1.8.1.tar.gz googletest-release-1.8.1
     mv ${INDEX_INSTALL_PATH}/tools/op_models/* ${MX_INDEX_MODELPATH}
     ```
 
-    注意：算子环境变量请勿使用软链接，而是算子实际所在目录。
-
 4. 在build目录中找到对应的二进制可执行文件
 
     以TestAscendIndexFlat.cpp为例，执行:
