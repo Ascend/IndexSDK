@@ -16,22 +16,19 @@
  * -------------------------------------------------------------------------
  */
 
-
 #ifndef ASCEND_INDEX_BINARY_FLAT_IMPL_INCLUDED
 #define ASCEND_INDEX_BINARY_FLAT_IMPL_INCLUDED
 
-#include "ascendhost/include/index/AscendIndexBinaryFlat.h"
+#include <faiss/Index.h>
+#include <faiss/impl/AuxIndexStructures.h>
+#include <faiss/impl/IDSelector.h>
 
 #include <algorithm>
 #include <iostream>
 #include <numeric>
 #include <set>
-#include <string>
 #include <shared_mutex>
-
-#include <faiss/Index.h>
-#include <faiss/impl/AuxIndexStructures.h>
-#include <faiss/impl/IDSelector.h>
+#include <string>
 
 #include "ascend/utils/fp16.h"
 #include "ascenddaemon/AscendResourcesProxy.h"
@@ -40,6 +37,7 @@
 #include "ascenddaemon/utils/AscendUtils.h"
 #include "ascenddaemon/utils/DeviceVector.h"
 #include "ascenddaemon/utils/StaticUtils.h"
+#include "ascendhost/include/index/AscendIndexBinaryFlat.h"
 #include "common/AscendFp16.h"
 #include "common/ErrorCode.h"
 #include "common/utils/CommonUtils.h"
@@ -48,35 +46,38 @@
 
 using namespace ascend;
 
-namespace faiss {
-namespace ascend {
+namespace faiss
+{
+namespace ascend
+{
 using idx_t = int64_t;
 constexpr idx_t MAX_N = 1e9;
 constexpr int MAX_TOPK = 1e5;
-constexpr int MAX_SEARCH = 10240; //  限定count最大值为10240
-constexpr int CUBE_ALIGN = 32;      // 16 * 16 for fp 16; 16 * 32 for uint8
-constexpr int Z_REGION_HEIGHT = 32; // hyper parameters H of small z
+constexpr int MAX_SEARCH = 10240;    //  限定count最大值为10240
+constexpr int CUBE_ALIGN = 32;       // 16 * 16 for fp 16; 16 * 32 for uint8
+constexpr int Z_REGION_HEIGHT = 32;  // hyper parameters H of small z
 constexpr int HAMMING_CUBE_ALIGN = 4;
 constexpr int LARGE_DIM = 1024;
-constexpr int BLOCK_SIZE = 1024 * 256; // hyper parameters to add/search
+constexpr int BLOCK_SIZE = 1024 * 256;  // hyper parameters to add/search
 constexpr int BURST_LEN = 128;
 constexpr int ACTUAL_NUM_SIZE = 8;
 constexpr int FLAG_SIZE = 16;
-constexpr int PAGE_BLOCKS = 7; // every page consists of x blocks
+constexpr int PAGE_BLOCKS = 7;  // every page consists of x blocks
 constexpr idx_t SINGLE_ADD_MAX = 1e7;
-const std::vector<uint32_t> DIMS{256, 512, 1024}; // supported DIMS
+const std::vector<uint32_t> DIMS{256, 512, 1024};  // supported DIMS
 const std::vector<uint32_t> BATCH_SIZES{256, 128, 64, 32, 16, 8, 7, 6, 5, 4, 3, 2, 1};
-constexpr int64_t BINARY_FLAT_MAX_MEM = 0x800000000; // 32GB
+constexpr int64_t BINARY_FLAT_MAX_MEM = 0x800000000;  // 32GB
 constexpr int BINARY_BYTE_SIZE = 8;
-constexpr int BIG_TOPK_START = 1024; // 大topK值定义的起始值，即大于等于此值后即认为是大topK场景。
+constexpr int BIG_TOPK_START = 1024;  // 大topK值定义的起始值，即大于等于此值后即认为是大topK场景。
 constexpr int BURST_LEN_LOW = 32;
 constexpr int BURST_LEN_HIGH = 64;
 constexpr int BURST_BLOCK_RATIO = 2;
 constexpr int OPTIMIZE_BATCH_THRES = 48;
 constexpr int SIZE_ALIGN = 8;
 constexpr int CORE_NUM = 8;
-class AscendIndexBinaryFlatImpl {
-public:
+class AscendIndexBinaryFlatImpl
+{
+   public:
     /* Initialize acl and resource */
     void Initialize();
 
@@ -87,7 +88,8 @@ public:
     AscendIndexBinaryFlatImpl(const faiss::IndexBinaryIDMap *index, AscendIndexBinaryFlatConfig config, bool usedFloat);
 
     /* Construct an empty instance that can be added to */
-    AscendIndexBinaryFlatImpl(int dims, AscendIndexBinaryFlatConfig config, bool usedFloat);
+    AscendIndexBinaryFlatImpl(int dims, AscendIndexBinaryFlatConfig config, bool usedFloat,
+                              bool allowAscend910 = false);
 
     void add_with_ids(idx_t n, const uint8_t *x, const idx_t *xids);
 
@@ -113,13 +115,10 @@ public:
 
     virtual ~AscendIndexBinaryFlatImpl() = default;
 
-protected:
+   protected:
     void getVectors(uint32_t offset, uint32_t num, std::vector<uint8_t> &xb) const;
 
-    inline void getIds(std::vector<idx_t> &idx) const
-    {
-        idx.assign(this->ids.begin(), this->ids.end());
-    }
+    inline void getIds(std::vector<idx_t> &idx) const { idx.assign(this->ids.begin(), this->ids.end()); }
 
     void copyCode(const faiss::IndexBinaryFlat *index, const idx_t *ids = nullptr);
 
@@ -151,20 +150,14 @@ protected:
                              AscendTensor<int64_t, DIMS_1> &attrs, AscendTensor<float16_t, DIMS_2> &outDists,
                              AscendTensor<int64_t, DIMS_2> &outLabel, aclrtStream stream);
 
-    void runDistCompute(AscendTensor<uint8_t, DIMS_2> &queryVecs,
-                        AscendTensor<uint8_t, DIMS_4> &shapedData,
-                        AscendTensor<uint32_t, DIMS_2> &size,
-                        AscendTensor<float16_t, DIMS_2> &outDistances,
-                        AscendTensor<float16_t, DIMS_2> &outMaxDistances,
-                        AscendTensor<uint16_t, DIMS_2> &flag,
+    void runDistCompute(AscendTensor<uint8_t, DIMS_2> &queryVecs, AscendTensor<uint8_t, DIMS_4> &shapedData,
+                        AscendTensor<uint32_t, DIMS_2> &size, AscendTensor<float16_t, DIMS_2> &outDistances,
+                        AscendTensor<float16_t, DIMS_2> &outMaxDistances, AscendTensor<uint16_t, DIMS_2> &flag,
                         aclrtStream stream);
 
-    void runDistFloatCompute(AscendTensor<float16_t, DIMS_2> &queryVecs,
-                             AscendTensor<uint8_t, DIMS_4> &shapedData,
-                             AscendTensor<uint32_t, DIMS_2> &size,
-                             AscendTensor<float16_t, DIMS_2> &outDistances,
-                             AscendTensor<float16_t, DIMS_2> &outMaxDistances,
-                             AscendTensor<uint16_t, DIMS_2> &flag,
+    void runDistFloatCompute(AscendTensor<float16_t, DIMS_2> &queryVecs, AscendTensor<uint8_t, DIMS_4> &shapedData,
+                             AscendTensor<uint32_t, DIMS_2> &size, AscendTensor<float16_t, DIMS_2> &outDistances,
+                             AscendTensor<float16_t, DIMS_2> &outMaxDistances, AscendTensor<uint16_t, DIMS_2> &flag,
                              aclrtStream stream);
 
     void resetDistCompOp();
@@ -179,30 +172,24 @@ protected:
 
     void postProcess(int batch, int topK, float16_t *outDistances, float *distances, idx_t *labels);
 
-    void searchPaged(int pageIdx,
-                     int batch,
-                     const uint8_t *x,
-                     int topK,
+    void searchPaged(int pageIdx, int batch, const uint8_t *x, int topK,
                      AscendTensor<float16_t, DIMS_2> &outDistanceOnDevice,
                      AscendTensor<idx_t, DIMS_2> &outIndicesOnDevice);
 
-    void searchPaged(int pageIdx,
-                     int batch,
-                     AscendTensor<float16_t, DIMS_2> &queries,
-                     int topK,
+    void searchPaged(int pageIdx, int batch, AscendTensor<float16_t, DIMS_2> &queries, int topK,
                      AscendTensor<float16_t, DIMS_2> &outDistanceOnDevice,
                      AscendTensor<idx_t, DIMS_2> &outIndicesOnDevice);
 
     void searchBatch(int batch, const uint8_t *x, int topK, int32_t *distances, idx_t *labels);
 
-    void searchBatch(int batch,  const float *x, int topK, float *distances, idx_t *labels);
+    void searchBatch(int batch, const float *x, int topK, float *distances, idx_t *labels);
 
     void setRemoveAttr(AscendTensor<int64_t, DIMS_1> &attrsInput, int dimAlignSize, int align1, int align2) const;
 
     inline void largeDimSetting()
     {
-        zRegionHeight = 16; // z region height shrink to 16
-        burstLen = 64;      // burst length shrink to 64
+        zRegionHeight = 16;  // z region height shrink to 16
+        burstLen = 64;       // burst length shrink to 64
     }
 
     static int GetBurstsOfBlock(int nq, int blockSize, int &burstLen)
@@ -220,15 +207,15 @@ protected:
         align2 = CUBE_ALIGN;
     }
 
-protected:
+   protected:
     int deviceId{0};
     idx_t resourceSize{BINARY_FLAT_DEFAULT_MEM};
     int zRegionHeight{Z_REGION_HEIGHT};
     int burstLen{BURST_LEN};
-    int d;         // < vector dimension
-    int code_size; // < number of bytes per vector ( = d / 8 )
-    idx_t ntotal;  // < total nb of indexed vectors
-    bool verbose;  // < verbosity level
+    int d;          // < vector dimension
+    int code_size;  // < number of bytes per vector ( = d / 8 )
+    idx_t ntotal;   // < total nb of indexed vectors
+    bool verbose;   // < verbosity level
     bool isUsedFloat{false};
     static bool isRemoveFast;
 
@@ -251,16 +238,16 @@ protected:
 
     mutable std::shared_mutex mtx;
 
-private:
+   private:
     void resetInner();
 
     void add_with_ids_inner(idx_t n, const uint8_t *x, const idx_t *xids);
 
     void SeparateAdd(idx_t n, const uint8_t *x);
 
-    void CheckParam(AscendIndexBinaryFlatConfig config);
+    void CheckParam(AscendIndexBinaryFlatConfig config, bool allowAscend910 = false);
 };
-} // namespace ascend
-} // namespace faiss
+}  // namespace ascend
+}  // namespace faiss
 
 #endif /* ASCEND_INDEX_BINARY_FLAT_IMPL_INCLUDED */

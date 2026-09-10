@@ -223,7 +223,8 @@ void TSBase::SetMaskValid(int64_t n, const int64_t *indices, int64_t ntotal)
         int64_t bitIndex = indices[i] % MASK_ALIGN;
         baseMask[byteIndex] |= (1 << bitIndex);
     }
-    for (int64_t idx = 0; idx < newSize; idx++)
+    const int64_t fullByteNum = ntotal / MASK_ALIGN;
+    for (int64_t idx = 0; idx < fullByteNum; idx++)
     {
         if (baseMask[idx] != 0xff)
         {
@@ -231,21 +232,14 @@ void TSBase::SetMaskValid(int64_t n, const int64_t *indices, int64_t ntotal)
             return;
         }
     }
-    int64_t last = static_cast<int64_t>(ntotal % MASK_ALIGN);
-    if (last == 0)
+    const int64_t remainingBits = ntotal % MASK_ALIGN;
+    if (remainingBits == 0)
     {
         useBaseMask = false;
         return;
     }
-    uint8_t checkMask = (1 << last) - 1;
-    if (checkMask == (baseMask[newSize] & checkMask))
-    {
-        useBaseMask = false;
-    }
-    else
-    {
-        useBaseMask = true;
-    }
+    const uint8_t validBitsMask = static_cast<uint8_t>((1U << remainingBits) - 1U);
+    useBaseMask = (baseMask[fullByteNum] & validBitsMask) != validBitsMask;
 }
 
 void TSBase::SetMaskInvalid(int64_t start, int64_t end, const int64_t *indices, int64_t ntotal)
