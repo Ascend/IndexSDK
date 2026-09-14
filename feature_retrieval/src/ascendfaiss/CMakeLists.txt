@@ -35,6 +35,7 @@ FOREACH(X IN LISTS
             ASCEND_HOME
             DRIVER_HOME
             ASCEND_TOOLKIT_PATH
+            ASCEND_MINIOS_HOME
             FAISS_HOME
         )
     IF (NOT EXISTS ${X})
@@ -43,15 +44,11 @@ FOREACH(X IN LISTS
 ENDFOREACH()
 
 OPTION(BUILD_ASCENDHOST    "Build ascendhost"                          ON)
-OPTION(BUILD_ASCENDDEVICE  "Build ascenddevice"                        OFF)
+OPTION(BUILD_ASCENDDEVICE  "Build ascenddevice"                        ON)
 OPTION(BUILD_OPS           "Build ops"                                 ON)
 OPTION(COVERAGE            "COVERAGE"                                  OFF)
 OPTION(HITEST              "HITEST"                                    OFF)
 OPTION(BUILD_ASCEND_SEARCH "Build ascendsearch"                        OFF)
-
-IF(BUILD_ASCENDDEVICE AND NOT EXISTS ${ASCEND_MINIOS_HOME})
-    MESSAGE(FATAL_ERROR "${ASCEND_MINIOS_HOME} does not exist")
-ENDIF()
 
 # DT
 IF(COVERAGE)
