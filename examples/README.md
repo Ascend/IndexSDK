@@ -1,5 +1,7 @@
 # examples
 
+简体中文 | [English](README_en.md)
+
 ## 介绍
 
 **本仓库提供了昇腾Index SDK组件实现的几种常见检索算法的demo**
