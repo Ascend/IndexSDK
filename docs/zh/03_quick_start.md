@@ -7,7 +7,7 @@
 
 开始之前请确认：
 
-- **硬件**：支持 Atlas 推理系列产品、Atlas 800I A2、Atlas 800I A3。可参见“[支持的硬件和操作系统](./01_introduction.md#支持的硬件和操作系统)”。
+- **硬件**：支持 Atlas 推理系列产品、Atlas 800I A2 推理服务器、Atlas 800I A3 超节点服务器。可参见“[支持的硬件和操作系统](./01_introduction.md#支持的硬件和操作系统)”。
 - **Docker**：已安装并正确配置 Docker 环境，且当前用户可运行容器。
 - **Ascend 驱动**：已安装并配置好 Ascend 驱动。
 

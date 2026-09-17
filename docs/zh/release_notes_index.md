@@ -106,8 +106,8 @@
 
 |特性名称|特性描述|配套产品型号|
 |---------|--------------------------------------------|----------|
-|TS FlatIP 与 Int8Cos 支持 A2/A3 平台|TS FlatIP, Int8Cos 支持 A2 A3：A2 底库 6 千万，A3 底库 1.25 亿，256 维度，batch1-256，topk200。|Atlas 800I A3 超节点服务器<br>Atlas 800I A2 推理服务器|
-|IVF-RabitQ 索引支持 A2/A3 平台|A2, A3 支持 IVF-RabitQ：底库 1000 万，128 维度，topk300，数据精度 FP32。|Atlas 800I A3 超节点服务器<br>Atlas 800I A2 推理服务器|
+|TS FlatIP 与 Int8Cos 支持 Atlas A2推理系列产品/Atlas A3推理系列产品|TS FlatIP, Int8Cos 支持 Atlas A2推理系列产品以及Atlas A3推理系列产品：A2 底库 6 千万，Atlas A3推理系列产品 底库 1.25 亿，256 维度，batch1-256，topk200。|Atlas 800I A3 超节点服务器<br>Atlas 800I A2 推理服务器|
+|IVF-RabitQ 索引支持 Atlas A2推理系列产品/Atlas A3推理系列产品|Atlas A2推理系列产品, Atlas A3推理系列产品 支持 IVF-RabitQ：底库 1000 万，128 维度，topk300，数据精度 FP32。|Atlas 800I A3 超节点服务器<br>Atlas 800I A2 推理服务器|
 
 ### 业务接口变更
 
