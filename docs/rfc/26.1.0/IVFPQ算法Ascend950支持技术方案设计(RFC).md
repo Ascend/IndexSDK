@@ -177,7 +177,7 @@ Ascend 950PR系列产品 NPU
 
 ### Ascend 950PR系列产品 平台特性
 
-Ascend 950PR系列产品 NPU 相比 A2/A3 具有以下优势：
+Ascend 950PR系列产品 NPU 相比 Atlas A2推理系列产品/Atlas A3推理系列产品 具有以下优势：
 
 - 更强的计算能力，支持更高吞吐量
 - 更高的内存带宽，支持更大规模向量库

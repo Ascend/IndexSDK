@@ -48,7 +48,7 @@
 
 ### 平台支持
 
-- **A2/A3平台**：支持
+- **Atlas A2推理系列产品/Atlas A3推理系列产品平台**：支持
 - **Ascend 950PR系列产品平台**：支持
 
 ### 功能范围
@@ -190,7 +190,7 @@ AscendIndexIVFRaBitQImpl
     ↓
 ACL Runtime
     ↓
-NPU (A2/A3/Ascend 950PR系列产品)
+NPU (Atlas A2推理系列产品/Atlas A3推理系列产品/Ascend 950PR系列产品)
 ```
 
 ### 核心流程
@@ -606,7 +606,7 @@ NPU (A2/A3/Ascend 950PR系列产品)
 **1. 数据格式**：
 
 - 使用ND格式存储数据，提高内存访问效率
-- 数据按burst长度对齐（A2/A3: 64, Ascend 950PR系列产品: 32/64）
+- 数据按burst长度对齐（Atlas A2推理系列产品/Atlas A3推理系列产品: 64, Ascend 950PR系列产品: 32/64）
 
 **2. 并行策略**：
 
@@ -645,7 +645,7 @@ NPU (A2/A3/Ascend 950PR系列产品)
 
 #### 4. 平台适配优化
 
-- **A2/A3平台**：使用高burst长度（64）
+- **Atlas A2推理系列产品/Atlas A3推理系列产品平台**：使用高burst长度（64）
 - **Ascend 950PR系列产品平台**：根据batch size动态调整burst长度（32/64）
 
 ### 影响范围

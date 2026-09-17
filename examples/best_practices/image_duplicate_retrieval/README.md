@@ -34,7 +34,7 @@ $$
 
 ## 2. 候选算法介绍
 
-[IndexSDK 硬件支持矩阵](https://gitcode.com/Ascend/IndexSDK/blob/master/docs/zh/01_introduction.md#支持的硬件和操作系统)列出的 Atlas A2 检索算法还包括带属性过滤能力的 TS 系列。本场景没有时间、空间或附加属性过滤条件，因此比较以下四种基础算法。
+[IndexSDK 硬件支持矩阵](https://gitcode.com/Ascend/IndexSDK/blob/master/docs/zh/01_introduction.md#支持的硬件和操作系统)列出的 Atlas A2 推理系列产品 检索算法还包括带属性过滤能力的 TS 系列。本场景没有时间、空间或附加属性过滤条件，因此比较以下四种基础算法。
 
 | 算法 | 检索方式 | 主要取舍 |
 |---|---|---|

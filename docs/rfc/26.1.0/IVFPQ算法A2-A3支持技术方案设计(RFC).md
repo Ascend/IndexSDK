@@ -1,4 +1,4 @@
-# IVFPQ Algorithm A2/A3 Support Technical Design(RFC)
+# IVFPQ Algorithm Atlas A2推理系列产品/Atlas A3推理系列产品 Support Technical Design(RFC)
 
 **状态 (Status):** Draft
 **作者 (Authors):** @xiangjie10
@@ -12,7 +12,7 @@
 
 ## 1.1 简介
 
-本提案旨在为 IndexSDK 补齐 A2/A3 NPU 平台上的 IVFPQ(L2) 算法能力。IVFPQ (Inverted File System with Product Quantization) 是推荐检索场景中常用的近似检索算法，能够在保证检索精度的同时，大幅降低内存占用和计算开销。通过本提案的实现，IndexSDK 将能够在 Ascend A2/A3 NPU 上完整支持 IVFPQ 算法的训练、索引构建、入库和检索全流程。
+本提案旨在为 IndexSDK 补齐 Atlas A2推理系列产品/Atlas A3推理系列产品 NPU 平台上的 IVFPQ(L2) 算法能力。IVFPQ (Inverted File System with Product Quantization) 是推荐检索场景中常用的近似检索算法，能够在保证检索精度的同时，大幅降低内存占用和计算开销。通过本提案的实现，IndexSDK 将能够在 Atlas A2推理系列产品/Atlas A3推理系列产品 NPU 上完整支持 IVFPQ 算法的训练、索引构建、入库和检索全流程。
 
 ## 1.2 动机
 
@@ -24,11 +24,11 @@
 
 - 大规模向量检索场景下，CPU 方案时延成为瓶颈
 
-- A2/A3 NPU 平台缺少 IVFPQ 算法支持，无法充分发挥硬件加速能力
+- Atlas A2推理系列产品/Atlas A3推理系列产品 NPU 平台缺少 IVFPQ 算法支持，无法充分发挥硬件加速能力
 
 ### 价值
 
-- 补齐 A2/A3 平台的近似检索能力，完善 IndexSDK 的算法支持矩阵
+- 补齐 Atlas A2推理系列产品/Atlas A3推理系列产品 平台的近似检索能力，完善 IndexSDK 的算法支持矩阵
 
 - 充分利用 NPU 加速能力，大幅提升大规模向量检索性能
 
@@ -148,7 +148,7 @@
 
 ### 设计思路
 
-基于 IndexSDK 现有的 AscendIndexIVFPQ 架构，扩展支持 A2/A3 NPU 平台。主要工作包括：
+基于 IndexSDK 现有的 AscendIndexIVFPQ 架构，扩展支持 Atlas A2推理系列产品/Atlas A3推理系列产品 NPU 平台。主要工作包括：
 
 - 训练模块：实现聚类中心训练，生成倒排列表和乘积量化码本
 
@@ -174,7 +174,7 @@ AscendIndexIVFPQImpl
     ↓
 ACL Runtime
     ↓
-A2/A3 NPU
+Atlas A2推理系列产品/Atlas A3推理系列产品 NPU
 ```
 
 ### 核心流程
@@ -213,11 +213,11 @@ A2/A3 NPU
 
 ### 方案
 
-复用现有 AscendIndexIVFPQ 框架，针对 A2/A3 进行开发 AscendC 算子
+复用现有 AscendIndexIVFPQ 框架，针对 Atlas A2推理系列产品/Atlas A3推理系列产品 进行开发 AscendC 算子
 
 ### 选择理由
 
-复用现有 AscendIndexIVFPQ 的算子框架，针对 A2/A3 进行适配优化，可以在保证性能的同时，降低开发和维护成本。
+复用现有 AscendIndexIVFPQ 的算子框架，针对 Atlas A2推理系列产品/Atlas A3推理系列产品 进行适配优化，可以在保证性能的同时，降低开发和维护成本。
 
 ## 3.3 功能与性能设计
 
@@ -259,7 +259,7 @@ A2/A3 NPU
 
 ### 影响范围
 
-- 新增文件: A2/A3 平台的算子实现文件
+- 新增文件: Atlas A2推理系列产品/Atlas A3推理系列产品 平台的算子实现文件
 
 - 修改文件: AscendIndexIVFPQ 相关配置和初始化逻辑
 
@@ -305,7 +305,7 @@ A2/A3 NPU
 
 #### 开发环境
 
-- 硬件平台: Ascend A2/A3 NPU
+- 硬件平台: Atlas A2推理系列产品/Atlas A3推理系列产品 NPU
 
 - 软件环境: CANN 工具链， ACL Runtime
 
@@ -590,7 +590,7 @@ protected:
 
 - 使用ND格式存储数据，提高内存访问效率
 
-- 数据按burst长度对齐（A2/A3: 64）
+- 数据按burst长度对齐（Atlas A2推理系列产品/Atlas A3推理系列产品: 64）
 
 **2. 并行策略**：
 
@@ -616,7 +616,7 @@ protected:
 
 需要在现有《IndexSDK 用户指南》中新增以下章节：
 
-#### A2/A3 平台 IVFPQ 算法使用指南
+#### Atlas A2推理系列产品/Atlas A3推理系列产品 平台 IVFPQ 算法使用指南
 
 1. **环境准备**：
 
@@ -697,7 +697,7 @@ protected:
 
 ### 性能风险
 
-- A2/A3 平台性能可能存在差异，需要充分测试
+- Atlas A2推理系列产品/Atlas A3推理系列产品 平台性能可能存在差异，需要充分测试
 
 - 大规模向量库可能存在内存压力
 
@@ -715,7 +715,7 @@ protected:
 
 ### 对用户的影响
 
-- 用户需要升级到支持 A2/A3 的版本
+- 用户需要升级到支持 Atlas A2推理系列产品/Atlas A3推理系列产品 的版本
 
 - 需要重新训练索引和生成算子模型文件
 
@@ -747,7 +747,7 @@ protected:
 
 ## IndexSDK 现有实现
 
-- AscendIndexIVFPQ 已在 IndexSDK 中实现，本提案复用现有架构，扩展支持 A2/A3
+- AscendIndexIVFPQ 已在 IndexSDK 中实现，本提案复用现有架构，扩展支持 Atlas A2推理系列产品/Atlas A3推理系列产品
 
 # 6. 未解决问题
 
@@ -777,10 +777,10 @@ protected:
 
 - **nprobe**: 检索时访问的倒排列表数量
 
-- **A2/A3**: Ascend NPU 型号
+- **Atlas A2推理系列产品/Atlas A3推理系列产品**: Ascend NPU 型号
 
 ### 文档更新计划
 
 - RFC 评审通过后，更新《IndexSDK 用户指南》
 
-- 更新《快速开始指南》，添加 A2/A3 平台 IVFPQ 使用说明
+- 更新《快速开始指南》，添加 Atlas A2推理系列产品/Atlas A3推理系列产品 平台 IVFPQ 使用说明

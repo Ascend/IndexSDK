@@ -12,23 +12,23 @@
 
 ## 1.1 简介
 
-本提案旨在为 IndexSDK 补齐 A2/A3 NPU 平台上的 TS FlatIP Int8Cos 算子能力。TS 是时空库检视算法，FlatIP 和 Int8Cos 是向量检索中的常用的距离计算类型。通过本提案的实现，IndexSDK 将能够在 Ascend A2/A3 NPU 上，支持属性过滤场景下的高效检索，扩展向量检索链路，满足大规模向量检索场景的性能需求。
+本提案旨在为 IndexSDK 补齐 Atlas A2推理系列产品/Atlas A3推理系列产品 NPU 平台上的 TS FlatIP Int8Cos 算子能力。TS 是时空库检视算法，FlatIP 和 Int8Cos 是向量检索中的常用的距离计算类型。通过本提案的实现，IndexSDK 将能够在Atlas A2推理系列产品/Atlas A3推理系列产品 NPU 上，支持属性过滤场景下的高效检索，扩展向量检索链路，满足大规模向量检索场景的性能需求。
 
 ## 1.2 动机
 
 ### 背景
 
-IndexSDK 为昇腾平台实现了高效的向量特征检索引擎，用户可以在此引擎上实现面向应用场景的检索系统。当前在 A2/A3 NPU 平台上，TS FlatIP Int8Cos 检索能力缺失，导致向量检索链路不完整，无法充分发挥 A2/A3 NPU 的硬件加速能力。
+IndexSDK 为昇腾平台实现了高效的向量特征检索引擎，用户可以在此引擎上实现面向应用场景的检索系统。当前在 Atlas A2推理系列产品/Atlas A3推理系列产品 NPU 平台上，TS FlatIP Int8Cos 检索能力缺失，导致向量检索链路不完整，无法充分发挥 Atlas A2推理系列产品/Atlas A3推理系列产品 NPU 的硬件加速能力。
 
 ### 痛点
 
-- A2/A3 NPU 平台缺少 TS FlatIP Int8Cos 检索支持，限制了向量检索场景的应用
+- Atlas A2推理系列产品/Atlas A3推理系列产品 NPU 平台缺少 TS FlatIP Int8Cos 检索支持，限制了向量检索场景的应用
 
-- 用户在 A2/A3 平台上无法使用完整的向量检索能力
+- 用户在 Atlas A2推理系列产品/Atlas A3推理系列产品 平台上无法使用完整的向量检索能力
 
 ### 价值
 
-- 补齐 A2/A3 平台的向量检索能力，完善 IndexSDK 的硬件支持矩阵
+- 补齐 Atlas A2推理系列产品/Atlas A3推理系列产品 平台的向量检索能力，完善 IndexSDK 的硬件支持矩阵
 
 - 充分利用 NPU 加速能力，提升向量检索性能
 
@@ -36,7 +36,7 @@ IndexSDK 为昇腾平台实现了高效的向量特征检索引擎，用户可�
 
 ### 目标
 
-- 支持 A2/A3 NPU 上的 TS FlatIP Int8Cos 计算算法
+- 支持 Atlas A2推理系列产品/Atlas A3推理系列产品 NPU 上的 TS FlatIP Int8Cos 计算算法
 
 - 覆盖 dim=256 的向量维度场景
 
@@ -134,21 +134,21 @@ IndexSDK 为昇腾平台实现了高效的向量特征检索引擎，用户可�
 
 ### 设计思路
 
-TS FlatIP Int8Cos 算子已在 310P 平台上实现，本提案旨在将其扩展到 A2/A3 (910B) 平台。总体逻辑保持一致，对外接口不涉及修改。主要工作包括：
+TS FlatIP Int8Cos 算子已在 310P 平台上实现，本提案旨在将其扩展到 Atlas A2推理系列产品/Atlas A3推理系列产品 (910B) 平台。总体逻辑保持一致，对外接口不涉及修改。主要工作包括：
 
-- 新增 AscendC 算子实现：针对 A2/A3 NPU 架构特性，开发 DistanceBatchMaskGenerator、DistanceBatchMaskGeneratorWithExtra、AscendcDistanceFlatIPMaxsWithMask、AscendcDistanceInt8CosWithMasks 等算子
+- 新增 AscendC 算子实现：针对 Atlas A2推理系列产品/Atlas A3推理系列产品 NPU 架构特性，开发 DistanceBatchMaskGenerator、DistanceBatchMaskGeneratorWithExtra、AscendcDistanceFlatIPMaxsWithMask、AscendcDistanceInt8CosWithMasks 等算子
 
 - 平台适配：根据硬件平台类型（IsAscend910B）动态选择算子实现
 
 - 模型生成工具：提供算子模型生成脚本，支持不同 batch size 的模型生成
 
-**注意**：A2/A3 平台与 310P 平台存在功能差异，具体如下：
+**注意**：Atlas A2推理系列产品/Atlas A3推理系列产品 平台与 310P 平台存在功能差异，具体如下：
 
-- A2/A3 平台仅支持非共享mask模式，不支持共享mask模式
+- Atlas A2推理系列产品/Atlas A3推理系列产品 平台仅支持非共享mask模式，不支持共享mask模式
 
-- A2/A3 平台不支持额外相似度（extraScore）和scale量化功能
+- Atlas A2推理系列产品/Atlas A3推理系列产品 平台不支持额外相似度（extraScore）和scale量化功能
 
-- A2/A3 平台支持自定义属性（customAttr）和时空属性过滤功能
+- Atlas A2推理系列产品/Atlas A3推理系列产品 平台支持自定义属性（customAttr）和时空属性过滤功能
 
 ### 技术架构
 
@@ -164,7 +164,7 @@ TSFlatIP / TSInt8FlatCos
     ↓
 ACL Runtime
     ↓
-A2/A3 NPU
+Atlas A2推理系列产品/Atlas A3推理系列产品 NPU
 
 ```
 
@@ -188,7 +188,7 @@ A2/A3 NPU
 
      - 310P：使用 DistanceMaskGenerator / DistanceMaskGeneratorWithExtra
 
-     - A2/A3：使用 AscendcDistanceBatchMaskGenerator / AscendcDistanceBatchMaskGeneratorWithExtra
+     - Atlas A2推理系列产品/Atlas A3推理系列产品：使用 AscendcDistanceBatchMaskGenerator / AscendcDistanceBatchMaskGeneratorWithExtra
 
    - 输出：mask 矩阵，标识哪些向量符合时空条件
 
@@ -200,7 +200,7 @@ A2/A3 NPU
 
      - 310P：使用 TIK 实现的 AICORE 算子
 
-     - A2/A3：使用 AscendC 算子（AscendcDistanceFlatIPMaxsWithMask / AscendcDistanceInt8CosWithMasks）
+     - Atlas A2推理系列产品/Atlas A3推理系列产品：使用 AscendC 算子（AscendcDistanceFlatIPMaxsWithMask / AscendcDistanceInt8CosWithMasks）
 
    - 输出：距离矩阵
 
@@ -320,13 +320,13 @@ A2/A3 NPU
 
 ### 方案
 
-基于 AscendC 实现 A2/A3 平台的算子，复用现有的 TSFlatIP 和 TSInt8FlatCos 框架
+基于 AscendC 实现 Atlas A2推理系列产品/Atlas A3推理系列产品 平台的算子，复用现有的 TSFlatIP 和 TSInt8FlatCos 框架
 
 ### 选择理由
 
 1. **复用现有架构**：TS FlatIP Int8Cos 已在 310P 平台上实现，架构成熟稳定，复用可以降低开发风险
 
-2. **AscendC 性能优势**：AscendC 是华为提供的算子开发框架，可以充分利用 A2/A3 NPU 的硬件特性，实现高性能算子
+2. **AscendC 性能优势**：AscendC 是华为提供的算子开发框架，可以充分利用 Atlas A2推理系列产品/Atlas A3推理系列产品 NPU 的硬件特性，实现高性能算子
 
 3. **平台适配简单**：通过运行时判断硬件平台类型（IsAscend910B），动态选择算子实现，对上层透明
 
@@ -336,13 +336,13 @@ A2/A3 NPU
 
    - 310P：DistanceMaskGenerator / DistanceMaskGeneratorWithExtra（TIK 实现的 AICORE 算子）
 
-   - A2/A3：AscendcDistanceBatchMaskGenerator / AscendcDistanceBatchMaskGeneratorWithExtra（AscendC 实现）
+   - Atlas A2推理系列产品/Atlas A3推理系列产品：AscendcDistanceBatchMaskGenerator / AscendcDistanceBatchMaskGeneratorWithExtra（AscendC 实现）
 
 2. **距离计算算子**：
 
    - 310P：TIK 实现的 AICORE 算子
 
-   - A2/A3：AscendcDistanceFlatIPMaxsWithMask / AscendcDistanceInt8CosWithMasks（AscendC 实现）
+   - Atlas A2推理系列产品/Atlas A3推理系列产品：AscendcDistanceFlatIPMaxsWithMask / AscendcDistanceInt8CosWithMasks（AscendC 实现）
 
 3. **算子模型生成**：
 
@@ -362,7 +362,7 @@ A2/A3 NPU
 
      - 310P：支持共享mask和非共享mask两种模式
 
-     - A2/A3：当前仅支持非共享mask模式
+     - Atlas A2推理系列产品/Atlas A3推理系列产品：当前仅支持非共享mask模式
 
 5. **其他功能支持**：
 
@@ -410,7 +410,7 @@ A2/A3 NPU
 
 - 310P：使用 TIK 实现的 AICORE 算子，通过 DistanceMaskGenerator / DistanceMaskGeneratorWithExtra 算子
 
-- A2/A3：使用 AscendC 实现，通过 AscendcDistanceBatchMaskGenerator / AscendcDistanceBatchMaskGeneratorWithExtra 算子
+- Atlas A2推理系列产品/Atlas A3推理系列产品：使用 AscendC 实现，通过 AscendcDistanceBatchMaskGenerator / AscendcDistanceBatchMaskGeneratorWithExtra 算子
 
 #### FlatIP 算子
 
@@ -448,7 +448,7 @@ A2/A3 NPU
 
 - 310P：使用 TIK 实现的 AICORE 算子
 
-- A2/A3：使用 AscendC 实现（AscendcDistanceFlatIPMaxsWithMask），充分利用 Cube 单元进行矩阵乘法加速
+- Atlas A2推理系列产品/Atlas A3推理系列产品：使用 AscendC 实现（AscendcDistanceFlatIPMaxsWithMask），充分利用 Cube 单元进行矩阵乘法加速
 
 #### Int8Cos 算子
 
@@ -488,7 +488,7 @@ A2/A3 NPU
 
 - 310P：使用 TIK 实现的 AICORE 算子
 
-- A2/A3：使用 AscendC 实现（AscendcDistanceInt8CosWithMasks），充分利用 Cube 单元进行矩阵乘法加速
+- Atlas A2推理系列产品/Atlas A3推理系列产品：使用 AscendC 实现（AscendcDistanceInt8CosWithMasks），充分利用 Cube 单元进行矩阵乘法加速
 
 ### 性能优化策略
 
@@ -662,7 +662,7 @@ A2/A3 NPU
 
 #### 开发环境
 
-- 硬件平台: Ascend A2/A3 NPU
+- 硬件平台: Atlas A2推理系列产品/Atlas A3推理系列产品 NPU
 
 - 软件环境: CANN 工具链， ACL Runtime
 
@@ -690,11 +690,11 @@ A2/A3 NPU
 
 需要在现有《IndexSDK 编程手册》中新增以下章节：
 
-#### A2/A3 平台 TS FlatIP Int8Cos 算子使用指南
+#### Atlas A2推理系列产品/Atlas A3推理系列产品 平台 TS FlatIP Int8Cos 算子使用指南
 
 1. **环境准备**：
 
-   - 安装 CANN 工具链（支持 A2/A3）
+   - 安装 CANN 工具链（支持 Atlas A2推理系列产品/Atlas A3推理系列产品）
 
    - 配置 NPU 驱动和固件
 
@@ -780,7 +780,7 @@ A2/A3 NPU
 
 ### 性能风险
 
-- A2/A3 平台性能可能存在差异，需要充分测试
+- Atlas A2推理系列产品/Atlas A3推理系列产品 平台性能可能存在差异，需要充分测试
 
 - 大规模向量库可能存在内存压力
 
@@ -798,7 +798,7 @@ A2/A3 NPU
 
 ### 对用户的影响
 
-- 用户需要升级到支持 A2/A3 的版本
+- 用户需要升级到支持 Atlas A2推理系列产品/Atlas A3推理系列产品 的版本
 
 - 需要重新生成算子模型文件
 
@@ -830,7 +830,7 @@ A2/A3 NPU
 
 ## IndexSDK 现有实现
 
-- TSFlatIP TSInt8FlatCos 已在 IndexSDK 中实现，本提案复用现有架构，扩展支持 A2/A3
+- TSFlatIP TSInt8FlatCos 已在 IndexSDK 中实现，本提案复用现有架构，扩展支持 Atlas A2推理系列产品/Atlas A3推理系列产品
 
 # 6. 未解决问题
 
@@ -856,10 +856,10 @@ A2/A3 NPU
 
 - **Int8Cos**: Int8 量化余弦相似度计算
 
-- **A2/A3**: Ascend NPU 型号
+- **Atlas A2推理系列产品/Atlas A3推理系列产品**: Ascend NPU 型号
 
 ### 文档更新计划
 
 - RFC 评审通过后，更新《IndexSDK 用户指南》
 
-- 更新《快速开始指南》，添加 A2/A3 平台使用说明
+- 更新《快速开始指南》，添加 Atlas A2推理系列产品/Atlas A3推理系列产品 平台使用说明
