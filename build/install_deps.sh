@@ -24,6 +24,7 @@ readonly FAISS_110_INSTALL_PATH="${FAISS_110_HOME:-${FAISS_ROOT}/faiss1.10.0}"
 readonly FAISS_114_INSTALL_PATH="${FAISS_114_HOME:-${FAISS_ROOT}/faiss1.14.1}"
 readonly DEFAULT_FAISS_ABI="${DEFAULT_FAISS_ABI:-faiss1.10}"
 readonly MULTI_FAISS_PACKAGE="${MULTI_FAISS_PACKAGE:-OFF}"
+readonly BUILD_JOBS="${BUILD_JOBS:-$(nproc)}"
 
 # ============== 1. install OpenBLAS ==============
 echo "[INSTALL_INFO] start installing OpenBLAS..."
@@ -79,7 +80,7 @@ function install_faiss()
     fi
     cd ..
     cmake -B build . -DFAISS_ENABLE_GPU=OFF -DFAISS_ENABLE_PYTHON=OFF -DBUILD_TESTING=OFF -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="${faiss_install_path}"
-    cd build && make -j && make install
+    cd build && make -j"${BUILD_JOBS}" && make install
     cd "${TOP_DIR}" && rm -f "${faiss_tar_file}" && rm -rf "${faiss_src_dir}"
 }
 

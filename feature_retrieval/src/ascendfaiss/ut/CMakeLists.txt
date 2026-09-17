@@ -269,12 +269,17 @@ SET(TEST_SRC_FILES TestAscendIndexUTBinaryFlat.cpp
                    TestAscendIndexUTFlatAT.cpp
                    TestAscendIndexUTILFlat.cpp
                    TestAscendIndexUTInt8.cpp
+                   TestAscendIndexUTIVFFlat.cpp
                    TestAscendIndexUTIVFPQ.cpp
                    TestAscendIndexUTIVFSQ.cpp
                    TestAscendIndexUTIVFSQT.cpp
                    TestAscendIndexUTSQ.cpp
                    TestAscendIndexUTCagra.cpp
                    TestAscendIndexUTTS.cpp)
+
+IF(ENABLE_ASCEND_IVFRABITQ)
+    LIST(APPEND TEST_SRC_FILES TestAscendIndexUTIVFRabitQ.cpp)
+ENDIF()
 SET(TARGET_OUT TestAscendIndexUT)
 ADD_EXECUTABLE(${TARGET_OUT}  ${TEST_SRC_FILES})
 

@@ -191,6 +191,13 @@ void AscendIndexIVFPQImpl::copyFromCentroids(const faiss::IndexIVFPQ *index)
     index->quantizer->reconstruct_n(0, nlist, centroids_buffer.data());
 
     updateCoarseCenter(centroids_buffer);
+
+    // Keep the host fallback quantizer consistent with the device centroids.
+    // addL1 uses it when useKmeansPP is disabled, including after copyFrom.
+    FAISS_THROW_IF_NOT_MSG(pQuantizerImpl && pQuantizerImpl->cpuQuantizer, "cpuQuantizer is not initialized");
+    pQuantizerImpl->cpuQuantizer->reset();
+    pQuantizerImpl->cpuQuantizer->add(nlist, centroids_buffer.data());
+    pQuantizerImpl->cpuQuantizer->is_trained = true;
 }
 
 void AscendIndexIVFPQImpl::copyFromCodebook(const faiss::IndexIVFPQ *index)
@@ -551,7 +558,6 @@ std::vector<idx_t> AscendIndexIVFPQImpl::update(idx_t n, const float *x, const i
     APP_LOG_INFO("AscendIndexIVFPQImpl update operation started: n=%ld.\n", n);
     // Defensive reset in case this path becomes reachable after future config changes.
     queryParallelSearchReady = false;
-    std::lock_guard<std::mutex> lock(mapMutex);
 
     std::vector<idx_t> noExistIds;
     std::vector<idx_t> existIds;
@@ -559,26 +565,32 @@ std::vector<idx_t> AscendIndexIVFPQImpl::update(idx_t n, const float *x, const i
     idx_t noExistNum = 0;
     idx_t existNum = 0;
 
-    for (idx_t i = 0; i < n; ++i)
     {
-        idx_t id = ids[i];
-        if (idToListMap.find(id) == idToListMap.end())
+        // Protect only the mapping lookup. deleteImpl/addImpl update the same
+        // maps and acquire mapMutex internally, so keeping the lock across
+        // those calls would deadlock on an existing ID.
+        std::lock_guard<std::mutex> lock(mapMutex);
+        for (idx_t i = 0; i < n; ++i)
         {
-            noExistIds.push_back(id);
-            noExistNum++;
-            continue;
+            idx_t id = ids[i];
+            if (idToListMap.find(id) == idToListMap.end())
+            {
+                noExistIds.push_back(id);
+                noExistNum++;
+                continue;
+            }
+            idx_t listId = idToListMap[id];
+            if (listInfos[listId].idSet.find(id) == listInfos[listId].idSet.end())
+            {
+                noExistIds.push_back(id);
+                noExistNum++;
+                continue;
+            }
+            existIds.push_back(id);
+            const float *vector = x + i * this->intf_->d;
+            existVectors.insert(existVectors.end(), vector, vector + this->intf_->d);
+            existNum++;
         }
-        idx_t listId = idToListMap[id];
-        if (listInfos[listId].idSet.find(id) == listInfos[listId].idSet.end())
-        {
-            noExistIds.push_back(id);
-            noExistNum++;
-            continue;
-        }
-        existIds.push_back(id);
-        const float *vector = x + i * this->intf_->d;
-        existVectors.insert(existVectors.end(), vector, vector + this->intf_->d);
-        existNum++;
     }
 
     if (!noExistIds.empty())
@@ -593,7 +605,9 @@ std::vector<idx_t> AscendIndexIVFPQImpl::update(idx_t n, const float *x, const i
     if (existNum > 0)
     {
         deleteImpl(existNum, existIds.data());
-        addImpl(existNum, existVectors.data(), existIds.data());
+        // Use the complete add path so encoded vectors are uploaded, temporary
+        // buckets are released and ntotal is restored after the replacement.
+        addPaged(existNum, existVectors.data(), existIds.data());
     }
     APP_LOG_INFO("AscendIndexIVFPQ update operation finished.\n");
 

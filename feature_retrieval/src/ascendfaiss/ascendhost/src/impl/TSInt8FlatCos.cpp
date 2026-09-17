@@ -587,6 +587,7 @@ APP_ERROR TSInt8FlatCos::AddFeatureWithIndice(int64_t n, int64_t replaceNum, con
             copyAndSaveVectors(startOffset, rawTensor);
             // 拷贝norm
             ret = copyNormByIndice(startOffset, singleAdd, offset, precompData);
+            APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, APP_ERR_INNER_ERROR, "copyNormByIndice failed: %d", ret);
             offset += singleAdd;
             length -= singleAdd;
             startOffset += singleAdd;
@@ -917,6 +918,7 @@ APP_ERROR TSInt8FlatCos::searchInPureDev(uint32_t count, const int8_t *features,
             AscendTensor<int16_t, DIMS_2> ValFilter(mem, {static_cast<int32_t>(batch), EXTRA_VAL_ALIGN}, stream);
             if (this->enableValFilter)
             {
+                ASCEND_THROW_IF_NOT_MSG(extraValFilter, "Invalid valFilter.\n");
                 buildAttrWithExtraVal(attrFilter + offset, extraValFilter + offset, batch, queryTimes, tokenIds,
                                       ValFilter);
             }

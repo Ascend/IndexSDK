@@ -319,6 +319,10 @@ function build_release_for_gcc()
 
 function run_ut()
 {
+    local faiss_home
+    faiss_home=$(get_default_faiss_home)
+    export FAISS_HOME="${FAISS_HOME:-${faiss_home}}"
+    echo "run UT with FAISS_HOME=${FAISS_HOME}"
     rm -rf "${TOP_DIR}/feature_retrieval/opensource/mockcpp"
     rm -rf "${TOP_DIR}/feature_retrieval/secondparty/huawei_secure_c"
     cd "${TOP_DIR}/feature_retrieval/ut"
