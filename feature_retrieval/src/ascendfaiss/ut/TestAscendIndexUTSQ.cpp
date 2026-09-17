@@ -16,26 +16,29 @@
  * -------------------------------------------------------------------------
  */
 
+#include <faiss/index_io.h>
+#include <securec.h>
 
+#include <algorithm>
 #include <numeric>
 #include <random>
-#include <algorithm>
-#include <securec.h>
-#include <faiss/index_io.h>
-#include "gtest/gtest.h"
-#include "AscendIndexSQ.h"
+
 #include "AscendCloner.h"
+#include "AscendIndexSQ.h"
 #include "Common.h"
-namespace ascend {
+#include "gtest/gtest.h"
+namespace ascend
+{
 const auto TEST_METRIC_L2 = faiss::METRIC_L2;
 const int32_t K_MAX_CAMERA_NUM = 128;
 const int MASK_LEN = 8;
 
-struct IDFilter {
+struct IDFilter
+{
     IDFilter()
     {
-        memset_s(cameraIdMask, sizeof(cameraIdMask) / sizeof(cameraIdMask[0]),
-            static_cast<uint8_t>(0), K_MAX_CAMERA_NUM / MASK_LEN);
+        memset_s(cameraIdMask, sizeof(cameraIdMask) / sizeof(cameraIdMask[0]), static_cast<uint8_t>(0),
+                 K_MAX_CAMERA_NUM / MASK_LEN);
         timeRange[0] = 0;
         timeRange[1] = -1;
     }
@@ -48,44 +51,51 @@ struct IDFilter {
 void GenL2Data(float *data, int num, int dim)
 {
 #pragma omp parallel for if (num > 1)
-    for (int i = 0; i < num; ++i) {
+    for (int i = 0; i < num; ++i)
+    {
         float l2norm = 0;
-        for (int j = 0; j < dim; ++j) {
+        for (int j = 0; j < dim; ++j)
+        {
             l2norm += data[i * dim + j] * data[i * dim + j];
         }
         l2norm = sqrt(l2norm);
 
-        for (int j = 0; j < dim; ++j) {
+        for (int j = 0; j < dim; ++j)
+        {
             data[i * dim + j] = data[i * dim + j] / l2norm;
         }
     }
 }
 
-inline void AssertEqual(std::vector<uint8_t> &lData, std::vector<uint8_t> &rData)
+template <typename LeftContainer, typename RightContainer>
+inline void AssertEqual(const LeftContainer &lData, const RightContainer &rData)
 {
     ASSERT_EQ(lData.size(), rData.size());
-    for (size_t i = 0; i < lData.size(); i++) {
+    for (size_t i = 0; i < lData.size(); i++)
+    {
         ASSERT_EQ(lData[i], rData[i]) << "i: " << i << " lData: " << lData[i] << " rData: " << rData[i] << std::endl;
     }
 }
 
 void CheckSQCodes(faiss::ascend::AscendIndexSQConfig &config, faiss::ascend::AscendIndexSQ &index,
-    std::vector<float> &data, int dim, int ntotal)
+                  std::vector<float> &data, int dim, int ntotal)
 {
     int deviceCnt = config.deviceList.size();
     std::vector<uint8_t> codes;
     int totals = 0;
-    for (int i = 0; i < deviceCnt; i++) {
+    for (int i = 0; i < deviceCnt; i++)
+    {
         int deviceTotal = index.getBaseSize(config.deviceList[i]);
         std::vector<uint8_t> base(deviceTotal * dim);
-        index.getBase(config.deviceList[i], reinterpret_cast<char*>(base.data()));
+        index.getBase(config.deviceList[i], reinterpret_cast<char *>(base.data()));
         codes.insert(codes.end(), base.begin(), base.end());
         totals += deviceTotal;
     }
     EXPECT_EQ(totals, ntotal);
 
     index.reset();
-    for (auto deviceId : config.deviceList) {
+    for (auto deviceId : config.deviceList)
+    {
         int len = index.getBaseSize(deviceId);
         ASSERT_EQ(len, 0);
     }
@@ -95,10 +105,11 @@ void CheckSQCodes(faiss::ascend::AscendIndexSQConfig &config, faiss::ascend::Asc
     EXPECT_EQ(index.ntotal, ntotal);
     totals = 0;
     std::vector<uint8_t> baseData;
-    for (int i = 0; i < deviceCnt; i++) {
+    for (int i = 0; i < deviceCnt; i++)
+    {
         int deviceTotal = index.getBaseSize(config.deviceList[i]);
         std::vector<uint8_t> tmpBase(deviceTotal * dim);
-        index.getBase(config.deviceList[i], reinterpret_cast<char*>(tmpBase.data()));
+        index.getBase(config.deviceList[i], reinterpret_cast<char *>(tmpBase.data()));
         baseData.insert(baseData.end(), tmpBase.begin(), tmpBase.end());
         totals += deviceTotal;
     }
@@ -112,16 +123,17 @@ TEST(TestAscendIndexUTSQ, All)
     const int sqDim = 64;
     const uint32_t blockSize = 8 * 16384;
     const int64_t defaultMem = static_cast<int64_t>(128 * 1024 * 1024);
-    const std::initializer_list<int> devices = { 0 };
+    const std::initializer_list<int> devices = {0};
 
     std::vector<float> data(sqDim * ntotal);
     ascend::FeatureGenerator(data);
     GenL2Data(data.data(), ntotal, sqDim);
 
-    faiss::ascend::AscendIndexSQConfig sqConfig {devices, defaultMem, blockSize};
+    faiss::ascend::AscendIndexSQConfig sqConfig{devices, defaultMem, blockSize};
     faiss::ascend::AscendIndexSQ index(sqDim, faiss::ScalarQuantizer::QuantizerType::QT_8bit, TEST_METRIC_L2, sqConfig);
 
-    for (auto deviceId : sqConfig.deviceList) {
+    for (auto deviceId : sqConfig.deviceList)
+    {
         int len = index.getBaseSize(deviceId);
         ASSERT_EQ(len, 0);
     }
@@ -132,7 +144,8 @@ TEST(TestAscendIndexUTSQ, All)
     CheckSQCodes(sqConfig, index, data, sqDim, ntotal);
 
     int batch = 4;
-    for (int i = ntotal - 40; i < ntotal; i += batch) {
+    for (int i = ntotal - 40; i < ntotal; i += batch)
+    {
         int k = 10;
         std::vector<float> dist(k * batch, 0);
         std::vector<faiss::idx_t> label(k * batch, 0);
@@ -164,7 +177,7 @@ TEST(TestAscendIndexUTSQ, CopyTo)
     ascend::FeatureGenerator(data);
     GenL2Data(data.data(), ntotal, dim);
 
-    faiss::ascend::AscendIndexSQConfig conf({ 0 });
+    faiss::ascend::AscendIndexSQConfig conf({0});
     faiss::ascend::AscendIndexSQ index(dim, faiss::ScalarQuantizer::QuantizerType::QT_8bit, TEST_METRIC_L2, conf);
 
     index.train(ntotal, data.data());
@@ -180,7 +193,8 @@ TEST(TestAscendIndexUTSQ, CopyTo)
     {
         int total = 0;
         std::vector<uint8_t> code;
-        for (auto deviceId : conf.deviceList) {
+        for (auto deviceId : conf.deviceList)
+        {
             size_t size = index.getBaseSize(deviceId);
             std::vector<uint8_t> base(size * dim);
             index.getBase(deviceId, reinterpret_cast<char *>(base.data()));
@@ -196,7 +210,7 @@ TEST(TestAscendIndexUTSQ, CopyTo)
 
 TEST(TestAscendIndexUTSQ, CopyFrom)
 {
-    int  ntotal = 2000;
+    int ntotal = 2000;
     int dim = 64;
 
     std::vector<float> data(dim * ntotal);
@@ -206,7 +220,7 @@ TEST(TestAscendIndexUTSQ, CopyFrom)
     cpuIndex.train(ntotal, data.data());
     cpuIndex.add(ntotal, data.data());
 
-    faiss::ascend::AscendIndexSQConfig conf({ 0 });
+    faiss::ascend::AscendIndexSQConfig conf({0});
     faiss::ascend::AscendIndexSQ index(&idIndex, conf);
 
     index.copyFrom(&idIndex);
@@ -216,7 +230,8 @@ TEST(TestAscendIndexUTSQ, CopyFrom)
 
     {
         int sizeAscend = 0;
-        for (auto deviceId : conf.deviceList) {
+        for (auto deviceId : conf.deviceList)
+        {
             size_t size = index.getBaseSize(deviceId);
             std::vector<float> base(size * dim);
             index.getBase(deviceId, reinterpret_cast<char *>(base.data()));
@@ -228,8 +243,8 @@ TEST(TestAscendIndexUTSQ, CopyFrom)
 
 static void TestSearchWithMasks(int dim)
 {
-    std::vector<int> searchNum = { 1 };
-    faiss::ascend::AscendIndexSQConfig conf({ 0 });
+    std::vector<int> searchNum = {1};
+    faiss::ascend::AscendIndexSQConfig conf({0});
     int topk = 10;
     faiss::ascend::AscendIndexSQ index(dim, faiss::ScalarQuantizer::QuantizerType::QT_8bit, faiss::METRIC_L2, conf);
     index.verbose = true;
@@ -242,9 +257,10 @@ static void TestSearchWithMasks(int dim)
     index.train(ntotal, base.data());
     index.add(ntotal, base.data());
     int maksSize = (ntotal + 7) / 8;
-    for (size_t n = 0; n < searchNum.size(); n++) {
+    for (size_t n = 0; n < searchNum.size(); n++)
+    {
         std::vector<uint8_t> mask(maksSize * searchNum[n], 1);
-        
+
         std::vector<float> dist(searchNum[n] * topk, 0);
         std::vector<faiss::idx_t> label(searchNum[n] * topk, 0);
         index.search_with_masks(searchNum[n], queryData.data(), topk, dist.data(), label.data(), mask.data());
@@ -261,43 +277,46 @@ TEST(TestAscendIndexUTSQ, search_with_filter)
 {
     int dim = 64;
     int searchNum = 1;
-    faiss::ascend::AscendIndexSQConfig conf({ 0 });
+    faiss::ascend::AscendIndexSQConfig conf({0});
     conf.filterable = true;
     faiss::ascend::AscendIndexSQ index(dim, faiss::ScalarQuantizer::QuantizerType::QT_8bit, faiss::METRIC_L2, conf);
- 
+
     int ntotal = 128;
     std::vector<float> data(dim * ntotal);
     ascend::FeatureGenerator(data);
     GenL2Data(data.data(), ntotal, dim);
- 
+
     std::vector<int64_t> ids(ntotal, 0);
     int seed = std::chrono::system_clock::now().time_since_epoch().count();
     std::default_random_engine e1(seed);
     std::uniform_int_distribution<int32_t> id(0, std::numeric_limits<int32_t>::max());
     std::uniform_int_distribution<uint8_t> search_cid(0, std::numeric_limits<uint8_t>::max());
- 
-    for (int i = 0; i < ntotal; i++) {
+
+    for (int i = 0; i < ntotal; i++)
+    {
         ids[i] = (static_cast<int64_t>(search_cid(e1)) << 42) + (static_cast<int64_t>(id(e1)) << 10);
     }
 
     IDFilter filters[searchNum];
-    for (int i = 0; i < searchNum; i++) {
+    for (int i = 0; i < searchNum; i++)
+    {
         // 不考虑时间
         filters[i].timeRange[0] = 0;
         filters[i].timeRange[1] = 0x7fffffff;
-        for (int j = 0; j < 16; j++) {
+        for (int j = 0; j < 16; j++)
+        {
             filters[i].cameraIdMask[j] = search_cid(e1);
         }
     }
- 
+
     index.train(ntotal, data.data());
     index.add_with_ids(ntotal, data.data(), ids.data());
- 
+
     int k = 128;
     std::vector<float> dist(k * searchNum, 0);
     std::vector<faiss::idx_t> label(k * searchNum, 0);
- 
+
     index.search_with_filter(searchNum, data.data(), k, dist.data(), label.data(), &filters);
 }
 
-} // namespace ascend
+}  // namespace ascend

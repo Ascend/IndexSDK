@@ -16,14 +16,264 @@
  * -------------------------------------------------------------------------
  */
 
+#include <algorithm>
 #include <cmath>
 #include <iostream>
+#include <limits>
 
 #include "../acl_base.h"
 #include "AscendSimuExecFlow.h"
 #include "securec.h"
 
 using float16_t = uint16_t;
+
+void MatmulAtFP32Operator(aclopHandle &opHandle)
+{
+    if (opHandle.inputDesc[0].numDims < 2 || opHandle.inputDesc[1].numDims < 2)
+    {
+        return;
+    }
+
+    const size_t rows = static_cast<size_t>(opHandle.inputDesc[0].dims[0]);
+    const size_t shared = static_cast<size_t>(opHandle.inputDesc[0].dims[1]);
+    const size_t matrixRows = static_cast<size_t>(opHandle.inputDesc[1].dims[0]);
+    const size_t cols = static_cast<size_t>(opHandle.inputDesc[1].dims[1]);
+    if (shared != matrixRows || rows * shared * sizeof(float) > opHandle.inputData[0].size ||
+        shared * cols * sizeof(float) > opHandle.inputData[1].size ||
+        rows * cols * sizeof(float) > opHandle.outputData[0].size)
+    {
+        return;
+    }
+
+    const float *lhs = static_cast<const float *>(opHandle.inputData[0].data);
+    const float *rhs = static_cast<const float *>(opHandle.inputData[1].data);
+    float *output = static_cast<float *>(opHandle.outputData[0].data);
+    for (size_t row = 0; row < rows; ++row)
+    {
+        for (size_t col = 0; col < cols; ++col)
+        {
+            float value = 0.0f;
+            for (size_t inner = 0; inner < shared; ++inner)
+            {
+                value += lhs[row * shared + inner] * rhs[inner * cols + col];
+            }
+            output[row * cols + col] = value;
+        }
+    }
+}
+
+void RotateAndL2AtFP32Operator(aclopHandle &opHandle)
+{
+    const float *vectors = static_cast<const float *>(opHandle.inputData[0].data);
+    const int32_t vectorSize = *static_cast<const int32_t *>(opHandle.inputData[1].data);
+    const float *matrix = static_cast<const float *>(opHandle.inputData[2].data);
+    float *rotateResult = static_cast<float *>(opHandle.outputData[0].data);
+    float *l2Result = static_cast<float *>(opHandle.outputData[1].data);
+
+    const size_t matrixElements = opHandle.inputData[2].size / sizeof(float);
+    const size_t dim = static_cast<size_t>(std::sqrt(static_cast<double>(matrixElements)));
+    if (dim == 0 || dim * dim != matrixElements || vectorSize <= 0)
+    {
+        return;
+    }
+
+    const size_t inputRows = opHandle.inputData[0].size / (dim * sizeof(float));
+    const size_t outputRows = opHandle.outputData[0].size / (dim * sizeof(float));
+    const size_t l2Rows = opHandle.outputData[1].size / sizeof(float);
+    size_t rows = static_cast<size_t>(vectorSize);
+    rows = std::min(rows, std::min(inputRows, std::min(outputRows, l2Rows)));
+
+    bool isIdentity = true;
+    for (size_t row = 0; row < dim && isIdentity; ++row)
+    {
+        for (size_t col = 0; col < dim; ++col)
+        {
+            const float expected = row == col ? 1.0f : 0.0f;
+            if (matrix[row * dim + col] != expected)
+            {
+                isIdentity = false;
+                break;
+            }
+        }
+    }
+
+    for (size_t row = 0; row < rows; ++row)
+    {
+        const float *vector = vectors + row * dim;
+        float l2 = 0.0f;
+        for (size_t col = 0; col < dim; ++col)
+        {
+            l2 += vector[col] * vector[col];
+        }
+        l2Result[row] = l2;
+
+        float *rotated = rotateResult + row * dim;
+        if (isIdentity)
+        {
+            std::copy(vector, vector + dim, rotated);
+            continue;
+        }
+        for (size_t outCol = 0; outCol < dim; ++outCol)
+        {
+            float value = 0.0f;
+            for (size_t inCol = 0; inCol < dim; ++inCol)
+            {
+                value += vector[inCol] * matrix[outCol * dim + inCol];
+            }
+            rotated[outCol] = value;
+        }
+    }
+}
+
+void IndexCodeAndPrecomputeOperator(aclopHandle &opHandle)
+{
+    if (opHandle.inputDesc[1].numDims < 2)
+    {
+        return;
+    }
+
+    const int32_t vectorSize = *static_cast<const int32_t *>(opHandle.inputData[0].data);
+    const size_t blockRows = static_cast<size_t>(opHandle.inputDesc[1].dims[0]);
+    const size_t dim = static_cast<size_t>(opHandle.inputDesc[1].dims[1]);
+    if (vectorSize <= 0 || dim == 0 || dim % 8 != 0)
+    {
+        return;
+    }
+
+    const float *vectors = static_cast<const float *>(opHandle.inputData[1].data);
+    const float *centroid = static_cast<const float *>(opHandle.inputData[3].data);
+    uint8_t *codes = static_cast<uint8_t *>(opHandle.outputData[0].data);
+    float *l2Result = static_cast<float *>(opHandle.outputData[1].data);
+    float *l1Result = static_cast<float *>(opHandle.outputData[2].data);
+    const size_t codeSize = dim / 8;
+    const size_t codeRows = opHandle.outputData[0].size / codeSize;
+    const size_t l2Rows = opHandle.outputData[1].size / sizeof(float);
+    const size_t l1Rows = opHandle.outputData[2].size / sizeof(float);
+    const size_t rows =
+        std::min(static_cast<size_t>(vectorSize), std::min(blockRows, std::min(codeRows, std::min(l2Rows, l1Rows))));
+
+    std::fill(codes, codes + opHandle.outputData[0].size, static_cast<uint8_t>(0));
+    std::fill(l2Result, l2Result + l2Rows, 0.0f);
+    std::fill(l1Result, l1Result + l1Rows, 0.0f);
+    for (size_t row = 0; row < rows; ++row)
+    {
+        float residualL2 = 0.0f;
+        float residualL1 = 0.0f;
+        for (size_t col = 0; col < dim; ++col)
+        {
+            const float residual = vectors[row * dim + col] - centroid[col];
+            residualL2 += residual * residual;
+            residualL1 += std::abs(residual);
+            if (residual >= 0.0f)
+            {
+                codes[row * codeSize + col / 8] |= static_cast<uint8_t>(1U << (col % 8));
+            }
+        }
+        l2Result[row] = residualL2;
+        l1Result[row] = residualL1;
+    }
+}
+
+void DistanceIVFRabitqL2FP32Operator(aclopHandle &opHandle)
+{
+    float *distances = static_cast<float *>(opHandle.outputData[0].data);
+    float *workspace = static_cast<float *>(opHandle.outputData[1].data);
+    uint16_t *flags = static_cast<uint16_t *>(opHandle.outputData[2].data);
+    std::fill(distances, distances + opHandle.outputData[0].size / sizeof(float), 0.0f);
+    std::fill(workspace, workspace + opHandle.outputData[1].size / sizeof(float), 0.0f);
+    std::fill(flags, flags + opHandle.outputData[2].size / sizeof(uint16_t), static_cast<uint16_t>(1));
+}
+
+void TopkIvfRabitqFp32Operator(aclopHandle &opHandle)
+{
+    const int64_t *idAddresses = static_cast<const int64_t *>(opHandle.inputData[2].data);
+    const uint32_t *blockSizes = static_cast<const uint32_t *>(opHandle.inputData[3].data);
+    const int64_t *blocksPerQuery = static_cast<const int64_t *>(opHandle.inputData[4].data);
+    float *outDistances = static_cast<float *>(opHandle.outputData[0].data);
+    uint64_t *outLabels = static_cast<uint64_t *>(opHandle.outputData[1].data);
+
+    const size_t batch = opHandle.inputData[4].size / sizeof(int64_t);
+    const size_t outputCount = opHandle.outputData[1].size / sizeof(uint64_t);
+    if (batch == 0 || outputCount % batch != 0)
+    {
+        return;
+    }
+    const size_t k = outputCount / batch;
+    std::fill(outDistances, outDistances + outputCount, std::numeric_limits<float>::infinity());
+    std::fill(outLabels, outLabels + outputCount, std::numeric_limits<uint64_t>::max());
+
+    size_t blockCursor = 0;
+    const size_t blockCapacity =
+        std::min(opHandle.inputData[2].size / sizeof(int64_t), opHandle.inputData[3].size / sizeof(uint32_t));
+    for (size_t query = 0; query < batch; ++query)
+    {
+        const size_t queryBlocks = blocksPerQuery[query] > 0 ? static_cast<size_t>(blocksPerQuery[query]) : 0;
+        size_t rank = 0;
+        for (size_t block = 0; block < queryBlocks && blockCursor + block < blockCapacity && rank < k; ++block)
+        {
+            const size_t current = blockCursor + block;
+            const auto *ids = reinterpret_cast<const int64_t *>(idAddresses[current]);
+            if (ids == nullptr)
+            {
+                continue;
+            }
+            for (size_t i = 0; i < blockSizes[current] && rank < k; ++i, ++rank)
+            {
+                outLabels[query * k + rank] = static_cast<uint64_t>(ids[i]);
+                outDistances[query * k + rank] = static_cast<float>(rank);
+            }
+        }
+        blockCursor += queryBlocks;
+    }
+}
+
+void IvfpqSubspaceDistanceOperator(aclopHandle &opHandle)
+{
+    float *distances = static_cast<float *>(opHandle.outputData[0].data);
+    std::fill(distances, distances + opHandle.outputData[0].size / sizeof(float), 0.0f);
+}
+
+void IvfpqSearchDistanceL2Operator(aclopHandle &opHandle)
+{
+    const int64_t *baseSizes = static_cast<const int64_t *>(opHandle.inputData[3].data);
+    const auto *labelBase = static_cast<const uint64_t *>(opHandle.inputData[5].data);
+    const int64_t *labelOffsets = static_cast<const int64_t *>(opHandle.inputData[6].data);
+    uint64_t *finalLabels = static_cast<uint64_t *>(opHandle.outputData[3].data);
+    float *finalDistances = static_cast<float *>(opHandle.outputData[4].data);
+    uint16_t *flags = static_cast<uint16_t *>(opHandle.outputData[5].data);
+
+    const size_t finalCount = opHandle.outputData[3].size / sizeof(uint64_t);
+    const size_t maxTopk = opHandle.inputData[4].size / sizeof(int32_t);
+    if (maxTopk == 0 || finalCount % maxTopk != 0)
+    {
+        return;
+    }
+    const size_t batch = finalCount / maxTopk;
+    const size_t blockCount = opHandle.inputData[3].size / sizeof(int64_t) / batch;
+    std::fill(finalLabels, finalLabels + finalCount, std::numeric_limits<uint64_t>::max());
+    std::fill(finalDistances, finalDistances + finalCount, std::numeric_limits<float>::infinity());
+    std::fill(flags, flags + opHandle.outputData[5].size / sizeof(uint16_t), static_cast<uint16_t>(1));
+
+    for (size_t query = 0; query < batch; ++query)
+    {
+        size_t rank = 0;
+        for (size_t block = 0; block < blockCount && rank < maxTopk; ++block)
+        {
+            const size_t pos = query * blockCount + block;
+            const int64_t size = baseSizes[pos];
+            const int64_t offset = labelOffsets[pos];
+            if (size <= 0 || offset < 0)
+            {
+                continue;
+            }
+            for (int64_t i = 0; i < size && rank < maxTopk; ++i, ++rank)
+            {
+                finalLabels[query * maxTopk + rank] = labelBase[offset + i];
+                finalDistances[query * maxTopk + rank] = static_cast<float>(rank);
+            }
+        }
+    }
+}
 
 void resetFlat(aclopHandle &opHandle)
 {
@@ -760,11 +1010,13 @@ void simuOpInstall()
     REG_OP("TransdataDist", simuOpTransdataDist);
     REG_OP("TransdataIdx", simuOpTransdataIdx);
     REG_OP("TopkFlat", simuTopkFlat);
+    REG_OP("TopkFlatFp32", simuTopkFlat);
     REG_OP("TopkIvf", simuTopkIvf);
     REG_OP("DistanceComputeFlatMin64", simuDistanceComputeFlatMin64);
     REG_OP("aclrtMemcpyAsync", aclrtMemcpyAsyncOperator);
     REG_OP("L2Norm", simuL2Norm);
     REG_OP("DistanceFlatL2MinsAt", simuDistanceFlatL2MinsAt);
+    REG_OP("DistanceFlatL2MinsAtFP32", simuDistanceFlatL2MinsAt);
     REG_OP("DistanceMaskGenerator", simuDistanceMaskGenerator);
     REG_OP("DistanceFlatHamming", simuDistanceFlatHamming);
     REG_OP("DistanceFlatHammingWithMask", simuDistanceFlatHammingWithMask);
@@ -822,6 +1074,15 @@ void simuOpInstall()
     REG_OP("AscendcDistanceInt8CosMaxsWithMask", simuAscendcDistanceInt8CosMaxsWithMask);
     REG_OP("DistanceFlatL2", simuDistanceFlatL2);
     REG_OP("CagraRabitq", simuCagraRabitq);
+    REG_OP("MatmulAtFP32", MatmulAtFP32Operator);
+    REG_OP("RotateAndL2AtFP32", RotateAndL2AtFP32Operator);
+    REG_OP("IndexCodeAndPrecompute", IndexCodeAndPrecomputeOperator);
+    REG_OP("DistanceIVFRabitqL2FP32", DistanceIVFRabitqL2FP32Operator);
+    REG_OP("DistanceIVFRabitqL2FP32Simt", DistanceIVFRabitqL2FP32Operator);
+    REG_OP("TopkIvfRabitqFp32", TopkIvfRabitqFp32Operator);
+    REG_OP("AscendcIvfpqSubspaceDistance", IvfpqSubspaceDistanceOperator);
+    REG_OP("AscendcIvfpqSearchDistanceL2", IvfpqSearchDistanceL2Operator);
+    REG_OP("AscendcIvfpqSearchDistanceL2Simt", IvfpqSearchDistanceL2Operator);
     REG_OP("DistanceFlatIP", simuDistanceFlatIP);
     REG_OP("DistanceBinaryFloat", simuDistanceBinaryFloat);
     REG_OP("DistanceBatchValMaskGenerator", simuDistanceBatchValMaskGenerator);
@@ -895,11 +1156,13 @@ void simuOpUninstall()
     UNREG_OP("VecL2Sqr");
     UNREG_OP("TransdataRaw");
     UNREG_OP("TopkFlat");
+    UNREG_OP("TopkFlatFp32");
     UNREG_OP("TopkIvf");
     UNREG_OP("DistanceComputeFlatMin64");
     UNREG_OP("aclrtMemcpyAsync");
     UNREG_OP("L2Norm");
     UNREG_OP("DistanceFlatL2MinsAt");
+    UNREG_OP("DistanceFlatL2MinsAtFP32");
     UNREG_OP("DistanceMaskGenerator");
     UNREG_OP("DistanceFlatHamming");
     UNREG_OP("DistanceFlatHammingWithMask");
@@ -958,6 +1221,15 @@ void simuOpUninstall()
     UNREG_OP("DistanceFlatL2");
     UNREG_OP("DistanceFlatIP");
     UNREG_OP("CagraRabitq");
+    UNREG_OP("MatmulAtFP32");
+    UNREG_OP("RotateAndL2AtFP32");
+    UNREG_OP("IndexCodeAndPrecompute");
+    UNREG_OP("DistanceIVFRabitqL2FP32");
+    UNREG_OP("DistanceIVFRabitqL2FP32Simt");
+    UNREG_OP("TopkIvfRabitqFp32");
+    UNREG_OP("AscendcIvfpqSubspaceDistance");
+    UNREG_OP("AscendcIvfpqSearchDistanceL2");
+    UNREG_OP("AscendcIvfpqSearchDistanceL2Simt");
     UNREG_OP("DistanceBinaryFloat");
     UNREG_OP("DistanceBatchValMaskGenerator");
     UNREG_OP("AscendcDistanceBatchMaskGenerator");

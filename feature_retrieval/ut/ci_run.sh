@@ -21,16 +21,22 @@ CUR_DIR=$(dirname "$(readlink -f "$0")")
 if [ ! -d "${CUR_DIR}/../secondparty/" ];then
     mkdir -p "${CUR_DIR}/../secondparty/"
 fi
-cp -r "${CUR_DIR}/../../huawei_secure_c" "${CUR_DIR}/../secondparty/"
+if [ ! -d "${CUR_DIR}/../secondparty/huawei_secure_c" ]; then
+    cp -r "${CUR_DIR}/../../huawei_secure_c" "${CUR_DIR}/../secondparty/"
+fi
 if [ ! -d "${CUR_DIR}/../opensource/" ];then
     mkdir -p "${CUR_DIR}/../opensource/"
 fi
-cp -r "${CUR_DIR}/../../mockcpp" "${CUR_DIR}/../opensource/"
+if [ ! -d "${CUR_DIR}/../opensource/mockcpp" ]; then
+    cp -r "${CUR_DIR}/../../mockcpp" "${CUR_DIR}/../opensource/"
+fi
 SECUREC_HOME="${CUR_DIR}"/../secondparty/huawei_secure_c
 ASAN_LOG=asan_log
+BUILD_JOBS="${BUILD_JOBS:-$(nproc)}"
 
 coverage_option="off"
 asan_option="off"
+FAISS_HOME="${FAISS_HOME:-/usr/local/faiss}"
 
 function usage() {
     echo "usage:"
@@ -41,7 +47,8 @@ function usage() {
 
 function set_env() {
     export LD_LIBRARY_PATH=/usr/local/protobuf/lib:"${LD_LIBRARY_PATH}"
-    export LD_LIBRARY_PATH=/usr/local/faiss/lib:"${LD_LIBRARY_PATH}"
+    export LD_LIBRARY_PATH="${FAISS_HOME}"/lib:"${LD_LIBRARY_PATH}"
+    export LD_LIBRARY_PATH="${SECUREC_HOME}"/lib:"${LD_LIBRARY_PATH}"
     export LD_LIBRARY_PATH=/opt/OpenBLAS/lib:"${LD_LIBRARY_PATH}"
     export LD_LIBRARY_PATH="${CUR_DIR}"/../opensource/AscendCLMock/acl/lib:"${LD_LIBRARY_PATH}"
     export LD_LIBRARY_PATH="${CUR_DIR}"/../opensource/AscendCLMock/securec/lib:"${LD_LIBRARY_PATH}"
@@ -64,7 +71,7 @@ function build_opensource() {
     cd build
     cmake ../ -DSECUREC_HOME="${SECUREC_HOME}"
     make clean
-    make -j
+    make -j"${BUILD_JOBS}"
     make install
     popd
 }
@@ -88,7 +95,7 @@ function build_mockcpp() {
     cd build
     cmake ../ -DCMAKE_INSTALL_PREFIX=../output
     make clean
-    make -j
+    make -j"${BUILD_JOBS}"
     make install
     popd
 }
@@ -98,7 +105,7 @@ function build_securec() {
     cd "${SECUREC_HOME}"
     make CC=gcc
     cd lib
-    ln -s libboundscheck.so libsecurec.so
+    ln -sf libboundscheck.so libsecurec.so
     popd
 }
 
@@ -106,7 +113,7 @@ function gen_report() {
     cd "${CUR_DIR}"
     mkdir -p ./output/coverage/summary
     mkdir -p ./output/coverage/report
-    
+
     cd ./build
     echo "========= Testing is running pls wait ========="
     make
@@ -123,7 +130,7 @@ function gen_report() {
             exit 1
         fi
     else
-        ctest -V -R TestAscendIndexUT
+        ctest -V -R '^TestAscendIndexUT$'
     fi
 
     echo "========= Testing finish ========="
@@ -135,7 +142,7 @@ function gen_report() {
     lcov --rc lcov_excl_br_line='(ASCEND_THROW_.*|FAISS_THROW_.*|APP_LOG.*|APPERR_RETURN_.*)' \
          --rc lcov_branch_coverage=1 -c -d ./ --filter branch -o ./output/coverage/summary/total.info \
           --ignore-errors inconsistent --ignore-errors mismatch
-    lcov -r ./output/coverage/summary/total.info '*.hpp' '*.inl' '*ut/*' '/usr/include/*' '/usr/local/*' '*opensource*' \
+    lcov -r ./output/coverage/summary/total.info '*.hpp' '*.inl' '*ut/*' '/usr/include/*' '/usr/local/*' '*opensource*' '*gtest_install/*' \
     '*/src/faiss/ascend/*.h' '*/src/faiss/ascend/custom/impl/*.h' '*/ascend/custom/impl/*.h' '*/ascenddaemon/*.h' \
     --rc lcov_branch_coverage=1 -o ./output/coverage/summary/total.info --ignore-errors inconsistent \
          --ignore-errors unused
@@ -173,12 +180,13 @@ function build_uint_test() {
 
     cmake  "${CUR_DIR}"/../src/ascendfaiss/ut \
         -DCMAKE_INSTALL_PREFIX="../output" \
+        -DFAISS_HOME="${FAISS_HOME}" \
         -DUT_COVERAGE="${coverage_option}" \
         -DASAN_OPTION="${asan_option}" \
         -DSECUREC_HOME="${SECUREC_HOME}"
 
     make clean
-    make -j
+    make -j"${BUILD_JOBS}"
     make install
 }
 

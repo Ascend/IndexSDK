@@ -16,23 +16,25 @@
  * -------------------------------------------------------------------------
  */
 
-
 #ifndef LIBASCENDCL_ASCENDSIMUDEVICE_H
 #define LIBASCENDCL_ASCENDSIMUDEVICE_H
 
+#include <array>
 #include <cstdint>
-#include <vector>
+#include <map>
 #include <mutex>
 #include <thread>
 #include <unordered_set>
-#include <map>
+#include <vector>
+
 #include "../acl.h"
 #include "AscendSimuExecFlow.h"
 
 constexpr uint32_t MAX_DEVICE = 64;
 
-class AscendSimuDevice {
-public:
+class AscendSimuDevice
+{
+   public:
     explicit AscendSimuDevice(int32_t deviceId, uint8_t aicore = 0) : m_deviceId(deviceId), m_aicore(aicore) {};
     virtual ~AscendSimuDevice();
     void Init();
@@ -51,19 +53,19 @@ public:
     bool StreamIsRunning(aclrtStream stream);
     size_t GetRefCnt() const;
 
-private:
+   private:
     void CreateStreamExecFlow(aclrtStream stream);
     void DestoryStreamExecFlow(aclrtStream stream);
     void ClearAll();
 
     int32_t m_deviceId;
-    size_t m_refCnt {0}; // device引用次数
-    aclrtContext m_defaultContext {nullptr};
-    uint8_t m_aicore {0};
+    size_t m_refCnt{0};  // device引用次数
+    aclrtContext m_defaultContext{nullptr};
+    uint8_t m_aicore{0};
 
-    static thread_local std::vector<aclrtContext> m_activeContexts;
+    static thread_local std::array<aclrtContext, MAX_DEVICE> m_activeContexts;
     std::vector<aclrtContext> m_ctxts;
     std::map<aclrtStream, AscendSimuExecFlow *> m_flowMap;
 };
 
-#endif // LIBASCENDCL_ASCENDSIMUDEVICE_H
+#endif  // LIBASCENDCL_ASCENDSIMUDEVICE_H

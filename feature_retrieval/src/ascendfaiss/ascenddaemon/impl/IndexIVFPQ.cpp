@@ -320,11 +320,11 @@ APP_ERROR IndexIVFPQ::copyPQBlocks(int listId, size_t totalVecsInList, size_t co
 
 APP_ERROR IndexIVFPQ::getListVectorsReshaped(int listId, std::vector<unsigned char> &reshaped) const
 {
-    size_t totalVecsInList;
-    size_t codeSizePerVector;
-    size_t totalBytes;
-    size_t destOffset;
-    size_t processedVecs;
+    size_t totalVecsInList = 0;
+    size_t codeSizePerVector = 0;
+    size_t totalBytes = 0;
+    size_t destOffset = 0;
+    size_t processedVecs = 0;
     auto ret = getListInitialize(listId, reshaped, totalVecsInList, codeSizePerVector, totalBytes);
     APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, ret, "Failed to get list initialize for list %d: %d", listId, ret);
 
@@ -441,8 +441,9 @@ APP_ERROR IndexIVFPQ::updateDeviceData(int listId, size_t newVecNum, std::vector
     {
         listVecNum[listId] = 0;
 
-        AscendTensor<uint8_t, DIMS_2> newPQCodesTensor(
-            newCodes.data(), {static_cast<int32_t>(newVecNum), static_cast<int32_t>(bytesPerVector)});
+        const size_t pqBytesPerVector = static_cast<size_t>(M);
+        const int32_t codeShape[DIMS_2] = {static_cast<int32_t>(newVecNum), static_cast<int32_t>(pqBytesPerVector)};
+        AscendTensor<uint8_t, DIMS_2> newPQCodesTensor(newCodes.data(), codeShape);
 
         APP_ERROR ret = resizeBasePQ(listId, newVecNum);
         APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, ret, "Failed to resize base PQ for list %d: %d", listId, ret);
@@ -463,14 +464,16 @@ APP_ERROR IndexIVFPQ::updateDeviceData(int listId, size_t newVecNum, std::vector
 
 APP_ERROR IndexIVFPQ::deletePQCodes(int listId, size_t numVecs, const idx_t *indices)
 {
-    size_t currentVecNum;
+    size_t currentVecNum = 0;
     std::vector<idx_t> hostIds;
     std::vector<bool> toDelete;
     std::vector<idx_t> deletedIds;
-    size_t deleteCount;
+    size_t deleteCount = 0;
 
     APP_ERROR ret = prepareDelete(listId, numVecs, indices, currentVecNum, hostIds, toDelete, deletedIds, deleteCount);
     APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, ret, "Failed to prepare delete for list %d: %d", listId, ret);
+
+    APPERR_RETURN_IF(deleteCount == 0, APP_ERR_OK);
 
     size_t bytesPerVector = static_cast<size_t>(M);
     std::vector<uint8_t> newCodes;
@@ -1778,7 +1781,6 @@ void IndexIVFPQ::runL1DistOp(int batch, AscendTensor<float, DIMS_2> &queries, As
     topkOpOutput->emplace_back(aclCreateDataBuffer(vmdists.data(), vmdists.getSizeInBytes()));
     topkOpOutput->emplace_back(aclCreateDataBuffer(opFlag.data(), opFlag.getSizeInBytes()));
     op->exec(*topkOpInput, *topkOpOutput, stream);
-    return;
 }
 
 void IndexIVFPQ::runL2DistOp(int batch, AscendTensor<float, DIMS_2> &queries, AscendTensor<float, DIMS_3> &codeBook,
@@ -1800,7 +1802,6 @@ void IndexIVFPQ::runL2DistOp(int batch, AscendTensor<float, DIMS_2> &queries, As
     topkOpOutput->emplace_back(aclCreateDataBuffer(dists.data(), dists.getSizeInBytes()));
 
     op->exec(*topkOpInput, *topkOpOutput, stream);
-    return;
 }
 
 void IndexIVFPQ::runL3DistOp(
@@ -1838,7 +1839,6 @@ void IndexIVFPQ::runL3DistOp(
     distOpOutput->emplace_back(aclCreateDataBuffer(topkValueFinal.data(), topkValueFinal.getSizeInBytes()));
     distOpOutput->emplace_back(aclCreateDataBuffer(opFlag.data(), opFlag.getSizeInBytes()));
     op->exec(*distOpInput, *distOpOutput, stream);
-    return;
 }
 
 APP_ERROR IndexIVFPQ::resetL3TopkOp()
@@ -2219,7 +2219,8 @@ APP_ERROR IndexIVFPQ::searchImplL3(AscendTensor<int64_t, DIMS_2> &l1TopNprobeInd
     };
 
     std::vector<int64_t> localTopNprobeIndicesVec(batch * localProbeCount, -1);
-    AscendTensor<int64_t, DIMS_2> localTopNprobeIndicesHost(localTopNprobeIndicesVec.data(), {batch, localProbeCount});
+    AscendTensor<int64_t, DIMS_2> localTopNprobeIndicesHost(
+        localTopNprobeIndicesVec.data(), {static_cast<int>(batch), static_cast<int>(localProbeCount)});
     for (size_t qIdx = 0; qIdx < batch; qIdx++)
     {
         for (size_t probId = 0; probId < localListIds[qIdx].size(); probId++)

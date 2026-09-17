@@ -126,6 +126,19 @@ void AscendIndexIVFFlatImpl::copyFromCentroids(const faiss::IndexIVFFlat *index)
                                centroidsSize * sizeof(float), ACL_MEMCPY_HOST_TO_DEVICE);
         FAISS_THROW_IF_NOT_FMT(ret == ACL_SUCCESS, "Failed to copy centroids to device %d: %d", deviceId, ret);
     }
+
+    // Keep both assignment paths in sync with the uploaded device centroids.
+    // Otherwise an index initialized with copyFrom cannot add new vectors:
+    // the CPU quantizer is empty and assignIndex has no coarse centroids.
+    FAISS_THROW_IF_NOT_MSG(pQuantizerImpl && pQuantizerImpl->cpuQuantizer, "cpuQuantizer is not initialized");
+    pQuantizerImpl->cpuQuantizer->reset();
+    pQuantizerImpl->cpuQuantizer->add(nlist, centroids);
+    pQuantizerImpl->cpuQuantizer->is_trained = true;
+
+    FAISS_THROW_IF_NOT_MSG(assignIndex != nullptr, "assignIndex is not initialized");
+    ::ascend::AscendTensor<float, ::ascend::DIMS_2> centroidsTensor(centroidsTmp.data(), {nlist, intf_->d});
+    auto ret = assignIndex->addVectorsAsCentroid(centroidsTensor);
+    FAISS_THROW_IF_NOT_FMT(ret == ::ascend::APP_ERR_OK, "Failed to initialize assignment centroids: %d", ret);
 }
 
 void AscendIndexIVFFlatImpl::copyFromIVF(const faiss::IndexIVFFlat *index)
@@ -188,13 +201,19 @@ void AscendIndexIVFFlatImpl::copyTo(faiss::IndexIVFFlat *index) const
     APP_LOG_INFO("AscendIndexIVFFlat copyTo operation started.\n");
     FAISS_THROW_IF_NOT_MSG(index != nullptr, "index is nullptr.");
     FAISS_THROW_IF_NOT_MSG(this->intf_->is_trained, "Index is not trained");
-    index->reset();
+    // A default-constructed faiss::IndexIVFFlat has no inverted lists yet;
+    // calling reset() on it dereferences a null invlists pointer in Faiss.
+    if (index->ntotal > 0)
+    {
+        index->reset();
+    }
     index->d = this->intf_->d;
     index->metric_type = this->intf_->metric_type;
     index->is_trained = this->intf_->is_trained;
     index->nlist = nlist;
     index->nprobe = nprobe;
     index->cp = this->ivfConfig.cp;
+    index->code_size = static_cast<size_t>(index->d) * sizeof(float);
 
     faiss::IndexFlat *quantizer = nullptr;
     if (this->intf_->metric_type == faiss::METRIC_INNER_PRODUCT)
@@ -217,7 +236,7 @@ void AscendIndexIVFFlatImpl::copyTo(faiss::IndexIVFFlat *index) const
     }
     index->quantizer = quantizer;
     index->own_fields = true;
-    faiss::InvertedLists *ivf = new faiss::ArrayInvertedLists(nlist, index->d * sizeof(float));
+    faiss::InvertedLists *ivf = new faiss::ArrayInvertedLists(nlist, index->code_size);
     index->replace_invlists(ivf, true);
     if (this->intf_->is_trained)
     {
