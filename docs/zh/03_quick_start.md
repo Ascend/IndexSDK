@@ -6,7 +6,7 @@
 
 开始之前请确认：
 
-- **硬件**：支持 Atlas 推理系列产品、Atlas 800I A2、Atlas 800I A3。可参见“[支持的硬件和操作系统](./01_introduction.md#支持的硬件和操作系统)”。
+- **硬件**：支持 Atlas 推理系列产品、Atlas 800I A2、Atlas 800I A3、Ascend 950PR 系列产品。可参见“[支持的硬件和操作系统](./01_introduction.md#支持的硬件和操作系统)”。
 - **Docker**：已安装并正确配置 Docker 环境，且当前用户可运行容器。
 - **Ascend 驱动**：已安装并配置好 Ascend 驱动（npu-smi info 命令可正常查询到 NPU 信息）。
 
@@ -20,12 +20,14 @@
     对于 Atlas 推理系列产品，可在安装昇腾 AI 处理器的服务器执行 npu-smi info 命令进行查询，将查询到的"Name"最后一位数字删除，即是npu_type的取值
     对于 Atlas 800I A2 推理服务器，可在安装昇腾 AI 处理器的服务器执行 npu-smi info 命令进行查询，查询到的"Name"即是npu_type的取值。
     对于 Atlas 800I A3 超节点服务器，可以通过 npu-smi info -t board -i 0 -c 0 命令进行查询，获取NPU Name信息，910_NPU Name即是npu_type的取值。
+    对于 Ascend 950PR 系列产品，请将npu_type设置为“Ascend950PR”。
 
    | 芯片型号 | 拉取命令 |
    |---------|---------|
    | 310P | `docker pull swr.cn-south-1.myhuaweicloud.com/ascendhub/indexsdk:26.1.0-cann9.1.0-310p-ubuntu22.04-py3.12` |
    | A3 | `docker pull swr.cn-south-1.myhuaweicloud.com/ascendhub/indexsdk:26.1.0-cann9.1.0-a3-ubuntu22.04-py3.12` |
    | 910b | `docker pull swr.cn-south-1.myhuaweicloud.com/ascendhub/indexsdk:26.1.0-cann9.1.0-910b-ubuntu22.04-py3.12` |
+   | 950PR | `docker pull swr.cn-south-1.myhuaweicloud.com/ascendhub/indexsdk:26.1.0-cann9.1.0-950-ubuntu22.04-py3.12` |
 
 ### 1.2 环境预检查
 
