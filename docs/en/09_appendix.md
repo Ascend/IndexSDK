@@ -244,7 +244,7 @@ Currently, retrieval supports only the standard mode, in which retrieval service
 1. Generate the operators required for the algorithm. For details about the algorithm, see [Algorithm Introduction](./05_user_guide.md#algorithm-introduction).
 2. Transfer the following dependencies to the device side.
     - openblas: `/opt/OpenBLAS/lib`
-    - Faiss: `/usr/local/faiss/faiss1.10.0/lib`
+    - Faiss: `/usr/local/faiss/lib`
     - Runtime toolkit shared objects: `/usr/local/AscendMiniOSRun/acllib/lib64` and `/usr/local/AscendMiniOSRun/aarch64-linux/data`
     - Retrieval shared objects: `${MX_INDEX_HOME}/mxIndex/host/lib`, where `${MX_INDEX_HOME}` is the installation directory of Index SDK.
     - `libgfortran.so` in the host-side compiler: `/usr/lib/aarch64-linux-gnu/libgfortran.so*`

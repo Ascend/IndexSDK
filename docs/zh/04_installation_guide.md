@@ -119,7 +119,8 @@ Python 安装好后，pip 所需依赖名称、对应版本及获取建议请参
 
 - 请在安装 Faiss 之前，先完成上一节 OpenBLAS 的安装。
 - Index SDK 构建脚本默认构建基于 Faiss 1.10.x 的单版本业务动态库。如果需要使用 IVFRaBitQ/RaBitQ 等依赖 Faiss 1.14 的特性，可指定构建基于 Faiss 1.14.1 的单版本业务动态库（使用时需对应链接 Faiss 1.14.1 的业务动态库、头文件和 libfaiss.so）；如果需要同时兼容 Faiss 1.10.x 和 Faiss 1.14.1，可在构建时开启多版本业务动态库共存。使用非 IVFRaBitQ/RaBitQ 特性且需要兼容老环境时，可选择 Faiss 1.10.x 版本业务动态库。
-- 推荐将不同 Faiss 版本安装到相互独立的目录，例如 `/usr/local/faiss/faiss1.10.0` 和 `/usr/local/faiss/faiss1.14.1`。不建议通过覆盖 `/usr/local/lib/libfaiss.so` 切换版本，用户编译和运行程序时应通过 `-I`、`-L` 和 `LD_LIBRARY_PATH` 显式选择需要的 Faiss 版本。
+- 推荐将不同 Faiss 版本安装到相互独立的目录，例如 `/usr/local/faiss1.10.0` 和 `/usr/local/faiss1.14.1`。不建议通过覆盖 `/usr/local/lib/libfaiss.so` 切换版本，用户编译和运行程序时应通过 `-I`、`-L` 和 `LD_LIBRARY_PATH` 显式选择需要的 Faiss 版本。
+- Faiss 安装路径采用平级结构（如 `/usr/local/faiss1.10.0`、`/usr/local/faiss1.14.1`），并通过软链接 `/usr/local/faiss` 指向当前使用的版本。安装完成后执行 `ln -sf /usr/local/faiss1.10.0 /usr/local/faiss` 创建默认软链接（默认指向 Faiss 1.10.0）；需要切换到 Faiss 1.14.1 时执行 `ln -sf /usr/local/faiss1.14.1 /usr/local/faiss`。后续文档中引用 Faiss 路径时统一使用 `/usr/local/faiss`（如 `/usr/local/faiss/include`、`/usr/local/faiss/lib`），不再写死版本号。
 - 此处仅提供 Faiss v1.10.0 的安装参考，具体安装步骤请以实际 Faiss 版本和环境为准。
 
 > [!NOTE]
@@ -200,14 +201,14 @@ Python 安装好后，pip 所需依赖名称、对应版本及获取建议请参
 
     > [!NOTE]
     > - 编译该 Faiss 1.10.0 需要 CMake 的版本不低于 CMake 3.24.0，如果编译 Faiss 时提示 CMake 版本过低，请参考[编译 Faiss 1.10.0 时，CMake 出现报错信息](./07_faq.md#编译faiss-1100时cmake出现报错信息)解决。
-    > - Faiss 默认安装目录为 `/usr/local/lib`，如需指定安装目录，例如 `install_path=/usr/local/faiss/faiss1.10.0`，则在 CMake 编译配置中添加 `-DCMAKE_INSTALL_PREFIX=${install_path}` 选项即可。
+    > - Faiss 默认安装目录为 `/usr/local/lib`，如需指定安装目录，例如 `install_path=/usr/local/faiss1.10.0`，则在 CMake 编译配置中添加 `-DCMAKE_INSTALL_PREFIX=${install_path}` 选项即可。
     >
     > ```bash
-    > install_path=/usr/local/faiss/faiss1.10.0
+    > install_path=/usr/local/faiss1.10.0
     > cmake -B build . -DFAISS_ENABLE_GPU=OFF -DFAISS_ENABLE_PYTHON=OFF -DBUILD_TESTING=OFF -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${install_path}
     > ```
     >
-    > - 使用 IVFRaBitQ/RaBitQ 特性时，需要额外安装 Faiss 1.14.1。建议使用独立安装目录，例如 `/usr/local/faiss/faiss1.14.1`，并在编译配置中设置 `-DCMAKE_INSTALL_PREFIX=/usr/local/faiss/faiss1.14.1`。
+    > - 使用 IVFRaBitQ/RaBitQ 特性时，需要额外安装 Faiss 1.14.1。建议使用独立安装目录，例如 `/usr/local/faiss1.14.1`，并在编译配置中设置 `-DCMAKE_INSTALL_PREFIX=/usr/local/faiss1.14.1`。
 
 6. 配置系统库查找路径的环境变量。
 
@@ -233,7 +234,7 @@ Python 安装好后，pip 所需依赖名称、对应版本及获取建议请参
 > [!NOTE]
 > 如果在 openEuler 系统中编译 Faiss 后报错，请参见[链接 libfaiss.so 时，返回 undefined reference 错误](./07_faq.md#链接libfaissso时返回undefined-reference错误)解决。
 
-#### 安装 AscendMiniOS（可选）
+#### 安装 AscendMiniOs（可选）
 
 除了前述依赖外，还需要根据是否需要使用 ILFlat 算法选择安装**开放态场景包**。
 
@@ -243,8 +244,8 @@ Python 安装好后，pip 所需依赖名称、对应版本及获取建议请参
 ```bash
 unzip Ascend-cann-device-sdk_{version}_linux-{arch}.zip
 # 解压得到 CANN-runtime-*-minios.{arch}.run
-./CANN-runtime-*-minios.{arch}.run --devel --install-path=/usr/local/AscendMiniOS
-./CANN-runtime-*-minios.{arch}.run --run --install-path=/usr/local/AscendMiniOSRun
+./CANN-runtime-*-minios.{arch}.run --devel --install-path=/usr/local/AscendMiniOs
+./CANN-runtime-*-minios.{arch}.run --run --install-path=/usr/local/AscendMiniOsRun
 ```
 
 ## 安装方式
@@ -358,12 +359,13 @@ mxIndex/include/ascend -> faiss/ascend
 如果应用程序直接包含 Faiss 头文件或调用 Faiss 接口，例如 `faiss::read_index`、`faiss::write_index` 或 `faiss::IndexIVFRaBitQ`，还需要在编译和运行时显式选择与 `--faiss-version` 一致的 Faiss 版本。以安装路径 `/usr/local/Ascend/` 为例：
 
 ```bash
-# 非IVFRaBitQ/RaBitQ业务场景，使用Faiss 1.10.x
-export LD_LIBRARY_PATH=/usr/local/Ascend/mxIndex/host/lib:/usr/local/faiss/faiss1.10.0/lib:$LD_LIBRARY_PATH
+# 切换到 Faiss 1.10.x（默认，非 IVFRaBitQ/RaBitQ 场景）
+ln -sf /usr/local/faiss1.10.0 /usr/local/faiss
+export LD_LIBRARY_PATH=/usr/local/Ascend/mxIndex/host/lib:/usr/local/faiss/lib:$LD_LIBRARY_PATH
 
-# IVFRaBitQ/RaBitQ业务场景，使用Faiss 1.14.1
-export LD_LIBRARY_PATH=/usr/local/Ascend/mxIndex/host/lib:/usr/local/faiss/faiss1.14.1/lib:$LD_LIBRARY_PATH
-
+# 切换到 Faiss 1.14.1（IVFRaBitQ/RaBitQ 场景）
+ln -sf /usr/local/faiss1.14.1 /usr/local/faiss
+export LD_LIBRARY_PATH=/usr/local/Ascend/mxIndex/host/lib:/usr/local/faiss/lib:$LD_LIBRARY_PATH
 ```
 
 ### 镜像安装
@@ -394,6 +396,7 @@ bash build.sh
 - 默认构建 Faiss 1.10.x 单版本 run 包，即 `MULTI_FAISS_PACKAGE=OFF DEFAULT_FAISS_ABI=faiss1.10 bash build/build.sh`。该包只包含基于 Faiss 1.10.x 构建的业务动态库和头文件，安装时无需指定 `--faiss-version`。
 - 如需构建 Faiss 1.14.1 单版本 run 包，可执行 `MULTI_FAISS_PACKAGE=OFF DEFAULT_FAISS_ABI=faiss1.14 bash build/build.sh`。该包只包含基于 Faiss 1.14.1 构建的业务动态库和头文件，适用于使用 IVFRaBitQ/RaBitQ 特性的场景。
 - 如需在同一个 run 包中同时提供 Faiss 1.10.x 和 Faiss 1.14.1 两套业务动态库，可执行 `MULTI_FAISS_PACKAGE=ON DEFAULT_FAISS_ABI=faiss1.10 bash build/build.sh` 构建多版本 run 包。该包安装时可通过 `--faiss-version` 选择安装后激活的 Faiss ABI 版本；如未指定，默认激活构建时 `DEFAULT_FAISS_ABI` 指定的版本。
+- 构建脚本默认从 `/usr/local/faiss1.10.0` 和 `/usr/local/faiss1.14.1` 查找已安装的 Faiss。如 Faiss 安装在其他路径，需通过环境变量 `FAISS_110_HOME` 或 `FAISS_114_HOME` 指定实际安装路径，例如 `FAISS_114_HOME=/usr/local/faiss/faiss1.14.1 bash build/build.sh`。
 
 生成的 run 包在 `build/output` 目录下：`Ascend-mindxsdk-mxindex_{version}_linux-{arch}.run`，执行相应安装命令即可完成安装。
 

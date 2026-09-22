@@ -23,7 +23,7 @@ set(TARGET_LIBRARY_VSTAR vstar)
 set(PROJECT_SRC_ROOT_VSTAR ${CMAKE_CURRENT_LIST_DIR}/../mix-index/)
 
 IF (NOT DEFINED FAISS_HOME)
-    SET(FAISS_HOME /usr/local/faiss/faiss1.10.0/ CACHE  STRING "") # todo: need to change this to CI's faiss location
+    SET(FAISS_HOME /usr/local/faiss CACHE  STRING "")
 ENDIF()
 
 set(LIBRARY_OUTPUT_PATH ${PROJECT_SRC_ROOT_VSTAR}/lib)
@@ -136,7 +136,7 @@ INSTALL(TARGETS ${TARGET_LIBRARY_VSTAR} DESTINATION lib)
 
 #######################################################################
 
-# Step 2: Compile Unit Test exeuctables
+# Step 2: Compile Unit Test executables
 
 SET(TEST_SRC_FILES
     TestVstar.cpp
@@ -154,7 +154,7 @@ target_link_directories(${UT_TARGET_OUT} PRIVATE
     ${GTEST_DIR}/lib
 )
 
-target_link_options(${UT_TARGET_OUT} PRIVATE 
+target_link_options(${UT_TARGET_OUT} PRIVATE
     -Wl,--disable-new-dtags
 )
 

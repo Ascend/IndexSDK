@@ -21,7 +21,7 @@ PROJECT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 RESULT_DIR="${PROJECT_DIR}/tmp/bench-results"
 
 source /usr/local/Ascend/ascend-toolkit/set_env.sh
-export LD_LIBRARY_PATH="/usr/local/Ascend/mxIndex/host/lib:/usr/local/faiss/faiss1.14.1/lib64:/usr/local/faiss/faiss1.14.1/lib:/opt/OpenBLAS/lib:/usr/local/Ascend/driver/lib64/driver:${LD_LIBRARY_PATH:-}"
+export LD_LIBRARY_PATH="/usr/local/Ascend/mxIndex/host/lib:/usr/local/faiss/lib64:/usr/local/faiss/lib:/opt/OpenBLAS/lib:/usr/local/Ascend/driver/lib64/driver:${LD_LIBRARY_PATH:-}"
 export MX_INDEX_MODELPATH="${PROJECT_DIR}/op_models"
 export OMP_NUM_THREADS="${OMP_NUM_THREADS:-$(nproc)}"
 export OPENBLAS_NUM_THREADS="${OPENBLAS_NUM_THREADS:-$(nproc)}"

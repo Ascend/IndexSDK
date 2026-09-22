@@ -15,7 +15,7 @@ message(STATUS "PROJECT_SRC_ROOT=${PROJECT_SRC_ROOT}")
 set(ASCEND_TOOLKIT_PATH /usr/local/Ascend/ascend-toolkit/latest)
 set(SECURE_API ${ASCEND_TOOLKIT_PATH}/${PROCESS_TYPE}-linux/)
 set(DRIVER_HOME  /usr/local/Ascend/driver)
-set(FAISS_HOME /usr/local/faiss/faiss1.10.0)
+set(FAISS_HOME /usr/local/faiss)
 set(LIBRARY_OUTPUT_PATH ${PROJECT_SRC_ROOT}/lib)
 set(CMAKE_SKIP_BUILD_RPATH TRUE)
 
