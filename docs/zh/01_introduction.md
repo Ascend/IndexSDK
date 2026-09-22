@@ -116,4 +116,9 @@ openEuler 22.03</li><li>openEuler 24.03</li><li>Ubuntu 18.04</li><li>Ubuntu 20.0
 <td>Atlas 800I A3 超节点服务器</td>
 <td><li>Ubuntu 18.04</li><li>CUlinux 3.0</li><li>KylinOS V10 SP3 2403</li><li>KylinOS V11</li><li>CTyunOS 4</li><li>UOS V25</li></td>
 </tr>
+<tr>
+<td><term>Ascend 950PR 系列产品</term><br>说明：当前支持AscendIndexFlat算法，AscendIndexIVFFlat算法，AscendIndexIVFPQ算法，AscendIndexIVFRaBitQ算法，AscendIndexCagra算法。</td>
+<td><li>Atlas 350 加速卡</li><li>Atlas 850 超节点</li><li>Atlas 650 服务器</li></td>
+<td><li>openEuler 24.03</li><li>Ubuntu 22.04</li></td>
+</tr>
 </table>
