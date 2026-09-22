@@ -18,7 +18,7 @@
 set -e
 
 # ========== 环境配置（可通过环境变量覆盖）==========
-: "${FAISS_HOME:=/usr/local/faiss/faiss1.14.1}"
+: "${FAISS_HOME:=/usr/local/faiss}"
 : "${GTEST_HOME:=/opt/buildtools/googletest-1.11.0}"
 : "${OPENBLAS_HOME:=/opt/OpenBLAS}"
 

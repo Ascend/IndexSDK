@@ -4,7 +4,6 @@ FROM swr.cn-south-1.myhuaweicloud.com/ascendhub/cann:${CANN_VERSION}-910b-ubuntu
 
 ARG PLATFORM=910B
 ARG VERSION=26.1.0
-ARG install_path=/usr/local/faiss
 ARG ASCEND_BASE=/usr/local/Ascend
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=Asia/Shanghai
@@ -55,6 +54,8 @@ RUN wget https://github.com/xianyi/OpenBLAS/archive/v0.3.10.tar.gz -O OpenBLAS-0
 
 
 # ========== 7. 编译安装 Faiss ==========
+# faiss 1.10.0
+ARG faiss1_10_path=/usr/local/faiss1.10.0
 RUN wget https://github.com/facebookresearch/faiss/archive/v1.10.0.tar.gz -O faiss-1.10.0.tar.gz && \
     tar -xf faiss-1.10.0.tar.gz && cd faiss-1.10.0/faiss && \
     sed -i "149 i virtual void search_with_filter (idx_t n, const float *x, idx_t k, float *distances, idx_t *labels, const void *mask = nullptr) const {}" Index.h && \
@@ -64,10 +65,25 @@ RUN wget https://github.com/facebookresearch/faiss/archive/v1.10.0.tar.gz -O fai
     cd .. && \
     cmake -B build . -DFAISS_ENABLE_GPU=OFF -DFAISS_ENABLE_PYTHON=OFF \
           -DBUILD_TESTING=OFF -DBUILD_SHARED_LIBS=ON \
-          -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${install_path} && \
+          -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${faiss1_10_path} && \
     cd build && make -j && make install && \
     cd ../.. && rm -f faiss-1.10.0.tar.gz && rm -rf faiss-1.10.0 && \
-    cp ${install_path}/lib/libfaiss.so /usr/local/lib
+    cp ${faiss1_10_path}/lib/libfaiss.so /usr/local/lib && \
+    ln -sf ${faiss1_10_path} /usr/local/faiss
+
+# faiss 1.14.1
+ARG faiss1_14_path=/usr/local/faiss1.14.1
+RUN wget https://github.com/facebookresearch/faiss/archive/v1.14.1.tar.gz -O faiss-1.14.1.tar.gz && \
+    tar -xf faiss-1.14.1.tar.gz && cd faiss-1.14.1/faiss && \
+    sed -i "214 i virtual void search_with_filter (idx_t n, const float *x, idx_t k, float *distances, idx_t *labels, const void *mask = nullptr) const {}" Index.h && \
+    sed -i "60 i template <typename IndexT> IndexIDMapTemplate<IndexT>::IndexIDMapTemplate (IndexT *index, std::vector<idx_t> &ids): index (index), own_fields (false) {this->is_trained = index->is_trained; this->metric_type = index->metric_type; this->verbose = index->verbose; this->d = index->d; id_map = ids;}" IndexIDMap.cpp && \
+    sed -i "30 i explicit IndexIDMapTemplate (IndexT *index, std::vector<idx_t> &ids); " IndexIDMap.h && \
+    cd .. && \
+    cmake -B build . -DFAISS_ENABLE_GPU=OFF -DFAISS_ENABLE_PYTHON=OFF \
+          -DBUILD_TESTING=OFF -DBUILD_SHARED_LIBS=ON \
+          -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${faiss1_14_path} && \
+    cd build && make -j && make install && \
+    cd ../.. && rm -f faiss-1.14.1.tar.gz && rm -rf faiss-1.14.1
 
 # ========== 8. 安装 lcov 和 googletest ==========
 RUN wget https://github.com/linux-test-project/lcov/releases/download/v2.0/lcov-2.0.tar.gz && \
@@ -81,13 +97,22 @@ RUN wget https://github.com/google/googletest/archive/refs/tags/release-1.11.0.t
     make -j12 && make install && \
     cd .. && rm -rf release-1.11.0.tar.gz googletest-release-1.11.0
 
-# ========== 9. 安装 IndexSDK ==========
+# ========== 9. 安装 AscendMiniOs ==========
+ARG CANN_VERSION=9.1.0
+RUN wget -O Ascend-cann-device-sdk_${CANN_VERSION}_linux-aarch64.zip "https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/CANN/CANN%20${CANN_VERSION}/Ascend-cann-device-sdk_${CANN_VERSION}_linux-aarch64.zip?response-content-type=application/octet-stream" && \
+    unzip -q Ascend-cann-device-sdk_${CANN_VERSION}_linux-aarch64.zip && \
+    chmod +x cann-runtime-*-minios.*.run && \
+    ./cann-runtime-*-minios.*.run --quiet --devel --install-path=/usr/local/AscendMiniOs && \
+    ./cann-runtime-*-minios.*.run --quiet --run --install-path=/usr/local/AscendMiniOsRun && \
+    rm -rf /tmp/*
+
+# ========== 10. 安装 IndexSDK ==========
 RUN ARCH=$(uname -m | sed 's/x86_64/x86_64/; s/aarch64/aarch64/') && \
     wget https://gitcode.com/Ascend/IndexSDK/releases/download/v${VERSION}/Ascend-mindxsdk-mxindex_${VERSION}_linux-${ARCH}.run && \
     bash Ascend-mindxsdk-mxindex_${VERSION}_linux-${ARCH}.run --install --platform=${PLATFORM} && \
     cd ${ASCEND_BASE}/mxIndex/ops && ./custom_opp_${ARCH}.run
 
-# ========== 10. 设置环境变量 ==========
+# ========== 11. 设置环境变量 ==========
 ENV TOOLKIT_PATH=/usr/local/Ascend/ascend-toolkit/latest \
     GLOG_v=2 \
     LD_LIBRARY_PATH=/usr/local/Ascend/mxIndex/host/lib:/usr/local/Ascend/ascend-toolkit/latest/runtime/lib64:/usr/local/faiss/lib:/opt/OpenBLAS/lib:/usr/local/gtest/lib:/usr/local/Ascend/driver/lib64/driver:$LD_LIBRARY_PATH \
@@ -101,12 +126,12 @@ ENV TOOLKIT_PATH=/usr/local/Ascend/ascend-toolkit/latest \
 
 RUN mkdir -p ${MX_INDEX_MODELPATH}
 
-# ========== 11. 配置 bashrc ==========
+# ========== 12. 配置 bashrc ==========
 RUN sed -i '$a\source /usr/local/Ascend/ascend-toolkit/set_env.sh' ~/.bashrc && \
     sed -i '$a\export LD_LIBRARY_PATH=/usr/local/faiss/lib:$LD_LIBRARY_PATH' ~/.bashrc && \
     sed -i '$a\export LD_LIBRARY_PATH=/opt/OpenBLAS/lib:$LD_LIBRARY_PATH' ~/.bashrc && \
     sed -i '$a\export LD_LIBRARY_PATH=/usr/local/gtest/lib:$LD_LIBRARY_PATH' ~/.bashrc && \
     sed -i '$a\export LD_LIBRARY_PATH=/usr/local/Ascend/driver/lib64/driver:$LD_LIBRARY_PATH' ~/.bashrc
 
-# ========== 12. 设置工作目录 ==========
+# ========== 13. 设置工作目录 ==========
 WORKDIR /workspace

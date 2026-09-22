@@ -119,7 +119,8 @@ You are advised to use the corresponding OpenBLAS version. This section only pro
 
 - Before installing Faiss, complete the OpenBLAS installation in the preceding section.
 - The Index SDK build script builds a single-version business shared library based on Faiss 1.10.x by default. If you need features such as IVFRaBitQ/RaBitQ that depend on Faiss 1.14, you can specify a single-version business shared library based on Faiss 1.14.1. When using it, link to the business shared library, header files, and `libfaiss.so` corresponding to Faiss 1.14.1. If you need to support both Faiss 1.10.x and Faiss 1.14.1, you can enable coexistence of multiple versions of the business shared libraries during the build. If you do not use IVFRaBitQ/RaBitQ features and need to maintain compatibility with legacy environments, you can use the Faiss 1.10.x business shared library.
-- You are advised to install different Faiss versions in separate directories, such as `/usr/local/faiss/faiss1.10.0` and `/usr/local/faiss/faiss1.14.1`. Do not switch versions by overwriting `/usr/local/lib/libfaiss.so`. When compiling and running programs, explicitly select the required Faiss version through `-I`, `-L`, and `LD_LIBRARY_PATH`.
+- You are advised to install different Faiss versions in separate sibling directories, such as `/usr/local/faiss1.10.0` and `/usr/local/faiss1.14.1`. Do not switch versions by overwriting `/usr/local/lib/libfaiss.so`. When compiling and running programs, explicitly select the required Faiss version through `-I`, `-L`, and `LD_LIBRARY_PATH`.
+- Faiss is installed using a sibling path structure (for example, `/usr/local/faiss1.10.0` and `/usr/local/faiss1.14.1`), and the symbolic link `/usr/local/faiss` points to the currently used version. After installation, run `ln -sf /usr/local/faiss1.10.0 /usr/local/faiss` to create the default symbolic link (pointing to Faiss 1.10.0 by default). To switch to Faiss 1.14.1, run `ln -sf /usr/local/faiss1.14.1 /usr/local/faiss`. When referencing the Faiss path in subsequent documentation, use `/usr/local/faiss` (for example, `/usr/local/faiss/include` and `/usr/local/faiss/lib`) instead of hard-coding the version number.
 - This section only provides installation instructions for Faiss v1.10.0. Follow the actual Faiss version and environment you use.
 
 > [!NOTE]
@@ -200,14 +201,14 @@ You are advised to use the corresponding OpenBLAS version. This section only pro
 
     > [!NOTE]
     > - Compiling Faiss 1.10.0 requires CMake 3.24.0 or later. If CMake reports that the version is too old when compiling Faiss, refer to [CMake error information when compiling Faiss 1.10.0](./07_faq.md#cmake-error-when-compiling-faiss-1100) for a solution.
-    > - The default installation directory for Faiss is `/usr/local/lib`. If you need to specify an installation directory, for example, `install_path=/usr/local/faiss/faiss1.10.0`, add the `-DCMAKE_INSTALL_PREFIX=${install_path}` option to the CMake build configuration.
+    > - The default installation directory for Faiss is `/usr/local/lib`. If you need to specify an installation directory, for example, `install_path=/usr/local/faiss1.10.0`, add the `-DCMAKE_INSTALL_PREFIX=${install_path}` option to the CMake build configuration.
     >
     > ```bash
-    > install_path=/usr/local/faiss/faiss1.10.0
+    > install_path=/usr/local/faiss1.10.0
     > cmake -B build . -DFAISS_ENABLE_GPU=OFF -DFAISS_ENABLE_PYTHON=OFF -DBUILD_TESTING=OFF -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${install_path}
     > ```
     >
-    > - When using the IVFRaBitQ/RaBitQ features, you need to install Faiss 1.14.1 separately. You are advised to use an independent installation directory, such as `/usr/local/faiss/faiss1.14.1`, and set `-DCMAKE_INSTALL_PREFIX=/usr/local/faiss/faiss1.14.1` in the build configuration.
+    > - When using the IVFRaBitQ/RaBitQ features, you need to install Faiss 1.14.1 separately. You are advised to use an independent installation directory, such as `/usr/local/faiss1.14.1`, and set `-DCMAKE_INSTALL_PREFIX=/usr/local/faiss1.14.1` in the build configuration.
 
 6. Configure the environment variable for the system library search path.
 
@@ -244,7 +245,7 @@ In addition to the preceding dependencies, you also need to determine whether to
 unzip Ascend-cann-device-sdk_{version}_linux-{arch}.zip
 # The decompression produces CANN-runtime-*-minios.{arch}.run.
 ./CANN-runtime-*-minios.{arch}.run --devel --install-path=/usr/local/AscendMiniOs
-./CANN-runtime-*-minios.{arch}.run --run --install-path=/usr/local/AscendMiniOSRun
+./CANN-runtime-*-minios.{arch}.run --run --install-path=/usr/local/AscendMiniOsRun
 ```
 
 ## Installation Methods
@@ -353,20 +354,16 @@ mxIndex/include/ascend -> faiss/ascend
 > The run package only provides or switches the Index SDK business shared libraries and header files. It does not install or replace `libfaiss.so` in the user's environment. When compiling and running applications, add the include and lib directories for the corresponding Faiss version to the build parameters and `LD_LIBRARY_PATH`. Use Faiss 1.14.1 when using the IVFRaBitQ/RaBitQ features. If you do not use the IVFRaBitQ/RaBitQ features and need to maintain compatibility with legacy environments, you can use Faiss 1.10.x.
 > A single-version run package contains only one Faiss ABI version. The installation script verifies whether `--faiss-version` is consistent with the version included in the package. If `--faiss-version=1.14` is specified for a Faiss 1.10.x single-version package, or `--faiss-version=1.10` is specified for a Faiss 1.14.1 single-version package, the installation exits with an error.
 
-If the application directly includes Faiss header files or calls Faiss APIs, such as `faiss::read_index`, `faiss::write_index`, or `faiss::IndexIVFRaBitQ`, you must also explicitly select the Faiss version consistent with `--faiss-version` during compilation and runtime. Using `/home/work/FeatureRetrieval` as the installation path as an example:
+If the application directly includes Faiss header files or calls Faiss APIs, such as `faiss::read_index`, `faiss::write_index`, or `faiss::IndexIVFRaBitQ`, you must also explicitly select the Faiss version consistent with `--faiss-version` during compilation and runtime. Using `/usr/local/Ascend/` as the installation path as an example:
 
 ```bash
-# Non-IVFRaBitQ/RaBitQ business scenario, using Faiss 1.10.x
-g++ test.cpp -I/home/work/FeatureRetrieval/mxIndex/include -I/usr/local/faiss/faiss1.10.0/include \
-    -L/home/work/FeatureRetrieval/mxIndex/host/lib -L/usr/local/faiss/faiss1.10.0/lib \
-    -lascendfaiss -lascendsearch -lfaiss
-export LD_LIBRARY_PATH=/home/work/FeatureRetrieval/mxIndex/host/lib:/usr/local/faiss/faiss1.10.0/lib:$LD_LIBRARY_PATH
+# Switch to Faiss 1.10.x (default, non-IVFRaBitQ/RaBitQ scenario)
+ln -sf /usr/local/faiss1.10.0 /usr/local/faiss
+export LD_LIBRARY_PATH=/usr/local/Ascend/mxIndex/host/lib:/usr/local/faiss/lib:$LD_LIBRARY_PATH
 
-# IVFRaBitQ/RaBitQ business scenario, using Faiss 1.14.1
-g++ test.cpp -I/home/work/FeatureRetrieval/mxIndex/include -I/usr/local/faiss/faiss1.14.1/include \
-    -L/home/work/FeatureRetrieval/mxIndex/host/lib -L/usr/local/faiss/faiss1.14.1/lib \
-    -lascendfaiss -lascendsearch -lfaiss
-export LD_LIBRARY_PATH=/home/work/FeatureRetrieval/mxIndex/host/lib:/usr/local/faiss/faiss1.14.1/lib:$LD_LIBRARY_PATH
+# Switch to Faiss 1.14.1 (IVFRaBitQ/RaBitQ scenario)
+ln -sf /usr/local/faiss1.14.1 /usr/local/faiss
+export LD_LIBRARY_PATH=/usr/local/Ascend/mxIndex/host/lib:/usr/local/faiss/lib:$LD_LIBRARY_PATH
 ```
 
 If the following information is returned, the feature retrieval package has been installed successfully.
@@ -402,6 +399,7 @@ bash build.sh
 - By default, a single-version run package based on Faiss 1.10.x is built using `MULTI_FAISS_PACKAGE=OFF DEFAULT_FAISS_ABI=faiss1.10 bash build/build.sh`. This package contains only the business shared libraries and header files built against Faiss 1.10.x. You do not need to specify `--faiss-version` during installation.
 - To build a single-version run package based on Faiss 1.14.1, run `MULTI_FAISS_PACKAGE=OFF DEFAULT_FAISS_ABI=faiss1.14 bash build/build.sh`. This package contains only the business shared libraries and header files built against Faiss 1.14.1 and is intended for scenarios that use the IVFRaBitQ/RaBitQ features.
 - To provide both the Faiss 1.10.x and Faiss 1.14.1 business shared libraries in the same run package, run `MULTI_FAISS_PACKAGE=ON DEFAULT_FAISS_ABI=faiss1.10 bash build/build.sh` to build a multi-version run package. During installation, use `--faiss-version` to select the Faiss ABI version to activate. If this parameter is not specified, the version specified by `DEFAULT_FAISS_ABI` during the build is activated by default.
+- The build script looks for installed Faiss under `/usr/local/faiss1.10.0` and `/usr/local/faiss1.14.1` by default. If Faiss is installed in another location, set the environment variable `FAISS_110_HOME` or `FAISS_114_HOME` to the actual installation path, for example `FAISS_114_HOME=/usr/local/faiss/faiss1.14.1 bash build/build.sh`.
 
 The generated run package is located in the `build/output` directory: `Ascend-mindxsdk-mxindex_{version}_linux-{arch}.run`. Run the corresponding installation command to complete the installation.
 

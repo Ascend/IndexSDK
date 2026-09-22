@@ -89,38 +89,11 @@ mv op_models/* $MX_INDEX_MODELPATH
 
 算子生成可以参考：[算子生成](https://gitcode.com/Ascend/IndexSDK/blob/master/docs/zh/05_user_guide.md#%E8%87%AA%E5%AE%9A%E4%B9%89%E7%AE%97%E5%AD%90%E4%BB%8B%E7%BB%8D)
 
-### 3.4 编译入门用例
+### 3.4 入门用例测试
 
-[demo用例](https://gitcode.com/Ascend/IndexSDK/blob/master/docs/zh/05_user_guide.md#%E4%BD%BF%E7%94%A8%E6%A0%B7%E4%BE%8B)
+[demo用例](https://gitcode.com/Ascend/IndexSDK/blob/master/docs/zh/03_quick_start.md#%E6%AD%A5%E9%AA%A4-4%E7%94%A8%E4%BE%8B%E6%B5%8B%E8%AF%95)
 
-```bash
-export MX_INDEX_INSTALL_PATH=/usr/local/Ascend/mxIndex
-
-g++ --std=c++11 -fPIC -fPIE -fstack-protector-all -Wall -D_FORTIFY_SOURCE=2 -O3 -Wl,-z,relro,-z,now,-z,noexecstack -s -pie \
-  -o demo demo.cpp \
-  -I$MX_INDEX_INSTALL_PATH/include \
-  -I/usr/local/faiss/include \
-  -I/usr/local/Ascend/driver/include \
-  -I/opt/OpenBLAS/include \
-  -L$MX_INDEX_INSTALL_PATH/host/lib \
-  -L/usr/local/faiss/lib \
-  -L/usr/local/Ascend/driver/lib64 \
-  -L/usr/local/Ascend/driver/lib64/driver \
-  -L/opt/OpenBLAS/lib \
-  -L$ASCEND_HOME_PATH/lib64 \
-  -lfaiss -lascendfaiss -lopenblas -lc_sec -lascendcl -lascend_hal -lascendsearch -lock_hmm
-```
-
-- MX_INDEX_INSTALL_PATH：Index SDK 安装路径，默认值为 /usr/local/Ascend/mxIndex
-- ASCEND_HOME_PATH：Toolkit 安装路径，默认值为 /usr/local/Ascend/cann
-
-### 3.5 运行入门用例
-
-```bash
-./demo
-```
-
-### 3.6 如何本地构建
+### 3.5 如何本地构建
 
 ```bash
 docker build -t {your_repo}/index:latest -f Dockerfile .

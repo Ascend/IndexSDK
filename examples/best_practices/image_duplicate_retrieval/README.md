@@ -220,7 +220,13 @@ Int8Flat 虽然 Recall@100 达到 0.9598，但 QPS 仅为 304.5，实测 HBM 又
 
 ## 5. Demo 与复现
 
-运行前请按照 IndexSDK [安装部署](https://gitcode.com/Ascend/IndexSDK/blob/master/docs/zh/04_installation_guide.md)完成环境配置，并确保 Python 可以导入 NumPy 和 Faiss。单卡测试使用 0 号设备，IVFFlat 100M 双卡测试使用 0、1 号设备；运行前应确保对应设备空闲。以下命令均在本 Demo 根目录执行。
+运行前请按照 IndexSDK [安装部署](https://gitcode.com/Ascend/IndexSDK/blob/master/docs/zh/04_installation_guide.md)完成环境配置，并确保 Python 可以导入 NumPy 和 Faiss。本 Demo 包含 IVFRaBitQ 算法，需要 Faiss 1.14.1，运行前请先切换软链接：
+
+```bash
+ln -sf /usr/local/faiss1.14.1 /usr/local/faiss
+```
+
+单卡测试使用 0 号设备，IVFFlat 100M 双卡测试使用 0、1 号设备；运行前应确保对应设备空闲。以下命令均在本 Demo 根目录执行。
 
 ```bash
 # 下载 SIFT100M 原始数据
