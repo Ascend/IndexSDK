@@ -77,7 +77,7 @@ function set_env() {
     export LD_LIBRARY_PATH=${ASCEND_MOCK_DIR}/acl/lib:$LD_LIBRARY_PATH
     if [ "${use_local_option}" == "off" ]; then
         export LD_LIBRARY_PATH=/opt/OpenBLAS/lib:$LD_LIBRARY_PATH
-        export LD_LIBRARY_PATH=/usr/local/faiss/faiss1.10.0/lib:$LD_LIBRARY_PATH
+        export LD_LIBRARY_PATH=/usr/local/faiss/lib:$LD_LIBRARY_PATH
         export LD_LIBRARY_PATH=/usr1/ivfsp_impl/ascendfaiss/ut/build:$LD_LIBRARY_PATH
         export LD_LIBRARY_PATH=/usr/local/gtest/lib:$LD_LIBRARY_PATH
     fi
@@ -185,7 +185,7 @@ function build_uint_test() {
 function gen_report() {
     mkdir -p ./output/coverage/summary
     mkdir -p ./output/coverage/report
-    
+
     cd ./build
     echo "========= Testing is running pls wait ========="
     make

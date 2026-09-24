@@ -60,7 +60,7 @@ Tags follow this pattern:
 
 - Driver and Toolchain Mounting: Mount driver files and toolchain directories (such as /usr/local/Ascend/driver and /usr/local/bin/npu-smi) from the host to the container in read-only mode to ensure consistent runtime environment. In the example code below, /dev/davinci1 represents mounting device 1.
 
-- After -ti, specify the corresponding image tag, for example: -it swr.cn-south-1.myhuaweicloud.com/ascendhub/indexsdk:26.1.0-cann9.1.0-310p-ubuntu22.04-py3.12
+- After -ti, specify the corresponding image tag, for example: -it swr.cn-south-1.myhuaweicloud.com/ascendhub/indexsdk:26.1.0-cann9.1.0-910b-ubuntu22.04-py3.12
 
 ```bash
 docker run \
@@ -90,38 +90,11 @@ mv op_models/* $MX_INDEX_MODELPATH
 
 For more details on operator generation, refer to: [Operator Generation](https://gitcode.com/Ascend/IndexSDK/blob/master/docs/zh/05_user_guide.md#%E8%87%AA%E5%AE%9A%E4%B9%89%E7%AE%97%E5%AD%90%E4%BB%8B%E7%BB%8D)
 
-### 3.4 Compile Demo
+### 3.4 Demo Testing
 
-[Demo Example](https://gitcode.com/Ascend/IndexSDK/blob/master/docs/zh/05_user_guide.md#%E4%BD%BF%E7%94%A8%E6%A0%B7%E4%BE%8B)
+[Demo Example](https://gitcode.com/Ascend/IndexSDK/blob/master/docs/en/03_quick_start.md#step-4-testing-the-example)
 
-```bash
-export MX_INDEX_INSTALL_PATH=/usr/local/Ascend/mxIndex
-
-g++ --std=c++11 -fPIC -fPIE -fstack-protector-all -Wall -D_FORTIFY_SOURCE=2 -O3 -Wl,-z,relro,-z,now,-z,noexecstack -s -pie \
-  -o demo demo.cpp \
-  -I$MX_INDEX_INSTALL_PATH/include \
-  -I/usr/local/faiss/include \
-  -I/usr/local/Ascend/driver/include \
-  -I/opt/OpenBLAS/include \
-  -L$MX_INDEX_INSTALL_PATH/host/lib \
-  -L/usr/local/faiss/lib \
-  -L/usr/local/Ascend/driver/lib64 \
-  -L/usr/local/Ascend/driver/lib64/driver \
-  -L/opt/OpenBLAS/lib \
-  -L$ASCEND_HOME_PATH/lib64 \
-  -lfaiss -lascendfaiss -lopenblas -lc_sec -lascendcl -lascend_hal -lascendsearch -lock_hmm
-```
-
-- MX_INDEX_INSTALL_PATH: Index SDK installation path, default is /usr/local/Ascend/mxIndex
-- ASCEND_HOME_PATH: Toolkit installation path, default is /usr/local/Ascend/cann
-
-### 3.5 Run Demo
-
-```bash
-./demo
-```
-
-### 3.6 How to Build Locally
+### 3.5 How to Build Locally
 
 ```bash
 docker build -t {your_repo}/index:latest -f Dockerfile .

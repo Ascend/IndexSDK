@@ -8,7 +8,7 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 set(INDEXSDK_ROOT "/usr/local/Ascend/mxIndex" CACHE PATH "IndexSDK install root")
-set(FAISS_ROOT "/usr/local/faiss/faiss1.14.1" CACHE PATH "Faiss install root")
+set(FAISS_ROOT "/usr/local/faiss" CACHE PATH "Faiss install root")
 set(CANN_ROOT "/usr/local/Ascend/ascend-toolkit/latest" CACHE PATH "CANN toolkit root")
 set(ASCEND_DRIVER_ROOT "/usr/local/Ascend/driver" CACHE PATH "Ascend driver root")
 set(OPENBLAS_ROOT "/opt/OpenBLAS" CACHE PATH "OpenBLAS install root")

@@ -17,7 +17,7 @@
 
 echo "Building ascendsearch ..."
 
-FAISS_HOME=${FAISS_HOME:-/usr/local/faiss/faiss1.10.0}
+FAISS_HOME=${FAISS_HOME:-/usr/local/faiss}
 echo "Using FAISS_HOME=${FAISS_HOME}"
 
 cd ../ivfsp_impl/Retrieval_Common/src

@@ -15,7 +15,7 @@
 # See the Mulan PSL v2 for more details.
 # -------------------------------------------------------------------------
 
-export LD_LIBRARY_PATH=${PWD}/beta/lib:${PWD}/lib:/usr/local/Ascend/ascend-toolkit/latest/opp/vendors/customize/op_api/lib:/usr/local/faiss/faiss1.10.0/lib64:/opt/OpenBLAS/lib:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=${PWD}/beta/lib:${PWD}/lib:/usr/local/Ascend/ascend-toolkit/latest/opp/vendors/customize/op_api/lib:/usr/local/faiss/lib64:/opt/OpenBLAS/lib:$LD_LIBRARY_PATH
 export ASCEND_LATEST_INSTALL_PATH=/usr/local/Ascend/ascend-toolkit/latest
 export MX_INDEX_MODELPATH=${PWD}/ops/ascend_c/op_models
 export ASCEND_SLOG_PRINT_TO_STDOUT=1
