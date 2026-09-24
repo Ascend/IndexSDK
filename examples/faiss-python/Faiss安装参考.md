@@ -67,7 +67,7 @@ sed -i "30 i\\
 cd ..
 ls
 # 步骤2：Faiss编译配置
-FAISS_INSTALL_PATH=/usr/local/faiss/faiss1.14.1
+FAISS_INSTALL_PATH=/usr/local/faiss1.14.1
 cmake -B build . -DFAISS_ENABLE_GPU=OFF -DFAISS_ENABLE_PYTHON=OFF -DBUILD_TESTING=OFF -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${FAISS_INSTALL_PATH}
 # 步骤3：编译安装
 cd build && make -j && make install
@@ -92,7 +92,7 @@ cd ../.. && rm -f v1.14.1.tar.gz && rm -rf faiss-1.14.1
    # 配置/etc/profile
    vim /etc/profile
    # 在/etc/profile中添加: export LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
-   # /usr/local/lib是Faiss的安装目录,如果安装在其他目录下,将/usr/local/lib替换为Faiss实际安装路径（例如上文参考配置中的/usr/local/faiss/faiss1.14.1/lib），部分操作系统和环境中，faiss可能会安装在其他目录下。
+   # /usr/local/lib是Faiss的安装目录,如果安装在其他目录下,将/usr/local/lib替换为Faiss实际安装路径（例如上文参考配置中的/usr/local/faiss1.14.1/lib），部分操作系统和环境中，faiss可能会安装在其他目录下。
    source /etc/profile
    cd ..
    ```
@@ -158,7 +158,7 @@ cd ..
 ls
 # 步骤2：Faiss编译配置
 PYTHON=/usr/local/lib/python3.10
-FAISS_INSTALL_PATH=/usr/local/faiss/faiss1.10.0
+FAISS_INSTALL_PATH=/usr/local/faiss1.10.0
 cmake -B build . -DFAISS_ENABLE_GPU=OFF -DPython_EXECUTABLE=${PYTHON} -DBUILD_TESTING=OFF -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${FAISS_INSTALL_PATH}
 # 步骤3：编译安装
 make -C build -j faiss
@@ -257,7 +257,7 @@ cd ..
 ls
 # 步骤2：Faiss编译配置
 PYTHON=/usr/local/lib/python3.10
-FAISS_INSTALL_PATH=/usr/local/faiss/faiss1.7.4
+FAISS_INSTALL_PATH=/usr/local/faiss1.7.4
 cmake -B build . -DFAISS_ENABLE_GPU=OFF -DPython_EXECUTABLE=${PYTHON} -DBUILD_TESTING=OFF -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${FAISS_INSTALL_PATH}
 # 步骤3：编译安装
 make -C build -j faiss
@@ -351,7 +351,7 @@ cd ..
 ls
 # 步骤2：Faiss编译配置
 PYTHON=/usr/local/lib/python3.10
-FAISS_INSTALL_PATH=/usr/local/faiss/faiss1.7.1
+FAISS_INSTALL_PATH=/usr/local/faiss1.7.1
 cmake -B build . -DFAISS_ENABLE_GPU=OFF -DPython_EXECUTABLE=${PYTHON} -DBUILD_TESTING=OFF -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${FAISS_INSTALL_PATH}
 # 步骤3：编译安装
 make -C build -j faiss
@@ -397,7 +397,7 @@ cd ../../.. && rm -f v1.7.1.tar.gz && rm -rf faiss-1.7.1
 
 ```bash
 PYTHON_INSTALL_PATH=/usr/local/lib/python3.10
-FAISS_INSTALL_PATH=/usr/local/faiss/faiss1.7.4
+FAISS_INSTALL_PATH=/usr/local/faiss1.7.4
 MXINDEX_INSTALL_PATH=/home/mxIndex #根据实际路径修改
 
 ASCEND_INSTALL_PATH=/usr/local/Ascend/ascend-toolkit/latest

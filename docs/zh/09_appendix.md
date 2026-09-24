@@ -254,7 +254,7 @@ int main(int argc, char **argv)
 1. 生成要运行的算法所需要的算子。算法介绍请参考[算法介绍](./05_user_guide.md#算法介绍)。
 2. 将以下依赖的库传输到Device侧上。
     - openblas：/opt/OpenBLAS/lib
-    - Faiss：/usr/local/faiss/faiss1.10.0/lib
+    - Faiss：/usr/local/faiss/lib
     - 运行态toolkit so：/usr/local/AscendMiniOSRun/acllib/lib64和/usr/local/AscendMiniOSRun/aarch64-linux/data
     - 检索 so：`${MX_INDEX_HOME}/mxIndex/host/lib`，其中 `${MX_INDEX_HOME}` 为 Index SDK 的安装目录。
     - Host侧编译器中的libgfortran.so：/usr/lib/aarch64-linux-gnu/libgfortran.so\*

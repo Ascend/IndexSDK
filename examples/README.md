@@ -81,11 +81,11 @@ cd .. && rm -rf release-1.8.1.tar.gz googletest-release-1.8.1
         -DFINTEGER=int -fopenmp \
         -o TestAscendIndexFlat TestAscendIndexFlat.cpp \
         -I/usr/local/Ascend/mxIndex/include \
-        -I/usr/local/faiss/faiss1.10.0/include \
+        -I/usr/local/faiss/include \
         -I/usr/local/gtest/include \
         -I/usr/local/Ascend/driver/include/dvpp/ \
         -L/usr/local/Ascend/mxIndex/host/lib \
-        -L/usr/local/faiss/faiss1.10.0/lib \
+        -L/usr/local/faiss/lib \
         -L/usr/local/gtest/lib \
         -L/usr/local/Ascend/driver/lib64/driver \
         -lopenblas -lfaiss -lascendfaiss -lascend_hal -lgtest

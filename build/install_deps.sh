@@ -20,8 +20,8 @@ set -e
 readonly CUR_DIR=$(dirname "$(readlink -f "$0")")
 readonly TOP_DIR=${CUR_DIR}/..
 readonly FAISS_ROOT="/usr/local/faiss"
-readonly FAISS_110_INSTALL_PATH="${FAISS_110_HOME:-${FAISS_ROOT}/faiss1.10.0}"
-readonly FAISS_114_INSTALL_PATH="${FAISS_114_HOME:-${FAISS_ROOT}/faiss1.14.1}"
+readonly FAISS_110_INSTALL_PATH="${FAISS_110_HOME:-/usr/local/faiss1.10.0}"
+readonly FAISS_114_INSTALL_PATH="${FAISS_114_HOME:-/usr/local/faiss1.14.1}"
 readonly DEFAULT_FAISS_ABI="${DEFAULT_FAISS_ABI:-faiss1.10}"
 readonly MULTI_FAISS_PACKAGE="${MULTI_FAISS_PACKAGE:-OFF}"
 readonly BUILD_JOBS="${BUILD_JOBS:-$(nproc)}"
@@ -46,6 +46,17 @@ fi
 
 # ============== 2. install faiss ==============
 echo "[INSTALL_INFO] start installing faiss..."
+
+function link_faiss_root()
+{
+    local target="$1"
+    if [ -d "${FAISS_ROOT}" ] && [ ! -L "${FAISS_ROOT}" ]; then
+        echo "[INSTALL_WARN] ${FAISS_ROOT} is a real directory, skip creating symlink."
+        return
+    fi
+    ln -sfn "${target}" "${FAISS_ROOT}"
+    echo "[INSTALL_INFO] symlink ${FAISS_ROOT} -> ${target}"
+}
 
 function install_faiss()
 {
@@ -82,11 +93,13 @@ function install_faiss()
     cmake -B build . -DFAISS_ENABLE_GPU=OFF -DFAISS_ENABLE_PYTHON=OFF -DBUILD_TESTING=OFF -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="${faiss_install_path}"
     cd build && make -j"${BUILD_JOBS}" && make install
     cd "${TOP_DIR}" && rm -f "${faiss_tar_file}" && rm -rf "${faiss_src_dir}"
+    link_faiss_root "${faiss_install_path}"
 }
 
 if [ "${MULTI_FAISS_PACKAGE}" = "ON" ]; then
     install_faiss "1.10.0" "${FAISS_110_INSTALL_PATH}"
     install_faiss "1.14.1" "${FAISS_114_INSTALL_PATH}"
+    link_faiss_root "${FAISS_110_INSTALL_PATH}"
 else
     case "${DEFAULT_FAISS_ABI}" in
         faiss1.10|1.10|1.10.0)

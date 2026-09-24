@@ -25,7 +25,7 @@ INCLUDE(${CMAKE_CURRENT_LIST_DIR}/../cmake/utils.cmake)
 ENABLE_TESTING()
 
 IF (NOT DEFINED FAISS_HOME)
-    SET(FAISS_HOME /usr/local/faiss/faiss1.10.0/ CACHE  STRING "") # todo: need to change this to CI's faiss location
+    SET(FAISS_HOME /usr/local/faiss CACHE  STRING "")
 ENDIF()
 
 SET(CMAKE_CXX_STANDARD 14)
@@ -159,7 +159,7 @@ TARGET_LINK_DIRECTORIES(${TARGET_LIBRARY} PRIVATE ${ASCENDSEARCH_LIBRARY_PATH})
 
 GET_FILENAME_COMPONENT(ASCENDFAISS_DIR   ${CMAKE_CURRENT_LIST_DIR}/..  ABSOLUTE)
 redefine_file_macro(${TARGET_LIBRARY}  ${ASCENDFAISS_DIR})
-TARGET_LINK_LIBRARIES(${TARGET_LIBRARY} PRIVATE 
+TARGET_LINK_LIBRARIES(${TARGET_LIBRARY} PRIVATE
     faiss
     ascendcl
     securec
@@ -170,7 +170,7 @@ INSTALL(TARGETS ${TARGET_LIBRARY} DESTINATION lib)
 
 #######################################################################
 
-# Step 2: Compile Unit Test exeuctables
+# Step 2: Compile Unit Test executables
 
 SET(TEST_SRC_FILES
     TestAscendIndexIVFSP_NormalCases.cpp
@@ -181,7 +181,7 @@ ADD_EXECUTABLE(${TARGET_OUT}  ${TEST_SRC_FILES})
 
 target_include_directories(${TARGET_OUT} PRIVATE ${ASCENDSEARCH_INCLUDE})
 
-target_link_options(${TARGET_OUT} PRIVATE 
+target_link_options(${TARGET_OUT} PRIVATE
     -Wl,--disable-new-dtags
 )
 
