@@ -2,14 +2,14 @@
 
 AscendIndexBinaryFlat需要使用对应的AscendIndexBinaryFlatConfig执行对应资源的初始化，配置执行检索过程中的硬件资源“devices”和预置的内存池大小“resources”。
 
-- AscendIndexBinaryFlat仅支持单个昇腾AI处理器的<term>Atlas 推理系列产品</term>，依赖AICPU算子和BinaryFlat算子，请参考[自定义算子介绍](../../05_user_guide.md#自定义算子介绍)生成对应算子。
+- AscendIndexBinaryFlat仅支持单个昇腾AI处理器的<term>Atlas推理系列产品</term>，依赖AICPU算子和BinaryFlat算子，请参考[自定义算子介绍](../../05_user_guide.md#自定义算子介绍)生成对应算子。
 - AscendIndexBinaryFlat仅支持标准态部署方式。
 
 **成员介绍<a name="section1372191465013"></a>**
 
 <table><tbody>
 <tr><td width="140" align="center" valign="middle">成员</td><td valign="middle">类型</td><td valign="middle">说明</td></tr>
-<tr><td width="140" align="center" valign="middle">deviceList</td><td valign="middle">std::vector\&lt;int&gt;</td><td valign="middle">Device侧设备ID。AscendIndexBinaryFlat类仅支持单个&lt;term&gt;Atlas 推理系列产品&lt;/term&gt;的加速卡。</td></tr>
+<tr><td width="140" align="center" valign="middle">deviceList</td><td valign="middle">std::vector\&lt;int&gt;</td><td valign="middle">Device侧设备ID。AscendIndexBinaryFlat类仅支持单个&lt;term&gt;Atlas推理系列产品&lt;/term&gt;的加速卡。</td></tr>
 <tr><td width="140" align="center" valign="middle">resourceSize</td><td valign="middle">int64_t</td><td valign="middle">Device侧内存池大小，单位为字节，默认参数值为1024MB，合法范围为[1024*1024*1024, 32*1024*1024*1024]，10million底库推荐申请5GB。</td></tr>
 </tbody></table>
 
@@ -23,7 +23,7 @@ AscendIndexBinaryFlat需要使用对应的AscendIndexBinaryFlatConfig执行对�
 <tr><td width="140" align="center" valign="middle">输入</td><td valign="middle">无</td></tr>
 <tr><td width="140" align="center" valign="middle">输出</td><td valign="middle">无</td></tr>
 <tr><td width="140" align="center" valign="middle">返回值</td><td valign="middle">无</td></tr>
-<tr><td width="140" align="center" valign="middle">约束说明</td><td valign="middle">AscendIndexBinaryFlat仅支持单个昇腾AI处理器的Atlas 推理系列产品，如果第0个昇腾AI处理器不可用则无法使用默认构造。</td></tr>
+<tr><td width="140" align="center" valign="middle">约束说明</td><td valign="middle">AscendIndexBinaryFlat仅支持单个昇腾AI处理器的Atlas推理系列产品，如果第0个昇腾AI处理器不可用则无法使用默认构造。</td></tr>
 </tbody></table>
 
 <a name="table092314378186"></a>
