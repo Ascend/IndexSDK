@@ -6,7 +6,7 @@ AscendIndexIVFSQT类，包含降维算法的三级检索IVFSQ算法，需要传�
 
 需要按照IVFSQT算子生成方式，生成三级检索所需算子。
 
-该类型带有模糊聚类功能：入桶前，使用threshold参数控制模糊程度。请根据底库容量和可用内存大小设置threshold参数值，过大的threshold会引起内存不足，导致失败。<term>Atlas 200/300/500 推理产品</term>环境建议设置\[1.0, 1.1\]，<term>Atlas 推理系列产品</term>环境建议设置\[1.0, 1.5\]。搜索时建议使用**batch size = 65536**。
+该类型带有模糊聚类功能：入桶前，使用threshold参数控制模糊程度。请根据底库容量和可用内存大小设置threshold参数值，过大的threshold会引起内存不足，导致失败。<term>Atlas 200/300/500推理产品</term>环境建议设置\[1.0, 1.1\]，<term>Atlas推理系列产品</term>环境建议设置\[1.0, 1.5\]。搜索时建议使用**batch size = 65536**。
 
 使用流程为：1.构建index对象；2.train数据；3.add数据；4.update数据；5.search检索数据；6.析构index对象。update后不支持继续add数据。有新数据需要进行检索时，请将原来的index对象析构后，重新按照流程使用。
 

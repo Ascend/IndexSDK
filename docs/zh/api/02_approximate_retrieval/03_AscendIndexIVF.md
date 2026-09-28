@@ -4,7 +4,7 @@
 
 AscendIndexIVF作为特征检索组件中的采用IVF的Index的基类，为特征检索中的其他的IVF的Index定义接口。
 
-对于IVF系列算法，在Atlas 300I Duo 推理卡上的线性增长取决于距离计算的运算量在整个search过程的占比。相较于其他计算类型，只有距离计算的运算量可以均分到多个运算单元，所以在大batch和nprobe较大的场景下，线性增长度更好，而小batch和nprobe较小的场景下线性增长度则较差。
+对于IVF系列算法，在Atlas 300I Duo推理卡上的线性增长取决于距离计算的运算量在整个search过程的占比。相较于其他计算类型，只有距离计算的运算量可以均分到多个运算单元，所以在大batch和nprobe较大的场景下，线性增长度更好，而小batch和nprobe较小的场景下线性增长度则较差。
 
 > [!NOTE]
 > IVF系列算法，应遵循nlist \* 2MB +  **resourceSize**  < NPU侧内存的规则，避免程序运行时申请内存失败，例如：npu卡上内存为64GB，则nlist应小于32768，32768 \* 2MB = 64GB，程序运行可能超出NPU内存大小。造成该限制的原因是目前检索业务申请内存的规则为大页内存优先，大页内存申请粒度为2MB。当nlist个桶内都有数据时，向硬件申请内存时，硬件分配的内存按照2MB的粒度对齐。（其中**resourceSize**是AscendIndexIVFConfig中用户指定的共享内存大小，默认128MB）
