@@ -182,6 +182,35 @@ export IGNORE_INFER_ERROR=1
 export LD_PRELOAD=/path/to/libgomp.so  # 请将/path/to替换为libgomp.so文件的实际路径
 ```
 
+### ATC编译算子时提示**undefined symbol: CheckLogLevel**<a name="atc-undefined-symbol-checkloglevel"></a>
+
+**问题现象<a name="section238219259714"></a>**
+
+执行生成算子脚本，ATC编译Flat算子时报错：liboptiling.so: undefined symbol: CheckLogLevel，导致tiling解析失败、单算子编译失败。
+
+**原因分析<a name="section1275154417319"></a>**
+
+目前已确认：检查到的`libunified_dlog.so`导出了`CheckLogLevel`，而`liboptiling.so`的动态依赖项（`NEEDED`）中没有`libunified_dlog.so`。这说明`liboptiling.so`没有显式声明对该库的依赖。初步判断，加载`liboptiling.so`时，动态链接器无法从当时可见的符号查找范围中找到`CheckLogLevel`，因而报错。
+
+**排查方法<a name="section-checkloglevel-diagnosis"></a>**
+
+先检查依赖声明和符号导出：
+
+```bash
+readelf -d /path/to/liboptiling.so | grep NEEDED
+nm -D /path/to/libunified_dlog.so | grep CheckLogLevel
+```
+
+请将路径替换为实际文件路径。若要确认ATC实际加载的库及符号查找过程，可在当前终端设置`LD_DEBUG=libs,symbols`后运行原算子生成命令，并检查动态链接器输出。
+
+**解决方案<a name="section027514410318"></a>**
+
+将实际提供该符号的`libunified_dlog.so`预加载到当前命令的进程环境中，再运行算子生成命令：
+
+```bash
+export LD_PRELOAD=/path/to/libunified_dlog.so${LD_PRELOAD:+:$LD_PRELOAD}
+```
+
 ### 部分操作系统下生成算子失败<a name="ZH-CN_TOPIC_0000002356700501"></a>
 
 **问题现象<a name="section238219259714"></a>**
