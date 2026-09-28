@@ -479,6 +479,8 @@ VSTAR检索当前只支持<term>Atlas 推理系列产品</term>，涉及VSTAR业
 <tr><td width="140" align="center" valign="middle">约束说明</td><td valign="middle">● dim ∈ {128}<br>● nlist ∈ {1024, 2048, 4096, 8192, 16384, 262144, 524288}<br>● m ∈ {2, 4, 8, 16, 32}<br>● n ∈ {8}</td></tr>
 </tbody></table>
 
+> **注意：** IVFPQ 算子兼容 CANN 8.5.0 及以上版本，低于 CANN 8.5.0 的版本不在适配范围内。
+
 **涉及算法<a name="section16686174317488"></a>**
 
 [AscendIndexIVFPQ](./api/02_approximate_retrieval/15_AscendIndexIVFPQ.md#ascendindexivfpq)
