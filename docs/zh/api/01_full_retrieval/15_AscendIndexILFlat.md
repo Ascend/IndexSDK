@@ -4,7 +4,7 @@
 
 AscendIndexILFlat为ILFlat标准态场景，需要使用Init指定对应资源的初始化，初始化完成之后会申请一段完整空间用于存储底库。在使用完成之后，需要调用Finalize接口对资源进行释放。
 
-AscendIndexILFlat仅支持使用<term>Atlas 推理系列产品</term>，在标准态部署方式下的向量内积距离类型。AscendIndexILFlat在使用时依赖Flat和AICPU算子，具体请参见[Flat](../../05_user_guide.md#flat)和[AICPU](../../05_user_guide.md#aicpu)。
+AscendIndexILFlat仅支持使用<term>Atlas推理系列产品</term>，在标准态部署方式下的向量内积距离类型。AscendIndexILFlat在使用时依赖Flat和AICPU算子，具体请参见[Flat](../../05_user_guide.md#flat)和[AICPU](../../05_user_guide.md#aicpu)。
 
 支持多线程并发调用，需要设置“MX\_INDEX\_MULTITHREAD”环境变量为1，即export MX\_INDEX\_MULTITHREAD=1，设置为其他值或者不设置，则表示不开启多线程功能。当前的特征检索内部会使用OMP做性能加速，OMP不支持与其他多线程机制混用。反复创建新线程使用OMP会导致内存持续累加，因此建议使用固定的线程来运行检索任务。
 
