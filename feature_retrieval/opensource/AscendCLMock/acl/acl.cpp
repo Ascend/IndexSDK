@@ -132,6 +132,8 @@ extern "C"
         return ACL_SUCCESS;
     }
 
+    const char *aclGetRecentErrMsg() { return nullptr; }
+
     void setMaxSize(size_t size) { g_maxSize = size; }
 
     aclError aclrtMalloc(void **devPtr, size_t size, aclrtMemMallocPolicy UNUSED(policy))
