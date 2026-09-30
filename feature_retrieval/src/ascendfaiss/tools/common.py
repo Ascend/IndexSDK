@@ -90,7 +90,7 @@ def generate_op_config(dist_compute_obj, file_path):
     if os.path.islink(file_path):
         raise RuntimeError(file_path + " can not be soft link!!!")
     obj_str = json.dumps(dist_compute_obj)
-    flags = os.O_WRONLY | os.O_CREAT
+    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
     modes = stat.S_IWUSR | stat.S_IRUSR | stat.S_IRGRP
     with os.fdopen(os.open(file_path, flags, modes), 'w') as fout:
         fout.write(obj_str)
@@ -196,6 +196,7 @@ def get_soc_version_from_npu_type(npu_type):
         "910_9372": "Ascend910_9372",
         "910_9362": "Ascend910_9362",
         "Ascend950PR": "Ascend950PR_957c",
+        "Ascend950": "Ascend950PR_957c",
     }
     str_keys = [str(key) for key in npu_type_soc_version_dict]
     if npu_type not in npu_type_soc_version_dict:
@@ -217,6 +218,7 @@ def get_core_num_by_npu_type(core_num, npu_type):
         "910_9372": 40,
         "910_9362": 40,
         "Ascend950PR": 56,
+        "Ascend950": 56,
     }
     if "--cores" in sys.argv:
         if core_num not in npu_type_core_num_dict.values():

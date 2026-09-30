@@ -315,8 +315,14 @@ build_ops()
     wait "${pid_310p}" || build_failed=1
     wait "${pid_910b}" || build_failed=1
 
-    rm -rf "${PROJECT_ZIP_PATH}"/stage_310P "${PROJECT_ZIP_PATH}"/stage_910B
-    rm -rf "${PROJECT_SRC_PATH}"/ops_src_310P "${PROJECT_SRC_PATH}"/ops_src_910B
+    # Ascend950 needs its own package so that legacy op-proto constants and
+    # packaged operator metadata are built for A5 instead of reusing 910B.
+    build_ops_for_npu_type Ascend950 || build_failed=1
+
+    rm -rf "${PROJECT_ZIP_PATH}"/stage_310P "${PROJECT_ZIP_PATH}"/stage_910B \
+        "${PROJECT_ZIP_PATH}"/stage_Ascend950
+    rm -rf "${PROJECT_SRC_PATH}"/ops_src_310P "${PROJECT_SRC_PATH}"/ops_src_910B \
+        "${PROJECT_SRC_PATH}"/ops_src_Ascend950
     if [ "${build_failed}" -ne 0 ]; then
         error "build ops failed."
         exit 1
@@ -327,6 +333,7 @@ package_without_ops()
 {
     make_zip_src ${RELEASE_PKG_NAME}-310P
     make_zip_src ${RELEASE_PKG_NAME}-910B
+    make_zip_src ${RELEASE_PKG_NAME}-Ascend950
 }
 
 install_ock()

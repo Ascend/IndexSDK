@@ -16,14 +16,17 @@
  * -------------------------------------------------------------------------
  */
 
-
 #ifndef GE_OP_ASCEND_OPERATOR_H
 #define GE_OP_ASCEND_OPERATOR_H
 
 #ifdef ASCEND_310
 const int CORE_NUM = 2;
+#elif defined(ASCEND_910B)
+const int CORE_NUM = 2;
+#elif defined(ASCEND_950)
+const int CORE_NUM = 56;
 #else
 const int CORE_NUM = 8;
 #endif
 
-#endif // GE_OP_ASCEND_OPERATOR_H
+#endif  // GE_OP_ASCEND_OPERATOR_H

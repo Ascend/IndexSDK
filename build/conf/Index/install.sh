@@ -446,7 +446,7 @@ function UnTAR()
         elif [ "$ascend_type" = "A3" ]; then
             tar_package_name="*gcc4.8.5*910B.tar.gz"
         elif [ "$ascend_type" = "Ascend950PR" ]; then
-            tar_package_name="*gcc4.8.5*910B.tar.gz"
+            tar_package_name="*gcc4.8.5*Ascend950.tar.gz"
         fi
     else
         if [ "$ascend_type" = "310P" ]; then
@@ -456,7 +456,7 @@ function UnTAR()
         elif [ "$ascend_type" = "A3" ]; then
             tar_package_name="*gcc7.3.0*910B.tar.gz"
         elif [ "$ascend_type" = "Ascend950PR" ]; then
-            tar_package_name="*gcc7.3.0*910B.tar.gz"
+            tar_package_name="*gcc7.3.0*Ascend950.tar.gz"
         fi
     fi
 
