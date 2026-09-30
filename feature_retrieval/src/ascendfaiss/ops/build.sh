@@ -18,10 +18,19 @@ set -e
 
 if [ $# -lt 1 ] ; then
     echo "Usage:  bash build.sh NPU_TYPE"
-    echo "  Examples:  bash build.sh 310P"
+    echo "  Examples:  bash build.sh 310P / bash build.sh 910B / bash build.sh Ascend950"
     exit 1
 fi
 build_target=$1
+
+case "${build_target}" in
+    310P|910B|A3|Ascend950|Ascend950PR)
+        ;;
+    *)
+        echo "[ERROR] unsupported NPU_TYPE=${build_target}; expected 310P, 910B, A3, Ascend950, or Ascend950PR"
+        exit 1
+        ;;
+esac
 
 if [ "$ASCEND_HOME" ]; then
     ASCEND_HOME="$ASCEND_HOME"
@@ -40,7 +49,8 @@ if [ ! "$PYTHON" ]; then
     export PYTHON=/usr/bin/python3
 fi
 
-if [ ! -d "${ASCEND_HOME}/${ASCEND_VERSION}/atc/include" ]; then
+ASCEND_TOOLKIT_PATH="${ASCEND_HOME}/${ASCEND_VERSION}"
+if [ ! -d "${ASCEND_TOOLKIT_PATH}/include" ]; then
     echo "Please set right ASCEND_HOME, now ASCEND_HOME=${ASCEND_HOME}"
     echo "Please set right ASCEND_VERSION, now ASCEND_VERSION=${ASCEND_VERSION}"
     echo "Usage: export ASCEND_HOME=\${driver/ascend-toolkit_install_path}"
@@ -50,8 +60,8 @@ fi
 
 echo "ASCEND_TOOLKIT_PATH: ${ASCEND_HOME}/${ASCEND_VERSION}"
 
-export ASCEND_TENSOR_COMPLIER_INCLUDE="${ASCEND_HOME}/${ASCEND_VERSION}/atc/include"
-export ASCEND_OPP_PATH="${ASCEND_HOME}/${ASCEND_VERSION}/opp"
+export ASCEND_TENSOR_COMPILER_INCLUDE="${ASCEND_TOOLKIT_PATH}/include"
+export ASCEND_OPP_PATH="${ASCEND_TOOLKIT_PATH}/opp"
 export PROJECT_PATH="$(pwd)"
 
 echo "ops build_target=${build_target}"
