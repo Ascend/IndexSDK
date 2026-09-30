@@ -513,7 +513,44 @@ VSTAR检索当前只支持<term>Atlas推理系列产品</term>，涉及VSTAR业�
 <tr><td width="140" align="center" valign="middle">约束说明</td><td valign="middle">● 仅支持Ascend 950PR系列产品<br>● dim ∈ {64, 128, 256, 512}<br>● degree ∈ {64, 128, 256, 512}</td></tr>
 </tbody></table>
 
-##### Cagra构图脚本<a name="section_cagra_build"></a>
+##### Cagra NPU 构图算子模型<a name="cagra-npu-build"></a>
+
+`cagra_build_generate_model.py` 用于生成 Ascend 950 上的六个 CAGRA SIMT 构图算子模型。
+
+<a name="table_cagra_npu_build"></a>
+<table><tbody>
+<tr><td width="140" align="center" valign="middle">用法</td><td valign="middle"><strong><code>python3 cagra_build_generate_model.py --cores &lt;core_num&gt; -n &lt;data_size&gt; -d &lt;dim&gt; -i &lt;intermediate_degree&gt; -graph &lt;graph_degree&gt; -p &lt;process_id&gt; -t &lt;npu_type&gt;</code></strong></td></tr>
+<tr><td width="140" align="center" valign="middle">参数名称</td><td valign="middle">&lt;core_num&gt;：AI Core 数量，Ascend 950 当前必须为&quot;56&quot;。<br>&lt;data_size&gt;：底库向量数量 N，默认值为&quot;10000&quot;。<br>&lt;dim&gt;：FP32 向量维度 D，默认值为&quot;128&quot;。<br>&lt;intermediate_degree&gt;：NN-Descent 中间图出度 M，默认值为&quot;128&quot;。<br>&lt;graph_degree&gt;：最终 CAGRA 图出度 G，默认值为&quot;64&quot;。<br>&lt;process_id&gt;：模型生成进程 ID，默认值为&quot;0&quot;。<br>&lt;npu_type&gt;：ATC 目标硬件，使用&quot;Ascend950PR&quot;；&quot;Ascend950&quot;作为兼容别名。<br>--help | -h：查询帮助信息。</td></tr>
+<tr><td width="140" align="center" valign="middle">说明</td><td valign="middle">执行命令后，在当前目录的 <code>op_models</code> 中生成构图 OM。模型使用静态 shape，生成模型时的 N、D、M、G 必须与运行时完全一致。<br><br>例如，生成 100 万条 128 维向量、M=128、G=64 的构图模型：<br><strong><code>python3 cagra_build_generate_model.py --cores 56 -n 1000000 -d 128 -i 128 -graph 64 -t Ascend950PR</code></strong></td></tr>
+<tr><td width="140" align="center" valign="middle">约束说明</td><td valign="middle">● 仅支持 Ascend 950 系列产品和单卡构图。<br>● 2 ≤ data_size ≤ 2147483647，实际规模受 Host 和 Device 内存限制。<br>● 支持 1 ≤ dim ≤ 3072，已验证 dim ∈ {64, 128, 256, 384, 512, 1024, 1536, 2048, 3072}。<br>● 1 ≤ graph_degree ≤ intermediate_degree ≤ 128，并且 intermediate_degree &lt; data_size。<br>● 构图仅支持有限 FP32 输入和 L2 距离，输入数据不能包含 NaN、正无穷或负无穷。<br>● 构图命令没有 topK 参数；topK 只影响检索。</td></tr>
+</tbody></table>
+
+构图模型生成后，设置模型目录，并通过公共 C++ 接口构图：
+
+```bash
+export MX_INDEX_MODELPATH=$(realpath op_models)
+```
+
+```cpp
+#include "index/AscendCagraGraphBuilder.h"
+
+faiss::ascend::AscendCagraGraphBuilder builder;
+std::vector<int> devices{deviceId};
+int ret = builder.Init(128, 64, dataNum, devices);
+
+faiss::ascend::AscendCagraGraphBuildConfig config;
+config.intermediateDegree = 128;
+config.maxIterations = 20;
+config.terminationThreshold = 0.0001F;
+config.guaranteeConnectivity = true;
+
+std::vector<uint32_t> graph(static_cast<size_t>(dataNum) * 64);
+ret = builder.Build(baseData, graph.data(), config);
+```
+
+`Build` 输出行优先的 `uint32_t[dataNum][graphDegree]` 邻接矩阵；`BuildToFile` 可直接写入二进制图文件。
+
+##### Cagra CPU构图脚本<a name="section_cagra_build"></a>
 
 **环境配置**
 

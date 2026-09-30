@@ -19,24 +19,26 @@
 #ifndef ACL_H
 #define ACL_H
 
-#include "acl_rt.h"
-#include "acl_op.h"
 #include "acl_mdl.h"
+#include "acl_op.h"
+#include "acl_rt.h"
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
 #ifndef UNUSED
 #define UNUSED(x) (x) __attribute__((unused))
 #endif
 
-aclError aclInit(const char *configPath);
-aclError aclFinalize();
-void setMaxSize(size_t size);
+    aclError aclInit(const char *configPath);
+    aclError aclFinalize();
+    const char *aclGetRecentErrMsg();
+    void setMaxSize(size_t size);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif // ACL_H
+#endif  // ACL_H
