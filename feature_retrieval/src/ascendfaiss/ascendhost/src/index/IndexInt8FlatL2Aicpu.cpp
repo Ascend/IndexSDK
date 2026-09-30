@@ -86,7 +86,15 @@ APP_ERROR IndexInt8FlatL2Aicpu::resetDistCompOp(int codeNum)
 {
     std::vector<IndexTypeIdx> distCompOpsIdxs = {IndexTypeIdx::ITI_INT8_L2, IndexTypeIdx::ITI_INT8_L2_FULL};
     std::vector<std::string> distCompOpsNames = {"DistanceInt8L2Mins", "DistanceInt8L2FullMins"};
-    if (faiss::ascend::SocUtils::GetInstance().IsAscend910B() || faiss::ascend::SocUtils::GetInstance().IsAscendA5())
+    if (faiss::ascend::SocUtils::GetInstance().IsAscendA5())
+    {
+        distCompOpsIdxs.clear();
+        distCompOpsIdxs.emplace_back(IndexTypeIdx::ITI_INT8_L2);
+
+        distCompOpsNames.clear();
+        distCompOpsNames.emplace_back("AscendcDistInt8FlatL2With950");
+    }
+    else if (faiss::ascend::SocUtils::GetInstance().IsAscend910B())
     {
         distCompOpsIdxs.clear();
         distCompOpsIdxs.emplace_back(IndexTypeIdx::ITI_INT8_L2);
