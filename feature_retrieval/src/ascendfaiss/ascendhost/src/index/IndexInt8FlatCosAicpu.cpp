@@ -250,7 +250,7 @@ APP_ERROR IndexInt8FlatCosAicpu::searchInGroup(size_t grpId, const HeteroBlockGr
             input.push_back(&topKThreshold);
         }
         std::vector<const AscendTensorBase *> output{&dist, &minDist, &flag};
-        runDistCompute(nq, input, output, stream);
+        runDistCompute(nq, input, output, stream, 0);
 
         if ((grp.groupType == HeteroBlockGroupType::BGT_PURE_HOST && (i + 1) % DFT_MAX_HOST_BLOCK_COUNT == 0) ||
             (i + 1 == blockNum))
@@ -462,8 +462,10 @@ APP_ERROR IndexInt8FlatCosAicpu::searchPaged(int pageId, AscendTensor<int8_t, DI
 
     AscendTensor<float16_t, DIMS_3, size_t> distResult(mem, {(size_t)blockNum, (size_t)nq, (size_t)codeBlockSize},
                                                        stream);
+
     AscendTensor<float16_t, DIMS_3, size_t> minDistResult(
         mem, {(size_t)blockNum, (size_t)nq, (size_t)this->burstsOfBlock}, stream);
+
     AscendTensor<uint32_t, DIMS_3> opSize(mem, {blockNum, CORE_NUM, SIZE_ALIGN}, stream);
     AscendTensor<uint16_t, DIMS_3> opFlag(mem, {blockNum, flagNum, FLAG_SIZE}, stream);
     opFlag.zero();
@@ -533,7 +535,7 @@ APP_ERROR IndexInt8FlatCosAicpu::searchPaged(int pageId, AscendTensor<int8_t, DI
             input.push_back(&topKThreshold);
         }
         std::vector<const AscendTensorBase *> output{&dist, &minDist, &flag};
-        runDistCompute(nq, input, output, stream);
+        runDistCompute(nq, input, output, stream, 0);
         deviceMemMng.PushDataAfterSearch(baseShaped, blockOffset, i, blockNum, stream);
     }
 
@@ -543,7 +545,6 @@ APP_ERROR IndexInt8FlatCosAicpu::searchPaged(int pageId, AscendTensor<int8_t, DI
     ret = synchronizeStream(streamAicpu);
     APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "synchronizeStream aicpu stream failed: %i\n",
                              ret);
-
     return APP_ERR_OK;
 }
 
@@ -551,7 +552,11 @@ APP_ERROR IndexInt8FlatCosAicpu::resetDistCompOp(int codeNum) const
 {
     std::string opTypeName =
         deviceMemMng.GetStrategy() == DevMemStrategy::HETERO_MEM ? "DistanceInt8CosMaxsFilter" : "DistanceInt8CosMaxs";
-    if (faiss::ascend::SocUtils::GetInstance().IsAscend910B() || faiss::ascend::SocUtils::GetInstance().IsAscendA5())
+    if (faiss::ascend::SocUtils::GetInstance().IsAscendA5())
+    {
+        opTypeName = "AscendcDistInt8FlatCosWith950";
+    }
+    else if (faiss::ascend::SocUtils::GetInstance().IsAscend910B())
     {
         opTypeName = "AscendcDistInt8FlatCos";
     }

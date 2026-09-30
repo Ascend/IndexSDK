@@ -16,7 +16,6 @@
  * -------------------------------------------------------------------------
  */
 
-
 #ifndef INDEX_INT8_FLAT_INCLUDED
 #define INDEX_INT8_FLAT_INCLUDED
 
@@ -28,48 +27,54 @@
 #include "ascenddaemon/utils/DeviceVector.h"
 #include "ascendhost/include/impl/HeteroBlockGroupMgr.h"
 
-namespace ascend {
-namespace {
+namespace ascend
+{
+namespace
+{
 const int FLAT_DEFAULT_DIST_COMPUTE_BATCH = 16384 * 16;
 
 const int BINARY_BYTE_SIZE = 8;
-const int DEFAULT_PAGE_BLOCK_NUM = 16; // default block number of one page for single index search
+const int DEFAULT_PAGE_BLOCK_NUM = 16;  // default block number of one page for single index search
 const int FLAT_BURST_LEN = 64;
 const int IDX_ACTUAL_NUM = 0;
 const int IDX_COMP_OFFSET = 1;
 const int IDX_MASK_LEN = 2;
 const int IDX_USE_MASK = 3;
-}
+}  // namespace
 
-enum class Int8FlatIndexType {
+enum class Int8FlatIndexType
+{
     INT8_FLAT_L2 = 0,
     INT8_FLAT_COS,
     INT8_FLAT_APPROXL2
 };
 
-class IndexSearchContext {
-public:
+class IndexSearchContext
+{
+   public:
     IndexSearchContext(AscendTensor<int8_t, DIMS_2> &queries, int topN, AscendTensor<float16_t, DIMS_2> &minDistances,
-        AscendTensor<int64_t, DIMS_2> &minIndices)
+                       AscendTensor<int64_t, DIMS_2> &minIndices)
         : queries(queries), topN(topN), minDistances(minDistances), minIndices(minIndices)
-        {}
-    
+    {
+    }
+
     AscendTensor<int8_t, DIMS_2> &queries;
     int topN;
     AscendTensor<float16_t, DIMS_2> &minDistances;
     AscendTensor<int64_t, DIMS_2> &minIndices;
 };
 
-struct IndexSearchTensorShare {
+struct IndexSearchTensorShare
+{
     explicit IndexSearchTensorShare(AscendResourcesProxy &resources, IndexSearchContext &ctx,
-        const HeteroBlockGroupMgr &grpSpliter, const IndexSchemaBase &indexSchema);
+                                    const HeteroBlockGroupMgr &grpSpliter, const IndexSchemaBase &indexSchema);
 
     ~IndexSearchTensorShare();
 
     AscendTensor<float16_t, DIMS_3, size_t> &getDistResult(size_t grpId);
 
     AscendTensor<float16_t, DIMS_3, size_t> &getMinDistResult(size_t grpId);
-    
+
     size_t groupCount;
     std::shared_ptr<AscendTensor<float16_t, DIMS_1>> queriesNorm;
     std::shared_ptr<AscendTensor<uint32_t, DIMS_2>> actualNum;
@@ -82,20 +87,21 @@ struct IndexSearchTensorShare {
     std::vector<std::shared_ptr<AscendTensor<int64_t, DIMS_1>>> attrsInputVec;
 };
 
-
-template<typename P>
-class IndexInt8Flat : public IndexInt8, public IndexSchemaBase {
-public:
-    IndexInt8Flat(int dim, MetricType metric = MetricType::METRIC_L2,
-        int64_t resourceSize = -1, int blockSize = FLAT_DEFAULT_DIST_COMPUTE_BATCH);
+template <typename P>
+class IndexInt8Flat : public IndexInt8, public IndexSchemaBase
+{
+   public:
+    IndexInt8Flat(int dim, MetricType metric = MetricType::METRIC_L2, int64_t resourceSize = -1,
+                  int blockSize = FLAT_DEFAULT_DIST_COMPUTE_BATCH);
 
     ~IndexInt8Flat();
 
     APP_ERROR setHeteroParam(uint32_t deviceId, size_t deviceCapacity, size_t deviceBuffer, size_t hostCapacity);
 
     APP_ERROR tryToSychResultAdvanced(int &hasCopiedCount, int &indexDoneCount, int indexId, int n, int batchSize,
-        int k, float16_t *distances, idx_t *labels, AscendTensor<float16_t, DIMS_3, size_t> &srcDistances,
-        AscendTensor<idx_t, DIMS_3, size_t> &srcIndices);
+                                      int k, float16_t *distances, idx_t *labels,
+                                      AscendTensor<float16_t, DIMS_3, size_t> &srcDistances,
+                                      AscendTensor<idx_t, DIMS_3, size_t> &srcIndices);
 
     APP_ERROR addVectors(AscendTensor<int8_t, DIMS_2> &rawData) override;
 
@@ -105,30 +111,15 @@ public:
 
     void reset() override;
 
-    inline idx_t getSize() const override
-    {
-        return ntotal;
-    }
+    inline idx_t getSize() const override { return ntotal; }
 
-    inline int getBlockSize() const override
-    {
-        return codeBlockSize;
-    }
+    inline int getBlockSize() const override { return codeBlockSize; }
 
-    inline int getBurstsOfBlock(void) const override
-    {
-        return burstsOfBlock;
-    }
+    inline int getBurstsOfBlock(void) const override { return burstsOfBlock; }
 
-    inline const std::vector<std::unique_ptr<DeviceVector<int8_t>>> &getBaseShaped() const
-    {
-        return baseShaped;
-    }
+    inline const std::vector<std::unique_ptr<DeviceVector<int8_t>>> &getBaseShaped() const { return baseShaped; }
 
-    inline const std::vector<std::unique_ptr<DeviceVector<P>>> &getNormBase() const
-    {
-        return normBase;
-    }
+    inline const std::vector<std::unique_ptr<DeviceVector<P>>> &getNormBase() const { return normBase; }
 
     void getBaseEnd() override;
 
@@ -138,19 +129,19 @@ public:
 
     std::vector<std::unique_ptr<DeviceVector<P>>> normBase;
 
-protected:
-
+   protected:
     APP_ERROR searchImpl(int n, const int8_t *x, int k, float16_t *distances, idx_t *labels) override;
 
     APP_ERROR searchImpl(std::vector<IndexInt8 *> indexes, int n, int batchSize, const int8_t *x, int k,
-        float16_t *distances, idx_t *labels) override;
+                         float16_t *distances, idx_t *labels) override;
 
     virtual APP_ERROR searchPaged(int pageId, AscendTensor<int8_t, DIMS_2> &queries, int k,
-                          AscendTensor<float16_t, DIMS_2> &outDistance, AscendTensor<int64_t, DIMS_2> &outIndices,
-                          AscendTensor<uint8_t, DIMS_2> &mask);
+                                  AscendTensor<float16_t, DIMS_2> &outDistance,
+                                  AscendTensor<int64_t, DIMS_2> &outIndices, AscendTensor<uint8_t, DIMS_2> &mask);
 
     virtual void runDistCompute(int batch, const std::vector<const AscendTensorBase *> &input,
-        const std::vector<const AscendTensorBase *> &output, aclrtStream stream, uint32_t actualNum = 0) const = 0;
+                                const std::vector<const AscendTensorBase *> &output, aclrtStream stream,
+                                uint32_t actualNum) const = 0;
 
     void computeNorm(AscendTensor<int8_t, DIMS_2> &rawData);
     P ivecNormL2sqr(const int8_t *x, size_t d);
@@ -174,25 +165,24 @@ protected:
     size_t calcNormBaseSize(idx_t totalNum);
 
     void runTopkCompute(AscendTensor<float16_t, DIMS_3, size_t> &dists,
-        AscendTensor<float16_t, DIMS_3, size_t> &mindists, AscendTensor<uint32_t, DIMS_3> &sizes,
-        AscendTensor<uint16_t, DIMS_3> &flags, AscendTensor<int64_t, DIMS_1> &attrs,
-        AscendTensor<float16_t, DIMS_2> &outdists, AscendTensor<int64_t, DIMS_2> &outlabel, aclrtStream stream);
+                        AscendTensor<float16_t, DIMS_3, size_t> &mindists, AscendTensor<uint32_t, DIMS_3> &sizes,
+                        AscendTensor<uint16_t, DIMS_3> &flags, AscendTensor<int64_t, DIMS_1> &attrs,
+                        AscendTensor<float16_t, DIMS_2> &outdists, AscendTensor<int64_t, DIMS_2> &outlabel,
+                        aclrtStream stream);
 
     void runMultisearchTopkCompute(AscendTensor<float16_t, DIMS_3, size_t> &dists,
                                    AscendTensor<float16_t, DIMS_3, size_t> &maxDists,
-                                   AscendTensor<uint32_t, DIMS_3> &sizes,
-                                   AscendTensor<uint16_t, DIMS_3> &flags,
-                                   AscendTensor<int64_t, DIMS_1> &attrs,
-                                   AscendTensor<uint32_t, DIMS_1> &indexOffset,
+                                   AscendTensor<uint32_t, DIMS_3> &sizes, AscendTensor<uint16_t, DIMS_3> &flags,
+                                   AscendTensor<int64_t, DIMS_1> &attrs, AscendTensor<uint32_t, DIMS_1> &indexOffset,
                                    AscendTensor<uint32_t, DIMS_1> &pageOffset,
                                    AscendTensor<uint16_t, DIMS_1> &reorderFlag,
                                    AscendTensor<float16_t, DIMS_3, size_t> &outDists,
-                                   AscendTensor<idx_t, DIMS_3, size_t> &outlabel,
-                                   aclrtStream stream);
+                                   AscendTensor<idx_t, DIMS_3, size_t> &outlabel, aclrtStream stream);
 
     APP_ERROR computeMultisearchTopkParam(AscendTensor<uint32_t, DIMS_1> &indexOffsetInputs,
-        AscendTensor<uint32_t, DIMS_1> &labelOffsetInputs, AscendTensor<uint16_t, DIMS_1> &reorderFlagInputs,
-        std::vector<idx_t> &ntotals, std::vector<idx_t> &offsetBlocks) const;
+                                          AscendTensor<uint32_t, DIMS_1> &labelOffsetInputs,
+                                          AscendTensor<uint16_t, DIMS_1> &reorderFlagInputs,
+                                          std::vector<idx_t> &ntotals, std::vector<idx_t> &offsetBlocks) const;
 
     APP_ERROR resetTopkCompOp();
     APP_ERROR resetMultisearchTopkCompOp();
@@ -206,29 +196,29 @@ protected:
     APP_ERROR getVectorsAiCpu(uint32_t offset, uint32_t num, std::vector<int8_t> &vectors);
     APP_ERROR copyAndSaveVectors(size_t startOffset, AscendTensor<int8_t, DIMS_2> &rawData);
 
-protected:
-    int codeBlockSize = FLAT_DEFAULT_DIST_COMPUTE_BATCH;                                     // the size of codes block
+   protected:
+    int codeBlockSize = FLAT_DEFAULT_DIST_COMPUTE_BATCH;  // the size of codes block
     int blockMaskSize = FLAT_DEFAULT_DIST_COMPUTE_BATCH / BINARY_BYTE_SIZE;
     int devVecCapacity = 0;
-    int pageSize; // pageSize for single index search
+    int pageSize;  // pageSize for single index search
     int burstsOfBlock;
     DeviceMemMng deviceMemMng;
     // aicpu op for topk computation
     std::map<int, std::unique_ptr<::ascend::AscendOperator>> topkComputeOps;
-    Int8FlatIndexType int8FlatIndexType { Int8FlatIndexType::INT8_FLAT_L2 };
+    Int8FlatIndexType int8FlatIndexType{Int8FlatIndexType::INT8_FLAT_L2};
     std::unique_ptr<Int8L2Norm> int8L2Norm;
-    int flagNum { 0 };
-    bool isNeedCleanMinDist { false };
-private:
+    int flagNum{0};
+    bool isNeedCleanMinDist{false};
+
+   private:
     APP_ERROR addVectorsAicpu(size_t ntotal, AscendTensor<int8_t, DIMS_2> &rawData);
-    APP_ERROR addVectors(AscendTensor<int8_t, DIMS_2> &rawData,
-        int num, int dim, int vecSize, int addVecNum);
+    APP_ERROR addVectors(AscendTensor<int8_t, DIMS_2> &rawData, int num, int dim, int vecSize, int addVecNum);
     APP_ERROR initResult(AscendTensor<float16_t, DIMS_3, size_t> &distances,
-        AscendTensor<idx_t, DIMS_3, size_t> &indices) const;
+                         AscendTensor<idx_t, DIMS_3, size_t> &indices) const;
 
     DeviceVector<int8_t, ExpandPolicySlim> dataVec;
     DeviceVector<int64_t, ExpandPolicySlim> attrsVec;
 };
-} // namespace ascend
+}  // namespace ascend
 
-#endif // INDEX_INT8_FLAT_INCLUDED
+#endif  // INDEX_INT8_FLAT_INCLUDED
