@@ -102,10 +102,13 @@ APP_ERROR Int8L2Norm::resetL2NormOperator()
     auto l2NormOpReset = [&](std::unique_ptr<AscendOperator> &l2NormOp, int vectorNum)
     {
         std::string opName = "Int8L2Norm";
-        if (faiss::ascend::SocUtils::GetInstance().IsAscend910B() ||
-            faiss::ascend::SocUtils::GetInstance().IsAscendA5())
+        if (faiss::ascend::SocUtils::GetInstance().IsAscend910B())
         {
             opName = "AscendcL2Norm";
+        }
+        else if (faiss::ascend::SocUtils::GetInstance().IsAscendA5())
+        {
+            opName = "AscendcL2NormWith950";
         }
         AscendOpDesc desc(opName);
         std::vector<int64_t> vectorShape({vectorNum, dims});
