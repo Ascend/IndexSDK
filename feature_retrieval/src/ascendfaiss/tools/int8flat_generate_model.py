@@ -180,13 +180,15 @@ def generate_distance_int8_l2_mins_json(core_num, query_num, dim, file_path, cod
     utils.generate_op_config(int8_l2_mins_obj, file_path)
 
 
-def generate_ascendc_dist_int8_flat_l2_json(core_num, search_page_sizes, dim, file_path, code_num_list):
+def generate_ascendc_dist_int8_flat_l2_json(
+    core_num, search_page_sizes, dim, file_path, code_num_list, op_name="AscendcDistInt8FlatL2"
+):
     # write dist_compute_int8_l2_min json for 910B
     ascendc_dist_int8_flat_l2_obj = []
     for code_num in code_num_list:
         for query_num in search_page_sizes:
             for mask_batch in (query_num, 1):
-                generator = OpJsonGenerator("AscendcDistInt8FlatL2")
+                generator = OpJsonGenerator(op_name)
                 generator.add_input("ND", [query_num, dim], "int8")
                 generator.add_input("ND", [mask_batch, (code_num + MASK_BIT_NUM - 1) // MASK_BIT_NUM], "uint8")
                 generator.add_input(
@@ -294,10 +296,10 @@ def generate_distance_int8_l2_mins_wo_query_norm_json(core_num, query_num, dim, 
     utils.generate_op_config(int8_l2_mins_wo_query_norm_obj, file_path)
 
 
-def generate_ascendc_l2_norm_json(search_page_sizes, dim, file_path):
+def generate_ascendc_l2_norm_json(search_page_sizes, dim, file_path, op_name="AscendcL2Norm"):
     ascendc_l2_norm_obj = []
     for queries_num in search_page_sizes:
-        generator = OpJsonGenerator("AscendcL2Norm")
+        generator = OpJsonGenerator(op_name)
         # feature
         generator.add_input("ND", [queries_num, dim], "int8")
         # transfer
@@ -312,11 +314,13 @@ def generate_ascendc_l2_norm_json(search_page_sizes, dim, file_path):
     utils.generate_op_config(ascendc_l2_norm_obj, file_path)
 
 
-def generate_ascendc_dist_int8_flat_cos_json(core_num, search_page_sizes, dim, file_path, code_num_list):
+def generate_ascendc_dist_int8_flat_cos_json(
+    core_num, search_page_sizes, dim, file_path, code_num_list, op_name="AscendcDistInt8FlatCos"
+):
     ascendc_dist_int8_flat_cos_obj = []
     for code_num in code_num_list:
         for queries_num in search_page_sizes:
-            generator = OpJsonGenerator("AscendcDistInt8FlatCos")
+            generator = OpJsonGenerator(op_name)
             # query
             generator.add_input("ND", [queries_num, dim], "int8")
             # mask
@@ -382,9 +386,13 @@ def generate_ascendc_int8_offline_model(args, config_path, core_num, soc_version
     map_args = []
     dim = args.dim
     process_id = args.process_id
+    is_950 = "950" in args.npu_type
+    int8_flat_cos_op_name = "AscendcDistInt8FlatCosWith950" if is_950 else "AscendcDistInt8FlatCos"
+    int8_flat_l2_op_name = "AscendcDistInt8FlatL2With950" if is_950 else "AscendcDistInt8FlatL2"
+    l2_norm_op_name = "AscendcL2NormWith950" if is_950 else "AscendcL2Norm"
     op_name_ = "ascendc_l2_norm_d{}_pid{}".format(dim, process_id)
     file_path_ = os.path.join(config_path, JSON_FILE.format(op_name_))
-    generate_ascendc_l2_norm_json([NORM_CODE_NUM], dim, file_path_)
+    generate_ascendc_l2_norm_json([NORM_CODE_NUM], dim, file_path_, l2_norm_op_name)
     map_args.append((op_name_, soc_version))
 
     search_page_sizes = (128, 112, 96, 80, 64, 48, 36, 32, 24, 18, 16, 12, 8, 6, 4, 2, 1)
@@ -396,13 +404,17 @@ def generate_ascendc_int8_offline_model(args, config_path, core_num, soc_version
     search_page_sizes = (128, 112, 96, 80, 64, 48, 36, 32, 24, 18, 16, 12, 8, 6, 4, 2, 1)
     op_name_ = "ascendc_dist_int8_flat_cos_d{}_pid{}".format(dim, process_id)
     file_path_ = os.path.join(config_path, JSON_FILE.format(op_name_))
-    generate_ascendc_dist_int8_flat_cos_json(core_num, search_page_sizes, dim, file_path_, code_num_list)
+    generate_ascendc_dist_int8_flat_cos_json(
+        core_num, search_page_sizes, dim, file_path_, code_num_list, int8_flat_cos_op_name
+    )
     map_args.append((op_name_, soc_version))
 
     search_page_sizes = (128, 64, 48, 36, 32, 24, 18, 16, 12, 8, 6, 4, 2, 1)
     op_name_ = "ascendc_dist_int8_flat_l2_d{}_pid{}".format(dim, process_id)
     file_path_ = os.path.join(config_path, JSON_FILE.format(op_name_))
-    generate_ascendc_dist_int8_flat_l2_json(core_num, search_page_sizes, dim, file_path_, code_num_list)
+    generate_ascendc_dist_int8_flat_l2_json(
+        core_num, search_page_sizes, dim, file_path_, code_num_list, int8_flat_l2_op_name
+    )
     map_args.append((op_name_, soc_version))
 
     utils.run_generate_model_task(args, map_args)
