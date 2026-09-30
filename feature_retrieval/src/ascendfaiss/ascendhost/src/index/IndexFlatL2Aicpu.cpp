@@ -20,6 +20,7 @@
 
 #include <iostream>
 
+#include "acl/acl.h"
 #include "acl/acl_op_compiler.h"
 #include "ascend/AscendIndex.h"
 #include "ascenddaemon/utils/AscendTensor.h"
@@ -65,7 +66,14 @@ IndexFlatL2Aicpu::~IndexFlatL2Aicpu()
 
 APP_ERROR IndexFlatL2Aicpu::init()
 {
-    if (faiss::ascend::SocUtils::GetInstance().IsAscend910B() || faiss::ascend::SocUtils::GetInstance().IsAscendA5())
+    if (faiss::ascend::SocUtils::GetInstance().IsAscendA5())
+    {
+        searchBatchSizes = {128, 96, 80, 64, 48, 36, 32, 30, 24, 18, 16, 12, 8, 6, 4, 2, 1};
+        distOpName = "DistanceFlatL2With950";
+        flagNum = CORE_NUM;
+        isNeedCleanMinDist = true;
+    }
+    else if (faiss::ascend::SocUtils::GetInstance().IsAscend910B())
     {
         searchBatchSizes = {96, 80, 64, 48, 36, 32, 30, 24, 18, 16, 12, 8, 6, 4, 2, 1};
         distOpName = "DistanceFlatL2";
@@ -189,8 +197,16 @@ APP_ERROR IndexFlatL2Aicpu::searchImpl(AscendTensor<float16_t, DIMS_2> &queries,
     size_t pageNum = utils::divUp(this->ntotal, pageSize);
     for (size_t pageId = 0; pageId < pageNum; ++pageId)
     {
-        APP_ERROR ret = searchPaged(pageId, pageNum, queries, minDistances, minIndices);
-        APPERR_RETURN_IF(ret, ret);
+        if (faiss::ascend::SocUtils::GetInstance().IsAscendA5())
+        {
+            APP_ERROR ret = searchPagedWith950(pageId, pageNum, queries, minDistances, minIndices);
+            APPERR_RETURN_IF(ret, ret);
+        }
+        else
+        {
+            APP_ERROR ret = searchPaged(pageId, pageNum, queries, minDistances, minIndices);
+            APPERR_RETURN_IF(ret, ret);
+        }
     }
 
     // memcpy data back from dev to host
@@ -201,6 +217,161 @@ APP_ERROR IndexFlatL2Aicpu::searchImpl(AscendTensor<float16_t, DIMS_2> &queries,
     ret = aclrtMemcpy(outIndices.data(), outIndices.getSizeInBytes(), minIndices.data(), minIndices.getSizeInBytes(),
                       ACL_MEMCPY_DEVICE_TO_HOST);
     APPERR_RETURN_IF_NOT_LOG(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "Failed to copy outIndices back to host");
+
+    return APP_ERR_OK;
+}
+
+APP_ERROR IndexFlatL2Aicpu::searchPagedWith950(size_t pageId, size_t pageNum, AscendTensor<float16_t, DIMS_2> &queries,
+                                               AscendTensor<float16_t, DIMS_2> &minDistances,
+                                               AscendTensor<int64_t, DIMS_2> &minIndices)
+{
+    auto streamPtr = resources.getDefaultStream();
+    auto stream = streamPtr->GetStream();
+    auto streamAicpuPtr = resources.getAlternateStreams()[0];
+    auto streamAicpu = streamAicpuPtr->GetStream();
+    auto &mem = resources.getMemoryManager();
+    int nq = queries.getSize(0);
+    int k = minDistances.getSize(1);
+    size_t pageOffset = pageId * (size_t)this->pageSize;
+    size_t blockOffset = pageId * (size_t)this->pageSize / (size_t)blockSize;
+    int computeNum = std::min(this->ntotal - pageOffset, static_cast<idx_t>(this->pageSize));
+    int blockNum = utils::divUp(computeNum, this->blockSize);
+    int burstLen = BURST_LEN_HIGH;
+    auto curBurstsOfBlock = GetBurstsOfBlock(nq, this->blockSize, burstLen);
+    AscendTensor<float16_t, DIMS_3, size_t> distResult(mem, {(size_t)blockNum, (size_t)nq, (size_t)blockSize}, stream);
+    AscendTensor<float16_t, DIMS_3, size_t> minDistResult(mem, {(size_t)blockNum, (size_t)nq, (size_t)curBurstsOfBlock},
+                                                          stream);
+
+    // 这里必须在minDistResult后申请一个缓存内存，原因如下：
+    // ascendc算子中DataCopy一次拷贝32字节，但极值采用一次拷贝16字节的方式拷贝到结果内存中，在最后一次拷贝时，
+    // 极值内存仅占16字节，导致内存拷贝会越界，超过极值内存16字节，超过的16字节全部写0，而极值内存与opFlag内存相邻，
+    // 越界后污染opFlag内容，导致结果问题，这里申请一个512(共享内存512对齐)字节的缓存区域，保证后续内存数据正常
+    constexpr uint16_t paddingSize = 512;
+    AscendTensor<uint8_t, DIMS_1> paddingMem(mem, {paddingSize}, stream);
+
+    uint32_t opFlagSize = static_cast<uint32_t>(blockNum * flagNum * FLAG_SIZE) * sizeof(uint16_t);
+    uint32_t attrsSize = aicpu::TOPK_FLAT_ATTR_IDX_COUNT * sizeof(int64_t);
+    uint32_t opSizeLen = static_cast<uint32_t>(blockNum * CORE_NUM * SIZE_ALIGN) * sizeof(uint32_t);
+    uint32_t continuousMemSize = opFlagSize + attrsSize + opSizeLen;
+    // 1) aclrtMemcpy比AscendTensor::zero更高效
+    // 2) 使用连续内存来减少aclrtMemcpy的调用次数
+    AscendTensor<uint8_t, DIMS_1, uint32_t> continuousMem(mem, {continuousMemSize}, stream);
+    std::vector<uint8_t> continuousValue(continuousMemSize, 0);
+    uint8_t *data = continuousValue.data();
+
+    // attrs: [0]asc, [1]k, [2]burst_len, [3]block_num [4]special page: -1:first page, 0:mid page, 1:last page
+    int64_t *attrs = reinterpret_cast<int64_t *>(data + opFlagSize + opSizeLen);
+    attrs[aicpu::TOPK_FLAT_ATTR_ASC_IDX] = 1;
+    attrs[aicpu::TOPK_FLAT_ATTR_K_IDX] = k;
+    attrs[aicpu::TOPK_FLAT_ATTR_BURST_LEN_IDX] = burstLen;
+    attrs[aicpu::TOPK_FLAT_ATTR_BLOCK_NUM_IDX] = blockNum;
+    attrs[aicpu::TOPK_FLAT_ATTR_PAGE_IDX] = static_cast<int64_t>(pageId);
+    attrs[aicpu::TOPK_FLAT_ATTR_PAGE_NUM_IDX] = static_cast<int64_t>(pageNum);
+    attrs[aicpu::TOPK_FLAT_ATTR_PAGE_SIZE_IDX] = this->pageSize;
+    attrs[aicpu::TOPK_FLAT_ATTR_QUICK_HEAP] = 1;
+    attrs[aicpu::TOPK_FLAT_ATTR_BLOCK_SIZE] = this->blockSize;
+    uint32_t *opSizeData = reinterpret_cast<uint32_t *>(data + opFlagSize);
+
+    uint32_t idxUseMask = (this->maskData != nullptr) ? 1 : 0;
+    for (int i = 0; i < blockNum; ++i)
+    {
+        int offset = i * this->blockSize;
+        int opSizeHostIdx = i * CORE_NUM * SIZE_ALIGN;
+        opSizeData[opSizeHostIdx + IDX_ACTUAL_NUM] =
+            std::min(static_cast<uint32_t>(computeNum - offset), static_cast<uint32_t>(this->blockSize));
+        opSizeData[opSizeHostIdx + IDX_COMP_OFFSET] = static_cast<uint32_t>(pageOffset) + static_cast<uint32_t>(offset);
+        opSizeData[opSizeHostIdx + IDX_MASK_LEN] = maskLen;
+        opSizeData[opSizeHostIdx + IDX_USE_MASK] = idxUseMask;
+    }
+    auto ret = aclrtMemcpy(continuousMem.data(), continuousMem.getSizeInBytes(), continuousValue.data(),
+                           continuousValue.size() * sizeof(uint8_t), ACL_MEMCPY_HOST_TO_DEVICE);
+
+    APPERR_RETURN_IF_NOT_LOG(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "Failed to copy attr to device");
+
+    uint16_t *opFlagMem = reinterpret_cast<uint16_t *>(continuousMem.data());
+    AscendTensor<uint16_t, DIMS_3> opFlag(opFlagMem, {blockNum, flagNum, FLAG_SIZE});
+    uint32_t *opSizeMem = reinterpret_cast<uint32_t *>(continuousMem.data() + opFlagSize);
+    AscendTensor<uint32_t, DIMS_3> opSize(opSizeMem, {blockNum, CORE_NUM, SIZE_ALIGN});
+    int64_t *attrMem = reinterpret_cast<int64_t *>(continuousMem.data() + opFlagSize + opSizeLen);
+    AscendTensor<int64_t, DIMS_1> attrsInput(attrMem, {aicpu::TOPK_FLAT_ATTR_IDX_COUNT});
+
+    AscendTensor<uint8_t, DIMS_2> mask;
+    if (idxUseMask == 1)
+    {
+        int32_t alignLen = utils::roundUp(static_cast<int32_t>(maskLen), CUBE_ALIGN_INT8);
+        int32_t maxLen = std::max(alignLen, this->blockMaskSize);
+        mask = AscendTensor<uint8_t, DIMS_2>(this->maskData, {nq, maxLen});
+    }
+    else
+    {
+        mask = AscendTensor<uint8_t, DIMS_2>(mem, {nq, this->blockMaskSize}, stream);
+    }
+
+    // TopK uses another stream. Record completion after all distance kernels have been submitted.
+    const int dim1 = utils::divUp(this->blockSize, CUBE_ALIGN);
+    const int dim2 = utils::divUp(this->dims, CUBE_ALIGN);
+    for (int i = 0; i < blockNum; ++i)
+    {
+        AscendTensor<float16_t, DIMS_4> shaped(baseShaped[blockOffset + (size_t)i]->data(),
+                                               {dim1, dim2, CUBE_ALIGN, CUBE_ALIGN});
+        AscendTensor<float16_t, DIMS_1> norm(normBase[blockOffset + i]->data(), {blockSize});
+        auto dist = distResult[i].view();
+        auto minDist = minDistResult[i].view();
+        auto actualSize = opSize[i].view();
+        auto flag = opFlag[i].view();
+        if (isNeedCleanMinDist)
+        {
+            minDist.zero();
+        }
+
+        std::vector<const AscendTensorBase *> input{&queries, &mask, &shaped, &norm, &actualSize};
+        std::vector<const AscendTensorBase *> output{&dist, &minDist, &flag};
+        runDistCompute(nq, input, output, stream);
+    }
+
+    aclrtEvent distanceDoneEvent = nullptr;
+    ret = aclrtCreateEventWithFlag(&distanceDoneEvent, ACL_EVENT_SYNC);
+    APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "create distance event failed: %i\n", ret);
+
+    ret = aclrtRecordEvent(distanceDoneEvent, stream);
+    if (ret != ACL_SUCCESS)
+    {
+        (void)aclrtDestroyEvent(distanceDoneEvent);
+        APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "record distance event failed: %i\n", ret);
+    }
+
+    // The wait is enqueued before TopK, so the AICPU cannot read flags/results until distance finishes.
+    ret = aclrtStreamWaitEvent(streamAicpu, distanceDoneEvent);
+    if (ret != ACL_SUCCESS)
+    {
+        (void)synchronizeStream(stream);
+        (void)aclrtDestroyEvent(distanceDoneEvent);
+        APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "wait distance event failed: %i\n", ret);
+    }
+    ret = aclrtResetEvent(distanceDoneEvent, streamAicpu);
+    if (ret != ACL_SUCCESS)
+    {
+        (void)synchronizeStream(streamAicpu);
+        (void)aclrtDestroyEvent(distanceDoneEvent);
+        APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "reset distance event failed: %i\n", ret);
+    }
+
+    try
+    {
+        runTopkCompute(distResult, minDistResult, opSize, opFlag, attrsInput, minDistances, minIndices, streamAicpu);
+    }
+    catch (...)
+    {
+        (void)synchronizeStream(streamAicpu);
+        (void)aclrtDestroyEvent(distanceDoneEvent);
+        throw;
+    }
+    ret = synchronizeStream(streamAicpu);
+    auto destroyRet = aclrtDestroyEvent(distanceDoneEvent);
+    APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "synchronizeStream aicpu stream failed: %i\n",
+                             ret);
+    APPERR_RETURN_IF_NOT_FMT(destroyRet == ACL_SUCCESS, APP_ERR_INNER_ERROR, "destroy distance event failed: %i\n",
+                             destroyRet);
 
     return APP_ERR_OK;
 }

@@ -105,6 +105,13 @@ extern "C"
     aclError aclrtSubscribeReport(uint64_t threadId, aclrtStream stream);
     aclError aclrtUnSubscribeReport(uint64_t threadId, aclrtStream stream);
 
+    aclError aclrtCreateEvent(aclrtEvent *event);
+    aclError aclrtCreateEventWithFlag(aclrtEvent *event, uint32_t flag);
+    aclError aclrtDestroyEvent(aclrtEvent event);
+    aclError aclrtRecordEvent(aclrtEvent event, aclrtStream stream);
+    aclError aclrtResetEvent(aclrtEvent event, aclrtStream stream);
+    aclError aclrtStreamWaitEvent(aclrtStream stream, aclrtEvent event);
+
 #ifdef __cplusplus
 }
 #endif

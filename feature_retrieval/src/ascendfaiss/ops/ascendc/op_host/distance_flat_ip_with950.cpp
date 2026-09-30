@@ -76,7 +76,7 @@ static ge::graphStatus TilingSetInputShapeInfo(gert::TilingContext *context, Dis
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus TilingSetCubeTiling(gert::TilingContext *context, DistanceFlatIPTilingData &tiling,
+static ge::graphStatus TilingSetCubeTiling(gert::TilingContext *context, DistanceFlatIPWith950TilingData &tiling,
                                            uint64_t l1Size, uint64_t l0cSize)
 {
     tiling.cubeTilingData.set_usedCoreNum(1);
@@ -128,7 +128,7 @@ static ge::graphStatus TilingFunc(gert::TilingContext *context)
         return ge::GRAPH_FAILED;
     }
 
-    DistanceFlatIPTilingData tiling;
+    DistanceFlatIPWith950TilingData tiling;
     auto ret = TilingSetInputShapeInfo(context, tiling);
     if (ret != ge::GRAPH_SUCCESS)
     {

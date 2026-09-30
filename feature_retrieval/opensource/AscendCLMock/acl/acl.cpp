@@ -331,6 +331,65 @@ extern "C"
         return ACL_SUCCESS;
     }
 
+    aclError aclrtCreateEvent(aclrtEvent *event)
+    {
+        if (event == nullptr)
+        {
+            return ACL_ERROR_INTERNAL_ERROR;
+        }
+        *event = new tagAclrtEvent();
+        (*event)->deviceId = static_cast<int32_t>(ENV().getActiveDeviceId());
+        return ACL_SUCCESS;
+    }
+
+    aclError aclrtCreateEventWithFlag(aclrtEvent *event, uint32_t flag)
+    {
+        (void)flag;
+        return aclrtCreateEvent(event);
+    }
+
+    aclError aclrtDestroyEvent(aclrtEvent event)
+    {
+        if (event == nullptr)
+        {
+            return ACL_ERROR_INTERNAL_ERROR;
+        }
+        delete event;
+        return ACL_SUCCESS;
+    }
+
+    aclError aclrtRecordEvent(aclrtEvent event, aclrtStream stream)
+    {
+        (void)stream;
+        if (event == nullptr)
+        {
+            return ACL_ERROR_INTERNAL_ERROR;
+        }
+        event->recorded = true;
+        return ACL_SUCCESS;
+    }
+
+    aclError aclrtResetEvent(aclrtEvent event, aclrtStream stream)
+    {
+        (void)stream;
+        if (event == nullptr)
+        {
+            return ACL_ERROR_INTERNAL_ERROR;
+        }
+        event->recorded = false;
+        return ACL_SUCCESS;
+    }
+
+    aclError aclrtStreamWaitEvent(aclrtStream stream, aclrtEvent event)
+    {
+        (void)stream;
+        if (event == nullptr || !event->recorded)
+        {
+            return ACL_ERROR_INTERNAL_ERROR;
+        }
+        return ACL_SUCCESS;
+    }
+
     void aclAppLog(aclLogLevel logLevel, const char *func, const char *file, uint32_t line, const char *fmt, ...)
     {
         static const char *logLevelStr[] = {"ACL_DEBUG", "ACL_INFO", "ACL_WARNING", "ACL_ERROR"};
