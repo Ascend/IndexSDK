@@ -21,18 +21,18 @@
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
 
-
-namespace optiling {
+namespace optiling
+{
 BEGIN_TILING_DATA_DEF(AscendcDistInt8FlatL2With950TilingData)
-    TILING_DATA_FIELD_DEF(uint32_t, aicNum);
-    TILING_DATA_FIELD_DEF(uint32_t, aivNum);
-    TILING_DATA_FIELD_DEF(uint32_t, querySize);
-    TILING_DATA_FIELD_DEF(uint32_t, codeBlockSize);
-    TILING_DATA_FIELD_DEF(uint32_t, dim);
-    TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, cubeTilingSquare);
-    TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, cubeTilingIp);
+TILING_DATA_FIELD_DEF(uint32_t, aicNum);
+TILING_DATA_FIELD_DEF(uint32_t, aivNum);
+TILING_DATA_FIELD_DEF(uint32_t, querySize);
+TILING_DATA_FIELD_DEF(uint32_t, codeBlockSize);
+TILING_DATA_FIELD_DEF(uint32_t, dim);
+TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, cubeTilingSquare);
+TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, cubeTilingIp);
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(AscendcDistInt8FlatL2With950, AscendcDistInt8FlatL2With950TilingData)
-}
+}  // namespace optiling
 #endif

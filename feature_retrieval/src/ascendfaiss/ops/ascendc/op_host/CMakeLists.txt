@@ -39,7 +39,11 @@ set(ops_srcs
     ${CMAKE_CURRENT_LIST_DIR}/ascendc_distance_int8_cos_maxs_with_mask.cpp
     ${CMAKE_CURRENT_LIST_DIR}/cagra_rabitq.cpp
     ${CMAKE_CURRENT_LIST_DIR}/ascendc_distance_flat_hamming_with_mask.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/ascendc_dist_int8_flat_cos_with950.cpp
     ${CMAKE_CURRENT_LIST_DIR}/ascendc_l2_norm_with950.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/distance_flat_ip_with950.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/distance_flat_l2_with950.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/ascendc_dist_int8_flat_l2_with950.cpp
 )
 
 set(ascend_search_ops_srcs

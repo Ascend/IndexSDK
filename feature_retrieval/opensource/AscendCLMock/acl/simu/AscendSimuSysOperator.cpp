@@ -618,6 +618,10 @@ void simuDistanceInt8L2MinsWoQueryNorm(aclopHandle &opHandle)
 
 void simuDistanceFlatL2(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "DistanceFlatL2 simu exec"); }
 
+void simuDistanceFlatL2With950(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "simuDistanceFlatL2With950 simu exec"); }
+
+void simuDistanceFlatIPWith950(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "simuDistanceFlatIPWith950 simu exec"); }
+
 void simuDistanceFlatIP(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "simuDistanceFlatIP simu exec"); }
 
 void simuCagraRabitq(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "simuCagraRabitq simu exec"); }
@@ -656,6 +660,18 @@ void simuAscendcDistInt8FlatL2(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "s
 void simuAscendcDistInt8FlatCos(aclopHandle &opHandle)
 {
     ACL_APP_LOG(ACL_INFO, "simuAscendcDistInt8FlatCos simu exec");
+}
+
+void simuAscendcL2NormWith950(aclopHandle &opHandle) { ACL_APP_LOG(ACL_INFO, "simuAscendcL2NormWith950 simu exec"); }
+
+void simuAscendcDistInt8FlatL2With950(aclopHandle &opHandle)
+{
+    ACL_APP_LOG(ACL_INFO, "simuAscendcDistInt8FlatL2With950 simu exec");
+}
+
+void simuAscendcDistInt8FlatCosWith950(aclopHandle &opHandle)
+{
+    ACL_APP_LOG(ACL_INFO, "simuAscendcDistInt8FlatCosWith950 simu exec");
 }
 
 void SimuAscendDistanceComputeQC(aclopHandle &opHandle)
@@ -826,16 +842,21 @@ void simuOpInstall()
     REG_OP("DistanceInt8L2MinsWoQueryNorm", simuDistanceInt8L2MinsWoQueryNorm);
     REG_OP("AscendcDistanceInt8CosMaxsWithMask", simuAscendcDistanceInt8CosMaxsWithMask);
     REG_OP("DistanceFlatL2", simuDistanceFlatL2);
+    REG_OP("DistanceFlatL2With950", simuDistanceFlatL2With950);
     REG_OP("CagraRabitq", simuCagraRabitq);
     REG_OP("DistanceFlatIP", simuDistanceFlatIP);
+    REG_OP("DistanceFlatIPWith950", simuDistanceFlatIPWith950);
     REG_OP("DistanceBinaryFloat", simuDistanceBinaryFloat);
     REG_OP("DistanceBatchValMaskGenerator", simuDistanceBatchValMaskGenerator);
     REG_OP("AscendcDistanceBatchMaskGenerator", simuAscendcDistanceBatchMaskGenerator);
     REG_OP("AscendcDistanceBatchValMaskGenerator", simuAscendcDistanceBatchValMaskGenerator);
     REG_OP("AscendcDistanceBatchMaskGeneratorWithExtra", simuAscendcDistanceBatchMaskGeneratorWithExtra);
     REG_OP("AscendcL2Norm", simuAscendcL2Norm);
+    REG_OP("AscendcL2NormWith950", simuAscendcL2NormWith950);
     REG_OP("AscendcDistInt8FlatL2", simuAscendcDistInt8FlatL2);
     REG_OP("AscendcDistInt8FlatCos", simuAscendcDistInt8FlatCos);
+    REG_OP("AscendcDistInt8FlatL2With950", simuAscendcDistInt8FlatL2With950);
+    REG_OP("AscendcDistInt8FlatCosWith950", simuAscendcDistInt8FlatCosWith950);
     REG_OP("BitwiseXor", BitwiseXorOperator);
     REG_OP("BitwiseOr", BitwiseOrOperator);
     REG_OP("BitwiseAnd", BitwiseAndOperator);
@@ -961,6 +982,8 @@ void simuOpUninstall()
     UNREG_OP("DistanceBatchMaskGeneratorWithExtra");
     UNREG_OP("DistanceInt8L2MinsWoQueryNorm");
     UNREG_OP("AscendcDistanceInt8CosMaxsWithMask");
+    UNREG_OP("DistanceFlatL2With950");
+    UNREG_OP("DistanceFlatIPWith950");
     UNREG_OP("DistanceFlatL2");
     UNREG_OP("DistanceFlatIP");
     UNREG_OP("CagraRabitq");
@@ -970,8 +993,11 @@ void simuOpUninstall()
     UNREG_OP("AscendcDistanceBatchValMaskGenerator");
     UNREG_OP("AscendcDistanceBatchMaskGeneratorWithExtra");
     UNREG_OP("AscendcL2Norm");
+    UNREG_OP("AscendcL2NormWith950");
     UNREG_OP("AscendcDistInt8FlatL2");
     UNREG_OP("AscendcDistInt8FlatCos");
+    UNREG_OP("AscendcDistInt8FlatL2With950");
+    UNREG_OP("AscendcDistInt8FlatCosWith950");
     UNREG_OP("BitwiseXor");
     UNREG_OP("BitwiseOr");
     UNREG_OP("BitwiseAnd");
