@@ -93,8 +93,8 @@
 | 分支类型 | 分支名规则 | 示例 | 说明 | tag名规则 | tag示例 |
 | --- | --- | --- | --- | --- | --- |
 | 主干&开发 | master | - | 主干开发分支 | - | - |
-| release | release/v<版本号> | release/v26.1.0 | 正式版本开发分支 | v<版本号>[-beta.<序号>] | v26.1.0、v26.1.0-beta.1 |
-| poc | poc/<基线分支>/<描述> | poc/release-v26.1.0/auth-redesign | 后续合入主干 | poc/<基线分支>/<描述>-v<序号> | poc/release-v26.1.0/auth-redesign-v1 |
+| release | release_v<版本号> | release_v26.1.0 | 正式版本开发分支 | v<版本号>[-beta.<序号>] | v26.1.0、v26.1.0-beta.1 |
+| poc | poc_<基线分支>_<描述> | poc_release-v26.1.0_auth-redesign | 后续合入主干 | poc_<基线分支>_<描述>-v<序号> | poc_release-v26.1.0_auth-redesign-v1 |
 
 Fork开源社区代码仓
 
