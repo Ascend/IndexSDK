@@ -64,7 +64,7 @@ AscendIndexIVFRaBitQ利用IVF进行加速，是二级近似检索算法。当前
 <tr><td width="140" align="center" valign="middle">输入</td><td valign="middle"><strong><code>idx_t n</code></strong>：训练集中特征向量的条数。<br><strong><code>const float *x</code></strong>：特征向量数据。</td></tr>
 <tr><td width="140" align="center" valign="middle">输出</td><td valign="middle">无</td></tr>
 <tr><td width="140" align="center" valign="middle">返回值</td><td valign="middle">无</td></tr>
-<tr><td width="140" align="center" valign="middle">约束说明</td><td valign="middle">● 训练采用k-means进行聚类，训练集比较小可能会影响查询精度。<br>● 此处“n”的取值范围：0 &lt; n &lt; 1e9。<br>● 此处指针“x”需要为非空指针，且长度应该为dims * <strong><code>n</code></strong>，否则可能出现越界读写错误并引起程序崩溃。<br>● “useKmeansPP”参数设置为“true”代表启用NPU聚类，否则采用CPU聚类。准度问题参考<a href="../../07_faq.md#浮点数计算精度问题">浮点数计算精度问题</a>。</td></tr>
+<tr><td width="140" align="center" valign="middle">约束说明</td><td valign="middle">● 训练采用k-means进行聚类，训练集比较小可能会影响查询精度。<br>● 此处“n”的取值范围：0 &lt; n &lt; 1e9。<br>● 此处指针“x”需要为非空指针，且长度应该为dims * <strong><code>n</code></strong>，否则可能出现越界读写错误并引起程序崩溃。<br>● “useKmeansPP”参数设置为“true”代表启用NPU聚类，否则采用CPU聚类。精度问题参考<a href="../../07_faq.md#浮点数计算精度问题">浮点数计算精度问题</a>。</td></tr>
 </tbody></table>
 
 ## remove\_ids接口<a name="ZH-CN_TOPIC_0000002513157728"></a>
