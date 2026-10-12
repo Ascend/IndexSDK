@@ -14,7 +14,7 @@
 >
 >- 创建Index实例时传入的参数params，需根据实际情况设置其中的dim。
 >- Index分为两种算法模式：KMode仅使用鲲鹏侧算法，AKMode昇腾加鲲鹏算法，在AKMode模式下需要提前生成对应算子。
->- subSpaceDimnlist应与码本训练时对应参数保持一致。
+>- subSpaceDimlist应与码本训练时对应参数保持一致。
 
 ## AscendIndexGreat接口<a name="ZH-CN_TOPIC_0000002044829953"></a>
 
