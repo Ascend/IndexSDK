@@ -66,7 +66,7 @@ AscendIndexIVFSQT类，包含降维算法的三级检索IVFSQ算法，需要传�
 
 <table><tbody>
 <tr><td width="140" align="center" valign="middle">API定义</td><td valign="middle"><strong><code>void copyFrom(const faiss::IndexIVFScalarQuantizer *index);</code></strong></td></tr>
-<tr><td width="140" align="center" valign="middle">功能描述</td><td valign="middle">AscendIndexIVSQT基于一个已有的“index”拷贝到Ascend，并保持原有的AscendIndex的Device侧资源配置。</td></tr>
+<tr><td width="140" align="center" valign="middle">功能描述</td><td valign="middle">AscendIndexIVFSQT基于一个已有的“index”拷贝到Ascend，并保持原有的AscendIndex的Device侧资源配置。</td></tr>
 <tr><td width="140" align="center" valign="middle">输入</td><td valign="middle"><strong><code>const faiss::IndexIVFScalarQuantizer *index</code></strong>：CPU侧Index资源。</td></tr>
 <tr><td width="140" align="center" valign="middle">输出</td><td valign="middle">无</td></tr>
 <tr><td width="140" align="center" valign="middle">返回值</td><td valign="middle">无</td></tr>
