@@ -8,10 +8,10 @@
 
   - [Issue Feedback](https://gitcode.com/Ascend/IndexSDK/issues)
   - [IndexSDK Code](https://gitcode.com/Ascend/IndexSDK)
-  - [IndexSDK API Reference](https://gitcode.com/Ascend/IndexSDK/blob/master/docs/zh/api/README.md)
-  - [IndexSDK Documentation](https://www.hiascend.com/document/detail/zh/mindsdk/730/indexn/indexug/mxindexfrug_0002.html)
-  - [Image Repository](https://www.hiascend.com/developer/ascendhub/detail/indexsdk/)
-  - [Community](https://www.hiascend.com/)
+  - [IndexSDK API Reference](https://gitcode.com/Ascend/IndexSDK/blob/master/docs/en/api/README.md)
+  - [IndexSDK Documentation](https://www.hiascend.com/document/detail/en/mindsdk/latest/Indexn/indexug/docs/en/01_introduction.md)
+  - [Image Repository](https://www.hiascend.com/en/developer/ascendhub/detail/indexsdk/)
+  - [Community](https://www.hiascend.com/en/)
 
 ## 2.Supported Tags and Dockerfile Links
 
@@ -49,7 +49,7 @@ Tags follow this pattern:
 
 #### 3.1.1 Install Driver
 
-- An Atlas NPU driver compatible with the container's CANN version must be installed on the host. See the [CANN Compatibility Matrix](https://www.hiascend.com/document) for driver ↔ CANN version mapping.
+- An Atlas NPU driver compatible with the container's CANN version must be installed on the host. See the [CANN Compatibility Matrix](https://www.hiascend.com/en/document) for driver ↔ CANN version mapping.
 - Docker version requirement: Docker version should not be lower than 24.0.x.
 
 ### 3.2 Running a Index Container
@@ -88,7 +88,7 @@ python3 flat_generate_model.py -t npu-type -d 512
 mv op_models/* $MX_INDEX_MODELPATH
 ```
 
-For more details on operator generation, refer to: [Operator Generation](https://gitcode.com/Ascend/IndexSDK/blob/master/docs/zh/05_user_guide.md#%E8%87%AA%E5%AE%9A%E4%B9%89%E7%AE%97%E5%AD%90%E4%BB%8B%E7%BB%8D)
+For more details on operator generation, refer to: [Operator Generation](https://gitcode.com/Ascend/IndexSDK/blob/master/docs/en/05_user_guide.md#custom-operator-introduction)
 
 ### 3.4 Demo Testing
 
