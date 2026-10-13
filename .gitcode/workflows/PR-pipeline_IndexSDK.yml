@@ -1,20 +1,17 @@
 name: PR-pipeline_IndexSDK
 
 on:
-  pull_request:
-    branches:
-      - master
+  pull_request_target:
+    branches: [ 'master', 'release_v26.2.0', 'branch_v26.1.0', 'branch_v26.0.0' ]
     types:
       - open
       - update
-      - reopen
-      - merge
   pr_comment:
     types: [created]
     keyword: '^compile$'
   pull_request_comment:
     types: [ created ]
-    branches: [ 'master', 'release/v26.2.0', '26.1.0', '26.0.0' ]
+    branches: [ 'master', 'release_v26.2.0', 'branch_v26.1.0', 'branch_v26.0.0' ]
     comments: [ '^compile$' ]
 
 env:
@@ -46,6 +43,7 @@ stages:
           - name: checkout
             uses: checkout
             with:
+              allow-unsafe-pr-checkout: true
               ref: refs/merge-requests/${{ env.PR_ID }}/merge
               fetch-depth: 0
           - name: Only_doc_commit
@@ -119,6 +117,7 @@ stages:
           - name: checkout
             uses: checkout
             with:
+              allow-unsafe-pr-checkout: true
               ref: ${{ atomgit.event.pull_request.merge_commit_sha || '' }}
           - name: gitleaks install
             run: |
@@ -142,6 +141,8 @@ stages:
         steps:
           - name: checkout
             uses: checkout
+            with:
+              allow-unsafe-pr-checkout: true
           - name: Run SCA PR scan
             uses: openlibing/sca-action/sca-pr-action@v1.0.0
             with:
@@ -156,6 +157,8 @@ stages:
         steps:
           - name: Checkout
             uses: checkout
+            with:
+              allow-unsafe-pr-checkout: true
           - name: Run malicious code scan
             uses: openlibing/malicious-code-scan-action/malicious-code-pr-scan-action@v1.0.0
             with:
@@ -179,6 +182,7 @@ stages:
           - name: checkout
             uses: checkout
             with:
+              allow-unsafe-pr-checkout: true
               ref: ${{ atomgit.event.pull_request.merge_commit_sha || '' }}
           - name: checkout AI-Check
             run: |
