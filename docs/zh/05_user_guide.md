@@ -162,7 +162,7 @@
 
 |算法（API参考）|算法使用场景|需要生成的算子|样例链接|
 |--|--|--|--|
- |[AscendIndexTS](./api/03_attribute_filtering-based_retrieval.md#ascendindexts)|<li>特征类型：uint8二值化特征、int8、FP32（具体算法不同而不同）</li><li>特征维度：具体算法不同而不同</li><li>距离类型：Hamming、Cos、IP、L2</li><li>计算精度：较高</li><li>Device内存占用：较高</li><li>适应场景：需要过滤属性的时空库场景</li><li>Cos、IP和L2支持<term>Atlas 推理系列产品</term>，<term>Atlas A2 推理系列产品</term>，<term>Atlas A3 推理系列产品</term></li><li>Hamming距离仅支持<term>Atlas 推理系列产品</term></li>|<li>[Mask](#mask)</li><li>[BinaryFlat](#binaryflat)</li><li>[Int8Flat](#int8flat)</li><li>[Flat](#flat)</li><li>[AICPU](#aicpu)</li>|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexTS.cpp">链接</a>|
+ |[AscendIndexTS](./api/03_attribute_filtering-based_retrieval.md#ascendindexts)|<li>特征类型：uint8二值化特征、int8、FP32（具体算法不同而不同）</li><li>特征维度：具体算法不同而不同</li><li>距离类型：Hamming、Cos、IP、L2</li><li>计算精度：较高</li><li>Device内存占用：较高</li><li>适应场景：需要过滤属性的时空库场景</li><li>Cos、IP、L2和Hamming支持<term>Atlas 推理系列产品</term>，<term>Atlas A2 推理系列产品</term>，<term>Atlas A3 推理系列产品</term></li>|<li>[Mask](#mask)</li><li>[BinaryFlat](#binaryflat)</li><li>[Int8Flat](#int8flat)</li><li>[Flat](#flat)</li><li>[AICPU](#aicpu)</li>|<a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexTS.cpp">链接</a>|
 
 ### 多Index批量检索<a name="ZH-CN_TOPIC_0000001649848472"></a>
 
@@ -540,7 +540,7 @@
 <a name="table4331184817108"></a>
 <table><tbody><tr id="row1433117485104"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.1.1"><p id="p733211482108"><a name="p733211482108"></a><a name="p733211482108"></a>用法</p>
 </th>
-<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.1.1 "><p id="p1333211482107"><a name="p1333211482107"></a><a name="p1333211482107"></a>python3 binary_flat_generate_model.py -d &lt;dim&gt; -q &lt;query_type&gt; -p &lt;process_id&gt; -pool &lt;pool_size&gt;</p>
+<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.1.1 "><p id="p1333211482107"><a name="p1333211482107"></a><a name="p1333211482107"></a>python3 binary_flat_generate_model.py -d &lt;dim&gt; -q &lt;query_type&gt; -p &lt;process_id&gt; -pool &lt;pool_size&gt; -t &lt;npu_type&gt;</p>
 </td>
 </tr>
 <tr id="row2033244801010"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.2.1"><p id="p4332164821010"><a name="p4332164821010"></a><a name="p4332164821010"></a>参数名称</p>
@@ -549,6 +549,7 @@
 <p id="p1474218499117"><a name="p1474218499117"></a><a name="p1474218499117"></a>&lt;query_type&gt;：检索类型，默认为<span class="parmvalue" id="parmvalue12920913153"><a name="parmvalue12920913153"></a><a name="parmvalue12920913153"></a>“uint8”</span>，当AscendIndexBinaryFlat算法的<a href="./api/02_approximate_retrieval.md#ZH-CN_TOPIC_0000001456375288">search接口</a>进行性能提升时，需要设置为<span class="parmvalue" id="parmvalue10202131541419"><a name="parmvalue10202131541419"></a><a name="parmvalue10202131541419"></a>“float”</span>。</p>
 <p id="p43321548181012"><a name="p43321548181012"></a><a name="p43321548181012"></a>&lt;process_id&gt;：批量生成算子多进程调度的进程ID，默认值为<span class="parmvalue" id="parmvalue12408135012357"><a name="parmvalue12408135012357"></a><a name="parmvalue12408135012357"></a>“0”</span>，无需设置。</p>
 <p id="p670916785418"><a name="p670916785418"></a><a name="p670916785418"></a>&lt;pool_size&gt;：批量生成算子多进程调度的进程池大小，默认为16。</p>
+<p>&lt;npu_type&gt;：NPU类型，支持“310P”“910B1”“910B2”“910B3”“910B4”“910_{NPU Name}”和“Ascend950PR”，默认值为“310P”。</p>
 <p id="p7767123203320"><a name="p7767123203320"></a><a name="p7767123203320"></a>--help | -h：查询帮助信息。</p>
 </td>
 </tr>

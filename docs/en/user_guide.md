@@ -299,7 +299,7 @@ Assume that on Atlas Inference Series products, a service uses the brute-force s
 
 | Algorithm (API Reference) | Algorithm Usage Scenario | Operators to Generate | Sample Link |
 | -- | -- | -- | -- |
-| [AscendIndexTS](./api/attribute_filtering-based_retrieval.md#ascendindexts) |<li>Feature type: uint8 binary features, int8, FP32, depending on the algorithm</li><li>Feature dimension: depends on the specific algorithm</li><li>Distance type: Hamming, Cos, IP, L2</li><li>Calculation precision: Relatively high</li><li>Device memory usage: Relatively high</li><li>Applicable scenario: Spatial-temporal library scenarios that require attribute filtering</li><li>Cos, IP, and L2 support Atlas Inference Series products, Atlas A2 inference products, and Atlas A3 inference products.</li><li>Hamming distance is supported only on Atlas Inference Series products.</li> | <ul><li>[Mask](#generating-operators)</li><li>[BinaryFlat](#generating-operators)</li><li>[Int8Flat](#generating-operators)</li><li>[Flat](#generating-operators)</li><li>[AICPU](#generating-operators)</li></ul> | [Link](https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexTS.cpp) |
+| [AscendIndexTS](./api/attribute_filtering-based_retrieval.md#ascendindexts) |<li>Feature type: uint8 binary features, int8, FP32, depending on the algorithm</li><li>Feature dimension: depends on the specific algorithm</li><li>Distance type: Hamming, Cos, IP, L2</li><li>Calculation precision: Relatively high</li><li>Device memory usage: Relatively high</li><li>Applicable scenario: Spatial-temporal library scenarios that require attribute filtering</li><li>Cos, IP, L2, and Hamming support Atlas Inference Series products, Atlas A2 inference products, and Atlas A3 inference products.</li> | <ul><li>[Mask](#generating-operators)</li><li>[BinaryFlat](#generating-operators)</li><li>[Int8Flat](#generating-operators)</li><li>[Flat](#generating-operators)</li><li>[AICPU](#generating-operators)</li></ul> | [Link](https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexTS.cpp) |
 
 ### Multi-Index Batch Search
 
@@ -486,9 +486,9 @@ The feature retrieval solution uses TIK operators to implement feature distance 
 
 #### BinaryFlat
 
-| Usage | `python3 binary_flat_generate_model.py -d <dim> -q <query_type> -p <process_id> -pool <pool_size>` |
+| Usage | `python3 binary_flat_generate_model.py -d <dim> -q <query_type> -p <process_id> -pool <pool_size> -t <npu_type>` |
 | -- | -- |
-| Parameters | <ul><li>`<dim>`: Dimension of the binary feature vector. `dim` ∈ {256, 512, 1024}. The default value is `512`.</li><li>`<query_type>`: Search type. The default is `uint8`. When you improve the performance of the `search` interface of the AscendIndexBinaryFlat algorithm, set it to `float`.</li><li>`<process_id>`: Process ID for multi-process scheduling during batch operator generation. The default value is `0`. No additional configuration is required.</li><li>`<pool_size>`: Process pool size for multi-process scheduling during batch operator generation. The default value is `16`.</li><li>`--help \| -h`: Query help information.</li></ul> |
+| Parameters | <ul><li>`<dim>`: Dimension of the binary feature vector. `dim` ∈ {256, 512, 1024}. The default value is `512`.</li><li>`<query_type>`: Search type. The default is `uint8`. When you improve the performance of the `search` interface of the AscendIndexBinaryFlat algorithm, set it to `float`.</li><li>`<process_id>`: Process ID for multi-process scheduling during batch operator generation. The default value is `0`. No additional configuration is required.</li><li>`<pool_size>`: Process pool size for multi-process scheduling during batch operator generation. The default value is `16`.</li><li>`<npu_type>`: NPU type. The supported values are `310P`, `910B1`, `910B2`, `910B3`, `910B4`, `910_{NPU Name}`, and `Ascend950PR`. The default value is `310P`.</li><li>`--help \| -h`: Query help information.</li></ul> |
 | Description | None. |
 
 **Involved Algorithms**
