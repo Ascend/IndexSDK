@@ -1,4 +1,4 @@
-ARG CANN_VERSION=9.1.0
+ARG CANN_VERSION=9.2.0
 FROM swr.cn-south-1.myhuaweicloud.com/ascendhub/cann:${CANN_VERSION}-950-openeuler24.03-py3.12
 
 WORKDIR /tmp
@@ -97,7 +97,7 @@ RUN wget https://github.com/google/googletest/archive/refs/tags/release-1.11.0.t
     cd .. && rm -rf release-1.11.0.tar.gz googletest-release-1.11.0
 
 # 安装 AscendMiniOs（不区分架构）
-ARG CANN_VERSION=9.1.0
+ARG CANN_VERSION=9.2.0
 RUN wget -O Ascend-cann-device-sdk_${CANN_VERSION}_linux-aarch64.zip "https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/CANN/CANN%20${CANN_VERSION}/Ascend-cann-device-sdk_${CANN_VERSION}_linux-aarch64.zip?response-content-type=application/octet-stream" && \
     unzip -q Ascend-cann-device-sdk_${CANN_VERSION}_linux-aarch64.zip && \
     ls -la /tmp/*.run && \
@@ -124,7 +124,7 @@ ENV GLOG_v=2 \
 
 RUN mkdir -p ${MX_INDEX_MODELPATH}
 
-ARG VERSION=26.1.0
+ARG VERSION=26.2.0
 RUN ARCH=$(uname -m) && \
     wget https://gitcode.com/Ascend/IndexSDK/releases/download/v${VERSION}/Ascend-mindxsdk-mxindex_${VERSION}_linux-${ARCH}.run && \
     bash Ascend-mindxsdk-mxindex_${VERSION}_linux-${ARCH}.run --install --platform=${PLATFORM} --quiet && \
