@@ -25,23 +25,23 @@ Tags follow this pattern:
 
 | Field            | Example Values                  | Description               |
 | ---------------- | ------------------------------- | ------------------------- |
-| `indexsdk_version` | `26.1.0`   | IndexSDK version              |
+| `indexsdk_version` | `26.2.0`   | IndexSDK version              |
 | `chip_series`    | `950`, `910b`, `a3`, `310p`            | Target chip family |
 | `os`             | `ubuntu22.04`, `openeuler24.03` | Base operating system     |
 | `python_version` | `py3.12`    | Python version            |
 
-### 2.2 CANN 9.1.0 + 26.1.0 Index SDK Image
+### 2.2 CANN 9.2.0 + 26.2.0 Index SDK Image
 
 | Tag                                | Dockerfile                                                   | Image Content        |
 | ---------------------------------- | ------------------------------------------------------------ | --------------- |
-| `26.1.0-cann9.1.0-910b-ubuntu22.04-py3.12`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/Dockerfile.910b.ubuntu) | toolkit + Index SDK |
-| `26.1.0-cann9.1.0-310p-ubuntu22.04-py3.12`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/Dockerfile.310p.ubuntu)      | toolkit + Index SDK |
-| `26.1.0-cann9.1.0-a3-ubuntu22.04-py3.12`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/Dockerfile.a3.ubuntu)         | toolkit + Index SDK |
-| `26.1.0-cann9.1.0-950-ubuntu22.04-py3.12`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/Dockerfile.950.ubuntu)         | toolkit + Index SDK |
-| `26.1.0-cann9.1.0-910b-openeuler24.03-py3.12`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/Dockerfile.910b.openeuler) | toolkit + Index SDK |
-| `26.1.0-cann9.1.0-310p-openeuler24.03-py3.12`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/Dockerfile.310p.openeuler)      | toolkit + Index SDK |
-| `26.1.0-cann9.1.0-a3-openeuler24.03-py3.12`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/Dockerfile.a3.openeuler)         | toolkit + Index SDK |
-| `26.1.0-cann9.1.0-950-openeuler24.03-py3.12`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/Dockerfile.950.openeuler)         | toolkit + Index SDK |
+| `26.2.0-cann9.2.0-910b-ubuntu22.04-py3.12`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/Dockerfile.910b.ubuntu) | toolkit + Index SDK |
+| `26.2.0-cann9.2.0-310p-ubuntu22.04-py3.12`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/Dockerfile.310p.ubuntu)      | toolkit + Index SDK |
+| `26.2.0-cann9.2.0-a3-ubuntu22.04-py3.12`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/Dockerfile.a3.ubuntu)         | toolkit + Index SDK |
+| `26.2.0-cann9.2.0-950-ubuntu22.04-py3.12`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/Dockerfile.950.ubuntu)         | toolkit + Index SDK |
+| `26.2.0-cann9.2.0-910b-openeuler24.03-py3.12`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/Dockerfile.910b.openeuler) | toolkit + Index SDK |
+| `26.2.0-cann9.2.0-310p-openeuler24.03-py3.12`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/Dockerfile.310p.openeuler)      | toolkit + Index SDK |
+| `26.2.0-cann9.2.0-a3-openeuler24.03-py3.12`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/Dockerfile.a3.openeuler)         | toolkit + Index SDK |
+| `26.2.0-cann9.2.0-950-openeuler24.03-py3.12`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/Dockerfile.950.openeuler)         | toolkit + Index SDK |
 
 ## 3.Quick Start
 
@@ -60,7 +60,7 @@ Tags follow this pattern:
 
 - Driver and Toolchain Mounting: Mount driver files and toolchain directories (such as /usr/local/Ascend/driver and /usr/local/bin/npu-smi) from the host to the container in read-only mode to ensure consistent runtime environment. In the example code below, /dev/davinci1 represents mounting device 1.
 
-- After -ti, specify the corresponding image tag, for example: -it swr.cn-south-1.myhuaweicloud.com/ascendhub/indexsdk:26.1.0-cann9.1.0-910b-ubuntu22.04-py3.12
+- After -ti, specify the corresponding image tag, for example: -it swr.cn-south-1.myhuaweicloud.com/ascendhub/indexsdk:26.2.0-cann9.2.0-910b-ubuntu22.04-py3.12
 
 ```bash
 docker run \
