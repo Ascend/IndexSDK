@@ -29,7 +29,9 @@ Tag 遵循以下格式：
 | `操作系统`   | `ubuntu22.04`、`openeuler24.03` | 基础操作系统     |
 | `python版本` | `py3.12`    | Python 版本      |
 
-### 2.2 CANN 9.2.0 + 26.2.0 Index SDK镜像
+### 2.2 最新版本 CANN 9.2.0 + Index SDK 26.2.0
+
+如下所示是 CANN 9.2.0 + Index SDK 26.2.0 版本的所有镜像，历史版本所有的Tag请参考 [Supported Tags](https://gitcode.com/Ascend/IndexSDK/blob/master/docker/supported_tags.md)
 
 | Tag                                | Dockerfile                                                   | 镜像内容        |
 | ---------------------------------- | ------------------------------------------------------------ | --------------- |

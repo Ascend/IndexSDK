@@ -30,7 +30,9 @@ Tags follow this pattern:
 | `os`             | `ubuntu22.04`, `openeuler24.03` | Base operating system     |
 | `python_version` | `py3.12`    | Python version            |
 
-### 2.2 CANN 9.2.0 + 26.2.0 Index SDK Image
+### 2.2 Latest CANN 9.2.0 + 26.2.0 Index SDK Image
+
+All images of the CANN 9.2.0 + 26.2.0 Index SDK are listed below. For all tags of historical versions, please refer to [Supported Tags](https://gitcode.com/Ascend/IndexSDK/blob/master/docker/supported_tags.md).
 
 | Tag                                | Dockerfile                                                   | Image Content        |
 | ---------------------------------- | ------------------------------------------------------------ | --------------- |
