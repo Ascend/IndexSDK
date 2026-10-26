@@ -60,11 +60,11 @@ docker run \
     --device /dev/davinci_manager \
     --device /dev/devmm_svm \
     --device /dev/hisi_hdc \
-    -v /usr/local/dcmi:/usr/local/dcmi \
-    -v /usr/local/bin/npu-smi:/usr/local/bin/npu-smi \
-    -v /usr/local/Ascend/driver/lib64/:/usr/local/Ascend/driver/lib64/ \
-    -v /usr/local/Ascend/driver/version.info:/usr/local/Ascend/driver/version.info \
-    -v /etc/ascend_install.info:/etc/ascend_install.info \
+    -v /usr/local/dcmi:/usr/local/dcmi:ro \
+    -v /usr/local/bin/npu-smi:/usr/local/bin/npu-smi:ro \
+    -v /usr/local/Ascend/driver/lib64/:/usr/local/Ascend/driver/lib64/:ro \
+    -v /usr/local/Ascend/driver/version.info:/usr/local/Ascend/driver/version.info:ro \
+    -v /etc/ascend_install.info:/etc/ascend_install.info:ro \
     -it swr.cn-south-1.myhuaweicloud.com/ascendhub/indexsdk:26.1.0-cann9.1.0-910b-ubuntu22.04-py3.12 bash
 
 ```
@@ -72,6 +72,8 @@ docker run \
 ### 2.2 容器中执行npu-smi info命令检查驱动是否挂载正常
 
 ```bash
+# 将驱动库目录追加到动态库搜索路径，末尾必须保留 :$LD_LIBRARY_PATH 以保留镜像已有的库路径
+export LD_LIBRARY_PATH=/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:$LD_LIBRARY_PATH
 npu-smi info #正常显示npu卡信息无报错
 ```
 
@@ -111,6 +113,9 @@ mv op_models/* $MX_INDEX_MODELPATH
     #include <sys/time.h>
     #include <random>
     #include <exception>
+    #include <vector>
+    #include <cstdio>
+    #include <cmath>
     // 获取当前时间
     inline double GetMillisecs()
     {
@@ -119,12 +124,13 @@ mv op_models/* $MX_INDEX_MODELPATH
         return tv.tv_sec * 1e3 + tv.tv_usec * 1e-3;
     }
     // 使用随机数构造底库数据
-    void Generate(size_t ntotal, std::vector<float> &data, int seed = 5678)
+    void Generate(size_t ntotal, std::vector<float> &data, int dim, int seed = 5678)
     {
         std::default_random_engine e(seed);
         std::uniform_real_distribution<float> rCode(0.0f, 1.0f);
-        data.resize(ntotal);
-        for (size_t i = 0; i < ntotal; ++i) {
+
+        data.resize(ntotal * dim);
+        for (size_t i = 0; i < ntotal * dim; ++i) {
             data[i] = static_cast<float>(255 * rCode(e) - 128);
         }
     }
@@ -152,7 +158,7 @@ mv op_models/* $MX_INDEX_MODELPATH
         int64_t resourceSize = static_cast<int64_t>(1024) * 1024 * 1024;
         int topK = 10;
         printf("Generating random numbers start!\r\n");
-        Generate(ntotal, features);
+        Generate(ntotal, features, dim);
         Norm(ntotal, features, dim);
         try {
             // index初始化
