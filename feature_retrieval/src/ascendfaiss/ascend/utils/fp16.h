@@ -16,15 +16,17 @@
  * -------------------------------------------------------------------------
  */
 
-
 #ifndef ASCEND_FP16_INCLUDED
 #define ASCEND_FP16_INCLUDED
 
 #include <math.h>
+
 #include <string>
 
-namespace faiss {
-namespace ascend {
+namespace faiss
+{
+namespace ascend
+{
 /**
  * @ingroup fp16
  * @brief   Half precision float
@@ -32,17 +34,20 @@ namespace ascend {
  *         bit14-10:    5 bit EXP       | S |EEEEE|MM MMMM MMMM|
  *         bit0-9:      10bit MAN       +---+-----+------------+
  */
-struct fp16 {
-    union {
+struct fp16
+{
+    union
+    {
         uint16_t data;  // All bits
-        struct {
+        struct
+        {
             uint16_t man : 10;  // mantissa
             uint16_t exp : 5;   // exponent
             uint16_t sign : 1;  // sign
         } Bits;
     };
 
-public:
+   public:
     fp16();
 
     fp16(const uint16_t &val);
@@ -78,7 +83,7 @@ public:
     static fp16 min();
     static fp16 max();
 };
-} // ascend
-} // faiss
+}  // namespace ascend
+}  // namespace faiss
 
 #endif
