@@ -28,6 +28,7 @@ Refer to [CANN Quick Installation](https://www.hiascend.com/en/cann/download), s
 | Dependency Name | Recommended Version | Acquisition Recommendation |
 | ----------------- | --------------------- | ---------------------------- |
 | gcc | >=7.5.0 | You are advised to obtain the source package and compile and install it. |
+| gfortran | >=7.5.0 | Required for compiling OpenBLAS (the OpenBLAS build command specifies `FC=gfortran`). You are advised to install it using a package manager. See the following example installation command.<br>`sudo apt-get install -y gfortran` |
 | cmake | >=3.24.0 | You are advised to install it using a package manager. See the following example installation command.<br>`sudo apt-get install -y cmake`<br>If the version available through the package manager does not meet the minimum version requirement, you can install it from source. |
 | Python | 3.9/3.10/3.11/3.12 | You are advised to obtain the source package and compile and install it. |
 
@@ -35,6 +36,7 @@ Run the following commands to check whether GCC, CMake, and other dependencies a
 
 ```bash
 gcc --version
+gfortran --version
 cmake --version
 python3 --version
 ```
@@ -43,6 +45,7 @@ If the following information is returned, the corresponding software is installe
 
 ```bash
 gcc 7.5.0
+gfortran 7.5.0
 cmake version 3.24.0
 Python 3.9.11
 ```
@@ -180,9 +183,7 @@ You are advised to use the corresponding OpenBLAS version. This section only pro
         \\
         explicit IndexIDMapTemplate (IndexT *index, std::vector<idx_t> &ids);\\
     " IndexIDMap.h
-    sed -i "217 i\\
-      utils/sorting.h
-    " CMakeLists.txt
+
     # modify source code end
     cd ..
     ls
@@ -390,10 +391,10 @@ unzip Ascend-cann-device-sdk_{version}_linux-{arch}.zip
 ./CANN-runtime-*-minios.{arch}.run --run --install-path=/usr/local/AscendMiniOSRun
 ```
 
-Go to the `build` directory and run the following command to compile:
+Run the following command from the source root directory (that is, the IndexSDK project root directory) to compile:
 
 ```bash
-bash build.sh
+bash build/build.sh
 ```
 
 - By default, a single-version run package based on Faiss 1.10.x is built using `MULTI_FAISS_PACKAGE=OFF DEFAULT_FAISS_ABI=faiss1.10 bash build/build.sh`. This package contains only the business shared libraries and header files built against Faiss 1.10.x. You do not need to specify `--faiss-version` during installation.

@@ -28,6 +28,7 @@ Index SDK 支持[离线安装](#离线安装)、[镜像安装](#镜像安装)、
 |依赖名称|版本建议|获取建议|
 |--|--|--|
 |gcc|>=7.5.0|建议通过获取源码包编译安装|
+|gfortran|>=7.5.0|编译 OpenBLAS 时需要（OpenBLAS 编译命令指定了 `FC=gfortran`），建议通过包管理安装，安装命令参考如下。<br>`sudo apt-get install -y gfortran`|
 |cmake|>=3.24.0|建议通过包管理安装，安装命令参考如下。<br>`sudo apt-get install -y cmake`<br>若包管理中的版本不符合最低版本要求，可自行通过源码方式安装。|
 |Python|3.9/3.10/3.11/3.12|建议通过获取源码包编译安装|
 
@@ -35,6 +36,7 @@ Index SDK 支持[离线安装](#离线安装)、[镜像安装](#镜像安装)、
 
 ```bash
 gcc --version
+gfortran --version
 cmake --version
 python3 --version
 ```
@@ -43,6 +45,7 @@ python3 --version
 
 ```bash
 gcc 7.5.0
+gfortran 7.5.0
 cmake version 3.24.0
 Python 3.9.11
 ```
@@ -180,9 +183,7 @@ Python 安装好后，pip 所需依赖名称、对应版本及获取建议请参
         \\
         explicit IndexIDMapTemplate (IndexT *index, std::vector<idx_t> &ids);\\
     " IndexIDMap.h
-    sed -i "217 i\\
-      utils/sorting.h
-    " CMakeLists.txt
+
     # modify source code end
     cd ..
     ls
@@ -387,10 +388,10 @@ sed -i '38s/^\([[:space:]]*\)ASCEND_MINIOS_HOME/\1# ASCEND_MINIOS_HOME/' feature
 
 - 如需要，请先下载并安装 AscendMiniOS。
 
-进入 `build` 目录执行以下命令编译：
+在源码根目录（即 IndexSDK 工程根目录）执行以下命令编译：
 
 ```bash
-bash build.sh
+bash build/build.sh
 ```
 
 - 默认构建 Faiss 1.10.x 单版本 run 包，即 `MULTI_FAISS_PACKAGE=OFF DEFAULT_FAISS_ABI=faiss1.10 bash build/build.sh`。该包只包含基于 Faiss 1.10.x 构建的业务动态库和头文件，安装时无需指定 `--faiss-version`。
