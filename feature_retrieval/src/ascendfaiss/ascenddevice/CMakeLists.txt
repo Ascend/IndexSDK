@@ -42,6 +42,10 @@ ADD_DEFINITIONS(-DUSE_ACL_INTERFACE_V2)
 SET(RPATH "/lib/aarch64-linux-gnu:${ASCEND_MINIOS_HOME}/lib64:${DRIVER_HOME}/develop/lib64:${DRIVER_HOME}/driver/lib64")
 SET(CMAKE_EXE_LINKER_FLAGS "-Wl,-rpath-link,${RPATH}")
 
+# Exclude MiniOS cross-compilation commands from clang-tidy's database.
+# Shared sources remain covered by the ascendhost compile commands.
+SET(CMAKE_EXPORT_COMPILE_COMMANDS OFF)
+
 ADD_LIBRARY(${TARGET_DEVICE} SHARED ${TARGET_DEVICE_SRC})
 redefine_file_macro(${TARGET_DEVICE}  ${PROJECT_SRC_ROOT})
 TARGET_LINK_LIBRARIES(${TARGET_DEVICE} c_sec ascendcl ascend_hal)

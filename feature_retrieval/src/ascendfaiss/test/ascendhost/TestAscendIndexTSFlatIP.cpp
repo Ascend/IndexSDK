@@ -16,26 +16,28 @@
  * -------------------------------------------------------------------------
  */
 
-
-#include <numeric>
-#include <cstring>
-#include <cstdlib>
-#include <cmath>
-#include <random>
-#include <algorithm>
-#include <sys/time.h>
-#include <gtest/gtest.h>
-#include <faiss/index_io.h>
 #include <faiss/IndexFlat.h>
-#include <faiss/ascend/AscendIndexTS.h>
 #include <faiss/ascend/AscendIndexFlat.h>
-#include <thread>
-#include "acl/acl.h"
+#include <faiss/ascend/AscendIndexTS.h>
+#include <faiss/index_io.h>
+#include <gtest/gtest.h>
+#include <sys/time.h>
 #include <time.h>
 #include <unistd.h>
-#include <fstream>
 
-namespace {
+#include <algorithm>
+#include <cmath>
+#include <cstdlib>
+#include <cstring>
+#include <fstream>
+#include <numeric>
+#include <random>
+#include <thread>
+
+#include "acl/acl.h"
+
+namespace
+{
 using idx_t = int64_t;
 using FeatureAttr = faiss::ascend::FeatureAttr;
 using AttrFilter = faiss::ascend::AttrFilter;
@@ -47,8 +49,8 @@ constexpr int MASK_ALIGN = 8;
 uint32_t g_customAttrLen = 2;
 uint32_t g_customAttrBlockSize = 262144;
 
-template<typename T>
-static void WriteTensorToFile(const std::string name, T* data, size_t num)
+template <typename T>
+static void WriteTensorToFile(const std::string name, T *data, size_t num)
 {
     std::ofstream of(name + ".bin", std::ios::out | std::ios::binary);
     of.write(reinterpret_cast<char *>(data), num * sizeof(T));
@@ -57,17 +59,17 @@ static void WriteTensorToFile(const std::string name, T* data, size_t num)
 
 inline int GenRand(int maxValue)
 {
-    std::random_device rd;                                   // 获取随机数种子
-    std::mt19937 gen(rd());                                  // 使用 mt19937 随机数生成器
-    std::uniform_int_distribution<int> dis(0, maxValue - 1); // 定义均匀分布函数，范围为 [1, 100]
+    std::random_device rd;                                    // 获取随机数种子
+    std::mt19937 gen(rd());                                   // 使用 mt19937 随机数生成器
+    std::uniform_int_distribution<int> dis(0, maxValue - 1);  // 定义均匀分布函数，范围为 [1, 100]
 
-    int random_num = dis(gen); // 生成随机数
+    int random_num = dis(gen);  // 生成随机数
     return random_num;
 }
 
 inline double GetMillisecs()
 {
-    struct timeval tv = { 0, 0 };
+    struct timeval tv = {0, 0};
     gettimeofday(&tv, nullptr);
     return tv.tv_sec * 1e3 + tv.tv_usec * 1e-3;
 }
@@ -75,14 +77,17 @@ inline double GetMillisecs()
 void Norm(float *data, int64_t n, int64_t dim)
 {
 #pragma omp parallel for if (n > 1)
-    for (int64_t i = 0; i < n; ++i) {
+    for (int64_t i = 0; i < n; ++i)
+    {
         float l2norm = 0;
-        for (int64_t j = 0; j < dim; ++j) {
+        for (int64_t j = 0; j < dim; ++j)
+        {
             l2norm += data[i * dim + j] * data[i * dim + j];
         }
         l2norm = sqrt(l2norm);
 
-        for (int64_t j = 0; j < dim; ++j) {
+        for (int64_t j = 0; j < dim; ++j)
+        {
             data[i * dim + j] = data[i * dim + j] / l2norm;
         }
     }
@@ -93,10 +98,11 @@ void FeatureGenerator(std::vector<float> &features)
     // 获取高精度时间点（纳秒精度）
     auto now = std::chrono::high_resolution_clock::now();
     auto ns = std::chrono::duration_cast<std::chrono::nanoseconds>(now.time_since_epoch()).count();
-    long seed = static_cast<long>(ns); // 转换为long（自动处理32/64位）
-    srand48(seed); // 设置种子
+    long seed = static_cast<long>(ns);  // 转换为long（自动处理32/64位）
+    srand48(seed);                      // 设置种子
     size_t n = features.size();
-    for (size_t i = 0; i < n; ++i) {
+    for (size_t i = 0; i < n; ++i)
+    {
         features[i] = drand48();
     }
 }
@@ -104,14 +110,14 @@ void FeatureGenerator(std::vector<float> &features)
 void ScaleGenerator(std::vector<float> &scale, float min = -1.0, float max = 1.0)
 {
     // 使用当前时间作为随机种子
-    unsigned seed = static_cast<unsigned>(
-        std::chrono::high_resolution_clock::now().time_since_epoch().count());
+    unsigned seed = static_cast<unsigned>(std::chrono::high_resolution_clock::now().time_since_epoch().count());
 
-    std::mt19937 gen(seed);  // 使用梅森旋转算法生成器
+    std::mt19937 gen(seed);                                // 使用梅森旋转算法生成器
     std::uniform_real_distribution<float> dist(min, max);  // 定义均匀分布
 
     // 生成随机数并填充到 scale 中
-    for (size_t i = 0; i < scale.size(); ++i) {
+    for (size_t i = 0; i < scale.size(); ++i)
+    {
         scale[i] = dist(gen);
     }
 }
@@ -135,7 +141,8 @@ void FeatureCustomAttr(std::vector<uint8_t> &customAttr)
 
     // 生成随机数据
     size_t dataSize = customAttr.size();
-    for (size_t i = 0; i < dataSize; ++i) {
+    for (size_t i = 0; i < dataSize; ++i)
+    {
         customAttr[i] = (dist(gen));
     }
 }
@@ -143,7 +150,8 @@ void FeatureCustomAttr(std::vector<uint8_t> &customAttr)
 void FeatureAttrGenerator(std::vector<FeatureAttr> &attrs)
 {
     size_t n = attrs.size();
-    for (size_t i = 0; i < n; ++i) {
+    for (size_t i = 0; i < n; ++i)
+    {
         attrs[i].time = int32_t(i % 4);
         attrs[i].tokenId = int32_t(i % 4);
     }
@@ -160,7 +168,8 @@ TEST(TestAscendIndexTSFlatIP, AddFeature)
     printf("[---add -----------]\n");
     FeatureGenerator(features);
     std::vector<int64_t> labels;
-    for (int i = 0; i < ntotal; ++i) {
+    for (int i = 0; i < ntotal; ++i)
+    {
         labels.push_back(i);
     }
     std::vector<FeatureAttr> attrs(ntotal);
@@ -180,8 +189,8 @@ TEST(TestAscendIndexTSFlatIP, AddFeature)
 TEST(TestAscendIndexTSFlatIP, Search)
 {
     idx_t ntotal = 100000;
-    std::vector<int> queryNums = { 100 }; // make sure the vector is in ascending order
-    std::vector<int> topks = { 100 };
+    std::vector<int> queryNums = {100};  // make sure the vector is in ascending order
+    std::vector<int> topks = {100};
     faiss::ascend::AscendIndexTS *tsIndex = new faiss::ascend::AscendIndexTS();
     auto res = tsIndex->Init(deviceId, dim, tokenNum, faiss::ascend::AlgorithmType::FLAT_IP_FP16);
     EXPECT_EQ(res, 0);
@@ -189,7 +198,8 @@ TEST(TestAscendIndexTSFlatIP, Search)
     printf("[---add -----------]\n");
     FeatureGenerator(features);
     std::vector<int64_t> labels;
-    for (int i = 0; i < ntotal; ++i) {
+    for (int i = 0; i < ntotal; ++i)
+    {
         labels.push_back(i);
     }
     std::vector<FeatureAttr> attrs(ntotal);
@@ -206,10 +216,12 @@ TEST(TestAscendIndexTSFlatIP, Search)
     faiss::IndexFlatIP index(dim);
     index.add(ntotal, features.data());
 
-    for (auto k : topks) {
+    for (auto k : topks)
+    {
         int warmupTimes = 0;
         int loopTimes = 1;
-        for (auto queryNum : queryNums) {
+        for (auto queryNum : queryNums)
+        {
             std::vector<float> distances(queryNum * k, -1);
             std::vector<int64_t> labelRes(queryNum * k, 10);
             std::vector<float> faissDistances(queryNum * k, -1);
@@ -224,20 +236,22 @@ TEST(TestAscendIndexTSFlatIP, Search)
 
             // 00001111
             bitSet[0] = 0x1 << 0 | 0x1 << 1 | 0x1 << 2 | 0x1 << 3;
-            AttrFilter filter {};
+            AttrFilter filter{};
             filter.timesStart = 0;
             filter.timesEnd = 3;
             filter.tokenBitSet = bitSet.data();
             filter.tokenBitSetLen = setlen;
 
             std::vector<AttrFilter> queryFilters(queryNum, filter);
-            for (int i = 0; i < loopTimes + warmupTimes; i++) {
+            for (int i = 0; i < loopTimes + warmupTimes; i++)
+            {
                 res = tsIndex->Search(queryNum, querys.data(), queryFilters.data(), false, k, labelRes.data(),
-                    distances.data(), validnum.data());
+                                      distances.data(), validnum.data());
                 index.search(queryNum, querys.data(), k, faissDistances.data(), faissLabelRes.data());
                 EXPECT_EQ(res, 0);
             }
-            for (size_t i = 0; i < queryNum; i++) {
+            for (size_t i = 0; i < queryNum; i++)
+            {
                 ASSERT_TRUE(labelRes[i * k] == i);
             }
             // 00000011   -> 0,1
@@ -250,15 +264,20 @@ TEST(TestAscendIndexTSFlatIP, Search)
             queryFilters.insert(queryFilters.begin(), queryNum, filter);
             labelRes.clear();
             distances.clear();
-            for (int i = 0; i < loopTimes + warmupTimes; i++) {
+            for (int i = 0; i < loopTimes + warmupTimes; i++)
+            {
                 res = tsIndex->Search(queryNum, querys.data(), queryFilters.data(), false, k, labelRes.data(),
-                    distances.data(), validnum.data());
+                                      distances.data(), validnum.data());
                 EXPECT_EQ(res, 0);
             }
-            for (size_t i = 0; i < queryNum; i++) {
-                if (i % 4 == 1) {
+            for (size_t i = 0; i < queryNum; i++)
+            {
+                if (i % 4 == 1)
+                {
                     ASSERT_TRUE(labelRes[i * k] == i);
-                } else {
+                }
+                else
+                {
                     ASSERT_TRUE(labelRes[i * k] != i);
                 }
             }
@@ -267,12 +286,11 @@ TEST(TestAscendIndexTSFlatIP, Search)
     delete tsIndex;
 }
 
-
 TEST(TestAscendIndexTSFlatIP, Acc)
 {
     idx_t ntotal = 10000;
     uint32_t addNum = 4;
-    int queryNum = 10; // make sure the vector is in ascending order
+    int queryNum = 10;  // make sure the vector is in ascending order
     int k = 10;
     faiss::ascend::AscendIndexTS *tsIndex = new faiss::ascend::AscendIndexTS();
     auto ret = tsIndex->Init(deviceId, dim, tokenNum, faiss::ascend::AlgorithmType::FLAT_IP_FP16);
@@ -283,10 +301,12 @@ TEST(TestAscendIndexTSFlatIP, Acc)
     FeatureGenerator(features);
 
     Norm(features.data(), ntotal * addNum, dim);
-    for (size_t i = 0; i < addNum; i++) {
+    for (size_t i = 0; i < addNum; i++)
+    {
         std::vector<int64_t> labels;
 
-        for (int64_t j = 0; j < ntotal; ++j) {
+        for (int64_t j = 0; j < ntotal; ++j)
+        {
             labels.emplace_back(j + i * ntotal);
         }
         std::vector<FeatureAttr> attrs(ntotal);
@@ -302,7 +322,8 @@ TEST(TestAscendIndexTSFlatIP, Acc)
         auto te = GetMillisecs();
         printf("GetFeatureByLabel  cost  total %f ms \n", te - ts);
         EXPECT_EQ(ret, 0);
-        for (int j = 0; j < (100 - 1) * dim;) {
+        for (int j = 0; j < (100 - 1) * dim;)
+        {
             ASSERT_TRUE(std::abs(features[j + i * ntotal * dim] - getBase[j]) < 0.001);
             j = j + dim;
         }
@@ -311,13 +332,11 @@ TEST(TestAscendIndexTSFlatIP, Acc)
     tsIndex->GetFeatureNum(&validNum);
     EXPECT_EQ(validNum, ntotal * addNum);
 
-
     faiss::IndexFlatIP index(dim);
     index.add(ntotal, features.data());
 
     int warmupTimes = 2;
     int loopTimes = 10;
-
 
     std::vector<float> distances(queryNum * k, -1);
     std::vector<int64_t> labelRes(queryNum * k, 10);
@@ -333,7 +352,7 @@ TEST(TestAscendIndexTSFlatIP, Acc)
 
     // 00001111
     bitSet[0] = 0x1 << 0 | 0x1 << 1 | 0x1 << 2 | 0x1 << 3;
-    AttrFilter filter {};
+    AttrFilter filter{};
     filter.timesStart = 0;
     filter.timesEnd = 2;
     filter.tokenBitSet = bitSet.data();
@@ -341,22 +360,25 @@ TEST(TestAscendIndexTSFlatIP, Acc)
 
     std::vector<AttrFilter> queryFilters(queryNum, filter);
 
-
-    for (int i = 0; i < loopTimes + warmupTimes; i++) {
+    for (int i = 0; i < loopTimes + warmupTimes; i++)
+    {
         auto res = tsIndex->Search(queryNum, querys.data(), queryFilters.data(), false, k, labelRes.data(),
-            distances.data(), validnum.data());
+                                   distances.data(), validnum.data());
         index.search(queryNum, querys.data(), k, faissDistances.data(), faissLabelRes.data());
         ASSERT_EQ(res, 0);
     }
 
-    for (int i = 0; i < queryNum; i++) {
+    for (int i = 0; i < queryNum; i++)
+    {
         printf("TSdistances[%d]: ", i);
-        for (int j = 0; j < k; j++) {
+        for (int j = 0; j < k; j++)
+        {
             printf("%10f  ", distances[i * k + j]);
         }
         printf("\r\n");
         printf("tslabelRes[%d]: ", i);
-        for (int j = 0; j < k; j++) {
+        for (int j = 0; j < k; j++)
+        {
             printf("%10ld  ", labelRes[i * k + j]);
         }
 
@@ -371,12 +393,16 @@ TEST(TestAscendIndexTSFlatIP, Acc)
 
     auto it = ids.begin();
     auto featureIt = features.begin();
-    while (it != ids.end()) {
-        if ((*it % 4) == 3) {
+    while (it != ids.end())
+    {
+        if ((*it % 4) == 3)
+        {
             it = ids.erase(it);
             featureIt = features.erase(featureIt, featureIt + dim);
             filterTotal--;
-        } else {
+        }
+        else
+        {
             it++;
             featureIt = featureIt + dim;
         }
@@ -384,7 +410,7 @@ TEST(TestAscendIndexTSFlatIP, Acc)
     ntotal = filterTotal / addNum;
     printf("ascend add final \n");
 
-    faiss::ascend::AscendIndexFlatConfig conf({ deviceId });
+    faiss::ascend::AscendIndexFlatConfig conf({deviceId});
     faiss::ascend::AscendIndexFlat ascendindex(dim, faiss::METRIC_INNER_PRODUCT, conf);
 
     ascendindex.add_with_ids(filterTotal, features.data(), ids.data());
@@ -393,28 +419,35 @@ TEST(TestAscendIndexTSFlatIP, Acc)
     std::vector<float> ascenddistances(queryNum * k, -1);
     std::vector<int64_t> ascendlabelRes(queryNum * k, 10);
 
-    for (int i = 0; i < loopTimes + warmupTimes; i++) {
+    for (int i = 0; i < loopTimes + warmupTimes; i++)
+    {
         ascendindex.search(queryNum, querys.data(), k, ascenddistances.data(), ascendlabelRes.data());
     }
 
-    for (int i = 0; i < queryNum; i++) {
+    for (int i = 0; i < queryNum; i++)
+    {
         printf("ascenddistances[%d]: ", i);
-        for (int j = 0; j < k; j++) {
+        for (int j = 0; j < k; j++)
+        {
             printf("%10f  ", ascenddistances[i * k + j]);
         }
         printf("\r\n");
         printf("ascendlabelRes[%d]: ", i);
-        for (int j = 0; j < k; j++) {
+        for (int j = 0; j < k; j++)
+        {
             printf("%10ld  ", ascendlabelRes[i * k + j]);
         }
         printf("\r\n");
     }
 
-    for (int i = 0; i < queryNum; i++) {
+    for (int i = 0; i < queryNum; i++)
+    {
         float lastdis = distances[i * k + (k - 1)];
-        for (int j = 0; j < k; j++) {
+        for (int j = 0; j < k; j++)
+        {
             EXPECT_EQ(ascenddistances[i * k + j], distances[i * k + j]);
-            if (distances[i * k + j] != lastdis) {
+            if (distances[i * k + j] != lastdis)
+            {
                 auto result =
                     find(ascendlabelRes.begin() + i * k, ascendlabelRes.begin() + (i + 1) * k, labelRes[i * k + j]);
                 ASSERT_FALSE(result == ascendlabelRes.begin() + (i + 1) * k);
@@ -427,8 +460,8 @@ TEST(TestAscendIndexTSFlatIP, SearchNoShareQPS)
 {
     idx_t ntotal = 1000000;
     uint32_t addNum = 10;
-    std::vector<int> queryNums = { 128, 64, 48, 36, 32, 30, 24, 18, 16, 12, 8, 6, 4, 2, 1 };
-    std::vector<int> topks = { 10 };
+    std::vector<int> queryNums = {128, 64, 48, 36, 32, 30, 24, 18, 16, 12, 8, 6, 4, 2, 1};
+    std::vector<int> topks = {10};
     faiss::ascend::AscendIndexTS *tsIndex = new faiss::ascend::AscendIndexTS();
     auto ret = tsIndex->Init(deviceId, dim, tokenNum, faiss::ascend::AlgorithmType::FLAT_IP_FP16);
     EXPECT_EQ(ret, 0);
@@ -436,10 +469,12 @@ TEST(TestAscendIndexTSFlatIP, SearchNoShareQPS)
     std::vector<float> features(ntotal * dim);
     printf("[add -----------]\n");
     FeatureGenerator(features);
-    for (size_t i = 0; i < addNum; i++) {
+    for (size_t i = 0; i < addNum; i++)
+    {
         std::vector<int64_t> labels;
 
-        for (int64_t j = 0; j < ntotal; ++j) {
+        for (int64_t j = 0; j < ntotal; ++j)
+        {
             labels.emplace_back(j + i * ntotal);
         }
         std::vector<FeatureAttr> attrs(ntotal);
@@ -450,12 +485,14 @@ TEST(TestAscendIndexTSFlatIP, SearchNoShareQPS)
         printf("add %ld cost %f ms\n", ntotal, te0 - ts0);
     }
 
-    long double ts { 0. };
-    long double te { 0. };
-    for (auto k : topks) {
+    long double ts{0.};
+    long double te{0.};
+    for (auto k : topks)
+    {
         int warmupTimes = 3;
         int loopTimes = 100;
-        for (auto queryNum : queryNums) {
+        for (auto queryNum : queryNums)
+        {
             std::vector<float> distances(queryNum * k, -1);
             std::vector<int64_t> labelRes(queryNum * k, -1);
             std::vector<uint32_t> validnum(queryNum, 1);
@@ -468,24 +505,26 @@ TEST(TestAscendIndexTSFlatIP, SearchNoShareQPS)
             // 00000111   -> 0,1,2
             bitSet[0] = 0x1 << 0 | 0x1 << 1 | 0x1 << 2;
 
-            AttrFilter filter {};
+            AttrFilter filter{};
             filter.timesStart = 0;
             filter.timesEnd = 100;
             filter.tokenBitSet = bitSet.data();
             filter.tokenBitSetLen = setlen;
 
             std::vector<AttrFilter> queryFilters(queryNum, filter);
-            for (int i = 0; i < loopTimes + warmupTimes; i++) {
-                if (i == warmupTimes) {
+            for (int i = 0; i < loopTimes + warmupTimes; i++)
+            {
+                if (i == warmupTimes)
+                {
                     ts = GetMillisecs();
                 }
                 tsIndex->Search(queryNum, querys.data(), queryFilters.data(), false, k, labelRes.data(),
-                    distances.data(), validnum.data(), false);
+                                distances.data(), validnum.data(), false);
             }
             te = GetMillisecs();
 
             printf("base: %ld,  dim: %d,  batch: %4d,  top%d,  QPS:%7.2Lf\n", ntotal * addNum, dim, queryNum, k,
-                (long double)1000.0 * queryNum * loopTimes / (te - ts));
+                   (long double)1000.0 * queryNum * loopTimes / (te - ts));
         }
     }
     delete tsIndex;
@@ -512,7 +551,8 @@ TEST(TestAscendIndexTSFlatIP, GetFeatureByLabel)
     printf("GetFeatureByLabel  cost  total %f ms \n", te - ts);
     EXPECT_EQ(ret, 0);
 
-    for (int i = 0; i < (ntotal - 1) * dim;) {
+    for (int i = 0; i < (ntotal - 1) * dim;)
+    {
         ASSERT_TRUE(std::abs(base[i] - getBase[i]) < 0.001);
         i = i + dim;
     }
@@ -542,9 +582,11 @@ TEST(TestAscendIndexTSFlatIP, GetBaseByRange)
     std::vector<float> features(ntotal * dim);
     FeatureGenerator(features);
     auto ts1 = GetMillisecs();
-    for (size_t i = 0; i < addNum; i++) {
+    for (size_t i = 0; i < addNum; i++)
+    {
         std::vector<int64_t> labels;
-        for (int64_t j = 0; j < ntotal; ++j) {
+        for (int64_t j = 0; j < ntotal; ++j)
+        {
             labels.emplace_back(j + i * ntotal);
         }
         std::vector<FeatureAttr> attrs(ntotal);
@@ -572,13 +614,16 @@ TEST(TestAscendIndexTSFlatIP, GetBaseByRange)
     ret = tsIndex0->DeleteFeatureByLabel(needAddNum, retLabels.data());
     EXPECT_EQ(ret, 0);
     auto ts5 = GetMillisecs();
-    printf("GetBaseByRange %ld all cost [%f] ms, index0 add [%f] ms, index0 GetBaseByRange [%f] ms, index1 add [%f] "
+    printf(
+        "GetBaseByRange %ld all cost [%f] ms, index0 add [%f] ms, index0 GetBaseByRange [%f] ms, index1 add [%f] "
         "ms, index0 del [%f] ms\n",
         ntotal * addNum, ts5 - ts1, ts2 - ts1, ts3 - ts2, ts4 - ts3, ts5 - ts4);
 
-    for (int i = 0; i < needAddNum * dim; i++) {
+    for (int i = 0; i < needAddNum * dim; i++)
+    {
         ASSERT_TRUE(std::abs(features[i + needAddNum * dim] - retBase[i]) < 0.001);
-        if (std::abs(features[i + needAddNum * dim] - retBase[i]) > 0.001) {
+        if (std::abs(features[i + needAddNum * dim] - retBase[i]) > 0.001)
+        {
             printf("%f--%f \n", features[i + needAddNum * dim], retBase[i]);
         }
     }
@@ -599,10 +644,11 @@ TEST(TestAscendIndexTSFlatIP, GetFeatureAttrByLabel)
     auto *index = new faiss::ascend::AscendIndexTS();
     auto ret = index->Init(deviceId, dim, tokenNum, faiss::ascend::AlgorithmType::FLAT_IP_FP16);
     EXPECT_EQ(ret, 0);
-    for (size_t i = 0; i < addNum; i++) {
+    for (size_t i = 0; i < addNum; i++)
+    {
         auto ts0 = GetMillisecs();
         ret = index->AddFeature(ntotal, base.data() + i * ntotal * dim / 8, attrs.data() + i * ntotal,
-            labels.data() + i * ntotal);
+                                labels.data() + i * ntotal);
         EXPECT_EQ(ret, 0);
         auto te0 = GetMillisecs();
         printf("add %ld cost %f ms\n", ntotal, te0 - ts0);
@@ -615,7 +661,8 @@ TEST(TestAscendIndexTSFlatIP, GetFeatureAttrByLabel)
     EXPECT_EQ(ret, 0);
     auto te = GetMillisecs();
     printf("GetFeatureAttrByLabel[%d]  cost  total %f ms \n", getAttrCnt, te - ts);
-    for (int i = 0; i < getAttr.size(); i++) {
+    for (int i = 0; i < getAttr.size(); i++)
+    {
         EXPECT_EQ(attrs[i].time, getAttr[i].time);
         EXPECT_EQ(attrs[i].tokenId, getAttr[i].tokenId);
     }
@@ -633,7 +680,8 @@ TEST(TestAscendIndexTSFlatIP, GetFeatureAttrByLabel)
     ret = index->GetFeatureAttrByLabel(1, oneLabels.data(), getOneAttr.data());
     EXPECT_EQ(ret, 0);
 
-    for (int i = 0; i < getOneAttr.size(); i++) {
+    for (int i = 0; i < getOneAttr.size(); i++)
+    {
         EXPECT_EQ(oneAttrs[i].time, getOneAttr[i].time);
         EXPECT_EQ(oneAttrs[i].tokenId, getOneAttr[i].tokenId);
     }
@@ -657,7 +705,7 @@ TEST(TestAscendIndexTSFlatIP, DeleteFeatureByToken)
     int64_t validNum = 0;
     index->GetFeatureNum(&validNum);
     EXPECT_EQ(validNum, ntotal);
-    std::vector<uint32_t> delToken { 0, 1 };
+    std::vector<uint32_t> delToken{0, 1};
     auto ts = GetMillisecs();
     index->DeleteFeatureByToken(2, delToken.data());
     auto te = GetMillisecs();
@@ -713,12 +761,14 @@ TEST(TestAscendIndexTSFlatIP, DeleteFeatureByLabel)
     te = GetMillisecs();
     printf("GetFeatureAttrByLabel[%d]  cost  total %f ms \n", delCount, te - ts);
 
-    for (int i = 0; i < getAttr.size(); i++) {
+    for (int i = 0; i < getAttr.size(); i++)
+    {
         EXPECT_EQ(attrs[i + ntotal - delCount].time, getAttr[i].time);
         EXPECT_EQ(attrs[i + ntotal - delCount].tokenId, getAttr[i].tokenId);
     }
 
-    for (int i = 0; i < delCount * dim; i++) {
+    for (int i = 0; i < delCount * dim; i++)
+    {
         ASSERT_TRUE(std::abs(base[i + (ntotal - delCount) * dim] - getBase[i]) <= float(0.005));
     }
 }
@@ -727,8 +777,8 @@ TEST(TestAscendIndexTSFlatIP, SearchShareWithExtraQPS)
 {
     idx_t ntotal = 100000;
     uint32_t addNum = 10;
-    std::vector<int> queryNums = { 1, 2, 4, 8, 16, 32, 64, 128, 256 }; // make sure the vector is in ascending order
-    std::vector<int> topks = { 100 };
+    std::vector<int> queryNums = {1, 2, 4, 8, 16, 32, 64, 128, 256};  // make sure the vector is in ascending order
+    std::vector<int> topks = {100};
     faiss::ascend::AscendIndexTS *tsIndex = new faiss::ascend::AscendIndexTS();
     auto ret = tsIndex->Init(deviceId, dim, tokenNum, faiss::ascend::AlgorithmType::FLAT_IP_FP16);
     EXPECT_EQ(ret, 0);
@@ -736,10 +786,12 @@ TEST(TestAscendIndexTSFlatIP, SearchShareWithExtraQPS)
     printf("[add -----------]\n");
     std::vector<float> features(ntotal * dim);
     FeatureGenerator(features);
-    for (int i = 0; i < addNum; i++) {
+    for (int i = 0; i < addNum; i++)
+    {
         std::vector<int64_t> labels;
 
-        for (int64_t j = 0; j < ntotal; ++j) {
+        for (int64_t j = 0; j < ntotal; ++j)
+        {
             labels.emplace_back(j + i * ntotal);
         }
         std::vector<FeatureAttr> attrs(ntotal);
@@ -750,12 +802,14 @@ TEST(TestAscendIndexTSFlatIP, SearchShareWithExtraQPS)
         printf("add %ld cost %f ms\n", ntotal, te0 - ts0);
     }
 
-    long double ts { 0. };
-    long double te { 0. };
-    for (auto k : topks) {
+    long double ts{0.};
+    long double te{0.};
+    for (auto k : topks)
+    {
         int warmupTimes = 3;
         int loopTimes = 10;
-        for (auto queryNum : queryNums) {
+        for (auto queryNum : queryNums)
+        {
             std::vector<float> distances(queryNum * k, -1);
             std::vector<int64_t> labelRes(queryNum * k, -1);
             std::vector<uint32_t> validnum(queryNum, 1);
@@ -767,7 +821,7 @@ TEST(TestAscendIndexTSFlatIP, SearchShareWithExtraQPS)
 
             // 00000111   -> 0,1,2
             // bitSet[0] = 0x1 << 0 | 0x1 << 1 | 0x1 << 2;
-            AttrFilter filter {};
+            AttrFilter filter{};
             filter.timesStart = 0;
             filter.timesEnd = 3;
             filter.tokenBitSet = bitSet.data();
@@ -776,26 +830,31 @@ TEST(TestAscendIndexTSFlatIP, SearchShareWithExtraQPS)
             int extraMaskLen = 12;
             std::vector<uint8_t> extraMask(queryNum * extraMaskLen, 0);
             int ind = 1;
-            for (int i = 0; i < queryNum; i++) {
-                for (int j = 0; j < extraMaskLen; j++) {
+            for (int i = 0; i < queryNum; i++)
+            {
+                for (int j = 0; j < extraMaskLen; j++)
+                {
                     extraMask[i * extraMaskLen + j] = 0x1 << (ind % 8);
                     ind++;
                 }
             }
             std::vector<AttrFilter> queryFilters(queryNum, filter);
-            for (int i = 0; i < warmupTimes; i++) {
+            for (int i = 0; i < warmupTimes; i++)
+            {
                 tsIndex->SearchWithExtraMask(queryNum, querys.data(), queryFilters.data(), true, k, extraMask.data(),
-                    extraMaskLen, false, labelRes.data(), distances.data(), validnum.data());
+                                             extraMaskLen, false, labelRes.data(), distances.data(), validnum.data());
             }
             ts = GetMillisecs();
-            for (int i = 0; i < loopTimes; i++) {
+            for (int i = 0; i < loopTimes; i++)
+            {
                 ret = tsIndex->SearchWithExtraMask(queryNum, querys.data(), queryFilters.data(), true, k,
-                    extraMask.data(), extraMaskLen, false, labelRes.data(), distances.data(), validnum.data());
+                                                   extraMask.data(), extraMaskLen, false, labelRes.data(),
+                                                   distances.data(), validnum.data());
                 EXPECT_EQ(ret, 0);
             }
             te = GetMillisecs();
             printf("base: %ld,  dim: %d,  batch: %4d,  top%d,  QPS:%7.2Lf\n", ntotal * addNum, dim, queryNum, k,
-                (long double)1000.0 * queryNum * loopTimes / (te - ts));
+                   (long double)1000.0 * queryNum * loopTimes / (te - ts));
         }
     }
     delete tsIndex;
@@ -804,7 +863,7 @@ TEST(TestAscendIndexTSFlatIP, SearchShareWithExtraQPS)
 TEST(TestAscendIndexTSFlatIP, ExtraMaskAcc)
 {
     idx_t ntotal = 1000000;
-    int queryNum = 11; // make sure the vector is in ascending order
+    int queryNum = 11;  // make sure the vector is in ascending order
     int k = 10;
     faiss::ascend::AscendIndexTS *tsIndex = new faiss::ascend::AscendIndexTS();
     tsIndex->Init(deviceId, dim, tokenNum, faiss::ascend::AlgorithmType::FLAT_IP_FP16);
@@ -814,7 +873,8 @@ TEST(TestAscendIndexTSFlatIP, ExtraMaskAcc)
     FeatureGenerator(features);
     Norm(features.data(), ntotal, dim);
     std::vector<int64_t> labels;
-    for (int i = 0; i < ntotal; ++i) {
+    for (int i = 0; i < ntotal; ++i)
+    {
         labels.push_back(i);
     }
     std::vector<FeatureAttr> attrs(ntotal);
@@ -847,7 +907,7 @@ TEST(TestAscendIndexTSFlatIP, ExtraMaskAcc)
 
     // 00001111
     bitSet[0] = 0x1 << 0 | 0x1 << 1 | 0x1 << 2 | 0x1 << 3;
-    AttrFilter filter {};
+    AttrFilter filter{};
     filter.timesStart = 0;
     filter.timesEnd = 3;
     filter.tokenBitSet = bitSet.data();
@@ -856,33 +916,42 @@ TEST(TestAscendIndexTSFlatIP, ExtraMaskAcc)
     int extraMaskLen = ntotal / 8;
     std::vector<uint8_t> extraMask(queryNum * extraMaskLen, 255);
     std::vector<AttrFilter> queryFilters(queryNum, filter);
-    for (int i = 0; i < loopTimes + warmupTimes; i++) {
+    for (int i = 0; i < loopTimes + warmupTimes; i++)
+    {
         res = tsIndex->SearchWithExtraMask(queryNum, querys.data(), queryFilters.data(), false, k, extraMask.data(),
-            extraMaskLen, false, labelRes.data(), distances.data(), validnum.data());
+                                           extraMaskLen, false, labelRes.data(), distances.data(), validnum.data());
         EXPECT_EQ(res, 0);
     }
-    for (int i = 0; i < queryNum; i++) {
+    for (int i = 0; i < queryNum; i++)
+    {
         ASSERT_TRUE(labelRes[i * k] == i);
     }
 
-    for (int i = 0; i < queryNum; i++) {
+    for (int i = 0; i < queryNum; i++)
+    {
         printf("ascenddistances[%d]: ", i);
-        for (int j = 0; j < k; j++) {
+        for (int j = 0; j < k; j++)
+        {
             printf("%10f  ", distances[i * k + j]);
         }
         printf("\r\n");
         printf("ascendlabelRes[%d]: ", i);
-        for (int j = 0; j < k; j++) {
+        for (int j = 0; j < k; j++)
+        {
             printf("%10ld  ", labelRes[i * k + j]);
         }
         printf("\r\n");
     }
 
-    for (int i = 0; i < queryNum; i++) {
+    for (int i = 0; i < queryNum; i++)
+    {
         int ind = 0;
-        for (int j = 0; j < extraMaskLen; j++) {
-            for (int k = 0; k < 8; k++) {
-                if (i == ind) {
+        for (int j = 0; j < extraMaskLen; j++)
+        {
+            for (int k = 0; k < 8; k++)
+            {
+                if (i == ind)
+                {
                     extraMask[j + i * extraMaskLen] = extraMask[j + i * extraMaskLen] & ~(0x1 << (ind % 8));
                     ind++;
                     break;
@@ -891,71 +960,74 @@ TEST(TestAscendIndexTSFlatIP, ExtraMaskAcc)
             }
         }
     }
-    for (int i = 0; i < queryNum; i++) {
+    for (int i = 0; i < queryNum; i++)
+    {
         int num = labelRes[i * k + 1];
         extraMask[num / 8 + i * extraMaskLen] = extraMask[num / 8 + i * extraMaskLen] & ~(0x1 << (num % 8));
     }
 
-    for (int i = 0; i < loopTimes + warmupTimes; i++) {
+    for (int i = 0; i < loopTimes + warmupTimes; i++)
+    {
         res = tsIndex->SearchWithExtraMask(queryNum, querys.data(), queryFilters.data(), false, k, extraMask.data(),
-            extraMaskLen, false, extramaskLabelRes.data(), extramaskDistances.data(), validnum.data());
+                                           extraMaskLen, false, extramaskLabelRes.data(), extramaskDistances.data(),
+                                           validnum.data());
         EXPECT_EQ(res, 0);
     }
 
-    for (int i = 0; i < queryNum; i++) {
+    for (int i = 0; i < queryNum; i++)
+    {
         printf("extramaskDistances[%d]: ", i);
-        for (int j = 0; j < k; j++) {
+        for (int j = 0; j < k; j++)
+        {
             printf("%10f  ", extramaskDistances[i * k + j]);
         }
         printf("\r\n");
         printf("extramaskLabelRes[%d]: ", i);
-        for (int j = 0; j < k; j++) {
+        for (int j = 0; j < k; j++)
+        {
             printf("%10ld  ", extramaskLabelRes[i * k + j]);
         }
         printf("\r\n");
     }
 
-    for (int i = 0; i < queryNum; i++) {
-        for (int j = 0; j < k - 2; j++) {
+    for (int i = 0; i < queryNum; i++)
+    {
+        for (int j = 0; j < k - 2; j++)
+        {
             EXPECT_EQ(distances[i * k + j + 2], extramaskDistances[i * k + j]);
         }
     }
     delete tsIndex;
 }
 
-void PrintResult(int queryNum,
-                 int k,
-                 const std::vector<float> &distances,
-                 const std::vector<int64_t> &labelRes,
+void PrintResult(int queryNum, int k, const std::vector<float> &distances, const std::vector<int64_t> &labelRes,
                  const std::vector<uint32_t> &validnum = std::vector<uint32_t>())
 {
-    for (int i = 0; i < queryNum; i++) {
+    for (int i = 0; i < queryNum; i++)
+    {
         printf("ascenddistances[%d]: ", i);
-        for (int j = 0; j < k; j++) {
+        for (int j = 0; j < k; j++)
+        {
             printf("%10f  ", distances[i * k + j]);
         }
         printf("\r\n");
         printf("ascendlabelRes[%d]: ", i);
-        for (int j = 0; j < k; j++) {
+        for (int j = 0; j < k; j++)
+        {
             printf("%10ld  ", labelRes[i * k + j]);
         }
         printf("\r\n");
-        if (!validnum.empty()) {
+        if (!validnum.empty())
+        {
             printf("validnum[%d]: %u", i, validnum[i]);
             printf("\r\n");
         }
     }
 }
 
-static void GenerateData(int64_t ntotal,
-                         int64_t queryNum,
-                         int64_t extraMaskLen,
-                         std::vector<float> &features,
-                         int64_t indiceStart,
-                         std::vector<int64_t> &indices,
-                         std::vector<FeatureAttr> &attrs,
-                         std::vector<uint8_t> &extraMask,
-                         std::vector<uint8_t> &bitSet,
+static void GenerateData(int64_t ntotal, int64_t queryNum, int64_t extraMaskLen, std::vector<float> &features,
+                         int64_t indiceStart, std::vector<int64_t> &indices, std::vector<FeatureAttr> &attrs,
+                         std::vector<uint8_t> &extraMask, std::vector<uint8_t> &bitSet,
                          std::vector<AttrFilter> &queryFilters)
 {
     features.resize(ntotal * dim);
@@ -968,13 +1040,13 @@ static void GenerateData(int64_t ntotal,
     attrs.resize(ntotal);
     FeatureAttrGenerator(attrs);
 
-    extraMask.resize(queryNum * extraMaskLen, 255); // 255 bit位全是1，不过滤
+    extraMask.resize(queryNum * extraMaskLen, 255);  // 255 bit位全是1，不过滤
 
     uint32_t setLen = static_cast<uint32_t>((tokenNum + MASK_ALIGN - 1) / MASK_ALIGN);
     bitSet.resize(setLen, 0);
     // 00001111
     bitSet[0] = 0x1 << 0 | 0x1 << 1 | 0x1 << 2 | 0x1 << 3;
-    AttrFilter filter {};
+    AttrFilter filter{};
     filter.timesStart = 0;
     filter.timesEnd = 3;  // 3
     filter.tokenBitSet = bitSet.data();
@@ -985,13 +1057,13 @@ static void GenerateData(int64_t ntotal,
 TEST(TestAscendIndexTSFlatIP, ExtraMaskExtraScoreAcc)
 {
     idx_t ntotal = 10000000;
-    int queryNum = 111; // 111覆盖所有batch size
+    int queryNum = 111;  // 111覆盖所有batch size
     int k = 10;
 
     std::vector<float> features;
     std::vector<int64_t> labels;
     std::vector<FeatureAttr> attrs;
-    int extraMaskLen = (ntotal + 8 - 1) / 8; // 按照8对齐
+    int extraMaskLen = (ntotal + 8 - 1) / 8;  // 按照8对齐
     std::vector<uint8_t> extraMask;
     std::vector<uint8_t> bitSet;
     std::vector<AttrFilter> queryFilters;
@@ -999,11 +1071,13 @@ TEST(TestAscendIndexTSFlatIP, ExtraMaskExtraScoreAcc)
     GenerateData(ntotal, queryNum, extraMaskLen, features, 0, labels, attrs, extraMask, bitSet, queryFilters);
 
     std::shared_ptr<faiss::ascend::AscendIndexTS> tsIndex;
-    try {
+    try
+    {
         tsIndex = std::make_shared<faiss::ascend::AscendIndexTS>();
         tsIndex->Init(deviceId, dim, tokenNum, faiss::ascend::AlgorithmType::FLAT_IP_FP16);
         idx_t addPaged = 1000000;
-        for (idx_t i = 0; i < ntotal; i += addPaged) {
+        for (idx_t i = 0; i < ntotal; i += addPaged)
+        {
             idx_t addCount = std::min(addPaged, ntotal - i);
             auto res = tsIndex->AddFeature(addCount, features.data() + i * dim, attrs.data() + i, labels.data() + i);
             EXPECT_EQ(res, 0);
@@ -1013,23 +1087,24 @@ TEST(TestAscendIndexTSFlatIP, ExtraMaskExtraScoreAcc)
         EXPECT_EQ(validNum, ntotal);
 
         std::vector<float> distances(static_cast<int64_t>(queryNum) * k, -1);
-        std::vector<int64_t> labelRes(static_cast<int64_t>(queryNum) * k, 10); // 10, default value
+        std::vector<int64_t> labelRes(static_cast<int64_t>(queryNum) * k, 10);  // 10, default value
         std::vector<uint32_t> validnum(static_cast<int64_t>(queryNum), 0);
         int64_t size = static_cast<int64_t>(queryNum) * dim;
         std::vector<float> querys(static_cast<int64_t>(queryNum) * dim);
         querys.assign(features.begin(), features.begin() + size);
 
-        int64_t ntotalPad = (ntotal + 16 - 1) / 16 * 16; // 长度等于底库长度按照16对齐
+        int64_t ntotalPad = (ntotal + 16 - 1) / 16 * 16;  // 长度等于底库长度按照16对齐
         float extraScoreValue = 1.0;
         std::vector<float> extraScore(queryNum * ntotalPad, extraScoreValue);
         std::vector<uint16_t> extraScoreFp16(extraScore.size());
         std::transform(extraScore.begin(), extraScore.end(), extraScoreFp16.begin(),
-            [] (float tmp) { return aclFloatToFloat16(tmp); });
+                       [](float tmp) { return aclFloatToFloat16(tmp); });
         auto res = tsIndex->SearchWithExtraMask(queryNum, querys.data(), queryFilters.data(), false, k,
-            extraMask.data(), extraMaskLen, false, extraScoreFp16.data(), labelRes.data(), distances.data(),
-            validnum.data());
+                                                extraMask.data(), extraMaskLen, false, extraScoreFp16.data(),
+                                                labelRes.data(), distances.data(), validnum.data());
         EXPECT_EQ(res, 0);
-        for (int i = 0; i < queryNum; i++) {
+        for (int i = 0; i < queryNum; i++)
+        {
             EXPECT_TRUE(labelRes[i * k] == i);
         }
         PrintResult(queryNum, k, distances, labelRes);
@@ -1043,7 +1118,9 @@ TEST(TestAscendIndexTSFlatIP, ExtraMaskExtraScoreAcc)
         WriteTensorToFile(name, extraScoreFp16.data(), extraScoreFp16.size());
         name = "dist_result";
         WriteTensorToFile(name, distances.data(), distances.size());
-    } catch (std::exception &e) {
+    }
+    catch (std::exception &e)
+    {
         printf("catch exception %s\n", e.what());
     }
 }
@@ -1055,51 +1132,63 @@ static bool TestQPS(int warmupTimes, int loopTimes, idx_t ntotal, uint32_t k, co
                     std::vector<float> &distances, std::vector<uint32_t> &validNums,
                     std::shared_ptr<faiss::ascend::AscendIndexTS> &tsIndex)
 {
-    for (size_t i = 0; i < batchSize.size(); i++) {
-        for (int j = 0; j < warmupTimes; j++) {
+    for (size_t i = 0; i < batchSize.size(); i++)
+    {
+        for (int j = 0; j < warmupTimes; j++)
+        {
             auto res = tsIndex->SearchWithExtraMask(batchSize[i], querys.data(), queryFilters.data(), false, k,
-                extraMask.data(), extraMaskLen, false, labels.data(), distances.data(), validNums.data());
-            if (res != 0) {
+                                                    extraMask.data(), extraMaskLen, false, labels.data(),
+                                                    distances.data(), validNums.data());
+            if (res != 0)
+            {
                 return false;
             }
-            res = tsIndex->SearchWithExtraMask(batchSize[i], querys.data(), queryFilters.data(),
-                false, k, extraMask.data(), extraMaskLen, false, extraScore.data(), labels.data(),
-                distances.data(), validNums.data());
-            if (res != 0) {
+            res = tsIndex->SearchWithExtraMask(batchSize[i], querys.data(), queryFilters.data(), false, k,
+                                               extraMask.data(), extraMaskLen, false, extraScore.data(), labels.data(),
+                                               distances.data(), validNums.data());
+            if (res != 0)
+            {
                 return false;
             }
         }
     }
     printf("non extra score\n");
-    for (size_t i = 0; i < batchSize.size(); i++) {
+    for (size_t i = 0; i < batchSize.size(); i++)
+    {
         auto ts = GetMillisecs();
-        for (int j = 0; j < loopTimes; j++) {
+        for (int j = 0; j < loopTimes; j++)
+        {
             auto ret = tsIndex->SearchWithExtraMask(batchSize[i], querys.data(), queryFilters.data(), false, k,
-                extraMask.data(), extraMaskLen, false, labels.data(), distances.data(), validNums.data());
-            if (ret != 0) {
+                                                    extraMask.data(), extraMaskLen, false, labels.data(),
+                                                    distances.data(), validNums.data());
+            if (ret != 0)
+            {
                 return false;
             }
         }
         auto te = GetMillisecs();
-        printf("base: %ld,  dim: %d,  batch: %4d,  top%d, avg_time:%10.4f, QPS:%7.2f\n", ntotal, dim,
-            batchSize[i], k, (te - ts) / loopTimes,
-            static_cast<double>(1000.0) * batchSize[i] * loopTimes / (te - ts)); // 1000.0 ms
+        printf("base: %ld,  dim: %d,  batch: %4d,  top%d, avg_time:%10.4f, QPS:%7.2f\n", ntotal, dim, batchSize[i], k,
+               (te - ts) / loopTimes,
+               static_cast<double>(1000.0) * batchSize[i] * loopTimes / (te - ts));  // 1000.0 ms
     }
     printf("with extra score\n");
-    for (size_t i = 0; i < batchSize.size(); i++) {
+    for (size_t i = 0; i < batchSize.size(); i++)
+    {
         auto ts = GetMillisecs();
-        for (int j = 0; j < loopTimes; j++) {
+        for (int j = 0; j < loopTimes; j++)
+        {
             auto ret = tsIndex->SearchWithExtraMask(batchSize[i], querys.data(), queryFilters.data(), false, k,
-                extraMask.data(), extraMaskLen, false, extraScore.data(), labels.data(), distances.data(),
-                validNums.data());
-            if (ret != 0) {
+                                                    extraMask.data(), extraMaskLen, false, extraScore.data(),
+                                                    labels.data(), distances.data(), validNums.data());
+            if (ret != 0)
+            {
                 return false;
             }
         }
         auto te = GetMillisecs();
-        printf("base: %ld,  dim: %d,  batch: %4d,  top%d, avg_time:%10.4f, QPS:%7.2f\n", ntotal, dim,
-            batchSize[i], k, (te - ts) / loopTimes,
-            static_cast<double>(1000.0) * batchSize[i] * loopTimes / (te - ts)); // 1000.0 ms
+        printf("base: %ld,  dim: %d,  batch: %4d,  top%d, avg_time:%10.4f, QPS:%7.2f\n", ntotal, dim, batchSize[i], k,
+               (te - ts) / loopTimes,
+               static_cast<double>(1000.0) * batchSize[i] * loopTimes / (te - ts));  // 1000.0 ms
     }
     return true;
 }
@@ -1112,22 +1201,25 @@ TEST(TestAscendIndexTSFlatIP, ExtraMaskExtraScoreQPS)
     std::vector<float> features;
     std::vector<int64_t> labels;
     std::vector<FeatureAttr> attrs;
-    int extraMaskLen = (ntotal + 8 - 1) / 8; // 按照8对齐
+    int extraMaskLen = (ntotal + 8 - 1) / 8;  // 按照8对齐
     std::vector<uint8_t> extraMask;
     std::vector<uint8_t> bitSet;
     std::vector<AttrFilter> queryFilters;
-    std::vector<int> batchSize = { 1, 2, 4, 8, 16, 32, 48, 64, 128, 256 };
+    std::vector<int> batchSize = {1, 2, 4, 8, 16, 32, 48, 64, 128, 256};
     int queryNum = batchSize.back();
 
     GenerateData(ntotal, queryNum, extraMaskLen, features, 0, labels, attrs, extraMask, bitSet, queryFilters);
 
-    uint64_t resourceSize = static_cast<uint64_t>(4) * 1024 * 1024 * 1024; // 最大4GB，如果默认的话设置为0x60000000（1.5G）
+    uint64_t resourceSize =
+        static_cast<uint64_t>(4) * 1024 * 1024 * 1024;  // 最大4GB，如果默认的话设置为0x60000000（1.5G）
     std::shared_ptr<faiss::ascend::AscendIndexTS> tsIndex;
-    try {
+    try
+    {
         tsIndex = std::make_shared<faiss::ascend::AscendIndexTS>();
         tsIndex->InitWithExtraVal(deviceId, dim, tokenNum, resourceSize, faiss::ascend::AlgorithmType::FLAT_IP_FP16);
         idx_t addPaged = 1000000;
-        for (idx_t i = 0; i < ntotal; i += addPaged) {
+        for (idx_t i = 0; i < ntotal; i += addPaged)
+        {
             idx_t addCount = std::min(addPaged, ntotal - i);
             auto ts = GetMillisecs();
             auto res = tsIndex->AddFeature(addCount, features.data() + i * dim, attrs.data() + i, labels.data() + i);
@@ -1140,35 +1232,39 @@ TEST(TestAscendIndexTSFlatIP, ExtraMaskExtraScoreQPS)
         EXPECT_EQ(validNum, ntotal);
 
         std::vector<float> distances(static_cast<int64_t>(queryNum) * k, -1);
-        std::vector<int64_t> labelRes(static_cast<int64_t>(queryNum) * k, 10); // 10, default value
+        std::vector<int64_t> labelRes(static_cast<int64_t>(queryNum) * k, 10);  // 10, default value
         std::vector<uint32_t> validNums(static_cast<int64_t>(queryNum), 0);
         int64_t size = static_cast<int64_t>(queryNum) * dim;
         std::vector<float> querys(static_cast<int64_t>(queryNum) * dim);
         querys.assign(features.begin(), features.begin() + size);
         features.clear();
 
-        int64_t ntotalPad = (ntotal + 16 - 1) / 16 * 16; // 长度等于底库长度按照16对齐
+        int64_t ntotalPad = (ntotal + 16 - 1) / 16 * 16;  // 长度等于底库长度按照16对齐
         float extraScoreValue = 1.0;
         std::vector<float> extraScore(queryNum * ntotalPad, extraScoreValue);
         std::vector<uint16_t> extraScoreFp16(extraScore.size());
         std::transform(extraScore.begin(), extraScore.end(), extraScoreFp16.begin(),
-            [] (float tmp) { return aclFloatToFloat16(tmp); });
+                       [](float tmp) { return aclFloatToFloat16(tmp); });
         extraScore.clear();
 
         int warmupTimes = 3;
         int loopTimes = 10;
-        if (!TestQPS(warmupTimes, loopTimes, ntotal, k, batchSize, querys, queryFilters, extraScoreFp16,
-                    extraMask, extraMaskLen, false, labelRes, distances, validNums, tsIndex)) {
+        if (!TestQPS(warmupTimes, loopTimes, ntotal, k, batchSize, querys, queryFilters, extraScoreFp16, extraMask,
+                     extraMaskLen, false, labelRes, distances, validNums, tsIndex))
+        {
             printf("TestQPS failed\n");
         }
-    } catch (std::exception &e) {
+    }
+    catch (std::exception &e)
+    {
         printf("catch exception %s\n", e.what());
     }
 }
 
 // 定义一个保存特征向量及属性的类型，用来和npu获取的数据进行对比
-struct BaseAllFeature {
-    int64_t ntotal {0};
+struct BaseAllFeature
+{
+    int64_t ntotal{0};
     std::vector<float> features;
     std::vector<FeatureAttr> attrs;
     std::vector<uint8_t> customAttrs;
@@ -1178,8 +1274,8 @@ struct BaseAllFeature {
 
 constexpr int64_t SINGLE_ADD_LIMIT = 1000000;
 
-void TestAdd(const std::vector<int64_t> &indices,
-    std::shared_ptr<faiss::ascend::AscendIndexTS> &tsIndex, BaseAllFeature &baseAllFeature)
+void TestAdd(const std::vector<int64_t> &indices, std::shared_ptr<faiss::ascend::AscendIndexTS> &tsIndex,
+             BaseAllFeature &baseAllFeature)
 {
     int64_t addNum = indices.size();
     ASSERT_GT(addNum, 0);
@@ -1197,12 +1293,12 @@ void TestAdd(const std::vector<int64_t> &indices,
     auto res = tsIndex->GetFeatureNum(&featureNumBak);
     EXPECT_EQ(res, 0);
     // 增加一些
-    for (int64_t i = 0; i < addNum; i += SINGLE_ADD_LIMIT) {
+    for (int64_t i = 0; i < addNum; i += SINGLE_ADD_LIMIT)
+    {
         int64_t addCount = std::min(SINGLE_ADD_LIMIT, addNum - i);
         double ts = GetMillisecs();
-        auto res = tsIndex->AddFeatureByIndice(
-            addCount, features.data() + i * dim, attrs.data() + i, indices.data() + i, nullptr,
-            customAttr.data() + i * g_customAttrLen);
+        auto res = tsIndex->AddFeatureByIndice(addCount, features.data() + i * dim, attrs.data() + i,
+                                               indices.data() + i, nullptr, customAttr.data() + i * g_customAttrLen);
         ASSERT_EQ(res, 0);
         double te = GetMillisecs();
         printf("add %ld cost %f ms\n", addCount, te - ts);
@@ -1215,10 +1311,11 @@ void TestAdd(const std::vector<int64_t> &indices,
 
     // 检查新增加的部分是不是全是1
     int64_t maskLength = (newFeatureNum + MASK_ALIGN - 1) / MASK_ALIGN;
-    std::vector<uint8_t> baseMask(maskLength); // 按8对齐
+    std::vector<uint8_t> baseMask(maskLength);  // 按8对齐
     res = tsIndex->GetBaseMask(maskLength, baseMask.data());
     ASSERT_EQ(res, 0);
-    for (int64_t i = featureNumBak; i < newFeatureNum; i++) {
+    for (int64_t i = featureNumBak; i < newFeatureNum; i++)
+    {
         int64_t byteIndex = i / MASK_ALIGN;
         int64_t bitIndex = i % MASK_ALIGN;
         ASSERT_NE(baseMask[byteIndex] & (1 << bitIndex), 0);
@@ -1226,20 +1323,23 @@ void TestAdd(const std::vector<int64_t> &indices,
 
     baseAllFeature.ntotal = newFeatureNum;
     baseAllFeature.features.resize(baseAllFeature.ntotal * dim);
-    for (int64_t i = 0; i < addNum; i++) {
+    for (int64_t i = 0; i < addNum; i++)
+    {
         std::copy(features.data() + i * dim, features.data() + i * dim + dim,
-            baseAllFeature.features.data() + indices[i] * dim);
+                  baseAllFeature.features.data() + indices[i] * dim);
     }
 
     baseAllFeature.attrs.resize(baseAllFeature.ntotal);
-    for (int64_t i = 0; i < addNum; i++) {
+    for (int64_t i = 0; i < addNum; i++)
+    {
         baseAllFeature.attrs[indices[i]] = attrs[i];
     }
 
     baseAllFeature.customAttrs.resize(baseAllFeature.ntotal * g_customAttrLen);
-    for (int64_t i = 0; i < addNum; i++) {
+    for (int64_t i = 0; i < addNum; i++)
+    {
         std::copy(customAttr.data() + i * g_customAttrLen, customAttr.data() + i * g_customAttrLen + g_customAttrLen,
-            baseAllFeature.customAttrs.data() + indices[i] * g_customAttrLen);
+                  baseAllFeature.customAttrs.data() + indices[i] * g_customAttrLen);
     }
 
     baseAllFeature.baseMask = std::move(baseMask);
@@ -1247,7 +1347,7 @@ void TestAdd(const std::vector<int64_t> &indices,
 
 // 自定义属性单独接口获取，按照block的方式整块获取，且获取的地址是device侧的空间。需要拷贝到host后，再转换后和npu的进行对比
 void TestCustomAttr(int64_t featureNum, std::shared_ptr<faiss::ascend::AscendIndexTS> &tsIndex,
-    const BaseAllFeature &baseAllFeature)
+                    const BaseAllFeature &baseAllFeature)
 {
     uint32_t customBlockNum = (static_cast<uint32_t>(featureNum) + g_customAttrBlockSize - 1) / g_customAttrBlockSize;
     uint32_t leftCustomAttrSize = static_cast<uint32_t>(featureNum) % g_customAttrBlockSize;
@@ -1255,26 +1355,30 @@ void TestCustomAttr(int64_t featureNum, std::shared_ptr<faiss::ascend::AscendInd
     leftCustomAttrSize = (leftCustomAttrSize == 0) ? g_customAttrBlockSize : leftCustomAttrSize;
     uint8_t *deviceCustomAttr = nullptr;
     uint32_t blockDataSize = g_customAttrBlockSize * g_customAttrLen;
-    for (uint32_t i = 0; i < customBlockNum; i++) {
+    for (uint32_t i = 0; i < customBlockNum; i++)
+    {
         auto res = tsIndex->GetCustomAttrByBlockId(i, deviceCustomAttr);
         ASSERT_EQ(res, 0);
         std::vector<uint8_t> customAttr(blockDataSize);
-        res = aclrtMemcpy(customAttr.data(), customAttr.size() * sizeof(uint8_t),
-            deviceCustomAttr, blockDataSize * sizeof(uint8_t),
-            ACL_MEMCPY_DEVICE_TO_HOST);
+        res = aclrtMemcpy(customAttr.data(), customAttr.size() * sizeof(uint8_t), deviceCustomAttr,
+                          blockDataSize * sizeof(uint8_t), ACL_MEMCPY_DEVICE_TO_HOST);
         ASSERT_EQ(res, 0);
-        
+
         std::vector<uint8_t> customAttrRaw(blockDataSize);
         uint32_t validSize = (i == customBlockNum - 1) ? leftCustomAttrSize : g_customAttrBlockSize;
-        for (uint32_t j = 0; j < validSize; j++) {
-            for (uint32_t k = 0; k < g_customAttrLen; k++) {
+        for (uint32_t j = 0; j < validSize; j++)
+        {
+            for (uint32_t k = 0; k < g_customAttrLen; k++)
+            {
                 customAttrRaw[j * g_customAttrLen + k] = customAttr[k * g_customAttrBlockSize + j];
             }
         }
 
-        for (uint32_t j = 0; j < validSize * g_customAttrLen; j++) {
+        for (uint32_t j = 0; j < validSize * g_customAttrLen; j++)
+        {
             auto baseFeatureData = baseAllFeature.customAttrs[i * blockDataSize + j];
-            if (baseFeatureData != customAttrRaw[j]) {
+            if (baseFeatureData != customAttrRaw[j])
+            {
                 printf("i:[%u], j:[%u], [%d] vs [%d] is different\n", i, j, baseFeatureData, customAttrRaw[j]);
             }
             ASSERT_EQ(baseFeatureData, customAttrRaw[j]);
@@ -1284,33 +1388,42 @@ void TestCustomAttr(int64_t featureNum, std::shared_ptr<faiss::ascend::AscendInd
 
 // 对比第i条特征的第j维度的数据是否是符合误差要求的。
 bool CompareFeatureData(int64_t i, int64_t j, const BaseAllFeature &baseAllFeature, const std::vector<float> &retBase,
-    const std::vector<int64_t> &indices = std::vector<int64_t>())
+                        const std::vector<int64_t> &indices = std::vector<int64_t>())
 {
-    float gap = 0.0005; // 0.0005 f32 fp16 gap
-    if (indices.empty()) {
-        if (!baseAllFeature.scale.empty()) {
+    float gap = 0.0005;  // 0.0005 f32 fp16 gap
+    if (indices.empty())
+    {
+        if (!baseAllFeature.scale.empty())
+        {
             // 计算量化误差
             gap = CalculateQuantizationError(baseAllFeature.features[i * dim + j], baseAllFeature.scale[j]);
         }
         // 比较特征数据是否相同
-        if (fabs(baseAllFeature.features[i * dim + j] - retBase[i * dim + j]) > gap) {
-            printf("i:[%ld], j:[%ld], [%f] vs [%f] is different, gap:%f\n", i, j,
-                baseAllFeature.features[i * dim + j], retBase[i * dim + j], gap);
-            if (!baseAllFeature.scale.empty()) {
+        if (fabs(baseAllFeature.features[i * dim + j] - retBase[i * dim + j]) > gap)
+        {
+            printf("i:[%ld], j:[%ld], [%f] vs [%f] is different, gap:%f\n", i, j, baseAllFeature.features[i * dim + j],
+                   retBase[i * dim + j], gap);
+            if (!baseAllFeature.scale.empty())
+            {
                 printf("scale[%ld]:%f\n", j, baseAllFeature.scale[j]);
             }
             return false;
         }
-    } else {
-        if (!baseAllFeature.scale.empty()) {
+    }
+    else
+    {
+        if (!baseAllFeature.scale.empty())
+        {
             // 计算量化误差
             gap = CalculateQuantizationError(baseAllFeature.features[indices[i] * dim + j], baseAllFeature.scale[j]);
         }
         // 比较特征数据是否相同
-        if (fabs(baseAllFeature.features[indices[i] * dim + j] - retBase[i * dim + j]) > gap) {
+        if (fabs(baseAllFeature.features[indices[i] * dim + j] - retBase[i * dim + j]) > gap)
+        {
             printf("i:[%ld], indices[%ld]:[%ld] j:[%ld], [%f] vs [%f] is different, gap:%f\n", i, i, indices[i], j,
-                baseAllFeature.features[indices[i] * dim + j], retBase[i * dim + j], gap);
-            if (!baseAllFeature.scale.empty()) {
+                   baseAllFeature.features[indices[i] * dim + j], retBase[i * dim + j], gap);
+            if (!baseAllFeature.scale.empty())
+            {
                 printf("scale[%ld]:%f\n", j, baseAllFeature.scale[j]);
             }
             return false;
@@ -1320,28 +1433,31 @@ bool CompareFeatureData(int64_t i, int64_t j, const BaseAllFeature &baseAllFeatu
 }
 
 void TestFeatureByRange(int64_t featureNum, int64_t maskLen, std::shared_ptr<faiss::ascend::AscendIndexTS> &tsIndex,
-    const BaseAllFeature &baseAllFeature)
+                        const BaseAllFeature &baseAllFeature)
 {
     std::vector<float> retBase(featureNum * dim);
     std::vector<int64_t> retLabels(featureNum);
     std::vector<faiss::ascend::FeatureAttr> retAttrs(featureNum);
     std::vector<faiss::ascend::ExtraValAttr> retValAttrs(featureNum);
-    auto res = tsIndex->GetBaseByRangeWithExtraVal(0, featureNum, retLabels.data(),
-        retBase.data(), retAttrs.data(), retValAttrs.data());
+    auto res = tsIndex->GetBaseByRangeWithExtraVal(0, featureNum, retLabels.data(), retBase.data(), retAttrs.data(),
+                                                   retValAttrs.data());
     ASSERT_EQ(res, 0);
 
-    std::vector<uint8_t> baseMask(maskLen); // 按8对齐
+    std::vector<uint8_t> baseMask(maskLen);  // 按8对齐
     res = tsIndex->GetBaseMask(maskLen, baseMask.data());
     ASSERT_EQ(res, 0);
-    for (int64_t i = 0; i < featureNum; i++) {
+    for (int64_t i = 0; i < featureNum; i++)
+    {
         ASSERT_EQ(i, retLabels[i]);
-        for (int64_t j = 0; j < dim; j++) {
+        for (int64_t j = 0; j < dim; j++)
+        {
             ASSERT_TRUE(CompareFeatureData(i, j, baseAllFeature, retBase));
         }
         ASSERT_EQ(baseAllFeature.attrs[i].time, retAttrs[i].time);
         ASSERT_EQ(baseAllFeature.attrs[i].tokenId, retAttrs[i].tokenId);
     }
-    for (int64_t i = 0; i < maskLen; i++) {
+    for (int64_t i = 0; i < maskLen; i++)
+    {
         ASSERT_EQ(baseAllFeature.baseMask[i], baseMask[i]);
     }
 
@@ -1349,7 +1465,7 @@ void TestFeatureByRange(int64_t featureNum, int64_t maskLen, std::shared_ptr<fai
 }
 
 void TestFeatureByIndice(int64_t featureNum, int64_t maskLen, std::shared_ptr<faiss::ascend::AscendIndexTS> &tsIndex,
-    const BaseAllFeature &baseAllFeature)
+                         const BaseAllFeature &baseAllFeature)
 {
     unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
     std::default_random_engine e(seed);
@@ -1364,12 +1480,14 @@ void TestFeatureByIndice(int64_t featureNum, int64_t maskLen, std::shared_ptr<fa
     std::vector<faiss::ascend::ExtraValAttr> retValAttrs(compareNum);
 
     std::vector<int64_t> indices(labels.begin(), labels.begin() + compareNum);
-    auto res = tsIndex->GetFeatureByIndice(compareNum, indices.data(), retLabels.data(),
-        retBase.data(), retAttrs.data(), retValAttrs.data());
+    auto res = tsIndex->GetFeatureByIndice(compareNum, indices.data(), retLabels.data(), retBase.data(),
+                                           retAttrs.data(), retValAttrs.data());
     ASSERT_EQ(res, 0);
-    for (int64_t i = 0; i < compareNum; i++) {
+    for (int64_t i = 0; i < compareNum; i++)
+    {
         ASSERT_EQ(indices[i], retLabels[i]);
-        for (int64_t j = 0; j < dim; j++) {
+        for (int64_t j = 0; j < dim; j++)
+        {
             ASSERT_TRUE(CompareFeatureData(i, j, baseAllFeature, retBase, indices));
         }
         ASSERT_EQ(baseAllFeature.attrs[indices[i]].time, retAttrs[i].time);
@@ -1396,7 +1514,7 @@ void TestBaseAllFeature(std::shared_ptr<faiss::ascend::AscendIndexTS> &tsIndex, 
 }
 
 void TestFastDeleteByIndices(int64_t deleteOffset, int64_t deleteNum, std::vector<int64_t> &deleteIndices,
-    std::shared_ptr<faiss::ascend::AscendIndexTS> &tsIndex, BaseAllFeature &baseAllFeature)
+                             std::shared_ptr<faiss::ascend::AscendIndexTS> &tsIndex, BaseAllFeature &baseAllFeature)
 {
     int64_t featureNumBak = 0;
     auto res = tsIndex->GetFeatureNum(&featureNumBak);
@@ -1419,18 +1537,22 @@ void TestFastDeleteByIndices(int64_t deleteOffset, int64_t deleteNum, std::vecto
 
     // 检查baseMask删除部分是不是设置为0
     int64_t maskLength = (newFeatureNum + MASK_ALIGN - 1) / MASK_ALIGN;
-    std::vector<uint8_t> baseMask(maskLength); // 按8对齐
+    std::vector<uint8_t> baseMask(maskLength);  // 按8对齐
     res = tsIndex->GetBaseMask(maskLength, baseMask.data());
     ASSERT_EQ(res, 0);
 
     std::unordered_set<int64_t> deleteInidcesSet(deleteIndices.begin(), deleteIndices.end());
-    for (int64_t i = deleteOffset; i < newFeatureNum; i++) {
+    for (int64_t i = deleteOffset; i < newFeatureNum; i++)
+    {
         int64_t byteIndex = i / MASK_ALIGN;
         int64_t bitIndex = i % MASK_ALIGN;
         // 被删除的位置对应的bit需要为0，否则为1
-        if (deleteInidcesSet.count(i)) {
+        if (deleteInidcesSet.count(i))
+        {
             ASSERT_EQ(baseMask[byteIndex] & (1 << bitIndex), 0);
-        } else {
+        }
+        else
+        {
             ASSERT_NE(baseMask[byteIndex] & (1 << bitIndex), 0);
         }
     }
@@ -1440,7 +1562,7 @@ void TestFastDeleteByIndices(int64_t deleteOffset, int64_t deleteNum, std::vecto
 }
 
 void TestFastDeleteByRange(int64_t deleteOffset, int64_t deleteNum,
-    std::shared_ptr<faiss::ascend::AscendIndexTS> &tsIndex, BaseAllFeature &baseAllFeature)
+                           std::shared_ptr<faiss::ascend::AscendIndexTS> &tsIndex, BaseAllFeature &baseAllFeature)
 {
     int64_t featureNumBak = 0;
     auto res = tsIndex->GetFeatureNum(&featureNumBak);
@@ -1458,10 +1580,11 @@ void TestFastDeleteByRange(int64_t deleteOffset, int64_t deleteNum,
 
     // 检查baseMask删除部分是不是设置为0
     int64_t maskLength = (newFeatureNum + MASK_ALIGN - 1) / MASK_ALIGN;
-    std::vector<uint8_t> baseMask(maskLength); // 按8对齐
+    std::vector<uint8_t> baseMask(maskLength);  // 按8对齐
     res = tsIndex->GetBaseMask(maskLength, baseMask.data());
     ASSERT_EQ(res, 0);
-    for (int64_t i = deleteOffset; i < deleteOffset + deleteNum; i++) {
+    for (int64_t i = deleteOffset; i < deleteOffset + deleteNum; i++)
+    {
         int64_t byteIndex = i / MASK_ALIGN;
         int64_t bitIndex = i % MASK_ALIGN;
         ASSERT_EQ(baseMask[byteIndex] & (1 << bitIndex), 0);
@@ -1472,7 +1595,7 @@ void TestFastDeleteByRange(int64_t deleteOffset, int64_t deleteNum,
 }
 
 void TestReplaceAdd(int64_t replaceNum, std::vector<int64_t> &replaceIndices, int64_t addNum, int64_t ntotal,
-    std::shared_ptr<faiss::ascend::AscendIndexTS> &tsIndex, BaseAllFeature &baseAllFeature)
+                    std::shared_ptr<faiss::ascend::AscendIndexTS> &tsIndex, BaseAllFeature &baseAllFeature)
 {
     // 替换和新增的一起
     std::vector<int64_t> indices(replaceNum + addNum);
@@ -1494,11 +1617,12 @@ void TestReplaceAdd(int64_t replaceNum, std::vector<int64_t> &replaceIndices, in
 
 void TestAddAndGet(std::shared_ptr<faiss::ascend::AscendIndexTS> &tsIndex, BaseAllFeature &baseAllFeature)
 {
-    try {
+    try
+    {
         // 先增加addNum个
         int64_t replaceNum = 0;
         int64_t addNum = 1000000;
-        std::vector<int64_t> replaceIndices; // 要替换的indice，初始没有需要替换的，为空
+        std::vector<int64_t> replaceIndices;  // 要替换的indice，初始没有需要替换的，为空
         printf("------------1 add num %ld\n", addNum);
         TestReplaceAdd(replaceNum, replaceIndices, addNum, baseAllFeature.ntotal, tsIndex, baseAllFeature);
 
@@ -1517,44 +1641,52 @@ void TestAddAndGet(std::shared_ptr<faiss::ascend::AscendIndexTS> &tsIndex, BaseA
 
         // 循环执行，先删除一些老的，再替换并新增一些
         int64_t testStep = 10000;
-        for (int i = 0; i < 100; i++) {
+        for (int i = 0; i < 100; i++)
+        {
             // 删除一片连续的位置
             deleteOffset = i * testStep + 1;
             deleteNum = testStep + 1;
-            printf("------------%d base total %ld, delete form %ld to %ld\n",
-                i * 2 + 4, baseAllFeature.ntotal, deleteOffset, deleteOffset + deleteNum);
+            printf("------------%d base total %ld, delete form %ld to %ld\n", i * 2 + 4, baseAllFeature.ntotal,
+                   deleteOffset, deleteOffset + deleteNum);
             TestFastDeleteByRange(deleteOffset, deleteNum, tsIndex, baseAllFeature);
 
             // 将上面删除的位置重新替换成新的，再额外添加deleteNum个
             deleteIndices.resize(deleteNum);
             std::iota(deleteIndices.begin(), deleteIndices.end(), deleteOffset);
-            printf("------------%d base total %ld, replace %ld [%ld to %ld], add num %ld\n",
-                i * 2 + 5, baseAllFeature.ntotal, deleteNum, deleteOffset, deleteOffset + deleteNum, testStep);
+            printf("------------%d base total %ld, replace %ld [%ld to %ld], add num %ld\n", i * 2 + 5,
+                   baseAllFeature.ntotal, deleteNum, deleteOffset, deleteOffset + deleteNum, testStep);
             TestReplaceAdd(deleteNum, deleteIndices, testStep, baseAllFeature.ntotal, tsIndex, baseAllFeature);
         }
-    } catch (std::exception &e) {
+    }
+    catch (std::exception &e)
+    {
         printf("catch exception %s\n", e.what());
     }
 }
 
 TEST(TestAscendIndexTSFlatIP, AddDeleteByIndice)
 {
-    try {
+    try
+    {
         auto tsIndex = std::make_shared<faiss::ascend::AscendIndexTS>();
-        auto res = tsIndex->Init(deviceId, dim, tokenNum, faiss::ascend::AlgorithmType::FLAT_IP_FP16,
-            faiss::ascend::MemoryStrategy::PURE_DEVICE_MEMORY, g_customAttrLen, g_customAttrBlockSize);
+        auto res =
+            tsIndex->Init(deviceId, dim, tokenNum, faiss::ascend::AlgorithmType::FLAT_IP_FP16,
+                          faiss::ascend::MemoryStrategy::PURE_DEVICE_MEMORY, g_customAttrLen, g_customAttrBlockSize);
         ASSERT_EQ(res, 0);
 
         BaseAllFeature baseAllFeature;
         TestAddAndGet(tsIndex, baseAllFeature);
-    } catch (std::exception &e) {
+    }
+    catch (std::exception &e)
+    {
         printf("catch exception %s\n", e.what());
     }
 }
 
 TEST(TestAscendIndexTSFlatIP, AddQuantify)
 {
-    try {
+    try
+    {
         std::vector<float> scale(dim);
         ScaleGenerator(scale, 100, 200);
         BaseAllFeature baseAllFeature;
@@ -1564,21 +1696,25 @@ TEST(TestAscendIndexTSFlatIP, AddQuantify)
         uint64_t resourceSize = static_cast<uint64_t>(4) * 1024 * 1024 * 1024;
         auto tsIndex = std::make_shared<faiss::ascend::AscendIndexTS>();
         auto res = tsIndex->InitWithQuantify(deviceId, dim, tokenNum, resourceSize, scale.data(),
-            faiss::ascend::AlgorithmType::FLAT_IP_FP16, g_customAttrLen, g_customAttrBlockSize);
+                                             faiss::ascend::AlgorithmType::FLAT_IP_FP16, g_customAttrLen,
+                                             g_customAttrBlockSize);
         ASSERT_EQ(res, 0);
 
         TestAddAndGet(tsIndex, baseAllFeature);
-    } catch (std::exception &e) {
+    }
+    catch (std::exception &e)
+    {
         printf("catch exception %s\n", e.what());
     }
 }
 
 TEST(TestAscendIndexTSFlatIP, AddDeleteByIndiceAndSearch)
 {
-    try {
+    try
+    {
         auto tsIndex = std::make_shared<faiss::ascend::AscendIndexTS>();
         auto res = tsIndex->Init(deviceId, dim, tokenNum, faiss::ascend::AlgorithmType::FLAT_IP_FP16,
-            faiss::ascend::MemoryStrategy::PURE_DEVICE_MEMORY);
+                                 faiss::ascend::MemoryStrategy::PURE_DEVICE_MEMORY);
         ASSERT_EQ(res, 0);
 
         int64_t addNum = 200000;
@@ -1598,11 +1734,12 @@ TEST(TestAscendIndexTSFlatIP, AddDeleteByIndiceAndSearch)
         std::iota(indices.begin(), indices.end(), 0);
         EXPECT_EQ(res, 0);
         // 增加一些
-        for (int64_t i = 0; i < addNum; i += SINGLE_ADD_LIMIT) {
+        for (int64_t i = 0; i < addNum; i += SINGLE_ADD_LIMIT)
+        {
             int64_t addCount = std::min(SINGLE_ADD_LIMIT, addNum - i);
             double ts = GetMillisecs();
-            res = tsIndex->AddFeatureByIndice(
-                addCount, features.data() + i * dim, attrs.data() + i, indices.data() + i, nullptr, nullptr);
+            res = tsIndex->AddFeatureByIndice(addCount, features.data() + i * dim, attrs.data() + i, indices.data() + i,
+                                              nullptr, nullptr);
             ASSERT_EQ(res, 0);
             double te = GetMillisecs();
             printf("add %ld cost %f ms\n", addCount, te - ts);
@@ -1614,21 +1751,21 @@ TEST(TestAscendIndexTSFlatIP, AddDeleteByIndiceAndSearch)
 
         int64_t queryNum = 1;
         std::vector<float> querys(queryNum * dim);
-        querys.assign(features.begin() + dim, features.begin() + 2 * dim); // 第1条
+        querys.assign(features.begin() + dim, features.begin() + 2 * dim);  // 第1条
 
-        int64_t ntotalPad = (featureNum + 16 - 1) / 16 * 16; // 长度等于底库长度按照16对齐
+        int64_t ntotalPad = (featureNum + 16 - 1) / 16 * 16;  // 长度等于底库长度按照16对齐
         float extraScoreValue = 1.0;
         std::vector<float> extraScore(queryNum * ntotalPad, extraScoreValue);
         std::vector<uint16_t> extraScoreFp16(extraScore.size());
         std::transform(extraScore.begin(), extraScore.end(), extraScoreFp16.begin(),
-            [] (float tmp) { return aclFloatToFloat16(tmp); });
+                       [](float tmp) { return aclFloatToFloat16(tmp); });
 
         uint32_t setlen = (uint32_t)((tokenNum + 7) / 8);
         std::vector<uint8_t> bitSet(setlen, 0);
 
         // 00000010
         bitSet[0] = 0x02;
-        AttrFilter filter {};
+        AttrFilter filter{};
         filter.timesStart = 0;
         filter.timesEnd = 4;
         filter.tokenBitSet = bitSet.data();
@@ -1641,11 +1778,11 @@ TEST(TestAscendIndexTSFlatIP, AddDeleteByIndiceAndSearch)
 
         // 按照token过滤进行检索，找到位置1的数据
         std::vector<float> distances(static_cast<int64_t>(queryNum) * k, -1);
-        std::vector<int64_t> labelRes(static_cast<int64_t>(queryNum) * k, 10); // 10, default value
+        std::vector<int64_t> labelRes(static_cast<int64_t>(queryNum) * k, 10);  // 10, default value
         std::vector<uint32_t> validnum(static_cast<int64_t>(queryNum), 0);
-        res = tsIndex->SearchWithExtraMask(queryNum, querys.data(), queryFilters.data(), false, k,
-            extraMask.data(), extraMaskLen, false, extraScoreFp16.data(), labelRes.data(), distances.data(),
-            validnum.data());
+        res = tsIndex->SearchWithExtraMask(queryNum, querys.data(), queryFilters.data(), false, k, extraMask.data(),
+                                           extraMaskLen, false, extraScoreFp16.data(), labelRes.data(),
+                                           distances.data(), validnum.data());
         EXPECT_EQ(res, 0);
 
         PrintResult(queryNum, k, distances, labelRes, validnum);
@@ -1657,9 +1794,9 @@ TEST(TestAscendIndexTSFlatIP, AddDeleteByIndiceAndSearch)
         EXPECT_EQ(res, 0);
 
         // 还是检索位置1的，应该找不到
-        res = tsIndex->SearchWithExtraMask(queryNum, querys.data(), queryFilters.data(), false, k,
-            extraMask.data(), extraMaskLen, false, extraScoreFp16.data(), labelRes.data(), distances.data(),
-            validnum.data());
+        res = tsIndex->SearchWithExtraMask(queryNum, querys.data(), queryFilters.data(), false, k, extraMask.data(),
+                                           extraMaskLen, false, extraScoreFp16.data(), labelRes.data(),
+                                           distances.data(), validnum.data());
         EXPECT_EQ(res, 0);
         PrintResult(queryNum, k, distances, labelRes, validnum);
 
@@ -1675,8 +1812,8 @@ TEST(TestAscendIndexTSFlatIP, AddDeleteByIndiceAndSearch)
         newAttrs[0].time = 1;
         newAttrs[0].tokenId = 20;
 
-        res = tsIndex->AddFeatureByIndice(
-                addNum, newFeatures.data(), newAttrs.data(), newIndices.data(), nullptr, nullptr);
+        res = tsIndex->AddFeatureByIndice(addNum, newFeatures.data(), newAttrs.data(), newIndices.data(), nullptr,
+                                          nullptr);
         EXPECT_EQ(res, 0);
 
         // 把位置1的数据拿出来
@@ -1686,31 +1823,33 @@ TEST(TestAscendIndexTSFlatIP, AddDeleteByIndiceAndSearch)
         std::vector<faiss::ascend::FeatureAttr> retAttrs(compareNum);
         std::vector<faiss::ascend::ExtraValAttr> retValAttrs(compareNum);
 
-        res = tsIndex->GetFeatureByIndice(compareNum, newIndices.data(), retLabels.data(),
-            retBase.data(), retAttrs.data(), retValAttrs.data());
+        res = tsIndex->GetFeatureByIndice(compareNum, newIndices.data(), retLabels.data(), retBase.data(),
+                                          retAttrs.data(), retValAttrs.data());
         EXPECT_EQ(res, 0);
         printf("retLabels[0]: %ld\n", retLabels[0]);
         printf("retAttrs[0]: {time:%d tokenId:%u}\n", retAttrs[0].time, retAttrs[0].tokenId);
 
         // token = 20, 对应00010000, 00000000, 00000000
-        bitSet[0] = 0; // 00000000
-        bitSet[1] = 0; // 00000000
-        bitSet[2] = 16; // 00010000
+        bitSet[0] = 0;   // 00000000
+        bitSet[1] = 0;   // 00000000
+        bitSet[2] = 16;  // 00010000
         filter.timesStart = 0;
         filter.timesEnd = 4;
         filter.tokenBitSet = bitSet.data();
         filter.tokenBitSetLen = setlen;
         // 还是检索位置1的上新的特征，token为100
-        res = tsIndex->SearchWithExtraMask(queryNum, querys.data(), queryFilters.data(), false, k,
-            extraMask.data(), extraMaskLen, false, extraScoreFp16.data(), labelRes.data(), distances.data(),
-            validnum.data());
+        res = tsIndex->SearchWithExtraMask(queryNum, querys.data(), queryFilters.data(), false, k, extraMask.data(),
+                                           extraMaskLen, false, extraScoreFp16.data(), labelRes.data(),
+                                           distances.data(), validnum.data());
         EXPECT_EQ(res, 0);
         PrintResult(queryNum, k, distances, labelRes, validnum);
-    } catch (std::exception &e) {
+    }
+    catch (std::exception &e)
+    {
         printf("catch exception %s\n", e.what());
     }
 }
-} // namespace
+}  // namespace
 
 int main(int argc, char **argv)
 {

@@ -16,16 +16,17 @@
  * -------------------------------------------------------------------------
  */
 
-
 #include "ascenddaemon/StandardAscendResources.h"
-#include "ascenddaemon/utils/AscendUtils.h"
+
+#include "ThreadSafeStandardAscendResources.h"
 #include "ascenddaemon/utils/AscendStackMemory.h"
+#include "ascenddaemon/utils/AscendUtils.h"
 #include "common/utils/CommonUtils.h"
 #include "common/utils/LogUtils.h"
 #include "common/utils/SocUtils.h"
-#include "ThreadSafeStandardAscendResources.h"
 
-namespace ascend {
+namespace ascend
+{
 // How many streams we allocate by default (for multi-streaming)
 const int NUM_STREAMS = 2;
 
@@ -38,10 +39,11 @@ const size_t MAX_TEMP_MEM = static_cast<size_t>(1UL << 35);
 const size_t INVALID_TEMP_MEM = static_cast<size_t>(-1);
 const size_t KB = static_cast<size_t>(1UL << 10);
 
-namespace {
+namespace
+{
 const int THREADS_CNT = faiss::ascend::SocUtils::GetInstance().GetThreadsCnt();
 const int MUL_SEARCH_THREADS_CNT = 4;
-}
+}  // namespace
 
 std::shared_ptr<StandardAscendResources> StandardAscendResources::getInstance()
 {
@@ -52,16 +54,21 @@ std::shared_ptr<StandardAscendResources> StandardAscendResources::getInstance()
     static std::map<int, std::shared_ptr<StandardAscendResources>> resources;
     int curDeviceId = 0;
     auto ret = aclrtGetDevice(&curDeviceId);
-    if (ret != ACL_SUCCESS) {
+    if (ret != ACL_SUCCESS)
+    {
         APP_LOG_ERROR("failed to rt get device, acl ret: %d", ret);
         curDeviceId = 0;
     }
     std::lock_guard<std::mutex> lock(mtx);
-    if (resources.find(curDeviceId) == resources.end()) {
+    if (resources.find(curDeviceId) == resources.end())
+    {
         std::shared_ptr<StandardAscendResources> res = nullptr;
-        if (AscendMultiThreadManager::IsMultiThreadMode()) {
+        if (AscendMultiThreadManager::IsMultiThreadMode())
+        {
             res = std::make_shared<ThreadSafeStandardAscendResources>(DistComputeOpsManager::getShared());
-        } else {
+        }
+        else
+        {
             res = std::make_shared<StandardAscendResources>(DistComputeOpsManager::getShared());
         }
         res->setDevice(curDeviceId);
@@ -71,63 +78,66 @@ std::shared_ptr<StandardAscendResources> StandardAscendResources::getInstance()
 }
 
 StandardAscendResources::StandardAscendResources(std::shared_ptr<DistComputeOpsManager> opsMng, std::string modelPath)
-    : tempMemSize(INVALID_TEMP_MEM),
-      opsMng(opsMng),
-      defaultStream(0)
+    : tempMemSize(INVALID_TEMP_MEM), opsMng(opsMng), defaultStream(0)
 {
     APP_LOG_INFO("StandardAscendResources Construction");
     AscendOperatorManager::Init(modelPath);
-    if (AscendOperatorManager::Init(modelPath)) {
+    if (AscendOperatorManager::Init(modelPath))
+    {
         useOnlineOp = false;
-    } else {
+    }
+    else
+    {
         useOnlineOp = true;
     }
 }
 
-StandardAscendResources::~StandardAscendResources()
-{
-    APP_LOG_INFO("StandardAscendResources Destruction");
-}
+StandardAscendResources::~StandardAscendResources() { APP_LOG_INFO("StandardAscendResources Destruction"); }
 
 void StandardAscendResources::uninitialize()
 {
     auto err = aclrtSetDevice(deviceId);
-    if (err != ACL_SUCCESS) {
+    if (err != ACL_SUCCESS)
+    {
         (void)aclrtResetDevice(deviceId);
         APP_LOG_ERROR("failed to set device to %d in uninitialize", deviceId);
         return;
     }
-    if (defaultStream) {
-        if (auto err = synchronizeStream(defaultStream)) {
+    if (defaultStream)
+    {
+        if (auto err = synchronizeStream(defaultStream))
+        {
             APP_LOG_ERROR("the result of synchronizeStream() is err, err=%d.\n", err);
         }
-        if (auto err = aclrtDestroyStream(defaultStream)) {
+        if (auto err = aclrtDestroyStream(defaultStream))
+        {
             APP_LOG_ERROR("the result of aclrtDestroyStream() is err, err=%d.\n", err);
         }
     }
     defaultStream = nullptr;
 
-    for (auto& stream : alternateStreams) {
-        if (auto err = synchronizeStream(stream)) {
+    for (auto& stream : alternateStreams)
+    {
+        if (auto err = synchronizeStream(stream))
+        {
             APP_LOG_ERROR("the result of synchronizeStream() is err, err=%d.\n", err);
         }
-        if (auto err = aclrtDestroyStream(stream)) {
+        if (auto err = aclrtDestroyStream(stream))
+        {
             APP_LOG_ERROR("the result of aclrtDestroyStream() is err, err=%d.\n", err);
         }
     }
     alternateStreams.clear();
     (void)aclrtResetDevice(deviceId);
 
-    if (opsMng != nullptr) {
+    if (opsMng != nullptr)
+    {
         opsMng->uninitialize();
     }
     tempMemSize = INVALID_TEMP_MEM;
 }
 
-void StandardAscendResources::setDevice(int curDeviceId)
-{
-    this->deviceId = curDeviceId;
-}
+void StandardAscendResources::setDevice(int curDeviceId) { this->deviceId = curDeviceId; }
 
 void StandardAscendResources::noTempMemory()
 {
@@ -137,42 +147,41 @@ void StandardAscendResources::noTempMemory()
 
 void StandardAscendResources::setTempMemory(size_t size)
 {
-    if (tempMemSize != size) {
+    if (tempMemSize != size)
+    {
         tempMemSize = getDefaultTempMemSize(size);
         ascendStackMemory.allocMemory(tempMemSize);
     }
 }
 
-void StandardAscendResources::setDefaultTempMemory()
-{
-    setTempMemory(DEFAULT_TEMP_MEM);
-}
+void StandardAscendResources::setDefaultTempMemory() { setTempMemory(DEFAULT_TEMP_MEM); }
 
-void StandardAscendResources::setAscendMallocWarning(bool flag)
-{
-    ascendStackMemory.setMallocWarning(flag);
-}
+void StandardAscendResources::setAscendMallocWarning(bool flag) { ascendStackMemory.setMallocWarning(flag); }
 
 void StandardAscendResources::initialize()
 {
-    if (isInitialized()) {
+    if (isInitialized())
+    {
         return;
     }
 
     // Create streams
     ACL_REQUIRE_OK(aclrtCreateStream(&defaultStream));
 
-    for (int j = 0; j < NUM_STREAMS; ++j) {
+    for (int j = 0; j < NUM_STREAMS; ++j)
+    {
         aclrtStream stream = 0;
         ACL_REQUIRE_OK(aclrtCreateStream(&stream));
         alternateStreams.push_back(stream);
     }
 
-    if (tempMemSize == INVALID_TEMP_MEM) {
+    if (tempMemSize == INVALID_TEMP_MEM)
+    {
         setDefaultTempMemory();
     }
 
-    if (opsMng != nullptr) {
+    if (opsMng != nullptr)
+    {
         opsMng->initialize();
     }
 }
@@ -186,13 +195,10 @@ void StandardAscendResources::initialize()
 [[nodiscard]] std::vector<std::shared_ptr<AscendStreamIntf>> StandardAscendResources::getAlternateStreams()
 {
     initialize();
-    return { createAscendStream(alternateStreams.front()), createAscendStream(alternateStreams.back()) };
+    return {createAscendStream(alternateStreams.front()), createAscendStream(alternateStreams.back())};
 }
 
-void StandardAscendResources::resetStack()
-{
-    ascendStackMemory.resetStack();
-}
+void StandardAscendResources::resetStack() { ascendStackMemory.resetStack(); }
 
 AscendMemory& StandardAscendResources::getMemoryManager()
 {
@@ -200,10 +206,7 @@ AscendMemory& StandardAscendResources::getMemoryManager()
     return ascendStackMemory;
 }
 
-bool StandardAscendResources::isInitialized() const
-{
-    return defaultStream != nullptr;
-}
+bool StandardAscendResources::isInitialized() const { return defaultStream != nullptr; }
 
 size_t StandardAscendResources::getDefaultTempMemSize(size_t requested) const
 {
@@ -215,10 +218,7 @@ std::shared_ptr<AscendStreamIntf> StandardAscendResources::createAscendStream(ac
     return std::make_shared<AclrtStreamAdaptor>(stream);
 }
 
-void StandardAscendResources::addUseCount()
-{
-    useCount++;
-}
+void StandardAscendResources::addUseCount() { useCount++; }
 
 void StandardAscendResources::reduceUseCount()
 {
@@ -231,9 +231,10 @@ void StandardAscendResources::reduceUseCount()
      * 即进程处于运行状态，需要释放资源。
      */
     useCount--;
-    if (useCount == 0 && opsMng.use_count() == 2) { // 如果这里获取的opsMng.use_count为2，则表示其静态局部变量依然存在
+    if (useCount == 0 && opsMng.use_count() == 2)
+    {  // 如果这里获取的opsMng.use_count为2，则表示其静态局部变量依然存在
         uninitialize();
         resetStack();
     }
 }
-} // namespace ascend
+}  // namespace ascend
