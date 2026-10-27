@@ -34,13 +34,12 @@ constexpr uint32_t BITS_PER_DIM_BLOCK = 32;
 constexpr uint32_t MAX_QUERY_TILE = 128;
 constexpr uint32_t MAX_EXPANDED_ELEMENTS = 32 * 1024;
 constexpr uint32_t MAX_BASE_GROUP_BATCH = 4;
-constexpr uint32_t MAX_BURSTS_PER_TILE = 32;
 constexpr uint32_t BURSTS_PER_COPY_ALIGN = BUFFER_ALIGN_BYTES / (2 * sizeof(uint16_t));
-constexpr uint32_t MAX_LINE_BYTES = MAX_BURSTS_PER_TILE * 2 * sizeof(uint16_t);
 }  // namespace
 
 namespace IndexOps
 {
+template <bool UseNz = false>
 class AscendcDistanceFlatHammingWithMask
 {
    public:
@@ -130,7 +129,7 @@ class AscendcDistanceFlatHammingWithMask
                 }
                 matmulObjIp.SetTensorA(queryExpandedGlobal[static_cast<uint64_t>(queryOffset) * dim]);
                 matmulObjIp.SetTail(queryProcNum, codeProcTile, dim);
-                matmulObjIp.IterateAll<false>(innerProductGlobal, 0, false, true);
+                matmulObjIp.template IterateAll<false>(innerProductGlobal, 0, false, true);
                 matmulObjIp.WaitIterateAll();
                 WriteDistanceAndMax(queryOffset, queryProcNum, codeOffset, codeProcTile);
             }
@@ -140,7 +139,7 @@ class AscendcDistanceFlatHammingWithMask
 
    private:
     using MatmulTypeQuery = MatmulType<TPosition::GM, CubeFormat::ND, int8_t>;
-    using MatmulTypeBase = MatmulType<TPosition::GM, CubeFormat::ND, int8_t, true>;
+    using MatmulTypeBase = MatmulType<TPosition::GM, UseNz ? CubeFormat::NZ : CubeFormat::ND, int8_t, true>;
     using MatmulTypeScore = MatmulType<TPosition::GM, CubeFormat::ND, int32_t>;
     Matmul<MatmulTypeQuery, MatmulTypeBase, MatmulTypeScore> matmulObjIp;
 
@@ -214,7 +213,7 @@ class AscendcDistanceFlatHammingWithMask
         pipe.InitBuffer(expandedHalfBuf, AlignBufferBytes(sharedElemCount * sizeof(half)));
         pipe.InitBuffer(scoreBuf, AlignBufferBytes(scoreElemCount * sizeof(int32_t)));
         pipe.InitBuffer(scoreHalfBuf, AlignBufferBytes(scoreElemCount * sizeof(half)));
-        pipe.InitBuffer(maxLineBuf, MAX_LINE_BYTES);
+        pipe.InitBuffer(maxLineBuf, (codeTile / burstLen) * 2 * sizeof(uint16_t));
     }
 
     __aicore__ inline void ExpandPackedToInt8(LocalTensor<uint8_t> &packedLocal, LocalTensor<int8_t> &int8Local,
@@ -299,7 +298,17 @@ class AscendcDistanceFlatHammingWithMask
                     uint32_t localOffset = (localGroupIdx * dimBlockNum + dimBlock) * baseGroupElemCount;
                     uint64_t workspaceOffset = (static_cast<uint64_t>(groupIdx + localGroupIdx) * zRegionHeight) * dim +
                                                dimBlock * BITS_PER_DIM_BLOCK;
-                    DataCopy(baseExpandedGlobal[workspaceOffset], baseInt8Local[localOffset], copyParams);
+                    if constexpr (UseNz)
+                    {
+                        // Transposed int8 B uses NZ [dim/32, codeTile/16, 16, 32]; each group holds two rows of blocks.
+                        uint64_t nzOffset = static_cast<uint64_t>(dimBlock) * codeTile * BITS_PER_DIM_BLOCK +
+                                            (groupIdx + localGroupIdx) * baseGroupElemCount;
+                        DataCopy(baseExpandedGlobal[nzOffset], baseInt8Local[localOffset], baseGroupElemCount);
+                    }
+                    else
+                    {
+                        DataCopy(baseExpandedGlobal[workspaceOffset], baseInt8Local[localOffset], copyParams);
+                    }
                 }
             }
             set_flag(PIPE_MTE3, PIPE_MTE2, EVENT_ID5);
@@ -361,7 +370,7 @@ class AscendcDistanceFlatHammingWithMask
         LocalTensor<int32_t> scoreLocal = scoreBuf.Get<int32_t>();
         LocalTensor<float> scoreFloatLocal = scoreLocal.ReinterpretCast<float>();
         LocalTensor<half> scoreHalfLocal = scoreHalfBuf.Get<half>();
-        LocalTensor<half> maxHalfLocal = maxLineBuf.Get<half>(MAX_LINE_BYTES / sizeof(half));
+        LocalTensor<half> maxHalfLocal = maxLineBuf.Get<half>();
         LocalTensor<uint16_t> maxRawLocal = maxHalfLocal.ReinterpretCast<uint16_t>();
         uint32_t burstNum = codeProcTile / burstLen;
         uint32_t srcRepStride = burstLen * sizeof(half) / BUFFER_ALIGN_BYTES;
@@ -382,8 +391,19 @@ class AscendcDistanceFlatHammingWithMask
             if (codeOffset + codeProcTile > actualNum)
             {
                 uint32_t validTileNum = actualNum > codeOffset ? actualNum - codeOffset : 0;
-                Duplicate(scoreHalfLocal[validTileNum], Utils::HALF_MIN, codeProcTile - validTileNum);
-                pipe_barrier(PIPE_V);
+                // Vector destinations must be 32-byte aligned, even for a one-element tail.
+                uint32_t alignedStart = (validTileNum + BUFFER_ALIGN_BYTES / sizeof(half) - 1) /
+                                        (BUFFER_ALIGN_BYTES / sizeof(half)) * (BUFFER_ALIGN_BYTES / sizeof(half));
+                pipe_barrier(PIPE_ALL);
+                for (uint32_t i = validTileNum; i < alignedStart; ++i)
+                {
+                    scoreHalfLocal.SetValue(i, Utils::HALF_MIN);
+                }
+                if (alignedStart < codeProcTile)
+                {
+                    Duplicate(scoreHalfLocal[alignedStart], Utils::HALF_MIN, codeProcTile - alignedStart);
+                }
+                pipe_barrier(PIPE_ALL);
             }
             WholeReduceMax(maxHalfLocal, scoreHalfLocal, burstLen, burstNum, 1, 1, srcRepStride);
             set_flag(PIPE_V, PIPE_MTE3, EVENT_ID1);
@@ -453,7 +473,16 @@ extern "C" __global__ __aicore__ void ascendc_distance_flat_hamming_with_mask(GM
                                                                               GM_ADDR workspace, GM_ADDR tiling)
 {
     GET_TILING_DATA(tilingData, tiling);
-    IndexOps::AscendcDistanceFlatHammingWithMask op(tilingData);
-    op.Init(query, base, actualSize, mask, baseMask, dist, maxDist, flag, workspace);
-    op.Process();
+    if (tilingData.queryNum <= 256 && tilingData.dim == 256)
+    {
+        IndexOps::AscendcDistanceFlatHammingWithMask<true> op(tilingData);
+        op.Init(query, base, actualSize, mask, baseMask, dist, maxDist, flag, workspace);
+        op.Process();
+    }
+    else
+    {
+        IndexOps::AscendcDistanceFlatHammingWithMask<> op(tilingData);
+        op.Init(query, base, actualSize, mask, baseMask, dist, maxDist, flag, workspace);
+        op.Process();
+    }
 }

@@ -28,7 +28,11 @@ namespace
 constexpr uint32_t BINARY_BYTE_BITS = 8;
 constexpr uint32_t MAX_QUERY_TILE = 128;
 constexpr uint32_t MAX_EXPANDED_ELEMENTS = 32 * 1024;
-constexpr uint32_t MAX_BURSTS_PER_TILE = 32;
+constexpr uint32_t DEFAULT_BURSTS_PER_TILE = 32;
+constexpr uint32_t LARGE_BATCH_BURSTS_PER_TILE = 64;
+constexpr uint32_t LARGE_BATCH_THRESHOLD = 64;
+constexpr uint32_t BATCH_128_BURSTS_PER_TILE = 96;
+constexpr uint32_t DIM_256_CODE_SIZE = 32;
 constexpr uint32_t DIM_1024_CODE_SIZE = 128;
 constexpr uint32_t DIM_1024_BURST_LEN = 64;
 constexpr uint32_t DEFAULT_BURST_LEN = 128;
@@ -80,7 +84,14 @@ static ge::graphStatus TilingFunc(gert::TilingContext *context)
     tiling.set_zRegionHeight(static_cast<uint32_t>(baseShape[2]));
     // dim=1024 uses shorter reduction bursts to bound the max-distance scratch line.
     uint32_t burstLen = codeSize == DIM_1024_CODE_SIZE ? DIM_1024_BURST_LEN : DEFAULT_BURST_LEN;
-    uint32_t codeTile = burstLen * MAX_BURSTS_PER_TILE;
+    uint32_t burstsPerTile = DEFAULT_BURSTS_PER_TILE;
+    if (codeSize == DIM_256_CODE_SIZE)
+    {
+        burstsPerTile = queryNum == 128                     ? BATCH_128_BURSTS_PER_TILE
+                        : queryNum >= LARGE_BATCH_THRESHOLD ? LARGE_BATCH_BURSTS_PER_TILE
+                                                            : DEFAULT_BURSTS_PER_TILE;
+    }
+    uint32_t codeTile = burstLen * burstsPerTile;
     tiling.set_burstLen(burstLen);
     tiling.set_codeTile(codeTile);
     tiling.set_maskRows(static_cast<uint32_t>(maskShape[0]));
@@ -101,7 +112,8 @@ static ge::graphStatus TilingFunc(gert::TilingContext *context)
     }
     MatmulApiTiling cubeTilingIp(ascendcPlatform);
     cubeTilingIp.SetAType(TPosition::GM, CubeFormat::ND, DataType::DT_INT8);
-    cubeTilingIp.SetBType(TPosition::GM, CubeFormat::ND, DataType::DT_INT8, true);
+    const bool useNz = queryNum <= 256 && dim == 256;
+    cubeTilingIp.SetBType(TPosition::GM, useNz ? CubeFormat::NZ : CubeFormat::ND, DataType::DT_INT8, true);
     cubeTilingIp.SetCType(TPosition::GM, CubeFormat::ND, DataType::DT_INT32);
     cubeTilingIp.SetShape(querySizeEachLoop, codeTile, dim);
     cubeTilingIp.SetOrgShape(querySizeEachLoop, codeTile, dim);

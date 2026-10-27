@@ -71,6 +71,7 @@ class TSBinaryFlat : public TSBase, public faiss::ascend::AscendIndexBinaryFlatI
     }
     void queryVectorByIdx(int64_t idx, uint8_t *x) const;
     void resetMaskDistCompOp();
+    int getSearchPageBlocks(int batch) const;
     void initializeAscendcHammingResources();
     void initializeAscendcExtraValResources();
     void resetAscendcMaskDistCompOp();

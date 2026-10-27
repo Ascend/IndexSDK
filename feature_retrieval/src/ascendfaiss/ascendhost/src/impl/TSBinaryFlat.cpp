@@ -31,6 +31,10 @@ namespace ascend
 {
 namespace
 {
+// Keep the small-batch page expansion bounded and always leave one block for tiny databases.
+constexpr int MAX_SMALL_BATCH_PAGE_SCALE = 8;
+constexpr int MIN_SEARCH_PAGE_BLOCKS = 1;
+
 bool CanReuseSharedFilter(const faiss::ascend::AttrFilter *attrFilter, uint32_t count, bool enableTimeFilter)
 {
     if (attrFilter == nullptr || count <= 1 || attrFilter[0].tokenBitSet == nullptr)
@@ -444,6 +448,21 @@ void TSBinaryFlat::queryVectorByIdx(int64_t idx, uint8_t *dis) const
     }
 }
 
+int TSBinaryFlat::getSearchPageBlocks(int batch) const
+{
+    using namespace faiss::ascend;
+    int pageBlocks = static_cast<int>((1.0 * resourceSize / BINARY_FLAT_DEFAULT_MEM) * PAGE_BLOCKS);
+    if (useAscendcHamming && batch < static_cast<int>(BATCH_SIZES.front()))
+    {
+        // Distance and mask buffers scale with batch. Bound the increase in per-block metadata as well.
+        const int scale = std::min(MAX_SMALL_BATCH_PAGE_SCALE, static_cast<int>(BATCH_SIZES.front()) / batch);
+        const int64_t totalBlocks = utils::divUp(this->ntotal, static_cast<int64_t>(BLOCK_SIZE));
+        pageBlocks = static_cast<int>(std::min(static_cast<int64_t>(pageBlocks) * scale,
+                                               std::max(static_cast<int64_t>(MIN_SEARCH_PAGE_BLOCKS), totalBlocks)));
+    }
+    return pageBlocks;
+}
+
 void TSBinaryFlat::searchPagedWithMasks(int pageIdx, int batch, const uint8_t *x, int topK,
                                         AscendTensor<uint8_t, DIMS_3> &masks,
                                         AscendTensor<float16_t, DIMS_2> &outDistanceOnDevice,
@@ -458,7 +477,7 @@ void TSBinaryFlat::searchPagedWithMasks(int pageIdx, int batch, const uint8_t *x
     auto &mem = AscendIndexBinaryFlatImpl::pResources->getMemoryManager();
 
     int totalBlocks = utils::divUp(this->ntotal, BLOCK_SIZE);
-    int pageBlocks = static_cast<int>((1.0 * resourceSize / BINARY_FLAT_DEFAULT_MEM) * PAGE_BLOCKS);
+    int pageBlocks = getSearchPageBlocks(batch);
     int totalPages = utils::divUp(totalBlocks, pageBlocks);
     int lastPageBlocks = ((totalBlocks % pageBlocks == 0) ? pageBlocks : (totalBlocks % pageBlocks));
     int fullPageFeatures = BLOCK_SIZE * pageBlocks;
@@ -626,7 +645,7 @@ void TSBinaryFlat::searchBatchWithNonshareMasks(int batch, const uint8_t *x, int
     auto stream = streamPtr->GetStream();
     auto &mem = AscendIndexBinaryFlatImpl::pResources->getMemoryManager();
 
-    int pageBlocks = static_cast<int>((1.0 * resourceSize / BINARY_FLAT_DEFAULT_MEM) * PAGE_BLOCKS);
+    int pageBlocks = getSearchPageBlocks(batch);
     int pageSize = BLOCK_SIZE * pageBlocks;
     int pageNum = utils::divUp(this->ntotal, pageSize);
     int maskSize = utils::divUp(BLOCK_SIZE, MASK_ALIGN);
@@ -695,7 +714,7 @@ void TSBinaryFlat::searchBatchWithShareMasks(int batch, const uint8_t *x, int to
     auto stream = streamPtr->GetStream();
     auto &mem = AscendIndexBinaryFlatImpl::pResources->getMemoryManager();
 
-    int pageBlocks = static_cast<int>((1.0 * resourceSize / BINARY_FLAT_DEFAULT_MEM) * PAGE_BLOCKS);
+    int pageBlocks = getSearchPageBlocks(batch);
     int pageSize = BLOCK_SIZE * pageBlocks;
     int pageNum = utils::divUp(this->ntotal, pageSize);
     int maskSize = utils::divUp(BLOCK_SIZE, MASK_ALIGN);
@@ -730,7 +749,7 @@ void TSBinaryFlat::searchBatchWithExtraNonshareMasks(int batch, const uint8_t *x
     AscendTensor<float16_t, DIMS_2> outDistanceOnDevice(mem, {batch, topK}, stream);
     AscendTensor<int64_t, DIMS_2> outIndicesOnDevice(mem, {batch, topK}, stream);
 
-    int pageBlocks = static_cast<int>((1.0 * resourceSize / BINARY_FLAT_DEFAULT_MEM) * PAGE_BLOCKS);
+    int pageBlocks = getSearchPageBlocks(batch);
     int pageSize = BLOCK_SIZE * pageBlocks;
     int pageNum = utils::divUp(this->ntotal, pageSize);
     int maskSize = utils::divUp(BLOCK_SIZE, MASK_ALIGN);
