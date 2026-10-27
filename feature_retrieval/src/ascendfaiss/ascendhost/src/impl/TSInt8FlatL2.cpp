@@ -34,6 +34,7 @@ namespace
 {
 const int BURST_LEN = 64;
 const int IDX_SHARE_MASK = 4;
+const int MAX_SMALL_BATCH_PAGE_SCALE = 8;
 // The value range of dim
 const std::vector<int> DIMS_INT8L2 = {64, 128, 256, 384, 512, 768, 1024};
 }  // namespace
@@ -265,6 +266,21 @@ void TSInt8FlatL2::removeLabels(const std::vector<int64_t> &removeIds)
     ids.resize(lastIdx + 1);
 }
 
+int TSInt8FlatL2::getSearchPageSize(int batch) const
+{
+    int pageBlocks = this->pageSize / this->codeBlockSize;
+    if (faiss::ascend::SocUtils::GetInstance().IsAscend910B() && batch < this->searchBatchSizes.front())
+    {
+        // Distance workspace scales with batch * pageBlocks. This keeps it within the batch-128 allocation while
+        // limiting per-page metadata growth for very small batches.
+        const int scale = std::min(MAX_SMALL_BATCH_PAGE_SCALE, this->searchBatchSizes.front() / batch);
+        const int64_t totalBlocks = utils::divUp(this->ntotal, static_cast<int64_t>(this->codeBlockSize));
+        pageBlocks =
+            static_cast<int>(std::min(static_cast<int64_t>(pageBlocks) * scale, std::max(int64_t{1}, totalBlocks)));
+    }
+    return pageBlocks * this->codeBlockSize;
+}
+
 APP_ERROR TSInt8FlatL2::searchPagedWithMasks(int pageIdx, int batch, const int8_t *features, int topK,
                                              AscendTensor<uint8_t, DIMS_3> &masks,
                                              AscendTensor<float16_t, DIMS_2> &outDistanceOnDevice,
@@ -275,9 +291,10 @@ APP_ERROR TSInt8FlatL2::searchPagedWithMasks(int pageIdx, int batch, const int8_
     auto streamAicpuPtr = resources.getAlternateStreams()[0];
     auto streamAicpu = streamAicpuPtr->GetStream();
     auto &mem = resources.getMemoryManager();
-    int pageOffset = pageIdx * this->pageSize;
-    int blockOffset = pageIdx * this->pageSize / codeBlockSize;
-    int computeNum = std::min(static_cast<int>(this->ntotal) - pageOffset, this->pageSize);
+    const int searchPageSize = getSearchPageSize(batch);
+    int pageOffset = pageIdx * searchPageSize;
+    int blockOffset = pageIdx * searchPageSize / codeBlockSize;
+    int computeNum = std::min(static_cast<int>(this->ntotal) - pageOffset, searchPageSize);
     int blockNum = utils::divUp(computeNum, this->codeBlockSize);
 
     AscendTensor<int8_t, DIMS_2> queries(const_cast<int8_t *>(features), {batch, dims});
@@ -305,7 +322,7 @@ APP_ERROR TSInt8FlatL2::searchPagedWithMasks(int pageIdx, int batch, const int8_
     uint8_t *data = continuousValue.data();
     int64_t *attrs = reinterpret_cast<int64_t *>(data + opFlagSize + opSizeLen);
 
-    int pageNum = static_cast<int>(utils::divUp(this->ntotal, static_cast<size_t>(this->pageSize)));
+    int pageNum = static_cast<int>(utils::divUp(this->ntotal, static_cast<size_t>(searchPageSize)));
 
     attrs[aicpu::TOPK_FLAT_ATTR_ASC_IDX] = 1;
     attrs[aicpu::TOPK_FLAT_ATTR_K_IDX] = topK;
@@ -313,7 +330,7 @@ APP_ERROR TSInt8FlatL2::searchPagedWithMasks(int pageIdx, int batch, const int8_
     attrs[aicpu::TOPK_FLAT_ATTR_BLOCK_NUM_IDX] = blockNum;
     attrs[aicpu::TOPK_FLAT_ATTR_PAGE_IDX] = pageIdx;
     attrs[aicpu::TOPK_FLAT_ATTR_PAGE_NUM_IDX] = pageNum;
-    attrs[aicpu::TOPK_FLAT_ATTR_PAGE_SIZE_IDX] = this->pageSize;
+    attrs[aicpu::TOPK_FLAT_ATTR_PAGE_SIZE_IDX] = searchPageSize;
     attrs[aicpu::TOPK_FLAT_ATTR_QUICK_HEAP] = 1;
     attrs[aicpu::TOPK_FLAT_ATTR_BLOCK_SIZE] = this->codeBlockSize;
 
@@ -393,14 +410,15 @@ APP_ERROR TSInt8FlatL2::searchBatchWithShareMasks(int batch, const int8_t *featu
 
     AscendTensor<float16_t, DIMS_2> outDistanceOnDevice(mem, {batch, topK}, stream);
     AscendTensor<int64_t, DIMS_2> outIndicesOnDevice(mem, {batch, topK}, stream);
-    int pageNum = static_cast<int>(utils::divUp(static_cast<int>(this->ntotal), pageSize));
+    const int searchPageSize = getSearchPageSize(batch);
+    int pageNum = static_cast<int>(utils::divUp(static_cast<int>(this->ntotal), searchPageSize));
     int maskSize = utils::divUp(this->codeBlockSize, MASK_ALIGN);
 
     for (int pageIdx = 0; pageIdx < pageNum; ++pageIdx)
     {
-        int pageOffset = pageIdx * pageSize;
+        int pageOffset = pageIdx * searchPageSize;
         int blockOffset = pageOffset / this->codeBlockSize;
-        int computeNum = std::min(static_cast<int>(this->ntotal) - pageOffset, pageSize);
+        int computeNum = std::min(static_cast<int>(this->ntotal) - pageOffset, searchPageSize);
         int blockNum = utils::divUp(computeNum, this->codeBlockSize);
         AscendTensor<uint8_t, DIMS_3> subMasks(masks[blockOffset].data(), {blockNum, 1, maskSize});
         auto ret =
@@ -424,14 +442,15 @@ APP_ERROR TSInt8FlatL2::searchBatchWithNonshareMasks(int batch, const int8_t *fe
 
     AscendTensor<float16_t, DIMS_2> outDistanceOnDevice(mem, {batch, topK}, stream);
     AscendTensor<int64_t, DIMS_2> outIndicesOnDevice(mem, {batch, topK}, stream);
-    int pageNum = static_cast<int>(utils::divUp(static_cast<int>(this->ntotal), pageSize));
+    const int searchPageSize = getSearchPageSize(batch);
+    int pageNum = static_cast<int>(utils::divUp(static_cast<int>(this->ntotal), searchPageSize));
     int maskSize = utils::divUp(this->codeBlockSize, MASK_ALIGN);
 
     for (int pageIdx = 0; pageIdx < pageNum; ++pageIdx)
     {
-        int pageOffset = pageIdx * pageSize;
+        int pageOffset = pageIdx * searchPageSize;
         int blockOffset = pageOffset / this->codeBlockSize;
-        int computeNum = std::min(static_cast<int>(this->ntotal) - pageOffset, pageSize);
+        int computeNum = std::min(static_cast<int>(this->ntotal) - pageOffset, searchPageSize);
         int blockNum = utils::divUp(computeNum, this->codeBlockSize);
         AscendTensor<uint8_t, DIMS_3> masks(mem, {blockNum, batch, maskSize}, stream);
         generateMask(batch, blockOffset, blockNum, queryTimes, tokenIds, masks);
@@ -455,14 +474,15 @@ APP_ERROR TSInt8FlatL2::searchBatchWithExtraNonshareMasks(int batch, const int8_
 
     AscendTensor<float16_t, DIMS_2> outDistanceOnDevice(mem, {batch, topK}, stream);
     AscendTensor<int64_t, DIMS_2> outIndicesOnDevice(mem, {batch, topK}, stream);
-    int pageNum = static_cast<int>(utils::divUp(static_cast<int>(this->ntotal), pageSize));
+    const int searchPageSize = getSearchPageSize(batch);
+    int pageNum = static_cast<int>(utils::divUp(static_cast<int>(this->ntotal), searchPageSize));
     int maskSize = utils::divUp(this->codeBlockSize, MASK_ALIGN);
 
     for (int pageIdx = 0; pageIdx < pageNum; ++pageIdx)
     {
-        int pageOffset = pageIdx * pageSize;
+        int pageOffset = pageIdx * searchPageSize;
         int blockOffset = pageOffset / this->codeBlockSize;
-        int computeNum = std::min(static_cast<int>(this->ntotal) - pageOffset, pageSize);
+        int computeNum = std::min(static_cast<int>(this->ntotal) - pageOffset, searchPageSize);
         int blockNum = utils::divUp(computeNum, this->codeBlockSize);
 
         AscendTensor<uint8_t, DIMS_3> masks(mem, {blockNum, batch, maskSize}, stream);
@@ -721,6 +741,18 @@ void TSInt8FlatL2::addWithIdsImpl(int n, const int8_t *x)
 
 void TSInt8FlatL2::queryVectorByIdx(int64_t idx, uint8_t *dis, int num) const
 {
+    if (!faiss::ascend::SocUtils::GetInstance().IsZZCodeFormat())
+    {
+        size_t total = static_cast<size_t>(idx);
+        size_t offsetInBlock = total % static_cast<size_t>(this->codeBlockSize);
+        size_t blockIdx = total / static_cast<size_t>(this->codeBlockSize);
+        size_t vectorBytes = static_cast<size_t>(code_size) * sizeof(int8_t);
+        auto ret = aclrtMemcpy(dis, vectorBytes, baseShaped[blockIdx]->data() + offsetInBlock * code_size, vectorBytes,
+                               ACL_MEMCPY_DEVICE_TO_HOST);
+        FAISS_THROW_IF_NOT_FMT(ret == ACL_SUCCESS, "Failed to copy back to host, ret=%d", ret);
+        return;
+    }
+
     int reshapeDim2 = utils::divUp(this->dims, CUBE_ALIGN_INT8);
     size_t total = static_cast<size_t>(idx);
     size_t offsetInBlock = total % static_cast<size_t>(this->codeBlockSize);

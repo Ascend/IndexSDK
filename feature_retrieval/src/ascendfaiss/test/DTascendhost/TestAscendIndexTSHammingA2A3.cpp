@@ -54,11 +54,11 @@ uint32_t GetDeviceId()
     return static_cast<uint32_t>(value);
 }
 
-std::vector<uint8_t> GenerateBase(uint32_t codeSize)
+std::vector<uint8_t> GenerateBase(uint32_t codeSize, uint32_t count = COUNT)
 {
     std::mt19937 generator(42);
     std::uniform_int_distribution<uint16_t> distribution(0, 255);
-    std::vector<uint8_t> base(COUNT * codeSize);
+    std::vector<uint8_t> base(count * codeSize);
     std::generate(base.begin(), base.end(), [&]() { return static_cast<uint8_t>(distribution(generator)); });
     return base;
 }
@@ -113,6 +113,107 @@ TEST(TestAscendIndexTSHammingA2A3, MatchesCpuAndAppliesFilters)
     filter.timesEnd = 1;
     ASSERT_EQ(index.Search(1, base.data(), &filter, true, TOPK, labels.data(), distances.data(), &validNum, false), 0);
     EXPECT_EQ(std::find(labels.begin(), labels.end(), deleted), labels.end());
+}
+
+TEST(TestAscendIndexTSHammingA2A3, PreservesLastVectorWithUnalignedTail)
+{
+    if (std::getenv("MX_INDEX_MODELPATH") == nullptr)
+    {
+        GTEST_SKIP() << "MX_INDEX_MODELPATH is required";
+    }
+    constexpr uint32_t codeSize = DIM / 8;
+    for (uint32_t count : {1U, 17U, 31U, 33U})
+    {
+        SCOPED_TRACE(count);
+        std::vector<uint8_t> base(count * codeSize, 0);
+        std::vector<int64_t> ids(count);
+        std::vector<faiss::ascend::FeatureAttr> attrs(count);
+        std::iota(ids.begin(), ids.end(), 0);
+        for (uint32_t i = 0; i < count; ++i)
+        {
+            base[i * codeSize + i / 8] = static_cast<uint8_t>(1U << (i % 8));
+        }
+        faiss::ascend::AscendIndexTS index;
+        ASSERT_EQ(index.Init(GetDeviceId(), DIM, TOKEN_NUM, faiss::ascend::AlgorithmType::FLAT_HAMMING), 0);
+        ASSERT_EQ(index.AddFeature(count, base.data(), attrs.data(), ids.data()), 0);
+        std::vector<uint8_t> tokenBits((TOKEN_NUM + 7) / 8, 0xff);
+        faiss::ascend::AttrFilter filter{0, 0, tokenBits.data(), static_cast<uint32_t>(tokenBits.size())};
+        int64_t label = -1;
+        float distance = -1;
+        uint32_t validNum = 0;
+        ASSERT_EQ(
+            index.Search(1, base.data() + (count - 1) * codeSize, &filter, true, 1, &label, &distance, &validNum, true),
+            0);
+        EXPECT_EQ(validNum, 1U);
+        EXPECT_EQ(label, static_cast<int64_t>(count - 1));
+        EXPECT_FLOAT_EQ(distance, 0);
+    }
+}
+
+TEST(TestAscendIndexTSHammingA2A3, SmallBatchMatchesFullCpuTopKAcrossTiles)
+{
+    if (std::getenv("MX_INDEX_MODELPATH") == nullptr)
+    {
+        GTEST_SKIP() << "MX_INDEX_MODELPATH is required";
+    }
+    constexpr uint32_t count = 4097;
+    constexpr uint32_t batch = 8;
+    constexpr uint32_t topk = 200;
+    constexpr uint32_t codeSize = DIM / 8;
+    auto base = GenerateBase(codeSize, count);
+    std::vector<int64_t> ids(count);
+    std::iota(ids.begin(), ids.end(), 0);
+    std::vector<faiss::ascend::FeatureAttr> attrs(count);
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        attrs[i] = {static_cast<int32_t>(i % 2), 0};
+    }
+    faiss::ascend::AscendIndexTS index;
+    ASSERT_EQ(index.Init(GetDeviceId(), DIM, TOKEN_NUM, faiss::ascend::AlgorithmType::FLAT_HAMMING), 0);
+    ASSERT_EQ(index.AddFeature(count, base.data(), attrs.data(), ids.data()), 0);
+    std::vector<uint8_t> tokenBits((TOKEN_NUM + 7) / 8, 0xff);
+    std::vector<faiss::ascend::AttrFilter> filters(batch);
+    std::vector<int64_t> labels(batch * topk);
+    std::vector<float> distances(batch * topk);
+    std::vector<uint32_t> valid(batch);
+    for (bool shared : {false, true})
+    {
+        SCOPED_TRACE(shared);
+        for (uint32_t q = 0; q < batch; ++q)
+        {
+            const int32_t time = shared ? 0 : static_cast<int32_t>(q % 2);
+            filters[q] = {time, time, tokenBits.data(), static_cast<uint32_t>(tokenBits.size())};
+        }
+        ASSERT_EQ(index.Search(batch, base.data(), filters.data(), shared, topk, labels.data(), distances.data(),
+                               valid.data(), true),
+                  0);
+        for (uint32_t q = 0; q < batch; ++q)
+        {
+            SCOPED_TRACE(q);
+            std::vector<uint32_t> expected;
+            for (uint32_t i = 0; i < count; ++i)
+            {
+                if (attrs[i].time == filters[q].timesStart)
+                {
+                    expected.push_back(HammingDistance(base, codeSize, q, i));
+                }
+            }
+            std::sort(expected.begin(), expected.end());
+            ASSERT_EQ(valid[q], topk);
+            std::vector<bool> seen(count, false);
+            for (uint32_t k = 0; k < topk; ++k)
+            {
+                const auto label = labels[q * topk + k];
+                ASSERT_GE(label, 0);
+                ASSERT_LT(label, count);
+                EXPECT_FALSE(seen[label]);
+                seen[label] = true;
+                EXPECT_EQ(attrs[label].time, filters[q].timesStart);
+                EXPECT_FLOAT_EQ(distances[q * topk + k], expected[k]);
+                EXPECT_FLOAT_EQ(distances[q * topk + k], HammingDistance(base, codeSize, q, label));
+            }
+        }
+    }
 }
 
 TEST(TestAscendIndexTSHammingA2A3, AppliesExtraValAndFastDeleteTogether)
