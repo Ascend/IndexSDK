@@ -23,7 +23,9 @@
 #include <stdio.h>
 #include <unistd.h>
 
+#include <cstdlib>
 #include <cstring>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -336,8 +338,29 @@ class SocUtils
                      socAttr.coreNum, deviceCount);
     }
 
+   public:
+    void RegisterFinalizeAtExit()
+    {
+        std::lock_guard<std::mutex> lock(finalizeRegistrationMutex);
+        if (finalizeRegistered)
+        {
+            return;
+        }
+        if (std::atexit([] { SocUtils::GetInstance().Finalize(); }) != 0)
+        {
+            APP_LOG_ERROR("Failed to register ACL finalize callback");
+            return;
+        }
+        finalizeRegistered = true;
+    }
+
+   private:
     void Finalize()
     {
+        if (finalized)
+        {
+            return;
+        }
         const char setOff = '0';
         const char setOn = '1';
         const size_t envLen = 1;
@@ -355,6 +378,7 @@ class SocUtils
                 APP_LOG_DEBUG("exec aclFinalize ------------- \n");
                 (void)aclFinalize();
             }
+            finalized = true;
             return;
         }
         APP_LOG_DEBUG("set env -------------%s \n", finalizeEnv);
@@ -367,6 +391,7 @@ class SocUtils
             APP_LOG_DEBUG("set env, exec aclFinalize ------------- \n");
             (void)aclFinalize();
         }
+        finalized = true;
     }
 
    private:
@@ -375,6 +400,9 @@ class SocUtils
     bool hasDev = false;
     aclrtRunMode runMode{ACL_HOST};
     bool repeatInitFlag = false;
+    bool finalized = false;
+    std::mutex finalizeRegistrationMutex;
+    bool finalizeRegistered = false;
 };
 }  // namespace ascend
 }  // namespace faiss

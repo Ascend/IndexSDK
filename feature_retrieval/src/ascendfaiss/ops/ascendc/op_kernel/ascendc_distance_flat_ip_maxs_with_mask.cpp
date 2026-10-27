@@ -39,6 +39,7 @@ class AscendcDistanceFlatIPMaxsWithMask
           codeNum(tilingData.codeNum),
           dim(tilingData.dim),
           vecCoreNum(tilingData.vecCoreNum),
+          shareMask(tilingData.shareMask != 0),
           blockIdx(GetBlockIdx()),
           tiling(tilingData.cubeTilingData)
     {
@@ -79,6 +80,7 @@ class AscendcDistanceFlatIPMaxsWithMask
     uint32_t codeNum;
     uint32_t dim;
     uint32_t vecCoreNum;
+    bool shareMask;
     uint32_t blockIdx;
     TCubeTiling tiling;
 
@@ -356,11 +358,13 @@ __aicore__ inline void AscendcDistanceFlatIPMaxsWithMask::DoMask(uint32_t codeMo
     auto maskLocal = maskQue.AllocTensor<uint8_t>();
     // 本次算子已经计算好的query的对应的mask偏移:queryMoveOffset * maskLen
     // 本次算子已经计算好的code的对应的mask偏移:codeMoveOffset / Utils::MASK_BIT_NUM
-    uint64_t maskOffset = queryMoveOffset * static_cast<uint64_t>(maskLen) + codeMoveOffset / Utils::MASK_BIT_NUM;
+    uint64_t maskOffset =
+        (shareMask ? 0 : queryMoveOffset) * static_cast<uint64_t>(maskLen) + codeMoveOffset / Utils::MASK_BIT_NUM;
 
     for (uint32_t i = 0; i < queryMoveNum; i++)
     {
-        DataCopy(maskLocal[i * maskLenEachLoop], maskGM[i * static_cast<uint64_t>(maskLen) + maskOffset],
+        uint32_t maskRow = shareMask ? 0 : i;
+        DataCopy(maskLocal[i * maskLenEachLoop], maskGM[maskRow * static_cast<uint64_t>(maskLen) + maskOffset],
                  maskLenEachLoop);
     }
     maskQue.EnQue(maskLocal);

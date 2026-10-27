@@ -32,18 +32,16 @@ static ge::graphStatus TilingSetInputShapeInfo(gert::TilingContext *context,
     {
         return ge::GRAPH_FAILED;
     }
-    // 输入的第0个是query
-    if (context->GetInputTensor(0) == nullptr)
+    const auto *queries = context->GetInputTensor(0);
+    const auto *mask = context->GetInputTensor(1);
+    const auto *shaped = context->GetInputTensor(2);
+    if (queries == nullptr || mask == nullptr || shaped == nullptr)
     {
         return ge::GRAPH_FAILED;
     }
-    const gert::Shape &queriesShape = context->GetInputTensor(0)->GetStorageShape();
-    // 输入的第2个是code
-    if (context->GetInputTensor(2) == nullptr)
-    {
-        return ge::GRAPH_FAILED;
-    }
-    const gert::Shape &shapedShape = context->GetInputTensor(2)->GetStorageShape();
+    const gert::Shape &queriesShape = queries->GetStorageShape();
+    const gert::Shape &shapedShape = shaped->GetStorageShape();
+    const gert::Shape &maskShape = mask->GetStorageShape();
 
     // query的0维是queryNum
     uint32_t queryNum = static_cast<uint32_t>(queriesShape[0]);
@@ -64,6 +62,7 @@ static ge::graphStatus TilingSetInputShapeInfo(gert::TilingContext *context,
     tiling.set_codeNum(codeNum);
     tiling.set_dim(dim);
     tiling.set_vecCoreNum(vecCoreNum);
+    tiling.set_shareMask(maskShape[0] == 1 ? 1 : 0);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -223,7 +222,7 @@ class AscendcDistanceFlatIPMaxsWithMask : public OpDef
 
         this->AICore().SetTiling(optiling::TilingFunc);
 
-        this->AICore().AddConfig("ascend910b").AddConfig("ascend910_93");
+        this->AICore().AddConfig("ascend910b").AddConfig("ascend910_93").AddConfig("ascend950");
     }
 };
 

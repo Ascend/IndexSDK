@@ -213,7 +213,7 @@ def generate_ts_masks_offline_model():
     work_dir = '.'
     config_path = utils.get_config_path(work_dir)
 
-    if args.npu_type.find("910") != -1:
+    if "910" in args.npu_type or "950" in args.npu_type:
         generate_ascendc_masks_offline_model(args, config_path, soc_version)
         return
 

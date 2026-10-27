@@ -23,6 +23,7 @@ create_testable_target(${PROJECT_NAME}
     TestAscendRWLock.cpp
     TestMemorySpace.cpp
     TestDistComputeOpsManager.cpp
+    TestFp16Parallel.cpp
 
     DEPENDS
         # to be tested

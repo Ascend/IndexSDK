@@ -29,6 +29,7 @@ TILING_DATA_FIELD_DEF(uint32_t, queryNum);
 TILING_DATA_FIELD_DEF(uint32_t, codeNum);
 TILING_DATA_FIELD_DEF(uint32_t, dim);
 TILING_DATA_FIELD_DEF(uint32_t, vecCoreNum);
+TILING_DATA_FIELD_DEF(uint32_t, shareMask);
 TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, cubeTilingData);
 END_TILING_DATA_DEF;
 

@@ -235,6 +235,7 @@ void StandardAscendResources::reduceUseCount()
     {  // 如果这里获取的opsMng.use_count为2，则表示其静态局部变量依然存在
         uninitialize();
         resetStack();
+        faiss::ascend::SocUtils::GetInstance().RegisterFinalizeAtExit();
     }
 }
 }  // namespace ascend

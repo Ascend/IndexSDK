@@ -21,6 +21,7 @@
 #include "ascend/AscendIndex.h"
 #include "ascenddaemon/utils/Limits.h"
 #include "common/utils/CommonUtils.h"
+#include "common/utils/SocUtils.h"
 #include "ops/cpukernel/impl/utils/kernel_shared_def.h"
 
 namespace ascend
@@ -40,7 +41,7 @@ static std::mutex mtx;
 static std::string GetDistOpName(int nq)
 {
     std::string opName = "DistanceFlatIP";
-    if (faiss::ascend::SocUtils::GetInstance().IsAscend910B())
+    if (faiss::ascend::SocUtils::GetInstance().IsAscend910B() || faiss::ascend::SocUtils::GetInstance().IsAscendA5())
     {
         opName = "DistanceFlatIP";
     }
@@ -209,6 +210,12 @@ APP_ERROR IndexFlatIPAicpu::searchPaged(size_t pageId, size_t pageNum, AscendTen
     else
     {
         mask = AscendTensor<uint8_t, DIMS_2>(mem, {nq, this->blockMaskSize}, stream);
+        if (faiss::ascend::SocUtils::GetInstance().IsAscendA5())
+        {
+            ret = aclrtMemset(mask.data(), mask.getSizeInBytes(), 0xFF, mask.getSizeInBytes());
+            APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "initialize 950 no-mask data failed: %d",
+                                     ret);
+        }
     }
 
     // 2. run the disance operator to compute the distance

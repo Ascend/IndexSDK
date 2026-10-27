@@ -88,7 +88,8 @@ class TSFlatIP : public TSBase, public IndexFlatIPAicpu
                                              AscendTensor<uint8_t, DIMS_3> &masks, const uint8_t *extraMask);
     APP_ERROR searchPagedWithMasks(size_t pageId, size_t pageNum, int batch, const uint16_t *x,
                                    AscendTensor<uint8_t, DIMS_3> &masks, AscendTensor<float16_t, DIMS_2> &maxDistances,
-                                   AscendTensor<int64_t, DIMS_2> &maxIndices, float16_t *extraScore = nullptr);
+                                   AscendTensor<int64_t, DIMS_2> &maxIndices, float16_t *extraScore = nullptr,
+                                   AscendTensor<float16_t, DIMS_2> *queriesOnDevice = nullptr);
     void getValidNum(uint64_t count, uint32_t topk, int64_t *labels, uint32_t *validNums) const;
     void postProcess(int64_t searchNum, int topK, float16_t *outDistances, float *distances, int64_t *labels);
     void queryVectorByIdx(int64_t idx, float *dis) const;

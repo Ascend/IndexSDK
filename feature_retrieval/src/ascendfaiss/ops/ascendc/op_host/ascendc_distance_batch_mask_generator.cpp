@@ -194,7 +194,7 @@ class AscendcDistanceBatchMaskGenerator : public OpDef
 
         this->SetInferShape(ge::InferShape).SetInferDataType(ge::InferDataType);
         this->AICore().SetTiling(optiling::TilingFunc);
-        this->AICore().AddConfig("ascend910b").AddConfig("ascend910_93");
+        this->AICore().AddConfig("ascend910b").AddConfig("ascend910_93").AddConfig("ascend950");
     }
 };
 
