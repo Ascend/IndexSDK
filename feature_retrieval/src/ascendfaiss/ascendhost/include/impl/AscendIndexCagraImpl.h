@@ -56,6 +56,8 @@ class AscendIndexCagraImpl
 
     APP_ERROR QuantizeData(int n, const float* queryData, int ntotal, const float* baseData);
 
+    APP_ERROR QuantizeQueries(int n, const float* queryData);
+
     APP_ERROR Search(int n, const float* queryData, int topK, float* dists, uint32_t* labels);
 
     AscendIndexCagraImpl(const AscendIndexCagraImpl&) = delete;
@@ -72,7 +74,9 @@ class AscendIndexCagraImpl
     int64_t ascendResourceSize{128 * 1024 * 1024};
     std::map<int, std::unique_ptr<AscendOperator>> cagraSearchOp;
     std::vector<int> searchBatchSizes;
-    AscendTensor<uint8_t, DIMS_1> g_code;
+    AscendTensor<uint8_t, DIMS_1, int64_t> g_code;
+    std::vector<float> g_centroid;
+    std::vector<float> g_inverseRotation;
     std::vector<float> g_precompute;
     std::vector<uint8_t> g_rotated;
 
@@ -90,7 +94,7 @@ class AscendIndexCagraImpl
 
     void ComputeBlockDist(AscendTensor<float, DIMS_2>& queryTensor, AscendTensor<uint32_t, DIMS_2>& graphDevice,
                           AscendTensor<uint32_t, DIMS_2>& hashDevice, AscendTensor<float, DIMS_2>& data,
-                          AscendTensor<float, DIMS_1>& preCompute, AscendTensor<uint8_t, DIMS_1>& preCode,
+                          AscendTensor<float, DIMS_1>& preCompute, AscendTensor<uint8_t, DIMS_1, int64_t>& preCode,
                           AscendTensor<uint8_t, DIMS_1>& rotated, AscendTensor<uint32_t, DIMS_2>& outIndices,
                           AscendTensor<float, DIMS_2>& outDistances, aclrtStream stream);
 

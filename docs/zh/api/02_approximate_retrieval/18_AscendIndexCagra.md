@@ -64,7 +64,20 @@ AscendIndexCagra是基于Cagra的图检索算法，通过构建近邻图实现�
 <tr><td width="140" align="center" valign="middle">输入</td><td valign="middle"><strong><code>int n</code></strong>：查询向量的数量。<br><strong><code>const float* queryData</code></strong>：查询特征向量数据，大小为n * dim。<br><strong><code>int ntotal</code></strong>：底库向量的数量。<br><strong><code>const float* baseData</code></strong>：底库特征向量数据，大小为ntotal * dim。</td></tr>
 <tr><td width="140" align="center" valign="middle">输出</td><td valign="middle">无</td></tr>
 <tr><td width="140" align="center" valign="middle">返回值</td><td valign="middle"><strong><code>APP_ERROR</code></strong>：返回0表示成功，非0表示失败。</td></tr>
-<tr><td width="140" align="center" valign="middle">约束说明</td><td valign="middle">● 调用QuantizeData前必须先调用Init和Add。n∈(0, 4096]。</td></tr>
+<tr><td width="140" align="center" valign="middle">约束说明</td><td valign="middle">● 调用 QuantizeData 前必须先调用 Init 和 Add。<br>● n∈(0, 4096]。<br>● ntotal 必须为正数，且与 Init 的 dataNum 一致。<br>● 底库不变时，后续查询批次可调用 QuantizeQueries，复用底库量化结果。</td></tr>
+</tbody></table>
+
+## QuantizeQueries接口
+
+<a name="table_cagra_quantize_queries"></a>
+
+<table><tbody>
+<tr><td width="140" align="center" valign="middle">API定义</td><td valign="middle"><strong><code>APP_ERROR QuantizeQueries(int n, const float* queryData);</code></strong></td></tr>
+<tr><td width="140" align="center" valign="middle">功能描述</td><td valign="middle">复用已保存的底库质心、正交变换和量化编码，为当前查询批次生成量化码及预计算数据，替换上一批查询缓存。</td></tr>
+<tr><td width="140" align="center" valign="middle">输入</td><td valign="middle"><strong><code>int n</code></strong>：当前查询向量数量。<br><strong><code>const float* queryData</code></strong>：连续的查询特征数组，大小为 n * dim。</td></tr>
+<tr><td width="140" align="center" valign="middle">输出</td><td valign="middle">无。</td></tr>
+<tr><td width="140" align="center" valign="middle">返回值</td><td valign="middle"><strong><code>APP_ERROR</code></strong>：返回 0 表示成功，非 0 表示失败。</td></tr>
+<tr><td width="140" align="center" valign="middle">约束说明</td><td valign="middle">● 先成功调用 Init、Add 和 QuantizeData。<br>● n∈(0, 4096]，queryData 不能为空。<br>● 查询数据或顺序改变后，先调用本接口更新查询缓存，再调用 Search。<br>● 再次调用 Add 后，需重新调用 QuantizeData 完成底库与查询量化。</td></tr>
 </tbody></table>
 
 ## Search接口<a name="ZH-CN_TOPIC_0000002513317668"></a>
@@ -77,5 +90,9 @@ AscendIndexCagra是基于Cagra的图检索算法，通过构建近邻图实现�
 <tr><td width="140" align="center" valign="middle">输入</td><td valign="middle"><strong><code>int n</code></strong>：查询向量的数量。<br><strong><code>const float* queryData</code></strong>：查询特征向量数据，大小为n * dim。<br><strong><code>int topK</code></strong>：检索返回的最近邻数量。</td></tr>
 <tr><td width="140" align="center" valign="middle">输出</td><td valign="middle"><strong><code>float* dists</code></strong>：检索结果距离值，大小为n * topK，按查询顺序排列。<br><strong><code>uint32_t* labels</code></strong>：检索结果标签，大小为n * topK，按查询顺序排列。</td></tr>
 <tr><td width="140" align="center" valign="middle">返回值</td><td valign="middle"><strong><code>APP_ERROR</code></strong>：返回0表示成功，非0表示失败。</td></tr>
-<tr><td width="140" align="center" valign="middle">约束说明</td><td valign="middle">● 调用Search前必须先调用Init、Add和QuantizeData。<br>● topK应与Init时设置的topK一致。<br>● n∈(0, 4096]。<br>● topK∈(0, 4096]。</td></tr>
+<tr><td width="140" align="center" valign="middle">约束说明</td><td valign="middle">● 调用 Search 前必须先调用 Init、Add 和 QuantizeData。<br>● 使用最近一次 QuantizeData 或 QuantizeQueries 生成的查询缓存，queryData 的内容和顺序须与缓存对应。n 不得超过最近量化的查询数；检索子集时使用该批次的前 n 条查询。<br>● topK 应与 Init 时设置的 topK 一致。<br>● n∈(0, 4096]。<br>● topK∈(0, 4096]。</td></tr>
 </tbody></table>
+
+同一底库处理多个查询批次时，首次执行 `Init → Add → QuantizeData → Search`，
+后续每批执行 `QuantizeQueries → Search`。完整查询耗时包含当前批次的 `QuantizeQueries` 和 `Search`；
+底库量化在首次准备时完成。
