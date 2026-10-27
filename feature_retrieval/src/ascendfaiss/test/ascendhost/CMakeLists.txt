@@ -59,6 +59,7 @@ set(ASCENDFAISS_HOST_SRC
 set(ASCENDFAISS_TEST_SRC
     #"${TESTCASE_SRC_DIR}/TestAscendIndexFlat.cpp"
     "${TESTCASE_SRC_DIR}/TestAscendIndexIVFSQ.cpp"
+    "${TESTCASE_SRC_DIR}/TestAscendIndexTSFlatIP.cpp"
 )
 
 set(ASCENDFAISS_HOST_INC_DIR

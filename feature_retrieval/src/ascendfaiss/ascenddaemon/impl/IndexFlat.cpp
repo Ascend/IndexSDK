@@ -502,6 +502,15 @@ APP_ERROR IndexFlat::getVectorsAiCpu(uint32_t offset, uint32_t num, std::vector<
 // 将int8类型特征从baseShapedInt8中反分形获取出来，注意dst的shape中第1个维度需要按照CUBE_ALIGN_INT8对齐
 APP_ERROR IndexFlat::getInt8VectorsAiCpu(uint32_t offset, uint32_t num, std::vector<int8_t> &vectors)
 {
+    // Ascend950 stores int8 vectors in contiguous ND blocks.  Reading them
+    // back through the legacy TransdataRaw path can select a stale shaped
+    // model for large dimensions, so use the same direct ND layout as the
+    // A5 query path.
+    if (!faiss::ascend::SocUtils::GetInstance().IsZZCodeFormat())
+    {
+        return GetVectorsNDFormat(offset, num, blockSize, baseShapedInt8, vectors);
+    }
+
     std::string opName = "TransdataRaw";
     auto streamPtr = resources.getAlternateStreams().back();
     auto stream = streamPtr->GetStream();
@@ -639,8 +648,18 @@ void IndexFlat::moveVectorForward(idx_t srcIdx, idx_t dstIdx)
     {
         RemoveForwardParam param = {static_cast<size_t>(srcIdx1), static_cast<size_t>(srcIdx2),
                                     static_cast<size_t>(dstIdx1), static_cast<size_t>(dstIdx2)};
-        auto ret = RemoveForwardNDFormat(param, dims, baseShaped);
-        ASCEND_THROW_IF_NOT_FMT(ret == ACL_SUCCESS, "RemoveForwardNDFormat error %d", ret);
+        if (!baseShaped.empty())
+        {
+            auto ret = RemoveForwardNDFormat(param, dims, baseShaped);
+            ASCEND_THROW_IF_NOT_FMT(ret == ACL_SUCCESS, "RemoveForwardNDFormat FP16 error %d", ret);
+        }
+        // TSFlatIP quantization stores the ND vectors in baseShapedInt8. Keep
+        // the quantized store in sync when a physical delete compacts rows.
+        if (!baseShapedInt8.empty())
+        {
+            auto ret = RemoveForwardNDFormat(param, dims, baseShapedInt8);
+            ASCEND_THROW_IF_NOT_FMT(ret == ACL_SUCCESS, "RemoveForwardNDFormat INT8 error %d", ret);
+        }
         return;
     }
 
@@ -666,18 +685,26 @@ void IndexFlat::releaseUnusageSpace(int oldTotal, int remove)
     int oldVecSize = utils::divUp(oldTotal, this->blockSize);
     int vecSize = utils::divUp(oldTotal - remove, this->blockSize);
 
-    for (int i = oldVecSize - 1; i >= vecSize; --i)
+    for (int i = oldVecSize - 1; i >= vecSize && i < static_cast<int>(baseShaped.size()); --i)
     {
         this->baseShaped.at(i)->clear();
+    }
+    for (int i = oldVecSize - 1; i >= vecSize && i < static_cast<int>(baseShapedInt8.size()); --i)
+    {
+        this->baseShapedInt8.at(i)->clear();
     }
 }
 
 APP_ERROR IndexFlat::reset()
 {
     size_t dvSize = utils::divUp(this->ntotal, this->blockSize);
-    for (size_t i = 0; i < dvSize; ++i)
+    for (size_t i = 0; i < dvSize && i < baseShaped.size(); ++i)
     {
         baseShaped.at(i)->clear();
+    }
+    for (size_t i = 0; i < dvSize && i < baseShapedInt8.size(); ++i)
+    {
+        baseShapedInt8.at(i)->clear();
     }
     ntotal = 0;
 

@@ -35,6 +35,7 @@
 #include <thread>
 
 #include "acl/acl.h"
+#include "common/utils/SocUtils.h"
 
 namespace
 {
@@ -252,7 +253,20 @@ TEST(TestAscendIndexTSFlatIP, Search)
             }
             for (size_t i = 0; i < queryNum; i++)
             {
-                ASSERT_TRUE(labelRes[i * k] == i);
+                for (int j = 0; j < k; j++)
+                {
+                    auto label = labelRes[i * k + j];
+                    ASSERT_GE(label, 0);
+                    ASSERT_LT(label, ntotal);
+                    float cpuDistance = 0;
+                    for (int d = 0; d < dim; d++)
+                    {
+                        cpuDistance += querys[i * dim + d] * features[label * dim + d];
+                    }
+                    float relativeError =
+                        std::abs(distances[i * k + j] - cpuDistance) / std::max(std::abs(cpuDistance), 1.0F);
+                    EXPECT_LE(relativeError, 0.001F);
+                }
             }
             // 00000011   -> 0,1
             bitSet[0] = 0x1 << 0 | 0x1 << 1;
@@ -262,8 +276,8 @@ TEST(TestAscendIndexTSFlatIP, Search)
 
             queryFilters.clear();
             queryFilters.insert(queryFilters.begin(), queryNum, filter);
-            labelRes.clear();
-            distances.clear();
+            labelRes.assign(queryNum * k, 10);
+            distances.assign(queryNum * k, -1);
             for (int i = 0; i < loopTimes + warmupTimes; i++)
             {
                 res = tsIndex->Search(queryNum, querys.data(), queryFilters.data(), false, k, labelRes.data(),
@@ -272,13 +286,11 @@ TEST(TestAscendIndexTSFlatIP, Search)
             }
             for (size_t i = 0; i < queryNum; i++)
             {
-                if (i % 4 == 1)
+                for (int j = 0; j < k; j++)
                 {
-                    ASSERT_TRUE(labelRes[i * k] == i);
-                }
-                else
-                {
-                    ASSERT_TRUE(labelRes[i * k] != i);
+                    auto label = labelRes[i * k + j];
+                    ASSERT_GE(label, 0);
+                    EXPECT_EQ(label % 4, 1);
                 }
             }
         }
@@ -1705,6 +1717,73 @@ TEST(TestAscendIndexTSFlatIP, AddQuantify)
     catch (std::exception &e)
     {
         printf("catch exception %s\n", e.what());
+    }
+}
+
+TEST(TestAscendIndexTSFlatIP, QuantifiedPhysicalDelete)
+{
+    if (!faiss::ascend::SocUtils::GetInstance().IsAscendA5())
+    {
+        GTEST_SKIP() << "quantified TSFlatIP physical-delete coverage is for Ascend950";
+    }
+
+    constexpr int testDim = 64;
+    constexpr int featureCount = 128;
+    constexpr int deletePosition = 17;
+    std::vector<float> scale(testDim);
+    for (int i = 0; i < testDim; i++)
+    {
+        scale[i] = 50.0F + static_cast<float>(i);
+    }
+
+    auto tsIndex = std::make_shared<faiss::ascend::AscendIndexTS>();
+    auto ret = tsIndex->InitWithQuantify(deviceId, testDim, tokenNum, static_cast<uint64_t>(4) * 1024 * 1024 * 1024,
+                                         scale.data(), faiss::ascend::AlgorithmType::FLAT_IP_FP16);
+    ASSERT_EQ(ret, 0);
+
+    std::vector<float> features(featureCount * testDim);
+    for (int i = 0; i < featureCount; i++)
+    {
+        for (int j = 0; j < testDim; j++)
+        {
+            features[i * testDim + j] = 0.003F * static_cast<float>(i + 1) + 0.001F * static_cast<float>(j % 7);
+        }
+    }
+    std::vector<int64_t> labels(featureCount);
+    std::iota(labels.begin(), labels.end(), 0);
+    std::vector<FeatureAttr> attrs(featureCount);
+    for (int i = 0; i < featureCount; i++)
+    {
+        attrs[i].time = i;
+        attrs[i].tokenId = static_cast<uint32_t>(i);
+    }
+
+    ret = tsIndex->AddFeatureByIndice(featureCount, features.data(), attrs.data(), labels.data(), nullptr, nullptr);
+    ASSERT_EQ(ret, 0);
+
+    int64_t featureNum = 0;
+    ASSERT_EQ(tsIndex->GetFeatureNum(&featureNum), 0);
+    ASSERT_EQ(featureNum, featureCount);
+
+    uint32_t deleteToken = static_cast<uint32_t>(deletePosition);
+    ASSERT_EQ(tsIndex->DeleteFeatureByToken(1, &deleteToken), 0);
+    ASSERT_EQ(tsIndex->GetFeatureNum(&featureNum), 0);
+    ASSERT_EQ(featureNum, featureCount - 1);
+
+    int64_t compactedIndex = deletePosition;
+    int64_t compactedLabel = -1;
+    std::vector<float> compactedFeature(testDim);
+    FeatureAttr compactedAttr{};
+    ASSERT_EQ(tsIndex->GetFeatureByIndice(1, &compactedIndex, &compactedLabel, compactedFeature.data(), &compactedAttr,
+                                          nullptr),
+              0);
+    ASSERT_EQ(compactedLabel, featureCount - 1);
+    ASSERT_EQ(compactedAttr.time, featureCount - 1);
+    ASSERT_EQ(compactedAttr.tokenId, static_cast<uint32_t>(featureCount - 1));
+    for (int j = 0; j < testDim; j++)
+    {
+        int8_t quantized = static_cast<int8_t>(features[(featureCount - 1) * testDim + j] * scale[j]);
+        ASSERT_FLOAT_EQ(compactedFeature[j], static_cast<float>(quantized) / scale[j]);
     }
 }
 

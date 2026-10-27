@@ -33,7 +33,7 @@ using namespace std;
 namespace
 {
 
-struct Check910BItem
+struct CheckTSFlatIPItem
 {
     size_t dim;
     uint32_t ntotal;
@@ -41,20 +41,29 @@ struct Check910BItem
     std::string str;
 };
 
-class TestAscendIndexTSFlatIPUT910B : public TestWithParam<Check910BItem>
+class TestAscendIndexTSFlatIPUT : public TestWithParam<CheckTSFlatIPItem>
 {
 };
 
-const Check910BItem ITEMS910B[] = {{64, 1000, faiss::METRIC_INNER_PRODUCT, "Ascend910B4"},
-                                   {128, 30000, faiss::METRIC_INNER_PRODUCT, "Ascend910B3"}};
+const CheckTSFlatIPItem ITEMS[] = {{64, 1000, faiss::METRIC_INNER_PRODUCT, "Ascend910B4"},
+                                   {128, 30000, faiss::METRIC_INNER_PRODUCT, "Ascend910B3"},
+                                   {64, 1000, faiss::METRIC_INNER_PRODUCT, "Ascend950PR_9579"},
+                                   {128, 30000, faiss::METRIC_INNER_PRODUCT, "Ascend950PR_9579"},
+                                   {256, 30000, faiss::METRIC_INNER_PRODUCT, "Ascend950PR_9579"},
+                                   {384, 30000, faiss::METRIC_INNER_PRODUCT, "Ascend950PR_9579"},
+                                   {512, 30000, faiss::METRIC_INNER_PRODUCT, "Ascend950PR_9579"},
+                                   {768, 30000, faiss::METRIC_INNER_PRODUCT, "Ascend950PR_9579"},
+                                   {1024, 30000, faiss::METRIC_INNER_PRODUCT, "Ascend950PR_9579"}};
 
 void TestSearch(uint32_t ntotal, faiss::MetricType metricType, int dim, std::string socName)
 {
-    // 打桩socName为910B*
+    // 打桩socName为910B*或Ascend950PR_957c
     MOCKER_CPP(&aclrtGetSocName).stubs().will(returnValue(socName.c_str()));
+    faiss::ascend::SocUtils::GetInstance().Init();
 
-    EXPECT_TRUE(faiss::ascend::SocUtils::GetInstance().IsAscend910B());
-    // 910B为ND格式
+    EXPECT_TRUE(faiss::ascend::SocUtils::GetInstance().IsAscend910B() ||
+                faiss::ascend::SocUtils::GetInstance().IsAscendA5());
+    // 910B/Ascend 950 为ND格式
     EXPECT_FALSE(faiss::ascend::SocUtils::GetInstance().IsZZCodeFormat());
     EXPECT_EQ(faiss::ascend::SocUtils::CodeFormatType::FORMAT_TYPE_ND,
               faiss::ascend::SocUtils::GetInstance().GetCodeFormatType());
@@ -107,11 +116,13 @@ void TestSearch(uint32_t ntotal, faiss::MetricType metricType, int dim, std::str
 
 void TestSearchWithExtraMask(uint32_t ntotal, faiss::MetricType metricType, int dim, std::string socName)
 {
-    // 打桩socName为910B*
+    // 打桩socName为910B*或Ascend950PR_957c
     MOCKER_CPP(&aclrtGetSocName).stubs().will(returnValue(socName.c_str()));
+    faiss::ascend::SocUtils::GetInstance().Init();
 
-    EXPECT_TRUE(faiss::ascend::SocUtils::GetInstance().IsAscend910B());
-    // 910B为ND格式
+    EXPECT_TRUE(faiss::ascend::SocUtils::GetInstance().IsAscend910B() ||
+                faiss::ascend::SocUtils::GetInstance().IsAscendA5());
+    // 910B/Ascend 950 为ND格式
     EXPECT_FALSE(faiss::ascend::SocUtils::GetInstance().IsZZCodeFormat());
     EXPECT_EQ(faiss::ascend::SocUtils::CodeFormatType::FORMAT_TYPE_ND,
               faiss::ascend::SocUtils::GetInstance().GetCodeFormatType());
@@ -172,9 +183,9 @@ void TestSearchWithExtraMask(uint32_t ntotal, faiss::MetricType metricType, int 
     GlobalMockObject::verify();
 }
 
-TEST_P(TestAscendIndexTSFlatIPUT910B, Search)
+TEST_P(TestAscendIndexTSFlatIPUT, Search)
 {
-    Check910BItem item = GetParam();
+    CheckTSFlatIPItem item = GetParam();
     int dim = item.dim;
     uint32_t ntotal = item.ntotal;
     faiss::MetricType metricType = item.metricType;
@@ -184,5 +195,5 @@ TEST_P(TestAscendIndexTSFlatIPUT910B, Search)
     TestSearchWithExtraMask(ntotal, metricType, dim, socName);
 }
 
-INSTANTIATE_TEST_CASE_P(FlatIPCheckGroup, TestAscendIndexTSFlatIPUT910B, ::testing::ValuesIn(ITEMS910B));
+INSTANTIATE_TEST_CASE_P(FlatIPCheckGroup, TestAscendIndexTSFlatIPUT, ::testing::ValuesIn(ITEMS));
 }  // namespace

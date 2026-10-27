@@ -29,7 +29,7 @@ _CODE_NUM = 16384 * 16
 _HUGE_BASE = 20000000
 _TABLE_LEN = 10048
 _IDX_BLOCK = 64
-_910B_DIM_LIST = [32, 64, 128, 256, 384, 512, 768, 1024, 1408, 1536, 2048, 3072, 3584, 4096]
+_ASCENDC_DIM_LIST = [32, 64, 128, 256, 384, 512, 768, 1024, 1408, 1536, 2048, 3072, 3584, 4096]
 _DIM_LIST = [32, 64, 128, 256, 384, 512, 1024]
 _EXTEND_DIM_LIST = [1408, 1536, 2048, 3072, 3584, 4096]
 _TS_DIM_LIST = [64, 128, 256, 384, 512, 768, 1024]
@@ -581,7 +581,9 @@ def generate_910b_flat_l2_json(core_num, search_page_sizes, dim, zregion_height,
     utils.generate_op_config(dist_flat_l2_obj, file_path)
 
 
-def generate_ascendc_distance_flat_ip_maxs_with_mask_json(core_num, search_page_sizes, dim, zregion_height, file_path):
+def generate_ascendc_distance_flat_ip_maxs_with_mask_json(
+    core_num, search_page_sizes, dim, zregion_height, file_path, shared=False
+):
     # write dist_compute_flat_mins json
     dist_flat_ip_obj = []
     for query_num in search_page_sizes:
@@ -590,7 +592,7 @@ def generate_ascendc_distance_flat_ip_maxs_with_mask_json(core_num, search_page_
             "op": "AscendcDistanceFlatIPMaxsWithMask",
             "input_desc": [
                 {FORMAT: ND, SHAPE: [query_num, dim], TYPE: "float16"},
-                {FORMAT: ND, SHAPE: [query_num, (_CODE_NUM + 7) // 8], TYPE: "uint8"},
+                {FORMAT: ND, SHAPE: [1 if shared else query_num, (_CODE_NUM + 7) // 8], TYPE: "uint8"},
                 {FORMAT: ND, SHAPE: [_CODE_NUM // zregion_height, dim // 16, zregion_height, 16], TYPE: "float16"},
                 {FORMAT: ND, SHAPE: [core_num, 8], TYPE: "uint32"},
             ],
@@ -605,7 +607,7 @@ def generate_ascendc_distance_flat_ip_maxs_with_mask_json(core_num, search_page_
     utils.generate_op_config(dist_flat_ip_obj, file_path)
 
 
-def generate_910b_flat_offline_model(map_args, args, zregion_height, config_path, soc_version):
+def generate_ascendc_flat_offline_model(map_args, args, zregion_height, config_path, soc_version, include_l2):
     process_id = args.process_id
     dim = args.dim
     core_num = utils.get_core_num_by_npu_type(args.core_num, args.npu_type)
@@ -617,12 +619,13 @@ def generate_910b_flat_offline_model(map_args, args, zregion_height, config_path
     generate_910b_flat_ip_json(core_num, search_page_sizes, dim, zregion_height, file_path_)
     map_args.append((op_name_, soc_version))
 
-    flat_l2_op_name = "distance_flat_l2_op_pid{}"
-    search_page_sizes = (96, 80, 64, 48, 36, 32, 30, 24, 18, 16, 12, 8, 6, 4, 2, 1)
-    op_name_ = flat_l2_op_name.format(process_id)
-    file_path_ = os.path.join(config_path, '{}.json'.format(op_name_))
-    generate_910b_flat_l2_json(core_num, search_page_sizes, dim, zregion_height, file_path_)
-    map_args.append((op_name_, soc_version))
+    if include_l2:
+        flat_l2_op_name = "distance_flat_l2_op_pid{}"
+        search_page_sizes = (96, 80, 64, 48, 36, 32, 30, 24, 18, 16, 12, 8, 6, 4, 2, 1)
+        op_name_ = flat_l2_op_name.format(process_id)
+        file_path_ = os.path.join(config_path, '{}.json'.format(op_name_))
+        generate_910b_flat_l2_json(core_num, search_page_sizes, dim, zregion_height, file_path_)
+        map_args.append((op_name_, soc_version))
 
     flat_ip_op_name = "ascendc_distance_flat_ip_maxs_with_mask_op_pid{}"
 
@@ -630,6 +633,14 @@ def generate_910b_flat_offline_model(map_args, args, zregion_height, config_path
     op_name_ = flat_ip_op_name.format(process_id)
     file_path_ = os.path.join(config_path, '{}.json'.format(op_name_))
     generate_ascendc_distance_flat_ip_maxs_with_mask_json(core_num, search_page_sizes, dim, zregion_height, file_path_)
+    map_args.append((op_name_, soc_version))
+
+    flat_ip_share_mask_op_name = "ascendc_distance_flat_ip_maxs_with_share_mask_op_pid{}"
+    op_name_ = flat_ip_share_mask_op_name.format(process_id)
+    file_path_ = os.path.join(config_path, '{}.json'.format(op_name_))
+    generate_ascendc_distance_flat_ip_maxs_with_mask_json(
+        core_num, search_page_sizes, dim, zregion_height, file_path_, shared=True
+    )
     map_args.append((op_name_, soc_version))
 
 
@@ -642,9 +653,13 @@ def generate_flat_offline_model():
     map_args = []
     config_path = utils.get_config_path(work_dir)
     if args.npu_type.find('910') != -1:
-        valid_dim = _910B_DIM_LIST
+        valid_dim = _ASCENDC_DIM_LIST
         utils.check_param_range(dim, valid_dim, "dim")
-        generate_910b_flat_offline_model(map_args, args, _Z_DEFAULT, config_path, soc_version)
+        generate_ascendc_flat_offline_model(map_args, args, _Z_DEFAULT, config_path, soc_version, include_l2=True)
+    elif args.npu_type == "Ascend950PR":
+        valid_dim = _ASCENDC_DIM_LIST
+        utils.check_param_range(dim, valid_dim, "dim")
+        generate_ascendc_flat_offline_model(map_args, args, _Z_DEFAULT, config_path, soc_version, include_l2=False)
     else:
         if dim in _DIM_LIST:
             # generate normal operators of zregion_height 16

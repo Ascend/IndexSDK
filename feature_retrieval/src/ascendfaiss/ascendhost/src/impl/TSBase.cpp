@@ -22,6 +22,15 @@
 
 namespace ascend
 {
+namespace
+{
+bool UseAscendcMaskGenerator()
+{
+    const auto &socUtils = faiss::ascend::SocUtils::GetInstance();
+    return socUtils.IsAscend910B() || socUtils.IsAscendA5();
+}
+}  // namespace
+
 TSBase::TSBase(uint32_t tokenNum, uint32_t customAttrLen, uint32_t customAttrBlockSize)
 {
     this->tokenNum = tokenNum;
@@ -49,7 +58,7 @@ APP_ERROR TSBase::initialize(int deviceId)
     }
     // 由子类进行pResource内存管理，此处只使用
     pResources->initialize();
-    if (faiss::ascend::SocUtils::GetInstance().IsAscend910B())
+    if (UseAscendcMaskGenerator())
     {
         auto ret = resetBatchMaskGenerateComputeOp();
         APPERR_RETURN_IF_NOT_LOG(ret == APP_ERR_OK, ret, "failed to resetBatchMaskGenerateComputeOp");
@@ -1271,7 +1280,7 @@ APP_ERROR TSBase::resetBatchMaskGenerateComputeOp() const
     std::string opTypeName = "DistanceBatchMaskGenerator";
     IndexTypeIdx indexMaskType = IndexTypeIdx::ITI_MASK_GENERATOR;
 
-    if (faiss::ascend::SocUtils::GetInstance().IsAscend910B())
+    if (UseAscendcMaskGenerator())
     {
         opTypeName = "AscendcDistanceBatchMaskGenerator";
         indexMaskType = IndexTypeIdx::ASCENDC_ITI_MASK_GENERATOR;
@@ -1340,7 +1349,7 @@ APP_ERROR TSBase::resetBatchExtraMaskGenerateComputeOp(bool withBaseMask) const
     IndexTypeIdx indexMaskType = withBaseMask ? IndexTypeIdx::ITI_MASK_WITH_EXTRA_AND_BASEMASK_GENERATOR
                                               : IndexTypeIdx::ITI_MASK_WITH_EXTRA_GENERATOR;
 
-    if (faiss::ascend::SocUtils::GetInstance().IsAscend910B())
+    if (UseAscendcMaskGenerator())
     {
         opTypeName = "AscendcDistanceBatchMaskGeneratorWithExtra";
         indexMaskType = IndexTypeIdx::ASCENDC_ITI_MASK_WITH_EXTRA_GENERATOR;
@@ -1381,7 +1390,7 @@ void TSBase::runBatchMaskGenerateCompute(int batch, const std::vector<const Asce
 {
     APP_LOG_INFO("TSBase runBatchMaskGenerateCompute operation started.\n");
     IndexTypeIdx indexType = IndexTypeIdx::ITI_MASK_GENERATOR;
-    if (faiss::ascend::SocUtils::GetInstance().IsAscend910B())
+    if (UseAscendcMaskGenerator())
     {
         indexType = IndexTypeIdx::ASCENDC_ITI_MASK_GENERATOR;
     }
@@ -1411,7 +1420,7 @@ void TSBase::runBatchExtraMaskGenerateCompute(int batch, const std::vector<const
 {
     APP_LOG_INFO("TSBase runBatchExtraMaskGenerateCompute operation started.\n");
     IndexTypeIdx indexType = IndexTypeIdx::ITI_MASK_WITH_EXTRA_GENERATOR;
-    if (faiss::ascend::SocUtils::GetInstance().IsAscend910B())
+    if (UseAscendcMaskGenerator())
     {
         indexType = IndexTypeIdx::ASCENDC_ITI_MASK_WITH_EXTRA_GENERATOR;
     }

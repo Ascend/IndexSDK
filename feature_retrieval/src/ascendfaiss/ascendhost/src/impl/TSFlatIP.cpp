@@ -32,6 +32,15 @@ namespace ascend
 const int INT8_LOWER_BOUND = -128;
 const int INT8_UPPER_BOUND = 127;
 
+namespace
+{
+bool UseAscendcDistMask()
+{
+    const auto &socUtils = faiss::ascend::SocUtils::GetInstance();
+    return socUtils.IsAscend910B() || socUtils.IsAscendA5();
+}
+}  // namespace
+
 TSFlatIP::TSFlatIP(uint32_t deviceId, uint32_t dim, uint32_t tokenNum, uint64_t resources, uint32_t customAttrLen,
                    uint32_t customAttrBlockSize, const std::vector<float> &scale)
     : TSBase(tokenNum, customAttrLen, customAttrBlockSize), IndexFlatIPAicpu(dim, resources)
@@ -45,9 +54,21 @@ TSFlatIP::TSFlatIP(uint32_t deviceId, uint32_t dim, uint32_t tokenNum, uint64_t 
 
     ret = IndexFlatIPAicpu::init();
     FAISS_THROW_IF_NOT_FMT(APP_ERR_OK == ret, "failed to init IndexFlatIPAicpu, ERRCODE:%d", ret);
-    searchBatchSizes = {48, 36, 32, 30, 24, 18, 16, 12, 8, 6, 4, 2, 1};
+    // Ascend 950 supports the 128/64-query kernels.  The old list silently
+    // decomposed these requests into smaller batches, so the executed shape
+    // differed from the public request and made dim64 shape validation hit a
+    // different execution path than the requested batch.
+    // Keep the established 910B schedule unchanged.
+    if (faiss::ascend::SocUtils::GetInstance().IsAscendA5())
+    {
+        searchBatchSizes = {128, 64, 48, 36, 32, 30, 24, 18, 16, 12, 8, 6, 4, 2, 1};
+    }
+    else
+    {
+        searchBatchSizes = {48, 36, 32, 30, 24, 18, 16, 12, 8, 6, 4, 2, 1};
+    }
 
-    if (faiss::ascend::SocUtils::GetInstance().IsAscend910B())
+    if (UseAscendcDistMask())
     {
         resetAscendcDistMaskCompOp(this->blockSize);
     }
@@ -226,8 +247,13 @@ APP_ERROR TSFlatIP::AddFeatureImpl(int64_t singleAdd, const float *features, int
         APPERR_RETURN_IF_NOT_LOG(featureFp16 != nullptr, APP_ERR_ACL_BAD_ALLOC,
                                  "Memory allocation fail for featureFp16");
         std::shared_ptr<float16_t> featureDeleter(featureFp16, std::default_delete<float16_t[]>());
-        std::transform(features + offset * this->code_size, features + (offset + singleAdd) * this->code_size,
-                       featureFp16, [](float temp) { return faiss::ascend::fp16(temp).data; });
+        const int64_t featureCount = singleAdd * static_cast<int64_t>(this->code_size);
+        const int64_t baseOffset = offset * static_cast<int64_t>(this->code_size);
+#pragma omp parallel for if (featureCount > 4096) num_threads(::ascend::CommonUtils::GetThreadMaxNums())
+        for (int64_t i = 0; i < featureCount; ++i)
+        {
+            featureFp16[i] = faiss::ascend::fp16(features[baseOffset + i]).data;
+        }
 
         AscendTensor<float16_t, DIMS_2> rawTensor(featureFp16, {static_cast<int>(singleAdd), this->code_size});
         auto ret = copyAndSaveVectors(startOffset, rawTensor);
@@ -240,6 +266,7 @@ APP_ERROR TSFlatIP::AddFeatureImpl(int64_t singleAdd, const float *features, int
     APPERR_RETURN_IF_NOT_LOG(featureInt8 != nullptr, APP_ERR_ACL_BAD_ALLOC, "Memory allocation fail for featureInt8");
     std::shared_ptr<int8_t> featureDeleter(featureInt8, std::default_delete<int8_t[]>());
 
+#pragma omp parallel for if (singleAdd > 1) num_threads(::ascend::CommonUtils::GetThreadMaxNums())
     for (int64_t i = 0; i < singleAdd; i++)
     {
         auto featureOffset = offset * this->code_size;
@@ -296,7 +323,7 @@ APP_ERROR TSFlatIP::getBaseByRange(uint32_t offset, uint32_t num, int64_t *label
     if (scale.empty())
     {
         std::vector<float16_t> baseVectors(static_cast<int64_t>(num) * this->code_size);
-        getVectorsAiCpu(offset, num, baseVectors);
+        getVectors(offset, num, baseVectors);
         std::transform(baseVectors.begin(), baseVectors.end(), reinterpret_cast<float *>(features),
                        [&](const float16_t temp) -> float { return static_cast<float>(faiss::ascend::fp16(temp)); });
     }
@@ -328,6 +355,18 @@ APP_ERROR TSFlatIP::getBaseByRange(uint32_t offset, uint32_t num, int64_t *label
 void TSFlatIP::removeIdsImpl(const std::vector<int64_t> &indices)
 {
     APP_LOG_INFO("TSFlatIP removeIdsImpl operation start. \n");
+    // Ascend 950 stores Flat vectors in contiguous ND blocks. The shaped
+    // remove operator below is only for the legacy ZZ layout.
+    if (!faiss::ascend::SocUtils::GetInstance().IsZZCodeFormat())
+    {
+        for (size_t i = 0; i < indices.size(); ++i)
+        {
+            moveVectorForward(this->ntotal - static_cast<idx_t>(i) - 1, indices[i]);
+        }
+        APP_LOG_INFO("TSFlatIP removeIdsImpl ND operation finished. \n");
+        return;
+    }
+
     // move the end data to the locate of delete data
     uint32_t zRegionHeight = CUBE_ALIGN;
     uint32_t dimAlignSize = static_cast<uint32_t>(utils::divUp(this->code_size, CUBE_ALIGN));
@@ -480,6 +519,7 @@ void TSFlatIP::resetAscendcDistMaskCompOp(int numLists)
     for (auto batch : searchBatchSizes)
     {
         FAISS_THROW_IF_NOT_MSG(!distCompMaskOpReset(batch, false), "no share op init failed");
+        FAISS_THROW_IF_NOT_MSG(!distCompMaskOpReset(batch, true), "share op init failed");
     }
 
     APP_LOG_INFO("TSFlatIP resetAscendcDistMaskCompOp operation end.\n");
@@ -613,7 +653,8 @@ void TSFlatIP::runAscendcDistMaskCompute(int batch, bool shareMask, const std::v
                                          const std::vector<const AscendTensorBase *> &output, aclrtStream stream)
 {
     APP_LOG_INFO("TSFlatIP runAscendcDistMaskCompute operation started.\n");
-    IndexTypeIdx indexType = IndexTypeIdx::ITI_ASCENDC_FLAT_IP_MASK;
+    IndexTypeIdx indexType =
+        shareMask ? IndexTypeIdx::ITI_ASCENDC_FLAT_IP_SHARE_MASK : IndexTypeIdx::ITI_ASCENDC_FLAT_IP_MASK;
     std::vector<int> keys({batch, dims, static_cast<int>(tokenNum)});
     OpsMngKey opsKey(keys);
     auto ret = DistComputeOpsManager::getInstance().runOp(indexType, opsKey, input, output, stream);
@@ -781,6 +822,10 @@ APP_ERROR TSFlatIP::searchBatchWithNonshareMasks(int batch, const uint16_t *x, i
     auto stream = streamPtr->GetStream();
     auto &mem = resources.getMemoryManager();
 
+    AscendTensor<float16_t, DIMS_2> queries(mem, {batch, this->code_size}, stream);
+    auto ret = aclrtMemcpy(queries.data(), queries.getSizeInBytes(), x, batch * this->code_size * sizeof(float16_t),
+                           ACL_MEMCPY_HOST_TO_DEVICE);
+    APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "copy query to device failed: %d", ret);
     AscendTensor<float16_t, DIMS_2> outDistanceOnDevice(mem, {batch, topK}, stream);
     AscendTensor<int64_t, DIMS_2> outIndicesOnDevice(mem, {batch, topK}, stream);
 
@@ -794,12 +839,13 @@ APP_ERROR TSFlatIP::searchBatchWithNonshareMasks(int batch, const uint16_t *x, i
         int blockNum = utils::divUp(computeNum, this->blockSize);
         AscendTensor<uint8_t, DIMS_3> masks(mem, {blockNum, batch, utils::divUp(this->blockSize, MASK_ALIGN)}, stream);
         generateMask(batch, blockOffset, blockNum, queryTimes, tokenIds, masks);
-        APP_ERROR ret = searchPagedWithMasks(pageId, pageNum, batch, x, masks, outDistanceOnDevice, outIndicesOnDevice);
+        ret = searchPagedWithMasks(pageId, pageNum, batch, x, masks, outDistanceOnDevice, outIndicesOnDevice, nullptr,
+                                   &queries);
         APPERR_RETURN_IF_NOT_FMT(ret == 0, APP_ERR_INNER_ERROR, "searchPagedWithMasks failed(%d).", ret);
     }
     // memcpy data back from dev to host
     std::vector<float16_t> outDistances(batch * topK);
-    auto ret = CopyDataToHost(outDistances, labels, outDistanceOnDevice, outIndicesOnDevice);
+    ret = CopyDataToHost(outDistances, labels, outDistanceOnDevice, outIndicesOnDevice);
     APPERR_RETURN_IF_NOT_LOG(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "CopyDataToHost failed");
 
     postProcess(batch, topK, outDistances.data(), distances, labels);
@@ -816,6 +862,10 @@ APP_ERROR TSFlatIP::searchBatchWithShareMasks(int batch, const uint16_t *x, int 
     auto stream = streamPtr->GetStream();
     auto &mem = resources.getMemoryManager();
 
+    AscendTensor<float16_t, DIMS_2> queries(mem, {batch, this->code_size}, stream);
+    auto ret = aclrtMemcpy(queries.data(), queries.getSizeInBytes(), x, batch * this->code_size * sizeof(float16_t),
+                           ACL_MEMCPY_HOST_TO_DEVICE);
+    APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "copy query to device failed: %d", ret);
     AscendTensor<float16_t, DIMS_2> outDistanceOnDevice(mem, {batch, topK}, stream);
     AscendTensor<int64_t, DIMS_2> outIndicesOnDevice(mem, {batch, topK}, stream);
 
@@ -829,13 +879,13 @@ APP_ERROR TSFlatIP::searchBatchWithShareMasks(int batch, const uint16_t *x, int 
         int blockNum = utils::divUp(computeNum, this->blockSize);
         AscendTensor<uint8_t, DIMS_3> subMasks(masks[blockOffset].data(),
                                                {blockNum, 1, utils::divUp(this->blockSize, MASK_ALIGN)});
-        APP_ERROR ret =
-            searchPagedWithMasks(pageId, pageNum, batch, x, subMasks, outDistanceOnDevice, outIndicesOnDevice);
+        ret = searchPagedWithMasks(pageId, pageNum, batch, x, subMasks, outDistanceOnDevice, outIndicesOnDevice,
+                                   nullptr, &queries);
         APPERR_RETURN_IF_NOT_FMT(ret == 0, APP_ERR_INNER_ERROR, "searchPagedWithMasks failed(%d).", ret);
     }
     // memcpy data back from dev to host
     std::vector<float16_t> outDistances(batch * topK);
-    auto ret = CopyDataToHost(outDistances, labels, outDistanceOnDevice, outIndicesOnDevice);
+    ret = CopyDataToHost(outDistances, labels, outDistanceOnDevice, outIndicesOnDevice);
     APPERR_RETURN_IF_NOT_LOG(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "CopyDataToHost failed");
 
     postProcess(batch, topK, outDistances.data(), distances, labels);
@@ -854,6 +904,10 @@ APP_ERROR TSFlatIP::searchBatchWithExtraNonshareMasks(int batch, const uint16_t 
     auto stream = streamPtr->GetStream();
     auto &mem = resources.getMemoryManager();
 
+    AscendTensor<float16_t, DIMS_2> queries(mem, {batch, this->code_size}, stream);
+    auto ret = aclrtMemcpy(queries.data(), queries.getSizeInBytes(), x, batch * this->code_size * sizeof(float16_t),
+                           ACL_MEMCPY_HOST_TO_DEVICE);
+    APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "copy query to device failed: %d", ret);
     AscendTensor<float16_t, DIMS_2> outDistanceOnDevice(mem, {batch, topK}, stream);
     AscendTensor<int64_t, DIMS_2> outIndicesOnDevice(mem, {batch, topK}, stream);
 
@@ -879,13 +933,13 @@ APP_ERROR TSFlatIP::searchBatchWithExtraNonshareMasks(int batch, const uint16_t 
             mem, {blockNum, this->shareAttrFilter ? 1 : batch, utils::divUp(this->blockSize, MASK_ALIGN)}, stream);
 
         generateMaskWithExtra(batch, blockOffset, blockNum, queryTimes, tokenIds, extraMask, subMasks, baseMaskDev);
-        APP_ERROR ret = searchPagedWithMasks(pageId, pageNum, batch, x, subMasks, outDistanceOnDevice,
-                                             outIndicesOnDevice, extraScore);
+        ret = searchPagedWithMasks(pageId, pageNum, batch, x, subMasks, outDistanceOnDevice, outIndicesOnDevice,
+                                   extraScore, &queries);
         APPERR_RETURN_IF_NOT_FMT(ret == 0, APP_ERR_INNER_ERROR, "searchPagedWithMasks failed(%d).", ret);
     }
     // memcpy data back from dev to host
     std::vector<float16_t> outDistances(batch * topK);
-    auto ret = CopyDataToHost(outDistances, labels, outDistanceOnDevice, outIndicesOnDevice);
+    ret = CopyDataToHost(outDistances, labels, outDistanceOnDevice, outIndicesOnDevice);
     APPERR_RETURN_IF_NOT_LOG(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "CopyDataToHost failed");
 
     postProcess(batch, topK, outDistances.data(), distances, labels);
@@ -896,7 +950,8 @@ APP_ERROR TSFlatIP::searchBatchWithExtraNonshareMasks(int batch, const uint16_t 
 APP_ERROR TSFlatIP::searchPagedWithMasks(size_t pageId, size_t pageNum, int batch, const uint16_t *x,
                                          AscendTensor<uint8_t, DIMS_3> &masks,
                                          AscendTensor<float16_t, DIMS_2> &maxDistances,
-                                         AscendTensor<int64_t, DIMS_2> &maxIndices, float16_t *extraScore)
+                                         AscendTensor<int64_t, DIMS_2> &maxIndices, float16_t *extraScore,
+                                         AscendTensor<float16_t, DIMS_2> *queriesOnDevice)
 {
     using namespace faiss::ascend;
     APP_LOG_INFO("TSFlatIP searchPagedWithMasks operation started.\n");
@@ -912,10 +967,17 @@ APP_ERROR TSFlatIP::searchPagedWithMasks(size_t pageId, size_t pageNum, int batc
     int computeNum = std::min(this->ntotal - pageOffset, static_cast<idx_t>(this->pageSize));
     int blockNum = utils::divUp(computeNum, this->blockSize);
 
-    AscendTensor<float16_t, DIMS_2> queries(mem, {batch, this->code_size}, stream);
-    auto ret = aclrtMemcpy(queries.data(), queries.getSizeInBytes(), x, batch * this->code_size * sizeof(float16_t),
-                           ACL_MEMCPY_HOST_TO_DEVICE);
-    FAISS_THROW_IF_NOT_MSG(ret == ACL_SUCCESS, "Failed to copy to device");
+    AscendTensor<float16_t, DIMS_2> queryOnPage;
+    AscendTensor<float16_t, DIMS_2> *queries = queriesOnDevice;
+    APP_ERROR ret = ACL_SUCCESS;
+    if (queries == nullptr)
+    {
+        queryOnPage = AscendTensor<float16_t, DIMS_2>(mem, {batch, this->code_size}, stream);
+        ret = aclrtMemcpy(queryOnPage.data(), queryOnPage.getSizeInBytes(), x,
+                          batch * this->code_size * sizeof(float16_t), ACL_MEMCPY_HOST_TO_DEVICE);
+        FAISS_THROW_IF_NOT_MSG(ret == ACL_SUCCESS, "Failed to copy to device");
+        queries = &queryOnPage;
+    }
     AscendTensor<float16_t, DIMS_3> distResult(mem, {blockNum, batch, this->blockSize}, stream);
     AscendTensor<float16_t, DIMS_3> maxDistResult(mem, {blockNum, batch, this->burstsOfBlock}, stream);
 
@@ -985,15 +1047,15 @@ APP_ERROR TSFlatIP::searchPagedWithMasks(size_t pageId, size_t pageNum, int batc
                 int int8Dim2 = utils::divUp(this->code_size, CUBE_ALIGN_INT8);
                 AscendTensor<int8_t, DIMS_4> shapedInt8(baseShapedInt8[blockOffset + static_cast<size_t>(i)]->data(),
                                                         {dim1, int8Dim2, CUBE_ALIGN, CUBE_ALIGN_INT8});
-                std::vector<const AscendTensorBase *> input = {&queries, &shapedInt8,    &actualSize,
-                                                               &mask,    &extraScoreDev, &scaleReciprocal};
+                std::vector<const AscendTensorBase *> input = {queries, &shapedInt8,    &actualSize,
+                                                               &mask,   &extraScoreDev, &scaleReciprocal};
                 runDistMaskComputeWithScale(batch, true, input, output, stream);
             }
             else
             {
                 AscendTensor<float16_t, DIMS_4> shaped(baseShaped[blockOffset + static_cast<size_t>(i)]->data(),
                                                        {dim1, dim2, CUBE_ALIGN, CUBE_ALIGN});
-                std::vector<const AscendTensorBase *> input = {&queries, &shaped, &actualSize, &mask, &extraScoreDev};
+                std::vector<const AscendTensorBase *> input = {queries, &shaped, &actualSize, &mask, &extraScoreDev};
                 runDistMaskExtraScoreCompute(batch, this->shareAttrFilter, input, output, stream);
             }
         }
@@ -1004,7 +1066,7 @@ APP_ERROR TSFlatIP::searchPagedWithMasks(size_t pageId, size_t pageNum, int batc
                 int int8Dim2 = utils::divUp(this->code_size, CUBE_ALIGN_INT8);
                 AscendTensor<int8_t, DIMS_4> shapedInt8(baseShapedInt8[blockOffset + static_cast<size_t>(i)]->data(),
                                                         {dim1, int8Dim2, CUBE_ALIGN, CUBE_ALIGN_INT8});
-                std::vector<const AscendTensorBase *> input = {&queries, &shapedInt8, &actualSize, &mask,
+                std::vector<const AscendTensorBase *> input = {queries, &shapedInt8, &actualSize, &mask,
                                                                &scaleReciprocal};
                 runDistMaskComputeWithScale(batch, false, input, output, stream);
             }
@@ -1012,10 +1074,10 @@ APP_ERROR TSFlatIP::searchPagedWithMasks(size_t pageId, size_t pageNum, int batc
             {
                 AscendTensor<float16_t, DIMS_4> shaped(baseShaped[blockOffset + static_cast<size_t>(i)]->data(),
                                                        {dim1, dim2, CUBE_ALIGN, CUBE_ALIGN});
-                std::vector<const AscendTensorBase *> input = {&queries, &shaped, &actualSize, &mask};
-                if (faiss::ascend::SocUtils::GetInstance().IsAscend910B())
+                std::vector<const AscendTensorBase *> input = {queries, &shaped, &actualSize, &mask};
+                if (UseAscendcDistMask())
                 {
-                    input = {&queries, &mask, &shaped, &actualSize};
+                    input = {queries, &mask, &shaped, &actualSize};
                     runAscendcDistMaskCompute(batch, this->shareAttrFilter, input, output, stream);
                 }
                 else
@@ -1200,12 +1262,11 @@ void TSFlatIP::addWithIdsImpl(int n, uint16_t *x)
 
 void TSFlatIP::queryVectorByIdx(int64_t idx, float *dis) const
 {
-    if (faiss::ascend::SocUtils::GetInstance().IsAscend910B())
+    if (UseAscendcDistMask())
     {
         size_t total = static_cast<size_t>(idx);
         size_t offsetInBlock = total % static_cast<size_t>(this->blockSize);
         size_t blockIdx = total / static_cast<size_t>(this->blockSize);
-        int disOffset = 0;
         int srcOffset = offsetInBlock * code_size;
         std::vector<uint16_t> xb(this->code_size);
         auto ret = aclrtMemcpy(xb.data(), this->code_size * sizeof(uint16_t), baseShaped[blockIdx]->data() + srcOffset,
@@ -1243,16 +1304,22 @@ void TSFlatIP::queryVectorByIdx(int64_t idx, float *dis) const
 // 获取单条的量化后的特征，需要注意按照CUBE_ALIGN_INT8对齐的
 void TSFlatIP::queryInt8VectorByIdx(int64_t idx, float *dis) const
 {
-    if (faiss::ascend::SocUtils::GetInstance().IsAscend910B())
+    FAISS_THROW_IF_NOT_MSG(dis != nullptr, "int8 vector output is null");
+    FAISS_THROW_IF_NOT_MSG(idx >= 0 && idx < ntotal, "int8 vector index is out of range");
+    FAISS_THROW_IF_NOT_MSG(scale.size() == static_cast<size_t>(code_size),
+                           "int8 vector quantization is not initialized");
+    const size_t total = static_cast<size_t>(idx);
+    const size_t offsetInBlock = total % static_cast<size_t>(this->blockSize);
+    const size_t blockIdx = total / static_cast<size_t>(this->blockSize);
+    FAISS_THROW_IF_NOT_MSG(blockIdx < baseShapedInt8.size() && baseShapedInt8[blockIdx] != nullptr,
+                           "int8 vector storage is not initialized");
+    if (UseAscendcDistMask())
     {
-        size_t total = static_cast<size_t>(idx);
-        size_t offsetInBlock = total % static_cast<size_t>(this->blockSize);
-        size_t blockIdx = total / static_cast<size_t>(this->blockSize);
-        int disOffset = 0;
         int srcOffset = offsetInBlock * code_size;
         std::vector<int8_t> xb(this->code_size);
-        auto ret = aclrtMemcpy(xb.data(), this->code_size * sizeof(int8_t), baseShaped[blockIdx]->data() + srcOffset,
-                               this->code_size * sizeof(int8_t), ACL_MEMCPY_DEVICE_TO_HOST);
+        auto ret =
+            aclrtMemcpy(xb.data(), this->code_size * sizeof(int8_t), baseShapedInt8[blockIdx]->data() + srcOffset,
+                        this->code_size * sizeof(int8_t), ACL_MEMCPY_DEVICE_TO_HOST);
         FAISS_THROW_IF_NOT_MSG(ret == ACL_SUCCESS, "Failed to copy to host");
         for (int i = 0; i < this->code_size; i++)
         {
@@ -1262,9 +1329,6 @@ void TSFlatIP::queryInt8VectorByIdx(int64_t idx, float *dis) const
     else
     {
         int reshapeDim2 = utils::divUp(this->code_size, CUBE_ALIGN_INT8);
-        size_t total = static_cast<size_t>(idx);
-        size_t offsetInBlock = total % static_cast<size_t>(this->blockSize);
-        size_t blockIdx = total / static_cast<size_t>(this->blockSize);
         // we can make sure the size of offsetInblock is small
         int hoffset1 = static_cast<int>(offsetInBlock) / CUBE_ALIGN;
         int hoffset2 = static_cast<int>(offsetInBlock) % CUBE_ALIGN;

@@ -156,7 +156,8 @@ class IndexFlat : public Index
 
     static int GetBurstsOfBlock(int nq, int blockSize, int &burstLen)
     {
-        if (faiss::ascend::SocUtils::GetInstance().IsAscend910B())
+        if (faiss::ascend::SocUtils::GetInstance().IsAscend910B() ||
+            faiss::ascend::SocUtils::GetInstance().IsAscendA5())
         {
             burstLen = BURST_LEN_HIGH;
         }
