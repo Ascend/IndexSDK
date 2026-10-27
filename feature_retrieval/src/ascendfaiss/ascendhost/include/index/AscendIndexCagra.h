@@ -39,6 +39,8 @@ class AscendIndexCagra
     APP_ERROR Init(int dim, int graphDegree, int dataNum, int topK, const std::vector<int>& deviceList);
     APP_ERROR Add(const uint32_t* graph, const uint32_t* hash, const float* data);
     APP_ERROR QuantizeData(int n, const float* queryData, int ntotal, const float* baseData);
+    APP_ERROR QuantizeQueries(int n, const float* queryData);
+    // topK must match the value passed to Init; otherwise returns APP_ERR_INVALID_PARAM.
     APP_ERROR Search(int n, const float* queryData, int topK, float* dists, uint32_t* labels);
 
    private:

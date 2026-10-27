@@ -107,6 +107,16 @@ APP_ERROR AscendIndexCagra::QuantizeData(int n, const float* queryData, int ntot
     return this->pIndexCagraImpl->QuantizeData(n, queryData, ntotal, baseData);
 }
 
+APP_ERROR AscendIndexCagra::QuantizeQueries(int n, const float* queryData)
+{
+    std::lock_guard<std::mutex> lock(mtx);
+    APPERR_RETURN_IF_NOT_LOG(pIndexCagraImpl != nullptr, APP_ERR_INVALID_PARAM, "pIndexCagraImpl is nullptr");
+    APPERR_RETURN_IF_NOT_FMT(n > 0 && n <= MAX_BATCH_SIZE, APP_ERR_INVALID_PARAM, "n %d, must be in range (0, %d]", n,
+                             MAX_BATCH_SIZE);
+    APPERR_RETURN_IF_NOT_LOG(queryData, APP_ERR_INVALID_PARAM, "queryData cannot be nullptr");
+    return this->pIndexCagraImpl->QuantizeQueries(n, queryData);
+}
+
 APP_ERROR AscendIndexCagra::Search(int n, const float* queryData, int topK, float* dists, uint32_t* labels)
 {
     std::lock_guard<std::mutex> lock(mtx);

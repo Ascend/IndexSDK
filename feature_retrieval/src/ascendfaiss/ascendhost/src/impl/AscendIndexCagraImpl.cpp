@@ -40,6 +40,7 @@ const uint32_t RANDOM_SEED = 1234;
 const int LOG_INTERVAL = 10;
 const int HASH_SIZE = 2;
 const int PRE_COMPUTE_SIZE = 4;
+const int MAX_QUERY_BATCH_SIZE = 4096;
 std::vector<int> ASCEND_CAGRA_SEARCH_BATCHES = {64, 32, 16, 8, 4, 2, 1};
 }  // namespace
 
@@ -80,23 +81,30 @@ APP_ERROR AscendIndexCagraImpl::Init(int graphDegree, int dataNum)
 
 APP_ERROR AscendIndexCagraImpl::Add(const uint32_t *graph, const uint32_t *hash, const float *data)
 {
-    AscendTensor<uint32_t, DIMS_2> graphDevice({this->dataNum, this->degree});
+    // Init receives the row count as int; tensor extents use the same type.
+    const int rowCount = static_cast<int>(this->dataNum);
+    AscendTensor<uint32_t, DIMS_2> graphDevice({rowCount, this->degree});
     auto ret = aclrtMemcpy(graphDevice.data(), graphDevice.getSizeInBytes(), graph,
                            this->dataNum * this->degree * sizeof(uint32_t), ACL_MEMCPY_HOST_TO_DEVICE);
     APPERR_RETURN_IF_NOT_FMT((ret == ACL_SUCCESS), APP_ERR_INNER_ERROR, "copy graphDevice to device fail(%d)!", ret);
 
-    AscendTensor<uint32_t, DIMS_2> hashDevice({this->dataNum, HASH_SIZE});
+    AscendTensor<uint32_t, DIMS_2> hashDevice({rowCount, HASH_SIZE});
     ret = aclrtMemcpy(hashDevice.data(), hashDevice.getSizeInBytes(), hash,
                       this->dataNum * HASH_SIZE * sizeof(uint32_t), ACL_MEMCPY_HOST_TO_DEVICE);
     APPERR_RETURN_IF_NOT_FMT((ret == ACL_SUCCESS), APP_ERR_INNER_ERROR, "copy hashDevice to device fail(%d)!", ret);
 
-    AscendTensor<float, DIMS_2> dataDevice({this->dataNum, this->dim});
+    AscendTensor<float, DIMS_2> dataDevice({rowCount, this->dim});
     ret = aclrtMemcpy(dataDevice.data(), dataDevice.getSizeInBytes(), data, this->dataNum * this->dim * sizeof(float),
                       ACL_MEMCPY_HOST_TO_DEVICE);
     APPERR_RETURN_IF_NOT_FMT((ret == ACL_SUCCESS), APP_ERR_INNER_ERROR, "copy dataDevice to device fail(%d)!", ret);
     g_graphDevice = std::move(graphDevice);
     g_hashDevice = std::move(hashDevice);
     g_dataDevice = std::move(dataDevice);
+    g_code = AscendTensor<uint8_t, DIMS_1, int64_t>();
+    g_centroid.clear();
+    g_inverseRotation.clear();
+    g_precompute.clear();
+    g_rotated.clear();
     return APP_ERR_OK;
 }
 
@@ -154,8 +162,11 @@ std::vector<float> AscendIndexCagraImpl::GenerateOrthogonalMatrix(int D, unsigne
 APP_ERROR AscendIndexCagraImpl::QuantizeData(int nq, const float *queryData, int ntotal, const float *baseData)
 {
     APP_LOG_INFO("AscendIndexCagraImpl::QuantizeData start");
-    int queryBit = 6;  // 量化到6bit
-    int baseBit = 6;   // 量化到6bit
+    APPERR_RETURN_IF_NOT_LOG(nq > 0 && nq <= MAX_QUERY_BATCH_SIZE && queryData != nullptr && baseData != nullptr,
+                             APP_ERR_INVALID_PARAM, "Invalid quantization input");
+    APPERR_RETURN_IF_NOT_LOG(ntotal > 0 && static_cast<size_t>(ntotal) == dataNum, APP_ERR_INVALID_PARAM,
+                             "ntotal must match Init dataNum");
+    int baseBit = 6;  // 量化到6bit
     int seed = 42;
     const int offset = (dim + 7) / 8;
     // 1) 随机正交矩阵
@@ -235,12 +246,39 @@ APP_ERROR AscendIndexCagraImpl::QuantizeData(int nq, const float *queryData, int
         APPERR_RETURN_IF_NOT_LOG(ret == APP_ERR_OK, APP_ERR_INNER_ERROR, "sumXQuant FloatToBytes failed");
     }
 
-    // 4) 量化 query
+    AscendTensor<uint8_t, DIMS_1, int64_t> codeDev({static_cast<int64_t>(this->dataNum) * this->codeSize});
+    ret = aclrtMemcpy(codeDev.data(), codeDev.getSizeInBytes(), codes.data(),
+                      this->dataNum * this->codeSize * sizeof(uint8_t), ACL_MEMCPY_HOST_TO_DEVICE);
+    APPERR_RETURN_IF_NOT_FMT((ret == ACL_SUCCESS), APP_ERR_INNER_ERROR, "copy codeDev to device fail(%d)!", ret);
+
+    g_code = std::move(codeDev);
+    g_centroid = std::move(centroid);
+    g_inverseRotation = std::move(invP);
+    g_precompute.clear();
+    g_rotated.clear();
+
+    ret = QuantizeQueries(nq, queryData);
+    APPERR_RETURN_IF_NOT_LOG(ret == APP_ERR_OK, ret, "QuantizeQueries failed");
+    APP_LOG_INFO("AscendIndexCagraImpl::QuantizeData finished");
+    return APP_ERR_OK;
+}
+
+APP_ERROR AscendIndexCagraImpl::QuantizeQueries(int nq, const float *queryData)
+{
+    APPERR_RETURN_IF_NOT_FMT(nq > 0 && nq <= MAX_QUERY_BATCH_SIZE && queryData != nullptr, APP_ERR_INVALID_PARAM,
+                             "QuantizeQueries requires a query batch in [1, %d]", MAX_QUERY_BATCH_SIZE);
+    APPERR_RETURN_IF_NOT_LOG(
+        g_centroid.size() == static_cast<size_t>(dim) && g_inverseRotation.size() == static_cast<size_t>(dim) * dim,
+        APP_ERR_INVALID_PARAM, "QuantizeData must be called before QuantizeQueries");
+    // Prepare only this request's query codes; base quantization remains a one-time cost.
+    const int queryBit = 6;
+    const int offset = (dim + 7) / 8;
+    std::vector<uint8_t> bitBuf(dim);
     std::vector<float> queryCentered(nq * dim);
     for (int i = 0; i < nq; ++i)
-        for (int j = 0; j < dim; ++j) queryCentered[i * dim + j] = queryData[i * dim + j] - centroid[j];
+        for (int j = 0; j < dim; ++j) queryCentered[i * dim + j] = queryData[i * dim + j] - g_centroid[j];
 
-    std::vector<float> qPrime = MatMul(queryCentered, invP, nq, dim, dim);
+    std::vector<float> qPrime = MatMul(queryCentered, g_inverseRotation, nq, dim, dim);
 
     std::vector<float> maxAbsQ(nq);
     for (int i = 0; i < nq; ++i)
@@ -278,12 +316,13 @@ APP_ERROR AscendIndexCagraImpl::QuantizeData(int nq, const float *queryData, int
         for (int p = 0; p < queryBit; ++p)
         {
             for (int j = 0; j < dim; ++j) bitBuf[j] = static_cast<uint8_t>((qQuant[n * dim + j] >> p) & 1);
-            PackbitsLittle(bitBuf.data(), dim, rotatedQq.data() + n * this->rotatedSize + p * offset);
+            const auto ret = PackbitsLittle(bitBuf.data(), dim, rotatedQq.data() + n * this->rotatedSize + p * offset);
+            APPERR_RETURN_IF_NOT_LOG(ret == APP_ERR_OK, APP_ERR_INNER_ERROR, "PackbitsLittle failed");
         }
         float qrToCL2sqr = 0.0f;
         for (int j = 0; j < dim; ++j)
         {
-            float diff = queryData[n * dim + j] - centroid[j];
+            float diff = queryData[n * dim + j] - g_centroid[j];
             qrToCL2sqr += diff * diff;
         }
         precomputeAll[n * PRE_COMPUTE_SIZE + 0] = qrToCL2sqr;
@@ -292,22 +331,19 @@ APP_ERROR AscendIndexCagraImpl::QuantizeData(int nq, const float *queryData, int
         precomputeAll[n * PRE_COMPUTE_SIZE + 3] = sumQQuant[n];
     }
 
-    AscendTensor<uint8_t, DIMS_1> codeDev({this->dataNum * this->codeSize});
-    ret = aclrtMemcpy(codeDev.data(), codeDev.getSizeInBytes(), codes.data(),
-                      this->dataNum * this->codeSize * sizeof(uint8_t), ACL_MEMCPY_HOST_TO_DEVICE);
-    APPERR_RETURN_IF_NOT_FMT((ret == ACL_SUCCESS), APP_ERR_INNER_ERROR, "copy codeDev to device fail(%d)!", ret);
-
     g_precompute = std::move(precomputeAll);
-    g_code = std::move(codeDev);
     g_rotated = std::move(rotatedQq);
-
-    APP_LOG_INFO("AscendIndexCagraImpl::QuantizeData finished");
     return APP_ERR_OK;
 }
 
 APP_ERROR AscendIndexCagraImpl::Search(int n, const float *queryData, int topK, float *dists, uint32_t *labels)
 {
     APP_LOG_INFO("AscendIndexCagraImpl::Search start");
+    APPERR_RETURN_IF_NOT_LOG(n > 0 && static_cast<size_t>(n) * PRE_COMPUTE_SIZE <= g_precompute.size() &&
+                                 static_cast<size_t>(n) * rotatedSize <= g_rotated.size(),
+                             APP_ERR_INVALID_PARAM, "Search queries must be quantized before use");
+    APPERR_RETURN_IF_NOT_FMT(topK == this->topK, APP_ERR_INVALID_PARAM, "Search topK %d must match Init topK %d", topK,
+                             this->topK);
 
     size_t size = this->searchBatchSizes.size();
     int searched = 0;
@@ -395,7 +431,7 @@ void AscendIndexCagraImpl::ComputeBlockDist(AscendTensor<float, DIMS_2> &queryTe
                                             AscendTensor<uint32_t, DIMS_2> &graphDevice,
                                             AscendTensor<uint32_t, DIMS_2> &hashDevice,
                                             AscendTensor<float, DIMS_2> &data, AscendTensor<float, DIMS_1> &preCompute,
-                                            AscendTensor<uint8_t, DIMS_1> &preCode,
+                                            AscendTensor<uint8_t, DIMS_1, int64_t> &preCode,
                                             AscendTensor<uint8_t, DIMS_1> &rotated,
                                             AscendTensor<uint32_t, DIMS_2> &outIndices,
                                             AscendTensor<float, DIMS_2> &outDistances, aclrtStream stream)
@@ -431,13 +467,14 @@ APP_ERROR AscendIndexCagraImpl::ResetCagraSearchOp()
     APP_LOG_INFO("AscendIndexCagraImpl::ResetCagraSearchOp operation started.\n");
     auto cagraSearchOpReset = [&](std::unique_ptr<AscendOperator> &op, int64_t batch)
     {
+        const int64_t rowCount = static_cast<int64_t>(this->dataNum);
         AscendOpDesc desc("CagraRabitq");
         std::vector<int64_t> queryShape({batch, this->dim});
-        std::vector<int64_t> knnShape({this->dataNum, this->degree});
-        std::vector<int64_t> hashShape({this->dataNum, HASH_SIZE});
-        std::vector<int64_t> ptrShape({this->dataNum, this->dim});
+        std::vector<int64_t> knnShape({rowCount, this->degree});
+        std::vector<int64_t> hashShape({rowCount, HASH_SIZE});
+        std::vector<int64_t> ptrShape({rowCount, this->dim});
         std::vector<int64_t> preCompute({batch * PRE_COMPUTE_SIZE});
-        std::vector<int64_t> preCode({this->dataNum * this->codeSize});
+        std::vector<int64_t> preCode({rowCount * this->codeSize});
         std::vector<int64_t> rotated({batch * this->rotatedSize});
 
         std::vector<int64_t> DistShape({batch, this->topK});
