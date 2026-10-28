@@ -19,6 +19,9 @@
 #ifndef AICPU_KERNEL_SHARED_DEF_H
 #define AICPU_KERNEL_SHARED_DEF_H
 
+#include <cstddef>
+#include <cstdint>
+
 namespace aicpu
 {
 enum TopkFlatAttrIdx : int32_t
@@ -58,6 +61,7 @@ enum TopkIvfAttrIdx : int32_t
     TOPK_IVF_ATTR_IDX_COUNT,
 };
 
+// AttrIdx is an int32 index into the AICPU int64 attr vector (same as other Topk*AttrIdx).
 enum TopkIvfRabitqAttrIdx : int32_t
 {
     TOPK_IVF_RABITQ_ATTR_ASC_IDX = 0,
@@ -66,7 +70,40 @@ enum TopkIvfRabitqAttrIdx : int32_t
     TOPK_IVF_RABITQ_ATTR_BLOCK_NUM_IDX,
     TOPK_IVF_RABITQ_ATTR_QUERY_NUM_IDX,
     TOPK_IVF_RABITQ_ATTR_CORE_NUM_IDX,
+    // IDSelector late-filter: mode / device payload ptr / aux0 / aux1 / negate
+    TOPK_IVF_RABITQ_ATTR_SEL_MODE_IDX,
+    TOPK_IVF_RABITQ_ATTR_SEL_PTR_IDX,
+    TOPK_IVF_RABITQ_ATTR_SEL_AUX0_IDX,
+    TOPK_IVF_RABITQ_ATTR_SEL_AUX1_IDX,
+    TOPK_IVF_RABITQ_ATTR_SEL_NEGATE_IDX,
     TOPK_IVF_RABITQ_ATTR_IDX_COUNT,
+};
+
+// FilterMode is an attr VALUE stored as int64 in the AICPU attr vector.
+enum RabitqIdFilterMode : int64_t
+{
+    RABITQ_ID_FILTER_NONE = 0,
+    RABITQ_ID_FILTER_RANGE = 1,          // aux0=imin, aux1=imax (half-open)
+    RABITQ_ID_FILTER_SORTED = 2,         // ptr -> int64[aux0], binary search
+    RABITQ_ID_FILTER_BITMAP = 3,         // ptr -> uint8[aux0/8], aux0 = bit count (multiple of 8)
+    RABITQ_ID_FILTER_SORTED_PREFIX = 4,  // ptr -> RabitqSortedPrefixPayloadHeader + sorted ids + prefix offsets
+    RABITQ_ID_FILTER_ROARING = 5,        // ptr -> frozen CRoaring bytes, aux0 = byte length
+};
+
+// CRoaring roaring_bitmap_frozen_view requires this alignment on the frozen buffer.
+constexpr size_t RABITQ_ROARING_FROZEN_ALIGN = 32;
+
+constexpr int64_t RABITQ_SORTED_PREFIX_MAGIC = 0x5242515052465831;
+
+struct RabitqSortedPrefixPayloadHeader
+{
+    int64_t magic;
+    int64_t sortedCount;
+    int64_t sortedOffsetBytes;
+    int64_t prefixBits;
+    int64_t prefixShift;
+    int64_t prefixBucketCount;
+    int64_t prefixOffsetBytes;
 };
 
 enum TopkIvfpqL3AttrIdx : int32_t

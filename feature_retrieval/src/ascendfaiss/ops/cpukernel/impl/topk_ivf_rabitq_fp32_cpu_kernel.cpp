@@ -28,11 +28,39 @@
 #include "kernel_shared_def.h"
 #include "kernel_tensor.h"
 #include "kernel_utils.h"
+#include "roaring.h"
 
 namespace
 {
 const char *TOPK_IVF_RABITQ_FP32 = "TopkIvfRabitqFp32";
+constexpr int kBitmapPrefetchWindow = 16;
+
+struct BitmapCandidate
+{
+    float dist;
+    int64_t id;
+};
+
+bool BitmapBitIsSet(const uint8_t *bitmap, int64_t nbits, int64_t id)
+{
+    const uint64_t uid = static_cast<uint64_t>(id);
+    if (uid >= static_cast<uint64_t>(nbits))
+    {
+        return false;
+    }
+    return ((bitmap[uid >> 3] >> (uid & 7u)) & 1u) != 0;
 }
+
+void PrefetchBitmapByte(const uint8_t *bitmap, int64_t nbits, int64_t id)
+{
+    const uint64_t uid = static_cast<uint64_t>(id);
+    if (uid >= static_cast<uint64_t>(nbits))
+    {
+        return;
+    }
+    __builtin_prefetch(bitmap + (uid >> 3), 0, 0);
+}
+}  // namespace
 
 namespace aicpu
 {
@@ -69,6 +97,17 @@ uint32_t TopkIvfRabitqfP32CpuKernel::Compute(CpuKernelContext &ctx)
 
     InitTopkHeap(outputs);
 
+    selRoaringView_ = nullptr;
+    if (selMode_ == RABITQ_ID_FILTER_ROARING && selRoaringBuf_ != nullptr && selAux0_ > 0)
+    {
+        selRoaringView_ = roaring_bitmap_frozen_view(selRoaringBuf_, static_cast<size_t>(selAux0_));
+        if (selRoaringView_ == nullptr)
+        {
+            KERNEL_LOG_ERROR("Failed to create roaring frozen view, bytes=%ld", selAux0_);
+            return KERNEL_STATUS_PARAM_INVALID;
+        }
+    }
+
     auto funcLess = [](float a, float b) -> bool { return a < b; };
     auto funcGreater = [](float a, float b) -> bool { return a > b; };
 
@@ -98,6 +137,12 @@ uint32_t TopkIvfRabitqfP32CpuKernel::Compute(CpuKernelContext &ctx)
 #else
     CpuKernelUtils::ParallelFor(ctx, core, 1, computeFunc);
 #endif
+
+    if (selRoaringView_ != nullptr)
+    {
+        roaring_bitmap_free(const_cast<roaring_bitmap_t *>(static_cast<const roaring_bitmap_t *>(selRoaringView_)));
+        selRoaringView_ = nullptr;
+    }
 
     return KERNEL_STATUS_OK;
 }
@@ -181,8 +226,63 @@ uint32_t TopkIvfRabitqfP32CpuKernel::CheckInputShapes(const Inputs &inputs)
     k_ = *(attr + TOPK_IVF_RABITQ_ATTR_K_IDX);
     burstLen_ = *(attr + TOPK_IVF_RABITQ_ATTR_BURST_LEN_IDX);
     core_ = *(attr + TOPK_IVF_RABITQ_ATTR_CORE_NUM_IDX);
+    selMode_ = static_cast<RabitqIdFilterMode>(*(attr + TOPK_IVF_RABITQ_ATTR_SEL_MODE_IDX));
+    selNegate_ = *(attr + TOPK_IVF_RABITQ_ATTR_SEL_NEGATE_IDX);
+    selAux0_ = *(attr + TOPK_IVF_RABITQ_ATTR_SEL_AUX0_IDX);
+    selAux1_ = *(attr + TOPK_IVF_RABITQ_ATTR_SEL_AUX1_IDX);
+    const int64_t selPtr = *(attr + TOPK_IVF_RABITQ_ATTR_SEL_PTR_IDX);
+    selSorted_ = nullptr;
+    selBitmap_ = nullptr;
+    selRoaringBuf_ = nullptr;
+
     KERNEL_CHECK_TRUE(k_ > 0 && burstLen_ > 0 && asc_ >= 0 && core_ > 0 && nq_ > 0, KERNEL_STATUS_PARAM_INVALID,
                       "Value of asc, k, bustLen, core, nq must ge 0");
+    KERNEL_CHECK_TRUE(selMode_ == RABITQ_ID_FILTER_NONE || selMode_ == RABITQ_ID_FILTER_RANGE ||
+                          selMode_ == RABITQ_ID_FILTER_SORTED || selMode_ == RABITQ_ID_FILTER_BITMAP ||
+                          selMode_ == RABITQ_ID_FILTER_ROARING,
+                      KERNEL_STATUS_PARAM_INVALID, "Unsupported selMode %ld", static_cast<int64_t>(selMode_));
+    KERNEL_CHECK_TRUE(selNegate_ == 0 || selNegate_ == 1, KERNEL_STATUS_PARAM_INVALID, "selNegate must be 0 or 1");
+
+    switch (selMode_)
+    {
+        case RABITQ_ID_FILTER_NONE:
+        case RABITQ_ID_FILTER_RANGE:
+            break;
+        case RABITQ_ID_FILTER_SORTED:
+            KERNEL_CHECK_TRUE(selAux0_ >= 0, KERNEL_STATUS_PARAM_INVALID, "selAux0 (sorted count) must ge 0");
+            if (selAux0_ > 0)
+            {
+                KERNEL_CHECK_TRUE(selPtr != 0, KERNEL_STATUS_PARAM_INVALID,
+                                  "selPtr must be non-null for sorted filter");
+                selSorted_ = reinterpret_cast<const int64_t *>(selPtr);
+            }
+            break;
+        case RABITQ_ID_FILTER_BITMAP:
+            KERNEL_CHECK_TRUE(selAux0_ >= 0 && selAux0_ % 8 == 0, KERNEL_STATUS_PARAM_INVALID,
+                              "selAux0 (bitmap bit count) must be a multiple of 8");
+            if (selAux0_ > 0)
+            {
+                KERNEL_CHECK_TRUE(selPtr != 0, KERNEL_STATUS_PARAM_INVALID,
+                                  "selPtr must be non-null for bitmap filter");
+                selBitmap_ = reinterpret_cast<const uint8_t *>(selPtr);
+            }
+            break;
+        case RABITQ_ID_FILTER_ROARING:
+            KERNEL_CHECK_TRUE(selAux0_ >= 0, KERNEL_STATUS_PARAM_INVALID, "selAux0 (roaring frozen bytes) must ge 0");
+            if (selAux0_ > 0)
+            {
+                KERNEL_CHECK_TRUE(selPtr != 0, KERNEL_STATUS_PARAM_INVALID,
+                                  "selPtr must be non-null for roaring filter");
+                KERNEL_CHECK_TRUE((static_cast<uint64_t>(selPtr) & (RABITQ_ROARING_FROZEN_ALIGN - 1U)) == 0,
+                                  KERNEL_STATUS_PARAM_INVALID,
+                                  "selPtr must be 32-byte aligned for roaring frozen view");
+                selRoaringBuf_ = reinterpret_cast<const char *>(selPtr);
+            }
+            break;
+        default:
+            KERNEL_LOG_ERROR("Unsupported selMode %ld", static_cast<int64_t>(selMode_));
+            return KERNEL_STATUS_PARAM_INVALID;
+    }
 
     return KERNEL_STATUS_OK;
 }
@@ -246,6 +346,31 @@ void TopkIvfRabitqfP32CpuKernel::InitTopkHeap(Outputs &outputs) const
     }
 }
 
+template <typename C, typename Pred>
+void TopkIvfRabitqfP32CpuKernel::RunQueries(size_t tcnt, size_t tid, KernelTensor<float> &indists,
+                                            KernelTensor<float> &vmdists, KernelTensor<int64_t> &ids,
+                                            KernelTensor<uint32_t> &size, KernelTensor<int64_t> &blocknums,
+                                            KernelTensor<uint16_t> &opflag, KernelTensor<float> &outdists,
+                                            KernelTensor<int64_t> &outlabels, C &&cmp, Pred &&isSelected)
+{
+    for (int64_t qidx = tid; qidx < nq_; qidx += tcnt)
+    {
+        size_t offset = blockOffset_[qidx];
+        int64_t thisBlockNum = *(blocknums.GetSubTensorDim0(qidx));
+        for (int64_t blkidx = 0; blkidx < thisBlockNum; blkidx++)
+        {
+            if (*(size.GetSubTensorDim0(offset + blkidx)) == 0)
+            {
+                continue;
+            }
+            auto flagPtr = opflag.GetSubTensorDim0(offset + blkidx);
+            WAITING_FLAG_READY(*(flagPtr), TIMEOUT_CHECK_TICK, TIMEOUT_MS);
+            ComputeQuery(qidx, offset + blkidx, indists, vmdists, ids, size, outdists, outlabels, cmp, isSelected);
+        }
+        Reorder(qidx, outdists, outlabels, cmp);
+    }
+}
+
 template <typename C>
 void TopkIvfRabitqfP32CpuKernel::DoCompute(size_t tcnt, size_t tid, const Inputs &inputs, Outputs &outputs, C &&cmp)
 {
@@ -259,11 +384,158 @@ void TopkIvfRabitqfP32CpuKernel::DoCompute(size_t tcnt, size_t tid, const Inputs
     KernelTensor<float> outdists(outputs.outdists);
     KernelTensor<int64_t> outlabels(outputs.outlabels);
 
+    const bool negate = selNegate_ != 0;
+    switch (selMode_)
+    {
+        case RABITQ_ID_FILTER_NONE:
+            RunQueries(tcnt, tid, indists, vmdists, ids, size, blocknums, opflag, outdists, outlabels, cmp,
+                       [](int64_t) { return true; });
+            break;
+        case RABITQ_ID_FILTER_RANGE:
+        {
+            const int64_t lo = selAux0_;
+            const int64_t hi = selAux1_;
+            if (negate)
+            {
+                RunQueries(tcnt, tid, indists, vmdists, ids, size, blocknums, opflag, outdists, outlabels, cmp,
+                           [lo, hi](int64_t id) { return id < lo || id >= hi; });
+            }
+            else
+            {
+                RunQueries(tcnt, tid, indists, vmdists, ids, size, blocknums, opflag, outdists, outlabels, cmp,
+                           [lo, hi](int64_t id) { return id >= lo && id < hi; });
+            }
+            break;
+        }
+        case RABITQ_ID_FILTER_SORTED:
+        {
+            const int64_t *sorted = selSorted_;
+            const int64_t n = selAux0_;
+            if (sorted == nullptr || n <= 0)
+            {
+                RunQueries(tcnt, tid, indists, vmdists, ids, size, blocknums, opflag, outdists, outlabels, cmp,
+                           [negate](int64_t) { return negate; });
+            }
+            else if (negate)
+            {
+                RunQueries(tcnt, tid, indists, vmdists, ids, size, blocknums, opflag, outdists, outlabels, cmp,
+                           [sorted, n](int64_t id) { return !std::binary_search(sorted, sorted + n, id); });
+            }
+            else
+            {
+                RunQueries(tcnt, tid, indists, vmdists, ids, size, blocknums, opflag, outdists, outlabels, cmp,
+                           [sorted, n](int64_t id) { return std::binary_search(sorted, sorted + n, id); });
+            }
+            break;
+        }
+        case RABITQ_ID_FILTER_BITMAP:
+        {
+            if (selBitmap_ == nullptr)
+            {
+                RunQueries(tcnt, tid, indists, vmdists, ids, size, blocknums, opflag, outdists, outlabels, cmp,
+                           [negate](int64_t) { return negate; });
+            }
+            else
+            {
+                RunBitmapQueries(tcnt, tid, indists, vmdists, ids, size, blocknums, opflag, outdists, outlabels, cmp);
+            }
+            break;
+        }
+        case RABITQ_ID_FILTER_ROARING:
+        {
+            const roaring_bitmap_t *roaringView = static_cast<const roaring_bitmap_t *>(selRoaringView_);
+            if (roaringView == nullptr)
+            {
+                RunQueries(tcnt, tid, indists, vmdists, ids, size, blocknums, opflag, outdists, outlabels, cmp,
+                           [negate](int64_t) { return negate; });
+            }
+            else if (negate)
+            {
+                RunQueries(tcnt, tid, indists, vmdists, ids, size, blocknums, opflag, outdists, outlabels, cmp,
+                           [roaringView](int64_t id)
+                           {
+                               if (id < 0 || static_cast<uint64_t>(id) > std::numeric_limits<uint32_t>::max())
+                               {
+                                   return true;
+                               }
+                               return roaring_bitmap_contains(roaringView, static_cast<uint32_t>(id)) == 0;
+                           });
+            }
+            else
+            {
+                RunQueries(tcnt, tid, indists, vmdists, ids, size, blocknums, opflag, outdists, outlabels, cmp,
+                           [roaringView](int64_t id)
+                           {
+                               if (id < 0 || static_cast<uint64_t>(id) > std::numeric_limits<uint32_t>::max())
+                               {
+                                   return false;
+                               }
+                               return roaring_bitmap_contains(roaringView, static_cast<uint32_t>(id)) != 0;
+                           });
+            }
+            break;
+        }
+        default:
+            RunQueries(tcnt, tid, indists, vmdists, ids, size, blocknums, opflag, outdists, outlabels, cmp,
+                       [](int64_t) { return false; });
+            break;
+    }
+}
+
+template <typename C>
+void TopkIvfRabitqfP32CpuKernel::RunBitmapQueries(size_t tcnt, size_t tid, KernelTensor<float> &indists,
+                                                  KernelTensor<float> &vmdists, KernelTensor<int64_t> &ids,
+                                                  KernelTensor<uint32_t> &size, KernelTensor<int64_t> &blocknums,
+                                                  KernelTensor<uint16_t> &opflag, KernelTensor<float> &outdists,
+                                                  KernelTensor<int64_t> &outlabels, C &&cmp)
+{
+    const bool negate = selNegate_ != 0;
+    const uint8_t *bitmap = selBitmap_;
+    const int64_t nbits = selAux0_;
+    BitmapCandidate window[kBitmapPrefetchWindow];
+    int nwin = 0;
+
+    auto drain = [&](float *heapDists, int64_t *heapLabels)
+    {
+        for (int i = 0; i < nwin; ++i)
+        {
+            if (!cmp(heapDists[0], window[i].dist))
+            {
+                continue;
+            }
+            const bool bit = BitmapBitIsSet(bitmap, nbits, window[i].id);
+            const bool selected = negate ? !bit : bit;
+            if (!selected)
+            {
+                continue;
+            }
+            heapDists[0] = window[i].dist;
+            heapLabels[0] = window[i].id;
+            UpdateHeap(heapDists, heapLabels, k_, 0, cmp);
+        }
+        nwin = 0;
+    };
+
+    auto push = [&](float *heapDists, int64_t *heapLabels, float dist, int64_t id)
+    {
+        PrefetchBitmapByte(bitmap, nbits, id);
+        window[nwin].dist = dist;
+        window[nwin].id = id;
+        ++nwin;
+        if (nwin == kBitmapPrefetchWindow)
+        {
+            drain(heapDists, heapLabels);
+        }
+    };
+
     for (int64_t qidx = tid; qidx < nq_; qidx += tcnt)
     {
+        nwin = 0;
+        float *heapDists = outdists.GetSubTensorDim0(qidx);
+        int64_t *heapLabels = outlabels.GetSubTensorDim0(qidx);
         size_t offset = blockOffset_[qidx];
         int64_t thisBlockNum = *(blocknums.GetSubTensorDim0(qidx));
-        for (int64_t blkidx = 0; blkidx < thisBlockNum; blkidx++)
+        for (int64_t blkidx = 0; blkidx < thisBlockNum; ++blkidx)
         {
             if (*(size.GetSubTensorDim0(offset + blkidx)) == 0)
             {
@@ -271,17 +543,48 @@ void TopkIvfRabitqfP32CpuKernel::DoCompute(size_t tcnt, size_t tid, const Inputs
             }
             auto flagPtr = opflag.GetSubTensorDim0(offset + blkidx);
             WAITING_FLAG_READY(*(flagPtr), TIMEOUT_CHECK_TICK, TIMEOUT_MS);
-            ComputeQuery(qidx, offset + blkidx, indists, vmdists, ids, size, outdists, outlabels, cmp);
+
+            float *blockDists = indists.GetSubTensorDim0(offset + blkidx);
+            float *blockVm = vmdists.GetSubTensorDim0(offset + blkidx);
+            int64_t *idBase = reinterpret_cast<int64_t *>(*(ids.GetSubTensorDim0(offset + blkidx)));
+            int64_t ntotal = static_cast<int64_t>(*(size.GetSubTensorDim0(offset + blkidx)));
+            int64_t idx = 0;
+            int64_t burstSize = ntotal / burstLen_;
+            for (int64_t i = 0; i < burstSize; ++i)
+            {
+                if (!cmp(heapDists[0], blockVm[i * 2]))
+                {
+                    idx += burstLen_;
+                    continue;
+                }
+                for (int64_t j = 0; j < burstLen_ && idx < ntotal; ++j, ++idx)
+                {
+                    if (!cmp(heapDists[0], blockDists[idx]))
+                    {
+                        continue;
+                    }
+                    push(heapDists, heapLabels, blockDists[idx], *(idBase + idx));
+                }
+            }
+            while (idx < ntotal)
+            {
+                if (cmp(heapDists[0], blockDists[idx]))
+                {
+                    push(heapDists, heapLabels, blockDists[idx], *(idBase + idx));
+                }
+                ++idx;
+            }
         }
+        drain(heapDists, heapLabels);
         Reorder(qidx, outdists, outlabels, cmp);
     }
 }
 
-template <typename C>
+template <typename C, typename Pred>
 void TopkIvfRabitqfP32CpuKernel::ComputeQuery(int64_t qidx, int64_t blkidx, KernelTensor<float> &indistsTensor,
                                               KernelTensor<float> &vmdistsTensor, KernelTensor<int64_t> &idsTensor,
                                               KernelTensor<uint32_t> &sizeTensor, KernelTensor<float> &outdistsTensor,
-                                              KernelTensor<int64_t> &outlabelsTensor, C &&cmp)
+                                              KernelTensor<int64_t> &outlabelsTensor, C &&cmp, Pred &&isSelected)
 {
     float *indists = indistsTensor.GetSubTensorDim0(blkidx);
     float *vmdists = vmdistsTensor.GetSubTensorDim0(blkidx);
@@ -305,21 +608,31 @@ void TopkIvfRabitqfP32CpuKernel::ComputeQuery(int64_t qidx, int64_t blkidx, Kern
         }
         for (int64_t j = 0; j < burstLen_ && idx < ntotal; ++j, ++idx)
         {
-            if (cmp(outdists[0], indists[idx]))
+            if (!cmp(outdists[0], indists[idx]))
             {
-                outdists[0] = indists[idx];
-                outlabel[0] = *(id + idx);
-                UpdateHeap(outdists, outlabel, k_, 0, cmp);
+                continue;
             }
+            const int64_t candId = *(id + idx);
+            if (!isSelected(candId))
+            {
+                continue;
+            }
+            outdists[0] = indists[idx];
+            outlabel[0] = candId;
+            UpdateHeap(outdists, outlabel, k_, 0, cmp);
         }
     }
     while (idx < ntotal)
     {
         if (cmp(outdists[0], indists[idx]))
         {
-            outdists[0] = indists[idx];
-            outlabel[0] = *(id + idx);
-            UpdateHeap(outdists, outlabel, k_, 0, cmp);
+            const int64_t candId = *(id + idx);
+            if (isSelected(candId))
+            {
+                outdists[0] = indists[idx];
+                outlabel[0] = candId;
+                UpdateHeap(outdists, outlabel, k_, 0, cmp);
+            }
         }
         ++idx;
     }

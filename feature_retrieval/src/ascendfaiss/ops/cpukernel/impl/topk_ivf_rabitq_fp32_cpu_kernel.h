@@ -20,6 +20,7 @@
 #define AICPU_TOPK_IVF_FP32_CPU_KERNEL_H
 
 #include "cpu_kernel.h"
+#include "kernel_shared_def.h"
 #include "kernel_tensor.h"
 
 namespace aicpu
@@ -48,6 +49,11 @@ class TopkIvfRabitqfP32CpuKernel : public CpuKernel
 
     ~TopkIvfRabitqfP32CpuKernel() override = default;
 
+    TopkIvfRabitqfP32CpuKernel(const TopkIvfRabitqfP32CpuKernel &) = delete;
+    TopkIvfRabitqfP32CpuKernel &operator=(const TopkIvfRabitqfP32CpuKernel &) = delete;
+    TopkIvfRabitqfP32CpuKernel(TopkIvfRabitqfP32CpuKernel &&) = delete;
+    TopkIvfRabitqfP32CpuKernel &operator=(TopkIvfRabitqfP32CpuKernel &&) = delete;
+
     uint32_t Compute(CpuKernelContext &ctx) override;
 
    private:
@@ -62,11 +68,23 @@ class TopkIvfRabitqfP32CpuKernel : public CpuKernel
     template <typename C>
     void DoCompute(size_t tcnt, size_t tid, const Inputs &inputs, Outputs &outputs, C &&cmp);
 
+    template <typename C, typename Pred>
+    void RunQueries(size_t tcnt, size_t tid, KernelTensor<float> &indists, KernelTensor<float> &vmdists,
+                    KernelTensor<int64_t> &ids, KernelTensor<uint32_t> &size, KernelTensor<int64_t> &blocknums,
+                    KernelTensor<uint16_t> &opflag, KernelTensor<float> &outdists, KernelTensor<int64_t> &outlabels,
+                    C &&cmp, Pred &&isSelected);
+
     template <typename C>
+    void RunBitmapQueries(size_t tcnt, size_t tid, KernelTensor<float> &indists, KernelTensor<float> &vmdists,
+                          KernelTensor<int64_t> &ids, KernelTensor<uint32_t> &size, KernelTensor<int64_t> &blocknums,
+                          KernelTensor<uint16_t> &opflag, KernelTensor<float> &outdists,
+                          KernelTensor<int64_t> &outlabels, C &&cmp);
+
+    template <typename C, typename Pred>
     void ComputeQuery(int64_t qidx, int64_t bidx, KernelTensor<float> &indistsTensor,
                       KernelTensor<float> &vmdistsTensor, KernelTensor<int64_t> &idsTensor,
                       KernelTensor<uint32_t> &sizeTensor, KernelTensor<float> &outdistsTensor,
-                      KernelTensor<int64_t> &outlabelsTensor, C &&cmp);
+                      KernelTensor<int64_t> &outlabelsTensor, C &&cmp, Pred &&isSelected);
 
     template <typename C>
     void Reorder(int64_t qidx, KernelTensor<float> &outdistsTensor, KernelTensor<int64_t> &outlabelsTensor, C &&cmp);
@@ -80,6 +98,15 @@ class TopkIvfRabitqfP32CpuKernel : public CpuKernel
     int64_t k_ = 0;
     int64_t burstLen_ = 0;
     int64_t core_ = 0;
+
+    RabitqIdFilterMode selMode_ = RABITQ_ID_FILTER_NONE;
+    int64_t selNegate_ = 0;
+    int64_t selAux0_ = 0;
+    int64_t selAux1_ = 0;
+    const int64_t *selSorted_ = nullptr;
+    const uint8_t *selBitmap_ = nullptr;
+    const char *selRoaringBuf_ = nullptr;
+    const void *selRoaringView_ = nullptr;
 
     std::vector<int64_t> blockOffset_;
 };

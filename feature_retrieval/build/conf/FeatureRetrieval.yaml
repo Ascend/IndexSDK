@@ -12,7 +12,8 @@ compile:
     files:
        include:
         - commands:
-          - command: "cd {{ systemEnv.workspace }}/feature_retrieval/build && \
+          - command: "cd {{ systemEnv.workspace }} && git submodule update --init --recursive && \
+          cd feature_retrieval/build && \
           LD_PRELOAD= sudo LD_PRELOAD=${LD_PRELOAD} -E /bin/bash build.sh {{systemEnv.frame_project}}"
   process:
     language: c

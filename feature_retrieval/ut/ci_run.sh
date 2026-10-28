@@ -18,6 +18,8 @@
 set -e
 
 CUR_DIR=$(dirname "$(readlink -f "$0")")
+REPO_ROOT=$(git -C "${CUR_DIR}" rev-parse --show-toplevel)
+git -C "${REPO_ROOT}" submodule update --init --recursive
 if [ ! -d "${CUR_DIR}/../secondparty/" ];then
     mkdir -p "${CUR_DIR}/../secondparty/"
 fi
