@@ -50,6 +50,8 @@ OPTION(COVERAGE            "COVERAGE"                                  OFF)
 OPTION(HITEST              "HITEST"                                    OFF)
 OPTION(BUILD_ASCEND_SEARCH "Build ascendsearch"                        OFF)
 
+INCLUDE(${CMAKE_CURRENT_LIST_DIR}/cmake/CRoaringAmalgam.cmake)
+
 # DT
 IF(COVERAGE)
     SET(GCC_COVERAGE_COMPILE_FLAGS "-g -O0 -fprofile-arcs -ftest-coverage")

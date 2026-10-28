@@ -106,6 +106,19 @@ AscendIndexIVFRaBitQ利用IVF进行加速，是二级近似检索算法。当前
 <tr><td width="140" align="center" valign="middle">约束说明</td><td valign="middle">● 此处指针“index”需要为非空指针。<br>● 调用此接口持久化数据前应按照正常流程创建AscendIndexIVFRaBitQ对象并训练入库。</td></tr>
 </tbody></table>
 
+## search接口<a name="ZH-CN_TOPIC_IVFRABITQ_SEARCH"></a>
+
+<a name="table_ivfrabitq_search"></a>
+
+<table><tbody>
+<tr><td width="140" align="center" valign="middle">API定义</td><td valign="middle"><strong><code>void search(idx_t n, const float *x, idx_t k, float *distances, idx_t *labels, const SearchParameters *params = nullptr) const override;</code></strong></td></tr>
+<tr><td width="140" align="center" valign="middle">功能描述</td><td valign="middle">实现AscendIndexIVFRaBitQ特征向量查询。支持通过Faiss SearchParameters.sel传入IDSelector，在查询阶段按ID过滤（多卡场景下各卡对本地候选做同一全局ID语义过滤后合并）。</td></tr>
+<tr><td width="140" align="center" valign="middle">输入</td><td valign="middle"><strong><code>idx_t n</code></strong>：查询特征向量条数。<br><strong><code>const float *x</code></strong>：查询特征向量，长度 n*dim。<br><strong><code>idx_t k</code></strong>：返回最相似结果个数。<br><strong><code>const SearchParameters *params</code></strong>：可选。params-&gt;sel 支持 IDSelectorRange / IDSelectorBatch / IDSelectorArray / IDSelectorBitmap / faiss::ascend::IDSelectorRoaring，以及上述类型的 IDSelectorNot。params 为 nullptr 或 sel 为 nullptr 时不做ID过滤。IDSelectorArray.ids、IDSelectorBitmap.bitmap 与 IDSelectorRoaring 的 frozen/live 指针必须在 search 返回前保持有效（Bitmap 与 Roaring frozen 为零拷贝）。Array/Bitmap/Roaring 缓存按 payload 指针和长度命中，不比对内容；原地改写同一 buffer 不会使缓存失效，换过滤集请换指针。IDSelectorBitmap 为稠密字节位图，不会自动转成 Roaring。IDSelectorRoaring 仅接受 CRoaring frozen 序列化（与 SDK 同版本 roaring_bitmap_frozen_serialize）或 live roaring_bitmap_t*（首次 miss 时 freeze）。传入 SearchParametersIVF 时，nprobe 仅对本次查询生效（须 &gt; 0 且 &lt;= nlist），不修改 index 上的 nprobe；基类 SearchParameters 只过滤时仍使用 index 上的 nprobe。Faiss SearchParametersIVF.nprobe 默认值为 1，只过滤时请继续用基类，或显式把 nprobe 设成 index.getNumProbes()。</td></tr>
+<tr><td width="140" align="center" valign="middle">输出</td><td valign="middle"><strong><code>float *distances</code></strong>：距离结果，长度 n*k。<br><strong><code>idx_t *labels</code></strong>：ID结果，长度 n*k；不足 k 个时剩余用 -1 填充。</td></tr>
+<tr><td width="140" align="center" valign="middle">返回值</td><td valign="middle">无</td></tr>
+<tr><td width="140" align="center" valign="middle">约束说明</td><td valign="middle">● IDSelector过滤阶段可通过环境变量 IVFRABITQ_SELECTOR_FILTER_STAGE 配置，取值为 auto、pre、post、both；默认 auto，在支持L2前置过滤的普通kernel路径使用pre，在SIMT路径（Ascend 950）自动使用post。<br>● pre表示仅在L2距离阶段执行前置过滤；post表示仅在AICPU TopK阶段执行后置过滤；both表示前后两阶段均执行，主要用于对比验证。<br>● SIMT路径（Ascend 950）暂不支持L2前置过滤，设置为pre时会返回参数错误；如需在SIMT路径使用IDSelector，请设置为auto或post。<br>● IDSelectorRoaring 不走L2前置过滤，默认 auto 时在AICPU TopK阶段后置过滤。<br>● 多卡检索时同一 IDSelector 按全局ID语义应用到每张卡，再在Host侧合并 top-k。<br>● Array/Bitmap/Roaring 查询期缓存按 buffer 指针与长度命中，不扫描内容；原地修改 ids/bitmap/frozen 后仍传入同一指针会复用旧过滤结果。</td></tr>
+</tbody></table>
+
 ## update接口<a name="ZH-CN_TOPIC_0000002566242121"></a>
 
 <a name="table962730101715"></a>

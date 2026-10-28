@@ -83,13 +83,20 @@ ELSE()
     SET(ENABLE_ASCEND_IVFRABITQ OFF)
 ENDIF()
 
+IF(ENABLE_ASCEND_IVFRABITQ)
+    INCLUDE(${ASCEND_PROJECT_HOME}/cmake/CRoaringAmalgam.cmake)
+ENDIF()
+
 SET(ASCEND_IVFRABITQ_SRC "")
 IF(ENABLE_ASCEND_IVFRABITQ)
     SET(ASCEND_IVFRABITQ_SRC
         ${ASCEND_PROJECT_HOME}/ascend/AscendIndexIVFRaBitQ.cpp
+        ${ASCEND_PROJECT_HOME}/ascend/AscendIDSelectorRoaring.cpp
         ${ASCEND_PROJECT_HOME}/ascend/impl/AscendIndexIVFRaBitQImpl.cpp
         ${ASCEND_PROJECT_HOME}/ascenddaemon/impl/IndexIVFRaBitQ.cpp
+        ${CROARING_AMALGAM_C}
     )
+    SET_SOURCE_FILES_PROPERTIES(${CROARING_AMALGAM_C} PROPERTIES COMPILE_FLAGS "-w")
 ENDIF()
 
 SET(ASCENDFAISS_SRC
@@ -226,6 +233,7 @@ SET(ASCENDFAISS_INCLUDE
     ${ASCEND_PROJECT_HOME}/ascenddaemon/impl
     ${ASCEND_PROJECT_HOME}/ascenddaemon/utils
     ${ASCEND_PROJECT_HOME}/common
+    ${CROARING_AMALGAM_INCLUDE_DIR}
     ${ASCEND_PROJECT_HOME}/ascendhost/include
     ${ASCEND_PROJECT_HOME}/ascendhost/include/impl
     ${ASCEND_PROJECT_HOME}/ascendhost/include/index

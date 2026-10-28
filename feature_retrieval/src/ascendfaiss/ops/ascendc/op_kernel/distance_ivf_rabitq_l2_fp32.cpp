@@ -16,6 +16,7 @@
  * -------------------------------------------------------------------------
  */
 
+#include <cstdint>
 #include <limits>
 
 #include "kernel_operator.h"
@@ -29,6 +30,16 @@ constexpr float IVFRABITQ_MAX_FLOAT = std::numeric_limits<float>::max();
 constexpr float IVFRABITQ_MIN_FLOAT = std::numeric_limits<float>::lowest();
 constexpr int32_t METRIC_L2 = 0;
 constexpr int32_t METRIC_INNER_PRODUCT = 1;
+constexpr int64_t RABITQ_ID_FILTER_RANGE = 1;
+constexpr int64_t RABITQ_ID_FILTER_SORTED_PREFIX = 4;
+constexpr int64_t RABITQ_ID_FILTER_BITMAP = 3;
+constexpr int64_t RABITQ_SORTED_PREFIX_MAGIC = 0x5242515052465831;
+constexpr int32_t RABITQ_PAYLOAD_MAGIC_IDX = 0;
+constexpr int32_t RABITQ_PAYLOAD_SORTED_COUNT_IDX = 1;
+constexpr int32_t RABITQ_PAYLOAD_SORTED_OFFSET_IDX = 2;
+constexpr int32_t RABITQ_PAYLOAD_PREFIX_SHIFT_IDX = 4;
+constexpr int32_t RABITQ_PAYLOAD_PREFIX_BUCKET_COUNT_IDX = 5;
+constexpr int32_t RABITQ_PAYLOAD_PREFIX_OFFSET_IDX = 6;
 
 template <typename T>
 class DistanceIVFRabitqL2FP32
@@ -42,8 +53,9 @@ class DistanceIVFRabitqL2FP32
     __aicore__ inline void Init(GM_ADDR queryl2, GM_ADDR querylut, GM_ADDR centroidslut, GM_ADDR queryid,
                                 GM_ADDR centroidsid, GM_ADDR centroidsl2, GM_ADDR base, GM_ADDR offset,
                                 GM_ADDR actual_size, GM_ADDR indexl2, GM_ADDR indexl1, GM_ADDR indexl2offset,
-                                GM_ADDR indexl1offset, GM_ADDR result, GM_ADDR min_result, GM_ADDR flag,
-                                GM_ADDR usrWorkspace, const DistanceIVFRabitqL2FP32TilingData *tiling_data)
+                                GM_ADDR indexl1offset, GM_ADDR ids, GM_ADDR filter_attrs, GM_ADDR result,
+                                GM_ADDR min_result, GM_ADDR flag, GM_ADDR usrWorkspace,
+                                const DistanceIVFRabitqL2FP32TilingData *tiling_data)
     {
         this->blockIdx = get_block_idx();
         tiling_ = *tiling_data;
@@ -98,10 +110,51 @@ class DistanceIVFRabitqL2FP32
         indexl1_gm_.SetGlobalBuffer((__gm__ T *)(indexl1 + l1Offset));
         indexl2_gm_.SetGlobalBuffer((__gm__ T *)(indexl2 + l2Offset));
 
+        ids_ptr_gm_.SetGlobalBuffer((__gm__ int64_t *)ids);
+        uint64_t idsAddr = static_cast<uint64_t>(ids_ptr_gm_.GetValue(this->blockIdx));
+        ids_gm_.SetGlobalBuffer((__gm__ int64_t *)idsAddr);
+        filter_attrs_gm_.SetGlobalBuffer((__gm__ int64_t *)filter_attrs);
+        this->filterMode = filter_attrs_gm_.GetValue(0);
+        this->filterAux0 = filter_attrs_gm_.GetValue(2);
+        this->filterAux1 = filter_attrs_gm_.GetValue(3);
+        this->filterNegate = filter_attrs_gm_.GetValue(4);
+        uint64_t bitmapAddr = static_cast<uint64_t>(filter_attrs_gm_.GetValue(1));
+        this->enableBitmapFilter = (this->filterMode == RABITQ_ID_FILTER_BITMAP && bitmapAddr != 0);
+        this->enableRangeFilter = (this->filterMode == RABITQ_ID_FILTER_RANGE);
+        this->enablePrefixFilter = (this->filterMode == RABITQ_ID_FILTER_SORTED_PREFIX && bitmapAddr != 0);
+        if (this->enableBitmapFilter)
+        {
+            bitmap_gm_.SetGlobalBuffer((__gm__ uint8_t *)bitmapAddr);
+        }
+        if (this->enablePrefixFilter)
+        {
+            prefix_payload_gm_.SetGlobalBuffer((__gm__ int64_t *)bitmapAddr);
+            if (prefix_payload_gm_.GetValue(RABITQ_PAYLOAD_MAGIC_IDX) == RABITQ_SORTED_PREFIX_MAGIC)
+            {
+                this->prefixSortedCount = prefix_payload_gm_.GetValue(RABITQ_PAYLOAD_SORTED_COUNT_IDX);
+                this->prefixShift = prefix_payload_gm_.GetValue(RABITQ_PAYLOAD_PREFIX_SHIFT_IDX);
+                this->prefixBucketCount = prefix_payload_gm_.GetValue(RABITQ_PAYLOAD_PREFIX_BUCKET_COUNT_IDX);
+                uint64_t sortedOffset =
+                    static_cast<uint64_t>(prefix_payload_gm_.GetValue(RABITQ_PAYLOAD_SORTED_OFFSET_IDX));
+                uint64_t prefixOffset =
+                    static_cast<uint64_t>(prefix_payload_gm_.GetValue(RABITQ_PAYLOAD_PREFIX_OFFSET_IDX));
+                prefix_sorted_gm_.SetGlobalBuffer((__gm__ int64_t *)(bitmapAddr + sortedOffset));
+                prefix_offsets_gm_.SetGlobalBuffer((__gm__ uint32_t *)(bitmapAddr + prefixOffset));
+            }
+            else
+            {
+                this->enablePrefixFilter = false;
+            }
+        }
+
         result_gm_.SetGlobalBuffer((__gm__ T *)result + this->blockIdx * this->codeBlockLength);
         min_res_gm_.SetGlobalBuffer((__gm__ T *)min_result +
                                     (this->codeBlockLength + this->mask - 1) / this->mask * 2 * this->blockIdx);
         flag_gm_.SetGlobalBuffer((__gm__ uint16_t *)flag + this->blockIdx * 32);
+        this->burstMaskNum = (this->codeBlockLength + this->mask - 1) / this->mask;
+        burst_mask_gm_.SetGlobalBuffer(
+            (__gm__ uint64_t *)(usrWorkspace + static_cast<uint64_t>(this->blockIdx) *
+                                                   static_cast<uint64_t>(this->burstMaskNum) * sizeof(uint64_t)));
 
         this->codeTileLength = tiling_.codeTileLength;  // 每次处理多少codes
 
@@ -121,9 +174,9 @@ class DistanceIVFRabitqL2FP32
             this->lastDistTileLength = this->distTileLength;
         }
 
-        pipe_->InitBuffer(
-            in_querylut_que, 1,
-            RoundUp(this->lutLength * this->lutDimLength * sizeof(T), 64));  // querylut全部拉取，该空间可以存储q-c
+        pipe_->InitBuffer(in_querylut_que, 1,
+                          RoundUp(this->lutLength * this->lutDimLength * sizeof(T),
+                                  64));  // querylut全部拉取，该空间可以存储q-c
         pipe_->InitBuffer(codes_in_que, 1, RoundUp(this->dimLength / 8 * this->codeTileLength, 64));
         pipe_->InitBuffer(codes_half_que, 1, RoundUp(this->dimLength / 8 * this->codeTileLength * sizeof(half), 64));
         pipe_->InitBuffer(codes_int32_que, 1,
@@ -131,6 +184,7 @@ class DistanceIVFRabitqL2FP32
         pipe_->InitBuffer(idx_calc_que, 1, RoundUp(this->dimLength / 8 * sizeof(int32_t), 64));
         pipe_->InitBuffer(select_out_que, 1, RoundUp(this->dimLength / 8 * this->codeTileLength * sizeof(T), 64));
         pipe_->InitBuffer(ip_out_que, 1, RoundUp(this->codeTileLength * sizeof(T), 64));
+        pipe_->InitBuffer(burst_mask_buf_, RoundUp(this->burstMaskNum * sizeof(uint64_t), 32));
     }
 
     __aicore__ inline int32_t RoundUp(int32_t length, int32_t align) { return (length + align - 1) / align * align; }
@@ -143,6 +197,7 @@ class DistanceIVFRabitqL2FP32
         pipe_->InitBuffer(in_indexl2_que, 1, RoundUp(this->distTileLength * sizeof(T), 64));
         pipe_->InitBuffer(dist_result_que, 1, RoundUp(this->distTileLength * sizeof(T), 32));
         pipe_->InitBuffer(min_result_que, 1, RoundUp(this->distTileLength * this->mask * sizeof(T), 32));
+        pipe_->InitBuffer(bitmap_valid_buf_, RoundUp(this->distTileLength * sizeof(uint8_t), 32));
     }
 
     __aicore__ inline void Process()
@@ -202,11 +257,13 @@ class DistanceIVFRabitqL2FP32
 
     __aicore__ inline void LookUpTableAndSum()
     {
+        BuildAllBurstMasks();
         LocalTensor<T> querylutLocal = in_querylut_que.DeQue<T>();
         LocalTensor<int32_t> idxLocal = idx_calc_que.AllocTensor<int32_t>();
         CreateVecIndex(idxLocal, 0, this->dimLength / 8);
         PipeBarrier<PIPE_V>();
-        ShiftLeft(idxLocal, idxLocal, 8, this->dimLength / 8);  // 每行 LUT 为 2^8 个，因此每行的偏移值需要左移 8
+        ShiftLeft(idxLocal, idxLocal, 8,
+                  this->dimLength / 8);  // 每行 LUT 为 2^8 个，因此每行的偏移值需要左移 8
         PipeBarrier<PIPE_ALL>();
         for (int32_t i = 0; i < this->codeTileNum; i++)
         {
@@ -214,6 +271,10 @@ class DistanceIVFRabitqL2FP32
             if (i == this->codeTileNum - 1)
             {
                 copyLength = this->lastCodeTileLength;
+            }
+            if (!HasStoredMaskAny(i * this->codeTileLength, copyLength))
+            {
+                continue;
             }
             CopyInForCode(i, copyLength);
             SelectAndReduceSum(i, copyLength, querylutLocal, idxLocal);
@@ -275,7 +336,8 @@ class DistanceIVFRabitqL2FP32
             }
         }
         PipeBarrier<PIPE_V>();
-        ShiftLeft(codesInt32Local, codesInt32Local, 2, codeSize);  // sizeof(float) = 2^2，因此字节偏移需要左移 2
+        ShiftLeft(codesInt32Local, codesInt32Local, 2,
+                  codeSize);  // sizeof(float) = 2^2，因此字节偏移需要左移 2
         PipeBarrier<PIPE_V>();
         Gather(selResultLocal, vecsLocal, codesInt32Local.ReinterpretCast<uint32_t>(), (uint32_t)0, codeSize);
         PipeBarrier<PIPE_V>();
@@ -315,13 +377,18 @@ class DistanceIVFRabitqL2FP32
     __aicore__ inline void DistCompute()
     {
         LocalTensor<T> minResultLocal = min_result_que.AllocTensor<T>();
+        LocalTensor<uint8_t> bitmapValidLocal = bitmap_valid_buf_.Get<uint8_t>();
         Duplicate(minResultLocal, this->reduceCmpInitValue, this->distTileLength * this->mask);
         this->minNum = 0;
         for (int32_t i = 0; i < this->distTileNum; i++)
         {
             int32_t copyLength = (i == this->distTileNum - 1) ? this->lastDistTileLength : this->distTileLength;
-            CopyInForMatResAndIndexL1(i, copyLength);  // 拷贝内积结果和L1因子
-            Compute(i, copyLength, minResultLocal);
+            bool anySelected = LoadBurstMaskValidity(i * this->distTileLength, copyLength, bitmapValidLocal);
+            if (anySelected)
+            {
+                CopyInForMatResAndIndexL1(i, copyLength);  // 拷贝内积结果和L1因子
+            }
+            Compute(i, copyLength, minResultLocal, anySelected, bitmapValidLocal);
             CopyOutForDistRes(i, copyLength);
         }
         PipeBarrier<PIPE_ALL>();
@@ -353,9 +420,17 @@ class DistanceIVFRabitqL2FP32
         in_indexl2_que.EnQue(indexL2Local);
     }
 
-    __aicore__ inline void Compute(int32_t progress, int32_t copyLength, LocalTensor<T> minResultLocal)
+    __aicore__ inline void Compute(int32_t progress, int32_t copyLength, LocalTensor<T> minResultLocal,
+                                   bool anySelected, LocalTensor<uint8_t> bitmapValidLocal)
     {
         LocalTensor<T> distResultLocal = dist_result_que.AllocTensor<T>();
+        if (!anySelected)
+        {
+            Duplicate(distResultLocal, this->reduceCmpInitValue, copyLength);
+            ComputeMinResult(progress, minResultLocal);
+            dist_result_que.EnQue(distResultLocal);
+            return;
+        }
         LocalTensor<T> ipResLocal = in_mat_res_que.DeQue<T>();
         LocalTensor<T> indexL1Local = in_indexl1_que.DeQue<T>();
 
@@ -380,6 +455,7 @@ class DistanceIVFRabitqL2FP32
             Muls(distResultLocal, distResultLocal, static_cast<float>(-0.5), copyLength);
             PipeBarrier<PIPE_V>();
         }
+        ApplyBitmapFilter(copyLength, distResultLocal, bitmapValidLocal);
 
         int copyNum = copyLength / this->mask;
         int lastCodesLength = copyLength % this->mask;
@@ -402,6 +478,171 @@ class DistanceIVFRabitqL2FP32
         in_mat_res_que.FreeTensor(ipResLocal);
         in_indexl1_que.FreeTensor(indexL1Local);
         in_indexl2_que.FreeTensor(indexL2Local);
+    }
+
+    __aicore__ inline bool IsSelectedByFilter(int32_t localIdx)
+    {
+        bool selected = true;
+        if (this->enablePrefixFilter)
+        {
+            int64_t id = ids_gm_.GetValue(localIdx);
+            selected = PrefixContains(id);
+        }
+        else if (this->enableBitmapFilter)
+        {
+            int64_t id = ids_gm_.GetValue(localIdx);
+            selected = false;
+            if (id >= 0 && id < this->filterAux0)
+            {
+                uint8_t val = bitmap_gm_.GetValue(static_cast<uint64_t>(id) >> 3);
+                selected = (val & (static_cast<uint8_t>(1U) << (static_cast<uint32_t>(id) & 7U))) != 0;
+            }
+        }
+        else if (this->enableRangeFilter)
+        {
+            int64_t id = ids_gm_.GetValue(localIdx);
+            selected = id >= this->filterAux0 && id < this->filterAux1;
+        }
+        return (this->filterNegate != 0) ? !selected : selected;
+    }
+
+    __aicore__ inline bool PrefixContains(int64_t id)
+    {
+        if (id < 0 || this->prefixSortedCount <= 0 || this->prefixBucketCount <= 0)
+        {
+            return false;
+        }
+        uint64_t prefix = static_cast<uint64_t>(id) >> static_cast<uint64_t>(this->prefixShift);
+        if (prefix >= static_cast<uint64_t>(this->prefixBucketCount))
+        {
+            return false;
+        }
+        uint32_t begin = prefix_offsets_gm_.GetValue(prefix);
+        uint32_t end = prefix_offsets_gm_.GetValue(prefix + 1);
+        if (begin > end || static_cast<int64_t>(end) > this->prefixSortedCount)
+        {
+            return false;
+        }
+        for (uint32_t i = begin; i < end; ++i)
+        {
+            int64_t cur = prefix_sorted_gm_.GetValue(i);
+            if (cur == id)
+            {
+                return true;
+            }
+            if (cur > id)
+            {
+                return false;
+            }
+        }
+        return false;
+    }
+
+    __aicore__ inline void BuildAllBurstMasks()
+    {
+        if (!IsPrefilterEnabled())
+        {
+            return;
+        }
+        LocalTensor<uint64_t> burstMaskLocal = burst_mask_buf_.Get<uint64_t>();
+        int32_t activeMaskNum = (static_cast<int32_t>(this->actualSizeVal) + this->mask - 1) / this->mask;
+        for (int32_t burstIdx = 0; burstIdx < activeMaskNum; ++burstIdx)
+        {
+            int32_t start = burstIdx * this->mask;
+            int32_t length = static_cast<int32_t>(this->actualSizeVal) - start;
+            if (length > this->mask)
+            {
+                length = this->mask;
+            }
+            uint64_t maskValue = 0;
+            for (int32_t lane = 0; lane < length; ++lane)
+            {
+                if (IsSelectedByFilter(start + lane))
+                {
+                    maskValue |= (static_cast<uint64_t>(1) << static_cast<uint32_t>(lane));
+                }
+            }
+            burstMaskLocal.SetValue(burstIdx, maskValue);
+        }
+        PipeBarrier<PIPE_ALL>();
+        DataCopyExtParams copyParams{1, (uint32_t)(activeMaskNum * sizeof(uint64_t)), 0, 0, 0};
+        DataCopyPad(burst_mask_gm_, burstMaskLocal, copyParams);
+        PipeBarrier<PIPE_ALL>();
+    }
+
+    __aicore__ inline bool HasStoredMaskAny(int32_t start, int32_t length)
+    {
+        if (!IsPrefilterEnabled())
+        {
+            return true;
+        }
+        int32_t end = start + length;
+        int32_t firstBurst = start / this->mask;
+        int32_t lastBurst = (end - 1) / this->mask;
+        for (int32_t burstIdx = firstBurst; burstIdx <= lastBurst; ++burstIdx)
+        {
+            uint64_t maskValue = burst_mask_gm_.GetValue(burstIdx);
+            int32_t beginLane = (burstIdx == firstBurst) ? (start % this->mask) : 0;
+            int32_t endLane = (burstIdx == lastBurst) ? ((end - 1) % this->mask + 1) : this->mask;
+            for (int32_t lane = beginLane; lane < endLane; ++lane)
+            {
+                if ((maskValue & (static_cast<uint64_t>(1) << static_cast<uint32_t>(lane))) != 0)
+                {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    __aicore__ inline bool LoadBurstMaskValidity(int32_t start, int32_t length, LocalTensor<uint8_t> bitmapValidLocal)
+    {
+        if (!IsPrefilterEnabled())
+        {
+            return true;
+        }
+        bool anySelected = false;
+        int32_t end = start + length;
+        int32_t firstBurst = start / this->mask;
+        int32_t lastBurst = (end - 1) / this->mask;
+        int32_t localOffset = 0;
+        for (int32_t burstIdx = firstBurst; burstIdx <= lastBurst; ++burstIdx)
+        {
+            uint64_t maskValue = burst_mask_gm_.GetValue(burstIdx);
+            int32_t beginLane = (burstIdx == firstBurst) ? (start % this->mask) : 0;
+            int32_t endLane = (burstIdx == lastBurst) ? ((end - 1) % this->mask + 1) : this->mask;
+            for (int32_t lane = beginLane; lane < endLane; ++lane)
+            {
+                uint8_t selected =
+                    ((maskValue & (static_cast<uint64_t>(1) << static_cast<uint32_t>(lane))) != 0) ? 1 : 0;
+                bitmapValidLocal.SetValue(localOffset, selected);
+                anySelected = anySelected || (selected != 0);
+                ++localOffset;
+            }
+        }
+        return anySelected;
+    }
+
+    __aicore__ inline void ApplyBitmapFilter(int32_t length, LocalTensor<T> distResultLocal,
+                                             LocalTensor<uint8_t> bitmapValidLocal)
+    {
+        if (!IsPrefilterEnabled())
+        {
+            return;
+        }
+        for (int32_t i = 0; i < length; ++i)
+        {
+            if (bitmapValidLocal.GetValue(i) == 0)
+            {
+                distResultLocal.SetValue(i, this->reduceCmpInitValue);
+            }
+        }
+        PipeBarrier<PIPE_ALL>();
+    }
+
+    __aicore__ inline bool IsPrefilterEnabled()
+    {
+        return this->enableBitmapFilter || this->enablePrefixFilter || this->enableRangeFilter;
     }
 
     __aicore__ inline void ComputeMinResult(int32_t progress, LocalTensor<T> minResultLocal)
@@ -481,6 +722,8 @@ class DistanceIVFRabitqL2FP32
     TQue<QuePosition::VECIN, 1> select_out_que;
     TQue<QuePosition::VECCALC, 1> codes_half_que, codes_int32_que, idx_calc_que;
     TQue<QuePosition::VECOUT, 1> ip_out_que;
+    TBuf<TPosition::VECCALC> burst_mask_buf_;
+    TBuf<TPosition::VECCALC> bitmap_valid_buf_;
 
     TQue<QuePosition::VECIN, 1> in_mat_res_que, in_indexl1_que, in_indexl2_que;
     TQue<QuePosition::VECOUT, 1> dist_result_que, min_result_que;
@@ -500,6 +743,15 @@ class DistanceIVFRabitqL2FP32
     GlobalTensor<uint64_t> indexl1_offset_gm_;
     GlobalTensor<T> indexl2_gm_;
     GlobalTensor<uint64_t> indexl2_offset_gm_;
+
+    GlobalTensor<int64_t> ids_ptr_gm_;
+    GlobalTensor<int64_t> ids_gm_;
+    GlobalTensor<int64_t> filter_attrs_gm_;
+    GlobalTensor<uint8_t> bitmap_gm_;
+    GlobalTensor<int64_t> prefix_payload_gm_;
+    GlobalTensor<int64_t> prefix_sorted_gm_;
+    GlobalTensor<uint32_t> prefix_offsets_gm_;
+    GlobalTensor<uint64_t> burst_mask_gm_;
 
     GlobalTensor<T> result_gm_;
     GlobalTensor<T> min_res_gm_;
@@ -527,6 +779,17 @@ class DistanceIVFRabitqL2FP32
     int32_t minNum;
 
     int32_t metric;
+    int64_t filterMode = 0;
+    int64_t filterAux0 = 0;
+    int64_t filterAux1 = 0;
+    int64_t filterNegate = 0;
+    bool enableBitmapFilter = false;
+    bool enablePrefixFilter = false;
+    bool enableRangeFilter = false;
+    int64_t prefixSortedCount = 0;
+    int64_t prefixShift = 0;
+    int64_t prefixBucketCount = 0;
+    int32_t burstMaskNum = 0;
 
     int32_t mask = 64;
     int32_t maskNum;
@@ -544,13 +807,15 @@ class DistanceIVFRabitqL2FP32
 extern "C" __global__ __aicore__ void distance_ivf_rabitq_l2_fp32(
     GM_ADDR queryl2, GM_ADDR querylut, GM_ADDR centroidslut, GM_ADDR queryid, GM_ADDR centroidsid, GM_ADDR centroidsl2,
     GM_ADDR base, GM_ADDR offset, GM_ADDR actual_size, GM_ADDR indexl2, GM_ADDR indexl1, GM_ADDR indexl2offset,
-    GM_ADDR indexl1offset, GM_ADDR result, GM_ADDR min_result, GM_ADDR flag, GM_ADDR workspace, GM_ADDR tiling)
+    GM_ADDR indexl1offset, GM_ADDR ids, GM_ADDR filter_attrs, GM_ADDR result, GM_ADDR min_result, GM_ADDR flag,
+    GM_ADDR workspace, GM_ADDR tiling)
 {
     GET_TILING_DATA(tiling_data, tiling);
     GM_ADDR usrWorkspace = GetUserWorkspace(workspace);
     TPipe pipe;
     kernels::DistanceIVFRabitqL2FP32<float32_t> op(&pipe);
     op.Init(queryl2, querylut, centroidslut, queryid, centroidsid, centroidsl2, base, offset, actual_size, indexl2,
-            indexl1, indexl2offset, indexl1offset, result, min_result, flag, usrWorkspace, &tiling_data);
+            indexl1, indexl2offset, indexl1offset, ids, filter_attrs, result, min_result, flag, usrWorkspace,
+            &tiling_data);
     op.Process();
 }

@@ -373,8 +373,12 @@ class IndexCodeAndPrecompute
         Sub(l2ResultLocal, l2ResultLocal, innerProductLocal, copyLength);
         PipeBarrier<PIPE_V>();
 
-        // l1因子
+        // l1因子。残差 L1 为 0（向量与质心重合，或 tile 尾部 0 填充）时避免 0/0 得到 NaN、正数/0 得到 Inf。
+        // 分母抬到 1e-12 后，分子同为 0 则因子为 0；正常残差大于该值，结果不变。L2 与 IP 共用这次除法。
+        constexpr float kResidualL1Eps = 1e-12f;
         float32_t para_dim = 2 * sqrt((float)this->dimLength);
+        Maxs(indexSubCenterLocal, indexSubCenterLocal, kResidualL1Eps, copyLength);
+        PipeBarrier<PIPE_V>();
         Div(l1ResultLocal, l2ResultLocal, indexSubCenterLocal, copyLength);
         PipeBarrier<PIPE_V>();
         Muls(l1ResultLocal, l1ResultLocal, para_dim, copyLength);

@@ -18,6 +18,10 @@
 
 #include "AscendIndexIVFRaBitQ.h"
 
+#include <faiss/IndexIVF.h>
+
+#include <limits>
+
 #include "ascend/impl/AscendIndexIVFRaBitQImpl.h"
 
 namespace faiss
@@ -76,6 +80,31 @@ std::vector<idx_t> AscendIndexIVFRaBitQ::update(idx_t n, const float* x, const i
 {
     FAISS_THROW_IF_NOT_MSG(impl_ != nullptr, "impl_ is nullptr!");
     return impl_->update(n, x, ids);
+}
+
+// NOLINTNEXTLINE(google-default-arguments) -- match FAISS Index::search
+void AscendIndexIVFRaBitQ::search(idx_t n, const float* x, idx_t k, float* distances, idx_t* labels,
+                                  const SearchParameters* params) const
+{
+    FAISS_THROW_IF_NOT_MSG(impl_ != nullptr, "impl_ is nullptr!");
+    const IDSelector* sel = (params != nullptr) ? params->sel : nullptr;
+    int searchNprobe = 0;
+    if (const auto* ivfParams = dynamic_cast<const SearchParametersIVF*>(params))
+    {
+        FAISS_THROW_IF_NOT_MSG(ivfParams->nprobe > 0, "SearchParametersIVF.nprobe must be greater than 0");
+        FAISS_THROW_IF_NOT_MSG(ivfParams->nprobe <= static_cast<size_t>(std::numeric_limits<int>::max()),
+                               "SearchParametersIVF.nprobe exceeds int range");
+        FAISS_THROW_IF_NOT_MSG(ivfParams->nprobe <= static_cast<size_t>(getNumLists()),
+                               "SearchParametersIVF.nprobe must be <= nlist");
+        searchNprobe = static_cast<int>(ivfParams->nprobe);
+    }
+    impl_->searchWithSelector(n, x, k, distances, labels, sel, searchNprobe);
+}
+
+void AscendIndexIVFRaBitQ::invalidateFilterCache() const
+{
+    FAISS_THROW_IF_NOT_MSG(impl_ != nullptr, "impl_ is nullptr!");
+    impl_->invalidateFilterCache();
 }
 }  // namespace ascend
 }  // namespace faiss
