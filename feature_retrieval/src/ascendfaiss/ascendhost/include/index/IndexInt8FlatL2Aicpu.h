@@ -16,17 +16,17 @@
  * -------------------------------------------------------------------------
  */
 
-
 #ifndef ASCENDHOST_INDEXINT8FLAT_L2_AICPU_INCLUDED
 #define ASCENDHOST_INDEXINT8FLAT_L2_AICPU_INCLUDED
-
 
 #include "ascenddaemon/impl/IndexInt8Flat.h"
 #include "ascenddaemon/utils/AscendTensor.h"
 
-namespace ascend {
-class IndexInt8FlatL2Aicpu : public IndexInt8Flat<int32_t> {
-public:
+namespace ascend
+{
+class IndexInt8FlatL2Aicpu : public IndexInt8Flat<int32_t>
+{
+   public:
     IndexInt8FlatL2Aicpu(int dim, int64_t resourceSize = -1, int blockSize = FLAT_DEFAULT_DIST_COMPUTE_BATCH);
 
     ~IndexInt8FlatL2Aicpu();
@@ -35,16 +35,15 @@ public:
 
     APP_ERROR addVectors(AscendTensor<int8_t, DIMS_2> &rawData) override;
 
-protected:
-    void runDistCompute(int batch,
-                        const std::vector<const AscendTensorBase *> &input,
-                        const std::vector<const AscendTensorBase *> &output,
-                        aclrtStream stream, uint32_t actualNum = 0) const override;
+   protected:
+    void runDistCompute(int batch, const std::vector<const AscendTensorBase *> &input,
+                        const std::vector<const AscendTensorBase *> &output, aclrtStream stream,
+                        uint32_t actualNum) const override;
 
     APP_ERROR resetDistCompOp(int codeNum);
 
     void initSearchResult(int indexesSize, int n, int k, float16_t *distances, idx_t *labels) override;
 };
-} // namespace ascend
+}  // namespace ascend
 
 #endif

@@ -19,6 +19,11 @@
 #include "index/IndexInt8FlatCosAicpu.h"
 
 #include <algorithm>
+#include <chrono>
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
+#include <vector>
 
 #include "ascenddaemon/utils/AscendTensor.h"
 #include "ascenddaemon/utils/Limits.h"
@@ -46,7 +51,8 @@ IndexInt8FlatCosAicpu::IndexInt8FlatCosAicpu(int dim, int64_t resourceSize, int 
     // TIK算子做了大batch优化（AscendC也做了但是方案不一样，因此支持的大batch也不同），
     // 但是batch224场景经计算分析最大会占用2G的共享内存，如果共享内存过小反而会因为申请了
     // 非共享内存而导致性能下降，因此要限制下共享内存大小来决定是否开启大batch性能优化
-    if (!faiss::ascend::SocUtils::GetInstance().IsAscend910B() && resourceSize >= BIG_BATCH_MEM_SIZE_THRESHOLD)
+    if (!faiss::ascend::SocUtils::GetInstance().IsAscend910B() &&
+        !faiss::ascend::SocUtils::GetInstance().IsAscendA5() && resourceSize >= BIG_BATCH_MEM_SIZE_THRESHOLD)
     {
         this->searchBatchSizes = {224, 192, 128, 112, 96, 64, 48, 36, 32, 24, 18, 16, 12, 8, 6, 4, 2, 1};
     }
@@ -88,6 +94,7 @@ APP_ERROR IndexInt8FlatCosAicpu::calL2norm(int num, AscendTensor<int8_t, DIMS_2>
     }
     auto ret = synchronizeStream(stream);
     APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "synchronizeStream failed: %i\n", ret);
+
     return APP_ERR_OK;
 }
 
@@ -249,7 +256,7 @@ APP_ERROR IndexInt8FlatCosAicpu::searchInGroup(size_t grpId, const HeteroBlockGr
             input.push_back(&topKThreshold);
         }
         std::vector<const AscendTensorBase *> output{&dist, &minDist, &flag};
-        runDistCompute(nq, input, output, stream);
+        runDistCompute(nq, input, output, stream, 0);
 
         if ((grp.groupType == HeteroBlockGroupType::BGT_PURE_HOST && (i + 1) % DFT_MAX_HOST_BLOCK_COUNT == 0) ||
             (i + 1 == blockNum))
@@ -461,8 +468,10 @@ APP_ERROR IndexInt8FlatCosAicpu::searchPaged(int pageId, AscendTensor<int8_t, DI
 
     AscendTensor<float16_t, DIMS_3, size_t> distResult(mem, {(size_t)blockNum, (size_t)nq, (size_t)codeBlockSize},
                                                        stream);
+
     AscendTensor<float16_t, DIMS_3, size_t> minDistResult(
         mem, {(size_t)blockNum, (size_t)nq, (size_t)this->burstsOfBlock}, stream);
+
     AscendTensor<uint32_t, DIMS_3> opSize(mem, {blockNum, CORE_NUM, SIZE_ALIGN}, stream);
     AscendTensor<uint16_t, DIMS_3> opFlag(mem, {blockNum, flagNum, FLAG_SIZE}, stream);
     opFlag.zero();
@@ -532,7 +541,7 @@ APP_ERROR IndexInt8FlatCosAicpu::searchPaged(int pageId, AscendTensor<int8_t, DI
             input.push_back(&topKThreshold);
         }
         std::vector<const AscendTensorBase *> output{&dist, &minDist, &flag};
-        runDistCompute(nq, input, output, stream);
+        runDistCompute(nq, input, output, stream, 0);
         deviceMemMng.PushDataAfterSearch(baseShaped, blockOffset, i, blockNum, stream);
     }
 
@@ -542,7 +551,6 @@ APP_ERROR IndexInt8FlatCosAicpu::searchPaged(int pageId, AscendTensor<int8_t, DI
     ret = synchronizeStream(streamAicpu);
     APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "synchronizeStream aicpu stream failed: %i\n",
                              ret);
-
     return APP_ERR_OK;
 }
 
@@ -550,7 +558,11 @@ APP_ERROR IndexInt8FlatCosAicpu::resetDistCompOp(int codeNum) const
 {
     std::string opTypeName =
         deviceMemMng.GetStrategy() == DevMemStrategy::HETERO_MEM ? "DistanceInt8CosMaxsFilter" : "DistanceInt8CosMaxs";
-    if (faiss::ascend::SocUtils::GetInstance().IsAscend910B())
+    if (faiss::ascend::SocUtils::GetInstance().IsAscendA5())
+    {
+        opTypeName = "AscendcDistInt8FlatCosWith950";
+    }
+    else if (faiss::ascend::SocUtils::GetInstance().IsAscend910B())
     {
         opTypeName = "AscendcDistInt8FlatCos";
     }

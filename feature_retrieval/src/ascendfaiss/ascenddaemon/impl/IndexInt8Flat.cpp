@@ -24,6 +24,7 @@
 
 #include "ascenddaemon/impl/AuxIndexStructures.h"
 #include "ascenddaemon/utils/AscendTensor.h"
+#include "ascenddaemon/utils/AscendUtils.h"
 #include "ascenddaemon/utils/DeviceVector.h"
 #include "ascenddaemon/utils/Limits.h"
 #include "ascenddaemon/utils/StaticUtils.h"
@@ -41,6 +42,7 @@ const int THREADS_CNT = faiss::ascend::SocUtils::GetInstance().GetThreadsCnt();
 const int BURST_LEN = 64;
 const int L2NORM_COMPUTE_BATCH = 16384;  // each blocksize = 16384 * 16
 const int PAGE_BLOCKS = 32;
+
 }  // namespace
 
 // 正常来说全局算子资源应该调用resetOp、runOp接口来使用，从而保证线程安全；
@@ -160,6 +162,10 @@ IndexInt8Flat<P>::IndexInt8Flat(int dim, MetricType metric, int64_t resourceSize
     {
         searchBatchSizes = {128, 112, 96, 80, 64, 48, 36, 32, 24, 18, 16, 12, 8, 6, 4, 2, 1};
     }
+    else if (faiss::ascend::SocUtils::GetInstance().IsAscendA5() && (metric == METRIC_INNER_PRODUCT))
+    {
+        searchBatchSizes = {128, 112, 96, 80, 64, 48, 36, 32, 24, 18, 16, 12, 8, 6, 4, 2, 1};
+    }
     else
     {
         searchBatchSizes = {64, 48, 36, 32, 24, 18, 16, 12, 8, 6, 4, 2, 1};
@@ -178,8 +184,13 @@ IndexInt8Flat<P>::IndexInt8Flat(int dim, MetricType metric, int64_t resourceSize
     burstsOfBlock = (this->codeBlockSize + BURST_LEN - 1) / BURST_LEN * 2;
 
     this->int8L2Norm = CREATE_UNIQUE_PTR(Int8L2Norm, dim);  // int8L2Norm is inited by child class
-    flagNum = faiss::ascend::SocUtils::GetInstance().IsAscend910B() ? CORE_NUM : FLAG_NUM;
-    isNeedCleanMinDist = faiss::ascend::SocUtils::GetInstance().IsAscend910B();
+    flagNum = FLAG_NUM;
+    isNeedCleanMinDist = false;
+    if (faiss::ascend::SocUtils::GetInstance().IsAscendA5() || faiss::ascend::SocUtils::GetInstance().IsAscend910B())
+    {
+        flagNum = CORE_NUM;
+        isNeedCleanMinDist = true;
+    }
 }
 
 template <typename P>
@@ -632,10 +643,6 @@ APP_ERROR IndexInt8Flat<P>::searchPaged(int pageId, AscendTensor<int8_t, DIMS_2>
     int64_t *attrMem = reinterpret_cast<int64_t *>(continuousMem.data() + opFlagSize);
     AscendTensor<int64_t, DIMS_1> attrsInput(attrMem, {aicpu::TOPK_FLAT_ATTR_IDX_COUNT});
 
-    // 1. run the topk operator to wait for distance result and compute topk
-    runTopkCompute(distResult, minDistResult, opSize, opFlag, attrsInput, minDistances, minIndices, streamAicpu);
-
-    // 2. run the disance operator to compute the distance
     uint32_t idxMaskLen = static_cast<uint32_t>(utils::divUp(this->ntotal, BINARY_BYTE_SIZE));
     // opSize Host to Device,reduce communication
     std::vector<uint32_t> opSizeHost(blockNum * CORE_NUM * SIZE_ALIGN);
@@ -657,6 +664,10 @@ APP_ERROR IndexInt8Flat<P>::searchPaged(int pageId, AscendTensor<int8_t, DIMS_2>
                       ACL_MEMCPY_HOST_TO_DEVICE);
     APPERR_RETURN_IF_NOT_LOG(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "Failed to copy op size to device");
 
+    // 2. 下发 topk 到 AICPU stream
+    runTopkCompute(distResult, minDistResult, opSize, opFlag, attrsInput, minDistances, minIndices, streamAicpu);
+
+    // 3. run the disance operator to compute the distance
     opSizeHostIdx = 0;
     const int dim1 = utils::divUp(this->codeBlockSize, CUBE_ALIGN);
     const int dim2 = utils::divUp(this->dims, CUBE_ALIGN_INT8);

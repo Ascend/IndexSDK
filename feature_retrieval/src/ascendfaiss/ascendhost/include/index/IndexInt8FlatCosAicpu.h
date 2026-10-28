@@ -40,7 +40,7 @@ class IndexInt8FlatCosAicpu : public IndexInt8Flat<float16_t>
     APP_ERROR resetDistCompOp(int codeNum) const;
     void runDistCompute(int batch, const std::vector<const AscendTensorBase *> &input,
                         const std::vector<const AscendTensorBase *> &output, aclrtStream stream,
-                        uint32_t actualNum = 0) const override;
+                        uint32_t actualNum) const override;
     APP_ERROR calL2norm(int num, AscendTensor<int8_t, DIMS_2> &rawTensor, AscendTensor<float16_t, 1> &precompData);
     APP_ERROR copyNormByIndice(int64_t startIndice, int64_t length, int64_t normOffset,
                                AscendTensor<float16_t, DIMS_1> &precompData);

@@ -16,38 +16,37 @@
  * -------------------------------------------------------------------------
  */
 
-
 #ifndef ASCEND_INT8_L2_NORM_INCLUDED
 #define ASCEND_INT8_L2_NORM_INCLUDED
 
-#include <map>
-#include <vector>
-#include <memory>
-#include <cstdint>
 #include <cstddef>
+#include <cstdint>
+#include <map>
+#include <memory>
+#include <vector>
 
-#include "ascenddaemon/utils/AscendTensor.h"
 #include "ascenddaemon/utils/AscendOperator.h"
+#include "ascenddaemon/utils/AscendTensor.h"
 #include "common/AscendFp16.h"
 #include "common/ErrorCode.h"
 
-namespace ascend {
+namespace ascend
+{
 struct IDSelector;
 
-class Int8L2Norm {
-public:
+class Int8L2Norm
+{
+   public:
     explicit Int8L2Norm(int d = 0);
 
     ~Int8L2Norm();
 
     APP_ERROR init();
 
-    void dispatchL2NormTask(AscendTensor<int8_t, DIMS_2> &codesData,
-                            AscendTensor<float16_t, DIMS_1> &normData,
-                            AscendTensor<uint32_t, DIMS_2> &actualNum,
-                            aclrtStream stream);
+    void dispatchL2NormTask(AscendTensor<int8_t, DIMS_2> &codesData, AscendTensor<float16_t, DIMS_1> &normData,
+                            AscendTensor<uint32_t, DIMS_2> &actualNum, aclrtStream stream);
 
-protected:
+   protected:
     // vector dimension
     int dims;
 
@@ -55,14 +54,15 @@ protected:
 
     AscendTensor<float16_t, DIMS_2> transfer;
 
-private:
+   private:
     APP_ERROR resetL2NormOperator();
 
-    void runL2NormOperator(AscendTensor<int8_t, DIMS_2> &vectors,
-                           AscendTensor<float16_t, DIMS_2> &transfer,
-                           AscendTensor<uint32_t, DIMS_1> &actualNum,
-                           AscendTensor<float16_t, DIMS_1> &result,
+    void runL2NormOperator(AscendTensor<int8_t, DIMS_2> &vectors, AscendTensor<float16_t, DIMS_2> &transfer,
+                           AscendTensor<uint32_t, DIMS_1> &actualNum, AscendTensor<float16_t, DIMS_1> &result,
                            aclrtStream stream);
+
+    // 首帧 warm-up：进程内首次 dispatch 时首个批次额外跑一遍，规避 950 冷启动首帧 NaN，仅生效一次。
+    bool warmedUp_{false};
 };
 }  // namespace ascend
 
