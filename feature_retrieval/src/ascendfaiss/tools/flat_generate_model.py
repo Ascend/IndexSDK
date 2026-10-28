@@ -532,6 +532,55 @@ def generate_soc_ilflat_json(map_args, args, zregion_height, config_path, soc_ve
     map_args.append((op_name_, soc_version))
 
 
+def generate_950_flat_ip_json(core_num, search_page_sizes, dim, zregion_height, file_path):
+    # write dist_compute_flat_mins json
+    dist_flat_ip_obj = []
+    for query_num in search_page_sizes:
+        burst_len = 64
+        obj = {
+            "op": "DistanceFlatIPWith950",
+            "input_desc": [
+                {FORMAT: ND, SHAPE: [query_num, dim], TYPE: "float16"},
+                {FORMAT: ND, SHAPE: [query_num, (_CODE_NUM + 7) // 8], TYPE: "uint8"},
+                {FORMAT: ND, SHAPE: [_CODE_NUM // zregion_height, dim // 16, zregion_height, 16], TYPE: "float16"},
+                {FORMAT: ND, SHAPE: [core_num, 8], TYPE: "uint32"},
+            ],
+            "output_desc": [
+                {FORMAT: ND, SHAPE: [query_num, _CODE_NUM], TYPE: "float16"},
+                {FORMAT: ND, SHAPE: [query_num, (_CODE_NUM + burst_len - 1) // burst_len * 2], TYPE: "float16"},
+                {FORMAT: ND, SHAPE: [core_num, 16], TYPE: "uint16"},
+            ],
+        }
+        dist_flat_ip_obj.append(obj)
+
+    utils.generate_op_config(dist_flat_ip_obj, file_path)
+
+
+def generate_950_flat_l2_json(core_num, search_page_sizes, dim, zregion_height, file_path):
+    # write dist_compute_flat_mins json
+    dist_flat_l2_obj = []
+    for query_num in search_page_sizes:
+        burst_len = 64
+        obj = {
+            "op": "DistanceFlatL2With950",
+            "input_desc": [
+                {FORMAT: ND, SHAPE: [query_num, dim], TYPE: "float16"},
+                {FORMAT: "ND", SHAPE: [query_num, (_CODE_NUM + 7) // 8], TYPE: "uint8"},
+                {FORMAT: ND, SHAPE: [_CODE_NUM // zregion_height, dim // 16, zregion_height, 16], TYPE: "float16"},
+                {FORMAT: ND, SHAPE: [_CODE_NUM], TYPE: "float16"},
+                {FORMAT: ND, SHAPE: [core_num, 8], TYPE: "uint32"},
+            ],
+            "output_desc": [
+                {FORMAT: ND, SHAPE: [query_num, _CODE_NUM], TYPE: "float16"},
+                {FORMAT: ND, SHAPE: [query_num, (_CODE_NUM + burst_len - 1) // burst_len * 2], TYPE: "float16"},
+                {FORMAT: ND, SHAPE: [core_num, 16], TYPE: "uint16"},
+            ],
+        }
+        dist_flat_l2_obj.append(obj)
+
+    utils.generate_op_config(dist_flat_l2_obj, file_path)
+
+
 def generate_910b_flat_ip_json(core_num, search_page_sizes, dim, zregion_height, file_path):
     # write dist_compute_flat_mins json
     dist_flat_ip_obj = []
@@ -607,7 +656,34 @@ def generate_ascendc_distance_flat_ip_maxs_with_mask_json(
     utils.generate_op_config(dist_flat_ip_obj, file_path)
 
 
-def generate_ascendc_flat_offline_model(map_args, args, zregion_height, config_path, soc_version, include_l2):
+def generate_950_flat_offline_model(map_args, args, zregion_height, config_path, soc_version):
+    process_id = args.process_id
+    dim = args.dim
+    core_num = utils.get_core_num_by_npu_type(args.core_num, args.npu_type)
+    flat_ip_op_name = "distance_flat_ip_op_pid{}"
+
+    search_page_sizes = (128, 64, 48, 36, 32, 30, 24, 18, 16, 12, 8, 6, 4, 2, 1)
+    op_name_ = flat_ip_op_name.format(process_id)
+    file_path_ = os.path.join(config_path, '{}.json'.format(op_name_))
+    generate_950_flat_ip_json(core_num, search_page_sizes, dim, zregion_height, file_path_)
+    map_args.append((op_name_, soc_version))
+
+    flat_l2_op_name = "distance_flat_l2_op_pid{}"
+    search_page_sizes = (128, 96, 80, 64, 48, 36, 32, 30, 24, 18, 16, 12, 8, 6, 4, 2, 1)
+    op_name_ = flat_l2_op_name.format(process_id)
+    file_path_ = os.path.join(config_path, '{}.json'.format(op_name_))
+    generate_950_flat_l2_json(core_num, search_page_sizes, dim, zregion_height, file_path_)
+    map_args.append((op_name_, soc_version))
+    flat_ip_op_name = "ascendc_distance_flat_ip_maxs_with_mask_op_pid{}"
+
+    search_page_sizes = (128, 64, 48, 36, 32, 30, 24, 18, 16, 12, 8, 6, 4, 2, 1)
+    op_name_ = flat_ip_op_name.format(process_id)
+    file_path_ = os.path.join(config_path, '{}.json'.format(op_name_))
+    generate_ascendc_distance_flat_ip_maxs_with_mask_json(core_num, search_page_sizes, dim, zregion_height, file_path_)
+    map_args.append((op_name_, soc_version))
+
+
+def generate_ascendc_flat_offline_model(map_args, args, zregion_height, config_path, soc_version):
     process_id = args.process_id
     dim = args.dim
     core_num = utils.get_core_num_by_npu_type(args.core_num, args.npu_type)
@@ -618,14 +694,6 @@ def generate_ascendc_flat_offline_model(map_args, args, zregion_height, config_p
     file_path_ = os.path.join(config_path, '{}.json'.format(op_name_))
     generate_910b_flat_ip_json(core_num, search_page_sizes, dim, zregion_height, file_path_)
     map_args.append((op_name_, soc_version))
-
-    if include_l2:
-        flat_l2_op_name = "distance_flat_l2_op_pid{}"
-        search_page_sizes = (96, 80, 64, 48, 36, 32, 30, 24, 18, 16, 12, 8, 6, 4, 2, 1)
-        op_name_ = flat_l2_op_name.format(process_id)
-        file_path_ = os.path.join(config_path, '{}.json'.format(op_name_))
-        generate_910b_flat_l2_json(core_num, search_page_sizes, dim, zregion_height, file_path_)
-        map_args.append((op_name_, soc_version))
 
     flat_ip_op_name = "ascendc_distance_flat_ip_maxs_with_mask_op_pid{}"
 
@@ -655,11 +723,11 @@ def generate_flat_offline_model():
     if args.npu_type.find('910') != -1:
         valid_dim = _ASCENDC_DIM_LIST
         utils.check_param_range(dim, valid_dim, "dim")
-        generate_ascendc_flat_offline_model(map_args, args, _Z_DEFAULT, config_path, soc_version, include_l2=True)
+        generate_ascendc_flat_offline_model(map_args, args, _Z_DEFAULT, config_path, soc_version)
     elif args.npu_type == "Ascend950PR":
         valid_dim = _ASCENDC_DIM_LIST
         utils.check_param_range(dim, valid_dim, "dim")
-        generate_ascendc_flat_offline_model(map_args, args, _Z_DEFAULT, config_path, soc_version, include_l2=False)
+        generate_950_flat_offline_model(map_args, args, _Z_DEFAULT, config_path, soc_version)
     else:
         if dim in _DIM_LIST:
             # generate normal operators of zregion_height 16
