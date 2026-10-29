@@ -1,11 +1,6 @@
 name: PR-pipeline_IndexSDK
 
 on:
-  pull_request_target:
-    branches: [ 'master', 'release_v26.2.0', 'branch_v26.1.0', 'branch_v26.0.0' ]
-    types:
-      - open
-      - update
   pr_comment:
     types: [created]
     keyword: '^compile$'
@@ -27,6 +22,13 @@ permissions:
   pr: write
   note: write
 
+concurrency:
+  enable: true
+  max: 5
+  exceed-action: QUEUE
+  preemption:
+    enable: true
+
 stages:
   stage_0:
     name: CodeCheck
@@ -43,7 +45,7 @@ stages:
           - name: checkout
             uses: checkout
             with:
-              ref: refs/merge-requests/${{ env.pr_id }}/merge
+              ref: refs/merge-requests/${{ env.PR_ID }}/merge
               fetch-depth: 0
               allow-unsafe-pr-checkout: true
           - name: Only_doc_commit
@@ -53,7 +55,7 @@ stages:
               event-name: 'pull_request'
               base: ${{ atomgit.event.pull_request.base.ref }}
               repo: ${{ atomgit.repository }}
-              number: ${{ env.pr_id }}
+              number: ${{ env.PR_ID }}
               token: ${{ secrets.GIT_TOKEN }}
               list-files: json
               predicate-quantifier: every
@@ -230,7 +232,7 @@ stages:
     jobs:
       PreSmoke:
         name: PreSmoke
-        if : ${{ jobs.Detect_file_changes.outputs.need_build == 'yes' }}
+        if: ${{ jobs.Detect_file_changes.outputs.need_build == 'yes' }}
         uses: .gitcode/workflows/.presmoke.yml
         with:
           IMAGE_FLAG: "swr.cn-north-4.myhuaweicloud.com/ascend-mindx/mindx_arm:indexsdk_official_cann900_20260903"
