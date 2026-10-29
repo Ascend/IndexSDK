@@ -25,8 +25,12 @@ It supports concurrent multithreaded calls. You need to set the `MX_INDEX_MULTIT
 <tr><td width="210" align="center" valign="middle">Input</td><td valign="middle"><code>int dims:</code> Dimension of the feature vectors managed by <code>AscendIndexIVFSQ</code>.<br><code>int nlist:</code> Number of cluster centroids. This parameter corresponds to <code>coarse_centroid_num</code> in the operator generation script.<br><code>faiss::ScalarQuantizer::QuantizerType qtype:</code> Quantizer type of <code>AscendIndexIVFSQ</code>.<br><code>faiss::MetricType metric:</code> Distance metric used by <code>AscendIndex</code> for feature vector similarity search.<br><code>bool encodeResidual:</code> Whether to encode residuals.<br><code>AscendIndexIVFSQConfig config:</code> Device-side resource configuration.</td></tr>
 <tr><td width="210" align="center" valign="middle">Output</td><td valign="middle">None</td></tr>
 <tr><td width="210" align="center" valign="middle">Returns</td><td valign="middle">None</td></tr>
-<tr><td width="210" align="center" valign="middle">Constraints</td><td valign="middle"><code>dims</code> ∈ {64, 128, 256, 384, 512}. <code>nlist</code> ∈ {1024, 2048, 4096, 8192, 16384, 32768}. <code>qtype = ScalarQuantizer::QuantizerType::QT_8bit</code>, and only <code>ScalarQuantizer::QuantizerType::QT_8bit</code> is supported. <code>metric</code> ∈ {<code>faiss::MetricType::METRIC_L2</code>, <code>faiss::MetricType::METRIC_INNER_PRODUCT</code>}.<br>Note:<br>Currently, when <code>metric = faiss::MetricType::METRIC_INNER_PRODUCT</code>, <code>encodeResidual</code> only supports <code>false</code>. That is, the IVFSQ method with residual encoding is not currently supported. When <code>encodeResidual</code> is <code>true</code>, the code can run successfully, but there is an accuracy issue.</td></tr>
+<tr><td width="210" align="center" valign="middle">Constraints</td><td valign="middle"><code>dims</code> ∈ {64, 128, 256, 384, 512}. <code>nlist</code> ∈ {1024, 2048, 4096, 8192, 16384, 32768}. <code>qtype = ScalarQuantizer::QuantizerType::QT_8bit</code>, and only <code>ScalarQuantizer::QuantizerType::QT_8bit</code> is supported. <code>metric</code> ∈ {<code>faiss::MetricType::METRIC_L2</code>, <code>faiss::MetricType::METRIC_INNER_PRODUCT</code>}.</td></tr>
 </tbody></table>
+
+> [!NOTE]
+>
+> - Currently, when <code>metric = faiss::MetricType::METRIC_INNER_PRODUCT</code>, <code>encodeResidual</code> only supports <code>false</code>. That is, the IVFSQ method with residual encoding is not currently supported. When <code>encodeResidual</code> is <code>true</code>, the code can run successfully, but there is an accuracy issue.
 
 <a name="table134501935171012"></a>
 

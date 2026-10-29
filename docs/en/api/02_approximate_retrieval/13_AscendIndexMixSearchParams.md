@@ -15,7 +15,7 @@ It does not support multithreaded concurrent calls. Therefore, in multithreaded 
 <tr><td width="210" align="center" valign="middle">Description</td><td valign="middle">Initialization parameter structure for KMode mode.</td></tr>
 <tr><td width="210" align="center" valign="middle"><code>Input</code></td><td valign="middle">None</td></tr>
 <tr><td width="210" align="center" valign="middle">Output</td><td valign="middle">None</td></tr>
-<tr><td width="210" align="center" valign="middle">Constraints</td><td valign="middle">See <code>AscendIndexGreatInitParams</code> for default parameter values.</td></tr>
+<tr><td width="210" align="center" valign="middle">Constraints</td><td valign="middle">See <a href="#table10419189143817"><code>AscendIndexGreatInitParams</code></a> for default parameter values.</td></tr>
 </tbody></table>
 
 <a id="table10419189143817"></a>
@@ -37,7 +37,7 @@ It does not support multithreaded concurrent calls. Therefore, in multithreaded 
 <tr><td width="210" align="center" valign="middle">Description</td><td valign="middle">Initialization parameter structure for Vstar mode.</td></tr>
 <tr><td width="210" align="center" valign="middle"><code>Input</code></td><td valign="middle">None</td></tr>
 <tr><td width="210" align="center" valign="middle">Output</td><td valign="middle">None</td></tr>
-<tr><td width="210" align="center" valign="middle">Constraints</td><td valign="middle">See <code>AscendIndexVstarHyperParams</code> for default parameter values.</td></tr>
+<tr><td width="210" align="center" valign="middle">Constraints</td><td valign="middle">See <a href="#table42921559204019"><code>AscendIndexVstarHyperParams</code></a> for default parameter values.</td></tr>
 </tbody></table>
 
 <a id="table899624214019"></a>
@@ -59,7 +59,7 @@ It does not support multithreaded concurrent calls. Therefore, in multithreaded 
 <tr><td width="210" align="center" valign="middle">Description</td><td valign="middle">Hyperparameter structure for VSTAR mode.</td></tr>
 <tr><td width="210" align="center" valign="middle"><code>Input</code></td><td valign="middle">None</td></tr>
 <tr><td width="210" align="center" valign="middle">Output</td><td valign="middle">None</td></tr>
-<tr><td width="210" align="center" valign="middle">Constraints</td><td valign="middle">See <code>AscendIndexVstarHyperParams</code> for default parameter values.</td></tr>
+<tr><td width="210" align="center" valign="middle">Constraints</td><td valign="middle">See <a href="#table42921559204019"><code>AscendIndexVstarHyperParams</code></a> for default parameter values.</td></tr>
 </tbody></table>
 
 <a id="table42921559204019"></a>
@@ -81,7 +81,7 @@ It does not support multithreaded concurrent calls. Therefore, in multithreaded 
 <tr><td width="210" align="center" valign="middle">Description</td><td valign="middle">Hyperparameter structure for GREAT retrieval.</td></tr>
 <tr><td width="210" align="center" valign="middle"><code>Input</code></td><td valign="middle">None</td></tr>
 <tr><td width="210" align="center" valign="middle">Output</td><td valign="middle">None</td></tr>
-<tr><td width="210" align="center" valign="middle">Constraints</td><td valign="middle">See <code>AscendIndexHyperParams</code> for default parameter values.</td></tr>
+<tr><td width="210" align="center" valign="middle">Constraints</td><td valign="middle">See <a href="#table1334182412417"><code>AscendIndexHyperParams</code></a> for default parameter values.</td></tr>
 </tbody></table>
 
 <a id="table1334182412417"></a>
@@ -89,7 +89,7 @@ It does not support multithreaded concurrent calls. Therefore, in multithreaded 
 <table><tbody>
 <tr><td width="210" align="center" valign="middle">API Definition</td><td valign="middle"><strong><code>AscendIndexHyperParams(const std::string&amp; mode, const AscendIndexVstarHyperParams&amp; vstarHyperParam, int expandingFactor);</code></strong></td></tr>
 <tr><td width="210" align="center" valign="middle">Description</td><td valign="middle">Hyperparameter structure for GREAT retrieval.</td></tr>
-<tr><td width="210" align="center" valign="middle"><code>Input</code></td><td valign="middle"><code>const std::string&amp; mode</code>: Specifies the algorithm mode.<br><code>const AscendIndexVstarHyperParams&amp; vstarHyperParam</code>: For details, see <code>AscendIndexVstarHyperParams</code>.<br><code>int expandingFactor</code>: Number of neighbors searched at each layer during retrieval. Note that this differs from the <code>expandingFactor</code> used during graph construction.</td></tr>
+<tr><td width="210" align="center" valign="middle"><code>Input</code></td><td valign="middle"><code>const std::string&amp; mode</code>: Specifies the algorithm mode.<br><code>const AscendIndexVstarHyperParams&amp; vstarHyperParam</code>: For details, see <a href="#table42921559204019"><code>AscendIndexVstarHyperParams</code></a>.<br><code>int expandingFactor</code>: Number of neighbors searched at each layer during retrieval. Note that this differs from the <code>expandingFactor</code> used during graph construction.</td></tr>
 <tr><td width="210" align="center" valign="middle">Output</td><td valign="middle">None</td></tr>
 <tr><td width="210" align="center" valign="middle">Constraints</td><td valign="middle"><code>mode</code> ∈ {&quot;KMode&quot;, &quot;AKMode&quot;}. Default value: <code>AKMode</code>. <code>expandingFactor</code> ∈ [10, 200]. Default value: 150.</td></tr>
 </tbody></table>

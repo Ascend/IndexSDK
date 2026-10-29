@@ -13,6 +13,7 @@
 
 <span style="font-size:14px;">
 
+🔹 **[2026.09.30]**: 🚀 [Index SDK 26.2.0 has been released](https://gitcode.com/Ascend/IndexSDK/releases/v26.2.0)<br>
 🔹 **[2026.07.31]**: 🚀 [Index SDK 26.1.0 has been released](https://gitcode.com/Ascend/IndexSDK/releases/v26.1.0)<br>
 🔹 **[2026.04.25]**: 🚀 [Index SDK 26.0.0 has been released](https://gitcode.com/Ascend/IndexSDK/releases/v26.0.0)<br>
 🔹 **[2025.12.30]**: 🚀 Index SDK was released as open source.
@@ -34,14 +35,33 @@ Index SDK is a heterogeneous retrieval acceleration framework for Ascend NPUs de
 | [Attribute-Filtered Search](./docs/en/05_user_guide.md#attribute-filter-search) | Supports retrieval from spatiotemporal databases and uses attribute filters to filter the underlying database, improving retrieval accuracy. | [Link](./docs/en/api/03_attribute_filtering-based_retrieval/01_AscendIndexTS.md#ascendindexts) |
 | [Batch Search](./docs/en/05_user_guide.md#multi-index-batch-search) | Supports simultaneous search across multiple indexes and combines the returned TopK results. | [Link](./docs/en/api/04_multi-index_batch_retrieval/01_multi-index_batch_retrieval.md#multi-index-batch-retrieval) |
 | [Other Functions](./docs/en/05_user_guide.md#other-functions) | Provides functions such as creating dimensionality reduction objects and copying index data between NPUs and CPUs. | [Link](./docs/en/api/05_more_functions/01_IReduction.md#ireduction) |
+| [Unused APIs](./docs/en/api/06_unused_apis/01_unused_apis.md#unused-apis) | Lists the APIs currently reserved for internal use that will be deprecated and are not recommended for users. | [Link](./docs/en/api/06_unused_apis/01_unused_apis.md) |
+| [API Call Return Code Reference](./docs/en/api/07_return_code_reference/01_return_code_reference.md#api-call-return-code-reference) | Provides return codes for device-side API calls and their meanings to help locate ACL, parameter, index initialization, and timeout errors. | [Link](./docs/en/api/07_return_code_reference/01_return_code_reference.md) |
 
 ## 🚀 Quick Start
 
-Index SDK provides a simple example to help users quickly experience the Index SDK retrieval workflow. For details, see [Quick Start](./docs/en/03_quick_start.md).
+Index SDK provides a simple example to help you quickly experience the Index SDK retrieval workflow. For details, see [Quick Start](./docs/en/03_quick_start.md).
 
-## 📦 Installation and Deployment
+## 📦 Installation Guide
 
-Index SDK supports offline installation, image installation, and source installation. For details, see the [Installation and Deployment](./docs/en/04_installation_guide.md).
+Index SDK supports offline installation, image installation, and source installation. For details, see the [Installation Guide](./docs/en/04_installation_guide.md).
+
+## 📘 User Guide
+
+Index SDK is a heterogeneous retrieval acceleration framework for Ascend NPUs developed based on Faiss. It is intended for large-scale data retrieval in high-dimensional spaces and helps you quickly build high-performance retrieval systems. For details, see the [User Guide](./docs/en/05_user_guide.md).
+
+## 🗺️ Roadmap
+
+[Roadmap (2026Q3)](https://gitcode.com/Ascend/IndexSDK/issues/126)
+
+## 🔀 Version Maintenance Strategy
+
+| Version | Maintenance Strategy | Current Status | Release Date | Next Status | EOL Date |
+| --- | --- | --- | --- | --- | --- |
+| master | Long-term support | Development | Under active development and not yet released | Continuous development | - |
+| v26.2.0 | Regular branch | Maintenance | 2026-09-30 | Expected to enter no-maintenance status on March 31, 2027. | 2027-03-31 |
+| v26.1.0 | Regular branch | Maintenance | 2026-07-31 | Expected to enter no-maintenance status on January 31, 2027. | 2027-01-31 |
+| v26.0.0 | Regular branch | Maintenance | 2026-04-25 | Expected to enter no-maintenance status on October 25, 2026. | 2026-10-25 |
 
 ## 🛠️ Contribution Guide
 
@@ -49,13 +69,11 @@ Everyone is welcome to contribute to the project. For the contribution process a
 
 ## ⚖️ References
 
-🔹 [User Guide](./docs/en/05_user_guide.md)<br>
 🔹 [Release Notes](./docs/en/release_notes_index.md)<br>
 🔹 [License Statement](LICENSE.md)<br>
 🔹 [Documentation License](./docs/LICENSE)<br>
 🔹 [Disclaimer](./docs/en/disclaimer.md)<br>
 🔹 [Security Hardening](./docs/en/06_security_hardening.md)<br>
-🔹 [Appendix](./docs/en/09_appendix.md)<br>
 🔹 [Third-Party Open-Source Software Notice](Third_Party_Open_Source_Software_Notice)
 
 ## 🤝 Suggestions and Feedback

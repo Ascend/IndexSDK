@@ -3,9 +3,8 @@
 ## Glossary<a name="en-us_TOPIC_0000001985832241"></a>
 
 <a name="table_glossary"></a>
-
 <table><tbody>
-<tr><td width="330" align="center" valign="middle"><strong>Term</strong></td><td align="center" valign="middle"><strong>Description</strong></td></tr>
+<tr><th width="330" align="center" valign="middle"><strong>Term</strong></th><th align="center" valign="middle"><strong>Description</strong></th></tr>
 <tr><td width="330" valign="middle">Flat</td><td valign="middle">Brute-force search. No complex index structure is built. The query vector is compared against all vectors in the base library one by one to compute distances. It features 100% recall (absolutely precise), but has high computational overhead and latency. It is commonly used for small-scale datasets or as an accuracy baseline for other algorithms.</td></tr>
 <tr><td width="330" valign="middle">INT8</td><td valign="middle">8-bit integer format. A low-precision data type that reduces memory usage by 75% compared to standard FP32 (32-bit floating point) and improves computational throughput. It is commonly used as a quantized data storage format to balance performance and precision in hardware-constrained scenarios.</td></tr>
 <tr><td width="330" valign="middle">IVF (Inverted File)</td><td valign="middle">Inverted file index. A classic acceleration method for approximate nearest neighbor search (ANNS). It partitions the vector space into multiple clusters using a clustering algorithm (similar to a directory). During retrieval, only the most relevant clusters are traversed, significantly reducing computation. It trades a small amount of precision for greatly improved retrieval performance.</td></tr>
@@ -22,7 +21,6 @@
 ## Application Scenarios<a name="en-us_TOPIC_0000001985832242"></a>
 
 <a name="table_scenarios"></a>
-
 <table><tbody>
 <tr><th valign="middle">Question</th><th valign="middle">Condition</th><th valign="middle">Recommendation</th></tr>
 <tr><td rowspan="2" valign="middle">Do you need exact search results?</td><td valign="middle">Exact results are required</td><td valign="middle">Full retrieval algorithms, index types that guarantee completely exact results.</td></tr>
