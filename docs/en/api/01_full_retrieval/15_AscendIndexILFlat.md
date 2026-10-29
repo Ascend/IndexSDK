@@ -4,7 +4,7 @@
 
 `AscendIndexILFlat` is the standard-mode scenario of `ILFlat`. You need to use `Init` to initialize the corresponding resources. After initialization, it allocates a contiguous block of memory to store the base library. After use, call the `Finalize` interface to release the resources.
 
-`AscendIndexILFlat` supports only Atlas Inference Series products and only the inner product distance type in the standard deployment mode. `AscendIndexILFlat` depends on the Flat and AICPU operators. For details, see [Flat](../../05_user_guide.md#flat) and [AICPU](../../05_user_guide.md#aicpu).
+`AscendIndexILFlat` supports only Atlas inference products and only the inner product distance type in the standard deployment mode. `AscendIndexILFlat` depends on the Flat and AICPU operators. For details, see [Flat](../../05_user_guide.md#flat) and [AICPU](../../05_user_guide.md#aicpu).
 
 Multithreaded concurrent calls are supported. You must set the `MX_INDEX_MULTITHREAD` environment variable to `1`, that is, run `export MX_INDEX_MULTITHREAD=1`. If you set it to another value or do not set it, multithreading remains disabled. The current feature retrieval implementation uses OMP for performance acceleration. OMP does not support being mixed with other multithreading mechanisms. Repeatedly creating new threads with OMP causes memory usage to keep increasing. Therefore, you are advised to use fixed threads to run retrieval tasks.
 

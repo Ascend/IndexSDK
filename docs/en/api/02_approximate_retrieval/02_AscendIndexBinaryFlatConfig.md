@@ -2,14 +2,14 @@
 
 `AscendIndexBinaryFlat` uses the corresponding `AscendIndexBinaryFlatConfig` to initialize the corresponding resources and configure the device-side hardware resources `devices` and the preset memory pool size `resources` during retrieval.
 
-- `AscendIndexBinaryFlat` supports only Atlas Inference Series products with a single Ascend AI Processor. It depends on the AICPU operator and the BinaryFlat operator. See [Introduction to Custom Operators](../../05_user_guide.md#custom-operator-introduction) to generate the corresponding operators.
+- `AscendIndexBinaryFlat` supports only Atlas inference products with a single Ascend AI Processor. It depends on the AICPU operator and the BinaryFlat operator. See [Introduction to Custom Operators](../../05_user_guide.md#custom-operator-introduction) to generate the corresponding operators.
 - `AscendIndexBinaryFlat` supports only standard deployment mode.
 
 **Members<a name="section1372191465013"></a>**
 
 <table><tbody>
 <tr><td width="210" align="center" valign="middle">Member</td><td valign="middle">Type</td><td valign="middle">Description</td></tr>
-<tr><td width="210" align="center" valign="middle">deviceList</td><td valign="middle">std::vector\&lt;int&gt;</td><td valign="middle">Device-side device IDs. The <code>AscendIndexBinaryFlat</code> class supports only a single accelerator card of the Atlas Inference Series products.</td></tr>
+<tr><td width="210" align="center" valign="middle">deviceList</td><td valign="middle">std::vector\&lt;int&gt;</td><td valign="middle">Device-side device IDs. The <code>AscendIndexBinaryFlat</code> class supports only a single accelerator card of the Atlas inference products.</td></tr>
 <tr><td width="210" align="center" valign="middle">resourceSize</td><td valign="middle">int64_t</td><td valign="middle">Size of the device-side memory pool, in bytes. The default value is 1024 MB. The valid range is [1024*1024*1024, 32*1024*1024*1024]. For a base library with 10 million vectors, 5 GB is recommended.</td></tr>
 </tbody></table>
 
@@ -21,7 +21,7 @@
 <tr><td width="210" align="center" valign="middle">Input</td><td valign="middle">None</td></tr>
 <tr><td width="210" align="center" valign="middle">Output</td><td valign="middle">None</td></tr>
 <tr><td width="210" align="center" valign="middle">Returns</td><td valign="middle">None</td></tr>
-<tr><td width="210" align="center" valign="middle">Constraints</td><td valign="middle"><code>AscendIndexBinaryFlat</code> supports only Atlas Inference Series products with a single Ascend AI Processor. If the 0th Ascend AI Processor is unavailable, you cannot use the default constructor.</td></tr>
+<tr><td width="210" align="center" valign="middle">Constraints</td><td valign="middle"><code>AscendIndexBinaryFlat</code> supports only Atlas inference products with a single Ascend AI Processor. If the 0th Ascend AI Processor is unavailable, you cannot use the default constructor.</td></tr>
 </tbody></table>
 
 <a name="table092314378186"></a>

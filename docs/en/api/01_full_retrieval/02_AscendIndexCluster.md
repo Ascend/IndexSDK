@@ -4,7 +4,7 @@
 
 `AscendIndexCluster` requires [`Init`](#init) to initialize the specified resources. After initialization, it allocates a complete memory space to store the base library. After use, call [`Finalize`](#finalize) to release the resources.
 
-`AscendIndexCluster` supports only the vector inner-product distance type in standard mode on Atlas Inference Series products. It depends on Flat and AICPU operators. For details, see [Flat](../../05_user_guide.md#flat) and [AICPU](../../05_user_guide.md#aicpu).
+`AscendIndexCluster` supports only the vector inner-product distance type in standard mode on Atlas inference products. It depends on Flat and AICPU operators. For details, see [Flat](../../05_user_guide.md#flat) and [AICPU](../../05_user_guide.md#aicpu).
 
 It supports multithreaded concurrent calls. To enable this feature, set the `MX_INDEX_MULTITHREAD` environment variable to `1`, that is, run `export MX_INDEX_MULTITHREAD=1`. If you set it to any other value or do not set it, multithreading remains disabled. The current feature retrieval implementation uses OMP for performance acceleration. OMP does not support being mixed with other multithreading mechanisms. Therefore, repeatedly creating new threads with OMP causes memory usage to keep increasing. You are advised to run retrieval tasks with fixed threads.
 
@@ -78,6 +78,7 @@ It supports multithreaded concurrent calls. To enable this feature, set the `MX_
 
 ## `ComputeDistanceByThreshold`<a name="en-us_TOPIC_0000001615066169"></a>
 
+> [!NOTE]
 > This interface must be used together with [`AddFeatures(int n, const float *features, const uint32_t *indices);`](#addfeatures).
 
 <table><tbody>

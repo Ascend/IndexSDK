@@ -69,7 +69,7 @@ It does not support multithreaded concurrent calls. Therefore, in multithreaded 
 ## `AscendIndexInt8`<a name="en-us_TOPIC_0000001506614993"></a>
 
 <table><tbody>
-<tr><td width="150" align="center" valign="middle">API Definition</td><td valign="middle"><strong><code>AscendIndexInt8(int dims, faiss::MetricType metric, AscendIndexInt8Config config)`;</code></strong></td></tr>
+<tr><td width="150" align="center" valign="middle">API Definition</td><td valign="middle"><strong><code>AscendIndexInt8(int dims, faiss::MetricType metric, AscendIndexInt8Config config);</code></strong></td></tr>
 <tr><td width="150" align="center" valign="middle">Description</td><td valign="middle">Constructor of <code>AscendIndexInt8</code>. It creates an <code>AscendIndexInt8</code> with dimension <code>dims</code>. The dimension of the vector set managed by a single <code>Index</code> is unique. Device-side resources are set according to the values configured in <code>config</code>.</td></tr>
 <tr><td width="150" align="center" valign="middle">Input</td><td valign="middle"><code>int dims</code>: Dimension of a set of feature vectors managed by <code>AscendIndexInt8</code>.<br><code>faiss::MetricType metric</code>: Distance metric used by <code>AscendIndexInt8</code> when performing feature-vector similarity retrieval. Currently supported values are <code>faiss::MetricType::METRIC_L2</code> and <code>faiss::MetricType::METRIC_INNER_PRODUCT</code>.<br><code>AscendIndexInt8Config config</code>: Device-side resource configuration.</td></tr>
 <tr><td width="150" align="center" valign="middle">Output</td><td valign="middle">None</td></tr>

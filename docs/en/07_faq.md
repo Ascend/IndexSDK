@@ -172,7 +172,7 @@ Operator generation fails with the following error: ".../libgomp.so: cannot allo
 
 **Cause<a name="section1275154417319"></a>**
 
-There is a GCC-related bug in earlier OS versions. For details, see the official description at [link](https://gcc.gnu.org/bugzilla/show_bug.cgi?id=91938).
+There is a GCC-related bug in earlier OS versions.
 
 **Solution<a name="section027514410318"></a>**
 
@@ -180,6 +180,35 @@ Run the following command to set the environment variable:
 
 ```bash
 export LD_PRELOAD=/path/to/libgomp.so  # Replace /path/to with the actual path of the libgomp.so file.
+```
+
+### ATC Reports `undefined symbol: CheckLogLevel` When Compiling an Operator<a name="atc-undefined-symbol-checkloglevel"></a>
+
+**Symptom<a name="section238219259714"></a>**
+
+When you run the operator generation script, ATC reports the following error while compiling a Flat operator: `liboptiling.so: undefined symbol: CheckLogLevel`. Therefore, tiling parsing fails and single-operator compilation fails.
+
+**Cause<a name="section1275154417319"></a>**
+
+Inspection confirms that the `libunified_dlog.so` file exports `CheckLogLevel`, but `libunified_dlog.so` is not in the dynamic dependency entries (`NEEDED`) of `liboptiling.so`. This means that `liboptiling.so` does not explicitly declare a dependency on this library. Initial analysis suggests that when `liboptiling.so` is loaded, the dynamic linker cannot find `CheckLogLevel` in the symbol lookup scope visible at that time, and therefore reports the error.
+
+**Diagnosis<a name="section-checkloglevel-diagnosis"></a>**
+
+First, check the dependency declarations and symbol exports:
+
+```bash
+readelf -d /path/to/liboptiling.so | grep NEEDED
+nm -D /path/to/libunified_dlog.so | grep CheckLogLevel
+```
+
+Replace the paths with the actual file paths. To verify the libraries that ATC actually loads and the symbol lookup process, set `LD_DEBUG=libs,symbols` in the current terminal, run the original operator generation command, and check the dynamic linker output.
+
+**Solution<a name="section027514410318"></a>**
+
+Preload the `libunified_dlog.so` that actually provides the symbol into the process environment of the current command, then run the operator generation command:
+
+```bash
+export LD_PRELOAD=/path/to/libunified_dlog.so${LD_PRELOAD:+:$LD_PRELOAD}
 ```
 
 ### Operator Generation Fails on Some Operating Systems<a name="en-us_TOPIC_0000002356700501"></a>
@@ -190,7 +219,7 @@ On some operating systems, operator generation fails with the following error: "
 
 **Cause<a name="section147095251275"></a>**
 
-Cause 1: For details, see the "Possible Causes" section in the "Error 'fatal error: 'cstdint' file not found' occurs during ATC conversion or model training" chapter of the *CANN Software Installation Guide*.
+Cause 1: For details, see the "Possible Causes" section in the [Error 'fatal error: 'cstdint' file not found' occurs during ATC conversion or model training](https://www.hiascend.com/document/detail/en/CANNCommunityEdition/910/softwareinst/instg/instg_0086.html) chapter of the *CANN Software Installation Guide*.
 
 Cause 2: On some specific systems, this issue stems from differences in toolchain naming conventions across OS distributions. When building operators, the Ascend CANN software stack searches by default for the standard `aarch64-linux-gnu` toolchain directory to obtain C++ standard library header files. However, on some specific operating systems (kylin, openEuler, and ctyunos), the toolchain directory is renamed (for example, to `aarch64-kylin-linux`) to distinguish specific system ABIs. Because the CANN compiler cannot find the corresponding header files in the default path, compilation fails.
 

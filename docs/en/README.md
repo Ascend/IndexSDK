@@ -2,9 +2,7 @@
 
 <div style="text-align: center; margin: 0.5rem 0 0.3rem 0; font-family: 'Avenir Next', 'Avenir', 'Century Gothic', 'Segoe UI', sans-serif;">
   <span style="font-size: 4.5rem; font-weight: 300; letter-spacing: 0.02em;">Index SDK</span>
-</div>
-
-Index SDK is a heterogeneous retrieval acceleration framework for Ascend NPUs developed based on Faiss. Designed for large-scale datasets in high-dimensional spaces, it provides high-performance retrieval capabilities. This documentation repository provides guides and reference materials for Index SDK.
+</div> Index SDK is a heterogeneous retrieval acceleration framework for Ascend NPUs developed based on Faiss. Designed for large-scale datasets in high-dimensional spaces, it provides high-performance retrieval capabilities. This documentation repository provides guides and reference materials for Index SDK.
 
 ## Documentation Overview
 
