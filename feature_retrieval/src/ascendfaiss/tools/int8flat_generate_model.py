@@ -386,10 +386,9 @@ def generate_ascendc_int8_offline_model(args, config_path, core_num, soc_version
     map_args = []
     dim = args.dim
     process_id = args.process_id
-    is_950 = "950" in args.npu_type
-    int8_flat_cos_op_name = "AscendcDistInt8FlatCosWith950" if is_950 else "AscendcDistInt8FlatCos"
-    int8_flat_l2_op_name = "AscendcDistInt8FlatL2With950" if is_950 else "AscendcDistInt8FlatL2"
-    l2_norm_op_name = "AscendcL2NormWith950" if is_950 else "AscendcL2Norm"
+    int8_flat_cos_op_name = "AscendcDistInt8FlatCos"
+    int8_flat_l2_op_name = "AscendcDistInt8FlatL2"
+    l2_norm_op_name = "AscendcL2Norm"
     op_name_ = "ascendc_l2_norm_d{}_pid{}".format(dim, process_id)
     file_path_ = os.path.join(config_path, JSON_FILE.format(op_name_))
     generate_ascendc_l2_norm_json([NORM_CODE_NUM], dim, file_path_, l2_norm_op_name)
@@ -411,14 +410,42 @@ def generate_ascendc_int8_offline_model(args, config_path, core_num, soc_version
     )
     map_args.append((op_name_, soc_version))
 
-    if not is_950:
-        search_page_sizes = (128, 112, 96, 80, 64, 48, 36, 32, 24, 18, 16, 12, 8, 6, 4, 2, 1)
-        op_name_ = "ascendc_distance_int8_cos_maxs_with_mask_d{}_pid{}".format(dim, process_id)
-        file_path_ = os.path.join(config_path, JSON_FILE.format(op_name_))
-        generate_ascendc_distance_int8_cos_maxs_with_mask_json(
-            core_num, search_page_sizes, dim, file_path_, code_num_list
-        )
-        map_args.append((op_name_, soc_version))
+    search_page_sizes = (128, 112, 96, 80, 64, 48, 36, 32, 24, 18, 16, 12, 8, 6, 4, 2, 1)
+    op_name_ = "ascendc_distance_int8_cos_maxs_with_mask_d{}_pid{}".format(dim, process_id)
+    file_path_ = os.path.join(config_path, JSON_FILE.format(op_name_))
+    generate_ascendc_distance_int8_cos_maxs_with_mask_json(core_num, search_page_sizes, dim, file_path_, code_num_list)
+    map_args.append((op_name_, soc_version))
+
+    utils.run_generate_model_task(args, map_args)
+
+
+def generate_950_int8_offline_model(args, config_path, core_num, soc_version, code_num_list):
+    map_args = []
+    dim = args.dim
+    process_id = args.process_id
+    int8_flat_cos_op_name = "AscendcDistInt8FlatCosWith950"
+    int8_flat_l2_op_name = "AscendcDistInt8FlatL2With950"
+    l2_norm_op_name = "AscendcL2NormWith950"
+    op_name_ = "ascendc_l2_norm_d{}_pid{}".format(dim, process_id)
+    file_path_ = os.path.join(config_path, JSON_FILE.format(op_name_))
+    generate_ascendc_l2_norm_json([NORM_CODE_NUM], dim, file_path_, l2_norm_op_name)
+    map_args.append((op_name_, soc_version))
+
+    search_page_sizes = (128, 112, 96, 80, 64, 48, 36, 32, 24, 18, 16, 12, 8, 6, 4, 2, 1)
+    op_name_ = "ascendc_dist_int8_flat_cos_d{}_pid{}".format(dim, process_id)
+    file_path_ = os.path.join(config_path, JSON_FILE.format(op_name_))
+    generate_ascendc_dist_int8_flat_cos_json(
+        core_num, search_page_sizes, dim, file_path_, code_num_list, int8_flat_cos_op_name
+    )
+    map_args.append((op_name_, soc_version))
+
+    search_page_sizes = (128, 64, 48, 36, 32, 24, 18, 16, 12, 8, 6, 4, 2, 1)
+    op_name_ = "ascendc_dist_int8_flat_l2_d{}_pid{}".format(dim, process_id)
+    file_path_ = os.path.join(config_path, JSON_FILE.format(op_name_))
+    generate_ascendc_dist_int8_flat_l2_json(
+        core_num, search_page_sizes, dim, file_path_, code_num_list, int8_flat_l2_op_name
+    )
+    map_args.append((op_name_, soc_version))
 
     utils.run_generate_model_task(args, map_args)
 
@@ -542,7 +569,10 @@ def generate_int8_offline_model():
                 code_num,
             ]
 
-        generate_ascendc_int8_offline_model(args, config_path, core_num, soc_version, valid_code_num_list)
+        if '950' in args.npu_type:
+            generate_950_int8_offline_model(args, config_path, core_num, soc_version, valid_code_num_list)
+        else:
+            generate_ascendc_int8_offline_model(args, config_path, core_num, soc_version, valid_code_num_list)
         return
 
     map_args = []
