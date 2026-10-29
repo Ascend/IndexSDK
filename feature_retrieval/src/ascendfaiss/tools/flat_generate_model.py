@@ -703,7 +703,15 @@ def generate_ascendc_flat_offline_model(map_args, args, zregion_height, config_p
     generate_ascendc_distance_flat_ip_maxs_with_mask_json(core_num, search_page_sizes, dim, zregion_height, file_path_)
     map_args.append((op_name_, soc_version))
 
+    flat_l2_op_name = "distance_flat_l2_op_pid{}"
+    search_page_sizes = (96, 80, 64, 48, 36, 32, 30, 24, 18, 16, 12, 8, 6, 4, 2, 1)
+    op_name_ = flat_l2_op_name.format(process_id)
+    file_path_ = os.path.join(config_path, '{}.json'.format(op_name_))
+    generate_910b_flat_l2_json(core_num, search_page_sizes, dim, zregion_height, file_path_)
+    map_args.append((op_name_, soc_version))
+
     flat_ip_share_mask_op_name = "ascendc_distance_flat_ip_maxs_with_share_mask_op_pid{}"
+    search_page_sizes = (128, 64, 48, 36, 32, 30, 24, 18, 16, 12, 8, 6, 4, 2, 1)
     op_name_ = flat_ip_share_mask_op_name.format(process_id)
     file_path_ = os.path.join(config_path, '{}.json'.format(op_name_))
     generate_ascendc_distance_flat_ip_maxs_with_mask_json(
