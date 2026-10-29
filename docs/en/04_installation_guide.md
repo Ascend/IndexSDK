@@ -9,8 +9,8 @@ If you use offline installation or source installation, first [install the requi
 **Precautions**
 
 - For third-party open-source software, if a vulnerability exists in a given version, promptly fix and update it according to the corresponding instructions for the open-source version.
-- (Optional) For installation of Ascend Docker Runtime, see [Ascend Docker Runtime](https://gitcode.com/Ascend/mind-cluster/blob/branch_v26.1.0/docs/zh/scheduling/05_developer_guide/00_installation_deployment/00_manual_installation/02_ascend_docker_runtime.md) under **Developer Guide** > **Installation and Deployment** > **Manual Installation** in the *MindCluster Cluster Scheduling User Guide*.
-- (Optional) Index SDK supports virtualized environments. You can deploy and run Index SDK services in a virtualized environment. For details about environment deployment, see section **[Virtual Instance Feature Guide](https://gitcode.com/Ascend/mind-cluster/blob/branch_v26.1.0/docs/zh/scheduling/04_usage/02_virtual_instance/menu_virtual_instance.md)** under **Usage** in the *MindCluster Cluster Scheduling User Guide*.
+- (Optional) For installation of Ascend Docker Runtime, see [Ascend Docker Runtime](https://gitcode.com/Ascend/mind-cluster/blob/release_v26.2.0/docs/en/scheduling/05_developer_guide/00_installation_deployment/00_manual_installation/02_ascend_docker_runtime.md) under **Developer Guide** > **Installation and Deployment** > **Manual Installation** in the *MindCluster Cluster Scheduling User Guide*.
+- (Optional) Index SDK supports virtualized environments. You can deploy and run Index SDK services in a virtualized environment. For details about environment deployment, see section **[Virtual Instance Feature Guide](https://gitcode.com/Ascend/mind-cluster/blob/release_v26.2.0/docs/en/scheduling/04_usage/02_virtual_instance/menu_virtual_instance.md)** under **Usage** in the *MindCluster Cluster Scheduling User Guide*.
 
 ## Dependency Installation
 
@@ -290,11 +290,7 @@ Download the Index SDK feature retrieval package (`Ascend-mindxsdk-mxindex_{vers
     - **If the user does not specify an installation path**, the software is installed to the following default path:
         - If installed as root, the default installation path is `/usr/local/Ascend`.
         - If installed as a non-root user, the default installation path is `${HOME}/Ascend`, where `${HOME}` is the user directory.
-    - **If the user wants to specify an installation path**, create the installation path first. For example, to use `/home/work/FeatureRetrieval`:
-
-        ```bash
-        mkdir -p /home/work/FeatureRetrieval
-        ```
+    - **If the user specifies an installation path**, specify it by configuring `--install-path`.
 
 6. Run the installation command.
 
@@ -319,7 +315,7 @@ The following table describes the command-line options.
 <tr><td width="270" valign="middle">--install</td><td valign="middle">Installation command for the feature retrieval package.</td></tr>
 <tr><td width="270" valign="middle">--install-path=*&lt;path&gt;*</td><td valign="middle">Optional. Customize the root installation directory for the feature retrieval package. If not set, the current directory where you run the command is used by default. The path must start with <code>/</code> or <code>~</code>, and can contain only letters, digits, <code>-</code>, <code>_</code>, <code>.</code>, and <code>/</code>.<br>If not specified, the package is installed to the default path:<br>● If installed as root, the default installation path is <code>/usr/local/Ascend</code>.<br>● If installed as a non-root user, the default installation path is <code>${HOME}/Ascend</code>, where <code>${HOME}</code> is the user directory.<br>If this parameter is used to specify the installation directory, other users must not have write permission to that directory. If a regular user is specified for installation, the owner of the installation directory must be the current installation user.</td></tr>
 <tr><td width="270" valign="middle">--upgrade</td><td valign="middle">Installation command for upgrading the feature retrieval package, which upgrades feature retrieval to the Index SDK version included in the package.</td></tr>
-<tr><td width="270" valign="middle">--platform=*&lt;npu_type&gt;*</td><td valign="middle">Corresponding Ascend AI Processor type.<br>● For Atlas inference products, enter 310P.<br>● For Atlas 800I A3 SuperNode server, enter <code>A3</code>.<br>● For Atlas A2 inference products, run <code>npu-smi info</code> on a server where the Ascend AI Processor is installed to query it, then remove the last digit of the queried &quot;Name&quot; value. The result is the value of <code>--platform</code>.</td></tr>
+<tr><td width="270" valign="middle">--platform=*&lt;npu_type&gt;*</td><td valign="middle">Corresponding Ascend AI Processor type.<br>● For Atlas inference products, enter <code>310P</code>.<br>● For Atlas 800I A3, enter <code>A3</code>.<br>● For Atlas A2 inference products, run <code>npu-smi info</code> on a server where the Ascend AI Processor is installed to query it, then remove the last digit of the queried &quot;Name&quot; value. The result is the value of <code>--platform</code>.<br>● For Atlas 950PR products, enter <code>Ascend950PR</code>.</td></tr>
 <tr><td width="270" valign="middle">--faiss-version=*&lt;version&gt;*</td><td valign="middle">Optional. Select the default activated Faiss ABI version after installation. Supported values include <code>1.10</code>, <code>1.10.0</code>, <code>faiss1.10</code>, <code>1.14</code>, <code>1.14.1</code>, and <code>faiss1.14</code>. The default value is <code>1.10</code>. When <code>1.10</code> is selected, the business shared libraries and header files built against Faiss 1.10.x are activated. When <code>1.14</code> is selected, the business shared libraries and header files built against Faiss 1.14.1 are activated.</td></tr>
 </tbody></table>
 
@@ -339,6 +335,12 @@ The Index SDK multi-version run package supports selecting different Faiss ABI v
 
 # Multi-version run package: activate the Faiss 1.14.1 business shared libraries for scenarios that use the IVFRaBitQ/RaBitQ features.
 ./Ascend-mindxsdk-mxindex_{version}_linux-{arch}.run --install --install-path=<path> --platform=<npu_type> --faiss-version=1.14
+```
+
+If the following information is returned, the feature retrieval package has been installed successfully.
+
+```bash
+Install package successfully.
 ```
 
 After the multi-version run package is installed, the package configures the following symbolic links based on `--faiss-version`:
@@ -366,12 +368,6 @@ ln -sf /usr/local/faiss1.14.1 /usr/local/faiss
 export LD_LIBRARY_PATH=/usr/local/Ascend/mxIndex/host/lib:/usr/local/faiss/lib:$LD_LIBRARY_PATH
 ```
 
-If the following information is returned, the feature retrieval package has been installed successfully.
-
-```bash
-Install package successfully.
-```
-
 ### Image Installation
 
 Refer to the [Index SDK image repository](https://www.hiascend.com/developer/ascendhub/detail/7f91c3663b5d4a97b3ae40e3cabbb3a2) to complete the containerized deployment of feature retrieval.
@@ -381,14 +377,15 @@ Refer to the [Index SDK image repository](https://www.hiascend.com/developer/asc
 When compiling and installing from source, in addition to the preceding dependencies, you also need to determine whether to install the **open-state scenario package** based on whether you need to use the ILFlat algorithm.
 
 - If you do not need it, set the `BUILD_ASCENDDEVICE` option in `feature_retrieval/src/ascendfaiss/CMakeLists.txt` to `OFF` before compilation, and comment out line 38, `# ASCEND_MINIOS_HOME`.
-- If you need it, first download the [Ascend-cann-device-sdk installation package](https://www.hiascend.com/developer/download/community/result?module=cann&cann=9.0.0).
 
 ```bash
-unzip Ascend-cann-device-sdk_{version}_linux-{arch}.zip
-# The decompression produces CANN-runtime-*-minios.{arch}.run.
-./CANN-runtime-*-minios.{arch}.run --devel --install-path=/usr/local/AscendMiniOs
-./CANN-runtime-*-minios.{arch}.run --run --install-path=/usr/local/AscendMiniOSRun
+# Set the BUILD_ASCENDDEVICE option to OFF
+sed -i 's/^OPTION(BUILD_ASCENDDEVICE.*/OPTION(BUILD_ASCENDDEVICE "Build ascenddevice" OFF)/' feature_retrieval/src/ascendfaiss/CMakeLists.txt
+# Comment out ASCEND_MINIOS_HOME on line 38 (add # at the beginning of the line)
+sed -i '38s/^\([[:space:]]*\)ASCEND_MINIOS_HOME/\1# ASCEND_MINIOS_HOME/' feature_retrieval/src/ascendfaiss/CMakeLists.txt
 ```
+
+- If you need it, first download and install AscendMiniOS.
 
 Go to the `build` directory and run the following command to compile:
 
@@ -420,7 +417,7 @@ Use the following command to upgrade the feature retrieval package. For command-
 <table><tbody>
 <tr><td width="270" align="center" valign="middle"><strong>Parameter Name</strong></td><td align="center" valign="middle"><strong>Description</strong></td></tr>
 <tr><td width="270" valign="middle">--upgrade</td><td valign="middle">Installation command for upgrading the feature retrieval package, which upgrades feature retrieval to the Index SDK version included in the package.</td></tr>
-<tr><td width="270" valign="middle">--platform=*&lt;npu_type&gt;*</td><td valign="middle">Corresponding Ascend AI Processor type.<br>● For Atlas inference products, enter 310P.<br>● For Atlas 800I A3 SuperNode server, enter <code>A3</code>.<br>● For Atlas A2 inference products, run <code>npu-smi info</code> on a server where the Ascend AI Processor is installed to query it, then remove the last digit of the queried &quot;Name&quot; value. The result is the value of <code>--platform</code>.</td></tr>
+<tr><td width="270" valign="middle">--platform=*&lt;npu_type&gt;*</td><td valign="middle">Corresponding Ascend AI Processor type.<br>● For Atlas inference products, enter <code>310P</code>.<br>● For Atlas 800I A3, enter <code>A3</code>.<br>● For Atlas A2 inference products, run <code>npu-smi info</code> on a server where the Ascend AI Processor is installed to query it, then remove the last digit of the queried &quot;Name&quot; value. The result is the value of <code>--platform</code>.<br>● For Atlas 950PR products, enter <code>Ascend950PR</code>.</td></tr>
 <tr><td width="270" valign="middle">--install-path=*&lt;path&gt;*</td><td valign="middle">Optional. Customize the root installation directory for the feature retrieval package. If not set, the current directory where you run the command is used by default.<br>If a custom directory is used for installation, specify this parameter during upgrade.</td></tr>
 <tr><td width="270" valign="middle">--faiss-version=*&lt;version&gt;*</td><td valign="middle">Optional. Select the default activated Faiss ABI version after upgrade. Supported values include <code>1.10</code>, <code>1.10.0</code>, <code>faiss1.10</code>, <code>1.14</code>, <code>1.14.1</code>, and <code>faiss1.14</code>. The default value is <code>1.10</code>. If you need to continue using IVFRaBitQ/RaBitQ after the upgrade, specify <code>--faiss-version=1.14</code>.</td></tr>
 </tbody></table>

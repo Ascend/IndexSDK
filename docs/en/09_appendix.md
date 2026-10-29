@@ -10,16 +10,15 @@ The following environment variables are used by the program.
 
 **Table 1** Environment variables
 
-<table><tbody>
-<tr><td width="200" align="center" valign="middle"><strong>Environment Variable</strong></td><td align="center" valign="middle"><strong>Description</strong></td></tr>
-<tr><td width="200" valign="middle">PATH</td><td valign="middle">Path to the executable.</td></tr>
-<tr><td width="200" valign="middle">LD_LIBRARY_PATH</td><td valign="middle">Path to dynamic libraries.</td></tr>
-<tr><td width="200" valign="middle">PYTHONPATH</td><td valign="middle">Default search path for Python module files.</td></tr>
-<tr><td width="200" valign="middle">HOME</td><td valign="middle">Current user&#x27;s home directory.</td></tr>
-<tr><td width="200" valign="middle">PWD</td><td valign="middle">Current working directory.</td></tr>
-<tr><td width="200" valign="middle">TMPDIR</td><td valign="middle">Temporary directory.</td></tr>
-<tr><td width="200" valign="middle">LANG</td><td valign="middle">Locale.</td></tr>
-</tbody></table>
+|<strong>Environment Variable</strong>|<strong>Description</strong>|
+|--|--|
+|PATH|Path to the executable.|
+|LD_LIBRARY_PATH|Path to dynamic libraries.|
+|PYTHONPATH|Default search path for Python module files.|
+|HOME|Current user's home directory.|
+|PWD|Current working directory.|
+|TMPDIR|Temporary directory.|
+|LANG|Locale.|
 
 ### IVFRaBitQ Debugging Environment Variables<a name="ivfrabitq-debug-env"></a>
 
@@ -32,6 +31,17 @@ The following environment variables are used for `AscendIndexIVFRaBitQ` developm
 |IVFRABITQ_VERIFY_COARSE_CENTER|When set to a non-`0` value, performs D2H sampling or full verification at each stage of coarse centroid upload (H2D, rotate, and LUT).|
 |IVFRABITQ_DEBUG_L1_PROBE|`1` prints the probe list; `stats` prints the tile distribution; `full` includes golden comparison and complete statistics.|
 |IVFRABITQ_VERIFY_L1_DIST|When set to a non-`0` value, compares the CPU golden results with the NPU distance/probe results during the L1 search stage.|
+
+### Device Memory Debugging Environment Variables<a name="ascendfaiss-mem-debug-env"></a>
+
+The following environment variables are used to troubleshoot Device HBM allocation failures (such as `aclrtMalloc` OOM) and changes in memory usage during index upload and capacity expansion. They are **not set by default** (disabled) and add zero overhead to the production path. For details about their usage and log interpretation, see [Device Memory Debugging](./08_common_operations.md#ascendfaiss-mem-debug).
+
+**Table 3** Device memory debugging environment variables
+
+|Environment Variable|Description|
+|--|--|
+|ASCENDFAISS_MEM_DEBUG|When set to a non-empty value other than `0`, `false`, or `off` (case-insensitive), this variable enables memory debugging. In this case, the system samples and prints allocation details and the HBM headroom, and dumps the most recent allocation records to stderr when an allocation fails.|
+|ASCENDFAISS_MEM_DEBUG_EVERY|Sampling period N (a positive integer, default `64`). The system prints details for every N-th allocation and for allocations with a size of 4096 or less. Invalid values fall back to `64`. This variable takes effect only when `ASCENDFAISS_MEM_DEBUG` is enabled.|
 
 ## Code Reference<a name="en-us_TOPIC_0000001456375372"></a>
 
@@ -190,9 +200,9 @@ int main(int argc, char **argv)
     - Header file: `mxIndex/device/include/IndexILFlat.h`
     - Dynamic library: `mxIndex/device/lib/libascendfaiss_minios.so`
 
-2. The code must be compiled using the HCC compiler built into CANN. By default, the compiler path under the CANN installation directory is `/usr/local/Ascend/ascend-toolkit/latest/toolkit/toolchain/hcc/bin/aarch64-target-linux-gnu-g++`. After compilation, deploy the executable to the device side. For details, see the [Customizing a File System](https://www.hiascend.com/document/detail/zh/canncommercial/82RC1/openform/instguide310/instgopen_0007.html) section in *CANN Software Installation (Open Form, Atlas Inference Products)*.
+2. The code must be compiled using the HCC compiler built into CANN. By default, the compiler path under the CANN installation directory is `/usr/local/Ascend/ascend-toolkit/latest/toolkit/toolchain/hcc/bin/aarch64-target-linux-gnu-g++`. After compilation, deploy the executable to the device side. For details, see the [Customizing a File System](https://www.hiascend.com/document/detail/en/canncommercial/82RC1/openform/instguide310/instgopen_0007.html) section in *CANN Software Installation (Open Form, Atlas Inference Products)*.
 
-    To copy dependencies directly to the device side through the SSH service or log in to the device over SSH to run the sample directly, refer to the [Enabling the SSH Service Using the DSMI API](https://www.hiascend.com/document/detail/zh/canncommercial/82RC1/openform/instguide310/instgopen_0056.html) section in *CANN Software Installation (Open Form, Atlas Inference Products)* to remove the 50 MB memory limit of the SSH service. Otherwise, you cannot send all dependency files, and the sample cannot be executed.
+    To copy dependencies directly to the device side through the SSH service or log in to the device over SSH to run the sample directly, refer to the [Enabling the SSH Service Using the DSMI API](https://www.hiascend.com/document/detail/en/canncommercial/82RC1/openform/instguide310/instgopen_0056.html) section in *CANN Software Installation (Open Form, Atlas Inference Products)* to remove the 50 MB memory limit of the SSH service. Otherwise, you cannot send all dependency files, and the sample cannot be executed.
 
 3. Generate the operator OM files.
 
@@ -234,10 +244,10 @@ Currently, retrieval supports only the standard mode, in which retrieval service
 
 **Prerequisites<a name="section178968232301"></a>**
 
-- CANN has been installed following the Open Form procedure, and the `/usr/local/AscendMiniOSRun/` directory already exists. For details, see *[CANN Software Installation (Open Form, Atlas Inference Products)](https://www.hiascend.com/document/detail/zh/canncommercial/82RC1/openform/instguide310/instgopen_0002.html)*.
-- The 50 MB memory limit of the SSH service has been removed to ensure that all dependency files can be sent. For details, see the [Enabling the SSH Service Using the DSMI API](https://www.hiascend.com/document/detail/zh/canncommercial/82RC1/openform/instguide310/instgopen_0056.html) section in *CANN Software Installation (Open Form, Atlas Inference Products)*.
+- CANN has been installed following the Open Form procedure, and the `/usr/local/AscendMiniOSRun/` directory already exists. For details, see *[CANN Software Installation (Open Form, Atlas Inference Products)](https://www.hiascend.com/document/detail/en/canncommercial/82RC1/openform/instguide310/instgopen_0002.html)*.
+- The 50 MB memory limit of the SSH service has been removed to ensure that all dependency files can be sent. For details, see the [Enabling the SSH Service Using the DSMI API](https://www.hiascend.com/document/detail/en/canncommercial/82RC1/openform/instguide310/instgopen_0056.html) section in *CANN Software Installation (Open Form, Atlas Inference Products)*.
 - The host side must use the Arm architecture.
-- 4 GB of P2P memory is reserved on the device side, and this memory is unavailable by default. To use this memory and achieve the maximum library capacity, run the `npu-smi info set -t p2p-mem-cfg -i "id" -d "value"` command to set the chip BAR space copy enable status to `disabled`. For details about the command, see the [Enabling or Disabling the Copy into the BAR Space of a Chip](https://support.huawei.com/enterprise/zh/doc/EDOC1100523602/dbbc4954) section in *Atlas Center Inference Card 25.3.RC1 npu-smi Command Reference*.
+- 4 GB of P2P memory is reserved on the device side, and this memory is unavailable by default. To use this memory and achieve the maximum library capacity, run the `npu-smi info set -t p2p-mem-cfg -i "id" -d "value"` command to set the chip BAR space copy enable status to `disabled`. For details about the command, see the [Enabling or Disabling the Copy into the BAR Space of a Chip](https://support.huawei.com/enterprise/en/doc/EDOC1100523602/dbbc4954) section in *Atlas Center Inference Card 25.3.RC1 npu-smi Command Reference*.
 
 **Procedure<a name="section16775174716308"></a>**
 
@@ -259,7 +269,7 @@ Currently, retrieval supports only the standard mode, in which retrieval service
 
     ```bash
     # Configure environment variables
-    export LD_LIBRARY_PATH=./lib:./lib64:./
+    export LD_LIBRARY_PATH=./lib:./lib64:./:$LD_LIBRARY_PATH
     # Configure the directory containing the version.info file
     export ASCEND_OPP_PATH=./
     ```

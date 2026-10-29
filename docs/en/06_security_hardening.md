@@ -47,7 +47,7 @@ Pay attention to ports listening on all interfaces and unnecessary ports, and cl
 
 ### Anti-DoS Protection<a name="en-us_TOPIC_0000001550671317"></a>
 
-You can protect the system against Denial of Service (DoS) attacks by restricting the connection rate from each IP address. Methods include, but are not limited to, using the Linux `iptables` firewall and optimizing `sysctl` parameters. For details about how to use these methods, see the relevant documentation.
+You can protect the system against Denial of Service (DoS) attacks by restricting the connection rate from each IP address. Methods include, but are not limited to, using the Linux `iptables` firewall and optimizing `sysctl` parameters. For details about how to use these methods, see the [iptables(8) manual](https://man7.org/linux/man-pages/man8/iptables.8.html) and the [Linux kernel sysctl documentation](https://www.kernel.org/doc/Documentation/sysctl/).
 
 ## Retrieval Service Security Hardening<a name="en-us_TOPIC_0000001742120313"></a>
 
@@ -57,7 +57,7 @@ Plan memory usage properly to ensure that it does not exceed system resource lim
 
 **OMP Settings<a name="section62161855233"></a>**
 
-If you need to modify OMP-related configurations, evaluate system resource limits such as memory and thread count. Otherwise, exceptions may occur during operation. For example, you can control the concurrency level by setting the `${OMP_NUM_THREADS}` environment variable. For details about OMP settings, see the official OMP guide.
+If you need to modify OMP-related configurations, evaluate system resource limits such as memory and thread count. Otherwise, exceptions may occur during operation. For example, you can control the concurrency level by setting the `${OMP_NUM_THREADS}` environment variable. For details about OMP settings, see the [official OpenMP specification](https://www.openmp.org/specifications/).
 
 **Interface Usage<a name="section8919813343"></a>**
 

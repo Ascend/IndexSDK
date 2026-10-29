@@ -113,5 +113,4 @@ Feature retrieval inherits from `Index` in Faiss and supports multiple retrieval
 </tbody></table>
 
 > [!NOTE]
->
 >${mxIndex_install_path} indicates the installation path of Index SDK.
