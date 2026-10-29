@@ -6,7 +6,7 @@ The `AscendIndexIVFSQT` class contains the three-stage retrieval `IVFSQ` algorit
 
 You need to generate the operators required for three-stage retrieval according to the `IVFSQT` operator generation method.
 
-This type provides fuzzy clustering. Before bucket assignment, use the `threshold` parameter to control the degree of fuzziness. Set the `threshold` value according to the base vector set capacity and the available memory size. A `threshold` that is too large can cause insufficient memory and lead to failure. For Atlas 200/300/500 inference product environments, you are advised to set it to [1.0, 1.1]. For Atlas inference series product environments, you are advised to set it to [1.0, 1.5]. For search, you are advised to use `batch size = 65536`.
+This type provides fuzzy clustering. Before bucket assignment, use the `threshold` parameter to control the degree of fuzziness. Set the `threshold` value according to the base vector set capacity and the available memory size. A `threshold` that is too large can cause insufficient memory and lead to failure. For Atlas 200/300/500 inference product environments, you are advised to set it to [1.0, 1.1]. For Atlas inference product environments, you are advised to set it to [1.0, 1.5]. For search, you are advised to use `batch size = 65536`.
 
 The workflow is: 1. Construct the `Index` object. 2. Train the data. 3. Add the data. 4. Update the data. 5. Search the data. 6. Destroy the `Index` object. After `update`, adding data is no longer supported. If you need to search new data, destroy the original `Index` object and use the workflow again from the beginning.
 
@@ -273,7 +273,7 @@ It supports concurrent multithreaded calls. You need to set the `MX_INDEX_MULTIT
 <tr><td width="210" align="center" valign="middle">Input</td><td valign="middle"><code>int nprobes</code>: The <code>nprobe</code> value of <code>AscendIndexIVFSQT</code>. You are advised to keep it at the default value 64.</td></tr>
 <tr><td width="210" align="center" valign="middle">Output</td><td valign="middle">None</td></tr>
 <tr><td width="210" align="center" valign="middle">Returns</td><td valign="middle">None</td></tr>
-<tr><td width="210" align="center" valign="middle">Constraints</td><td valign="middle"><code>nprobes</code> ∈ {8, 12, 16, 20, 24, 28, 32, 36, 40, 44, 48, 52, 56, 60, 64}. <code>l2Probe</code> ≥ <code>nprobes</code>, <code>l2Probe</code> ≤ <code>l3SegmentNum</code>, and <code>l2Probe</code> ≤ <code>nprobes * 64</code>. <code>l3SegmentNum</code> ∈ {24, 36, 48, 60, 72, 84, 96, 120, 144, 156, 168, 192, 216, 240, 360, 480, 600, 720, 840, 960, 1020}. For details about <code>l2Probe</code> and <code>l3SegmentNum</code>, see <code>setSearchParams</code>. <code>setNumProbes</code> is expected to be removed in September 2025. Use <code>setSearchParams</code> instead.</td></tr>
+<tr><td width="210" align="center" valign="middle">Constraints</td><td valign="middle"><code>nprobes</code> ∈ {8, 12, 16, 20, 24, 28, 32, 36, 40, 44, 48, 52, 56, 60, 64}. <code>l2Probe</code> ≥ <code>nprobes</code>, <code>l2Probe</code> ≤ <code>l3SegmentNum</code>, and <code>l2Probe</code> ≤ <code>nprobes * 64</code>. <code>l3SegmentNum</code> ∈ {24, 36, 48, 60, 72, 84, 96, 120, 144, 156, 168, 192, 216, 240, 360, 480, 600, 720, 840, 960, 1020}. For details about <code>l2Probe</code> and <code>l3SegmentNum</code>, see <a href="#setsearchparams"><code>setSearchParams</code></a>. <code>setNumProbes</code> is expected to be removed in September 2025. Use <a href="#setsearchparams"><code>setSearchParams</code></a> instead.</td></tr>
 </tbody></table>
 
 ## `setPreciseMemControl`<a name="en-us_TOPIC_0000001506334681"></a>
@@ -317,18 +317,18 @@ It supports concurrent multithreaded calls. You need to set the `MX_INDEX_MULTIT
 <tr><td width="210" align="center" valign="middle">Input</td><td valign="middle"><code>float value</code>: The threshold for determining whether a vector is assigned to multiple buckets. You are advised to set it in the range [1.0, 1.5]. Because the Device side has a memory limit, once memory usage reaches the limit, the OOM mechanism is triggered and kills the process. You can check the Device-side memory limit data first (<code>/sys/fs/cgroup/memory/usermemory/memory.limit_in_bytes</code>) to estimate the size of the base library to add. If memory is tight, you are advised to keep the parameter in the range [1.0, 1.1].</td></tr>
 <tr><td width="210" align="center" valign="middle">Output</td><td valign="middle">None</td></tr>
 <tr><td width="210" align="center" valign="middle">Returns</td><td valign="middle">None</td></tr>
-<tr><td width="210" align="center" valign="middle">Constraints</td><td valign="middle">The valid range of <code>value</code> is [0, <code>fuzzyK</code> - 1]. For the valid range of <code>fuzzyK</code>, see the <code>getFuzzyK</code> API.</td></tr>
+<tr><td width="210" align="center" valign="middle">Constraints</td><td valign="middle">The valid range of <code>value</code> is [0, <code>fuzzyK</code> - 1]. For the valid range of <code>fuzzyK</code>, see the <a href="#getfuzzyk"><code>getFuzzyK</code></a> API.</td></tr>
 </tbody></table>
 
 ## `setUseCpuUpdate`<a name="en-us_TOPIC_0000002167379329"></a>
 
 <table><tbody>
 <tr><td width="210" align="center" valign="middle">API Definition</td><td valign="middle"><strong><code>setUseCpuUpdate(int numThreads);</code></strong></td></tr>
-<tr><td width="210" align="center" valign="middle">Description</td><td valign="middle">Specifies whether to use the CPU for update.</td></tr>
+<tr><td width="210" align="center" valign="middle">Description</td><td valign="middle">Specifies whether to use the CPU for <a href="#update">update</a>.</td></tr>
 <tr><td width="210" align="center" valign="middle">Input</td><td valign="middle"><code>int numThreads</code>: The number of CPU cores used for update. The default value is the current number of CPU cores.<br>If the current CPU has more than 96 cores: if the current core count is smaller than the input <code>numThreads</code>, set <code>numThreads</code> to 96; if <code>96 &lt; numThreads &lt;=</code> the current core count, set <code>numThreads</code> to 96; if <code>numThreads &lt;= 96</code>, keep the input value. If the current CPU has 96 cores or fewer: if the current core count is smaller than the input <code>numThreads</code> and <code>numThreads &lt;= 96</code>, set <code>numThreads</code> to the current core count; if <code>0 &lt; numThreads &lt;=</code> the current core count, keep the input value.</td></tr>
 <tr><td width="210" align="center" valign="middle">Output</td><td valign="middle">None.</td></tr>
 <tr><td width="210" align="center" valign="middle">Returns</td><td valign="middle">None.</td></tr>
-<tr><td width="210" align="center" valign="middle">Constraints</td><td valign="middle">The value of <code>numThreads</code> must be greater than 0. Configure it before you use <code>update</code>.</td></tr>
+<tr><td width="210" align="center" valign="middle">Constraints</td><td valign="middle">The value of <code>numThreads</code> must be greater than 0. Configure it before you use <a href="#update"><code>update</code></a>.</td></tr>
 </tbody></table>
 
 ## `train`<a name="en-us_TOPIC_0000001456375352"></a>
@@ -361,5 +361,5 @@ It supports concurrent multithreaded calls. You need to set the `MX_INDEX_MULTIT
 <tr><td width="210" align="center" valign="middle">Input</td><td valign="middle"><code>int l2Probe</code>: The number of sub-buckets selected during second-stage retrieval. The default value is 48.<br><code>int l3SegmentNum</code>: The number of segments processed by the L3 operator. This affects the total number of bases to search. The default value is 96.</td></tr>
 <tr><td width="210" align="center" valign="middle">Output</td><td valign="middle">None</td></tr>
 <tr><td width="210" align="center" valign="middle">Returns</td><td valign="middle">None</td></tr>
-<tr><td width="210" align="center" valign="middle">Constraints</td><td valign="middle"><code>nprobe</code> ∈ {8, 12, 16, 20, 24, 28, 32, 36, 40, 44, 48, 52, 56, 60, 64}. <code>l2Probe</code> ≥ <code>nprobe</code>, <code>l2Probe</code> ≤ <code>l3SegmentNum</code>, and <code>l2Probe</code> ≤ <code>nprobe * 64</code>.<br><code>l3SegmentNum</code> ∈ {24, 36, 48, 60, 72, 84, 96, 120, 144, 156, 168, 192, 216, 240, 360, 480, 600, 720, 840, 960, 1020}. For details about the <code>nprobe</code> setting, see <code>setSearchParams</code>. <code>updateTParams</code> is expected to be removed in September 2026. Use <code>setSearchParams</code> instead.</td></tr>
+<tr><td width="210" align="center" valign="middle">Constraints</td><td valign="middle"><code>nprobe</code> ∈ {8, 12, 16, 20, 24, 28, 32, 36, 40, 44, 48, 52, 56, 60, 64}. <code>l2Probe</code> ≥ <code>nprobe</code>, <code>l2Probe</code> ≤ <code>l3SegmentNum</code>, and <code>l2Probe</code> ≤ <code>nprobe * 64</code>.<br><code>l3SegmentNum</code> ∈ {24, 36, 48, 60, 72, 84, 96, 120, 144, 156, 168, 192, 216, 240, 360, 480, 600, 720, 840, 960, 1020}. For details about the <code>nprobe</code> setting, see <a href="#setsearchparams"><code>setSearchParams</code></a>. <code>updateTParams</code> is expected to be removed in September 2026. Use <a href="#setsearchparams"><code>setSearchParams</code></a> instead.</td></tr>
 </tbody></table>

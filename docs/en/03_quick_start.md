@@ -1,12 +1,13 @@
 # Quick Start
 
-This tutorial uses the [Flat](./api/01_full_retrieval/08_AscendIndexFlat.md#ascendindexflat) index type as an example to help you quickly learn how to use Index SDK in a Docker container.
+- This tutorial uses the [Flat](./api/01_full_retrieval/08_AscendIndexFlat.md#ascendindexflat) index type as an example to help you quickly learn how to use Index SDK in a Docker container.
+- By default, perform Steps 1 and 2 on a physical machine. If you are already in a container without the required dependencies, install them with the one-click installation script for your operating system ([openEuler script](../../build/setup_openeuler.sh), [Ubuntu script](../../build/setup_ubuntu.sh)), and then skip to Step 3.
 
 ## Prerequisites
 
 Before you start, ensure that the following requirements are met:
 
-- **Hardware**: Atlas inference products, Atlas 800I A2 inference servers, and Atlas 800I A3 SuperPoD servers are supported. For details, see [Supported Hardware and Operating Systems](./01_introduction.md#supported-hardware-and-operating-systems).
+- **Hardware**: Atlas inference products, Atlas 800I A2, Atlas 800I A3, and Atlas 950PR products are supported. For details, see [Supported Hardware and Operating Systems](./01_introduction.md#supported-hardware-and-operating-systems).
 - **Docker**: Docker is installed and properly configured, and the current user can run containers.
 - **Ascend Driver**: The Ascend driver is installed and properly configured. You can run the `npu-smi info` command to query NPU information.
 
@@ -14,18 +15,28 @@ Before you start, ensure that the following requirements are met:
 
 ### 1.1 Selecting the Matching Version
 
-   - Select the corresponding image version based on the hardware model. Pay attention to the Ascend AI Processor model.
-   - Select the corresponding image pull command based on the Ascend AI Processor model:
+- Select the corresponding image version based on the hardware model. Pay attention to the Ascend AI Processor model.
+- Select the corresponding image pull command based on the Ascend AI Processor model:
 
-    For Atlas inference products, run the `npu-smi info` command on a server where the Ascend AI Processor is installed. Remove the last digit from the queried `Name` value. The result is the value of `npu_type`.
-    For Atlas 800I A2 inference servers, run the `npu-smi info` command on a server where the Ascend AI Processor is installed. The queried `Name` value is the value of `npu_type`.
-    For Atlas 800I A3 SuperPoD servers, run the `npu-smi info -t board -i 0 -c 0` command to query the NPU Name. The `910_NPU Name` value is the value of `npu_type`.
+    <!-- npu="310p" id1 -->
+    - For Atlas inference products, run the `npu-smi info` command on a server where the Ascend AI Processor is installed. Remove the last digit from the queried `Name` value. The result is the value of `npu_type`.
+    <!-- end id1 -->
+    <!-- npu="910b" id2 -->
+    - For Atlas 800I A2, run the `npu-smi info` command on a server where the Ascend AI Processor is installed. The queried `Name` value is the value of `npu_type`.
+    <!-- end id2 -->
+    <!-- npu="A3" id3 -->
+    - For Atlas 800I A3, run the `npu-smi info -t board -i 0 -c 0` command to query the NPU Name. The `910_NPU Name` value is the value of `npu_type`.
+    <!-- end id3 -->
+    <!-- npu="950" id4 -->
+    - For Atlas 950PR products, `Ascend950PR` is the value of `npu_type`.
+    <!-- end id4 -->
 
    | Chip Model | Pull Command |
    | ---------- | ------------ |
-   | 310P | `docker pull swr.cn-south-1.myhuaweicloud.com/ascendhub/indexsdk:26.1.0-cann9.1.0-310p-ubuntu22.04-py3.12` |
-   | A3 | `docker pull swr.cn-south-1.myhuaweicloud.com/ascendhub/indexsdk:26.1.0-cann9.1.0-a3-ubuntu22.04-py3.12` |
-   | 910B | `docker pull swr.cn-south-1.myhuaweicloud.com/ascendhub/indexsdk:26.1.0-cann9.1.0-910b-ubuntu22.04-py3.12` |
+   | Atlas inference products | `docker pull swr.cn-south-1.myhuaweicloud.com/ascendhub/indexsdk:26.1.0-cann9.1.0-310p-ubuntu22.04-py3.12` |
+   | Atlas 800I A3 | `docker pull swr.cn-south-1.myhuaweicloud.com/ascendhub/indexsdk:26.1.0-cann9.1.0-a3-ubuntu22.04-py3.12` |
+   | Atlas 800I A2 | `docker pull swr.cn-south-1.myhuaweicloud.com/ascendhub/indexsdk:26.1.0-cann9.1.0-910b-ubuntu22.04-py3.12` |
+   | Atlas 950PR products | `docker pull swr.cn-south-1.myhuaweicloud.com/ascendhub/indexsdk:26.1.0-cann9.1.0-950-ubuntu22.04-py3.12` |
 
 ### 1.2 Performing Environment Prechecks
 
@@ -69,6 +80,12 @@ npu-smi info # NPU information is displayed without errors.
 
 ## Step 3: Generating Operators
 
+If you are in a container and have installed the dependencies with the one-click installation script, run the following command first:
+
+```bash
+source /etc/profile
+```
+
 - Generate a 512-dimensional Flat operator:
 
 ```bash
@@ -77,7 +94,7 @@ cd /usr/local/Ascend/mxIndex/tools
 python3 aicpu_generate_model.py -t <npu_type>
 python3 flat_generate_model.py -d 512 -t <npu_type>
 
-# Example: 910B4 on an Atlas 800I A2 inference server:
+# Example: 910B4 on an Atlas 800I A2:
 # python3 aicpu_generate_model.py -t 910B4
 # python3 flat_generate_model.py -d 512 -t 910B4
 
@@ -96,6 +113,7 @@ mv op_models/* $MX_INDEX_MODELPATH
     #include <faiss/ascend/AscendIndexFlat.h>
     #include <sys/time.h>
     #include <random>
+    #include <exception>
     #include <vector>
     #include <cstdio>
     #include <cmath>
@@ -134,7 +152,7 @@ mv op_models/* $MX_INDEX_MODELPATH
     int main()
     {
         int dim = 512;
-        std::vector<int> device{0};
+        int deviceId = 0;
         size_t ntotal = 1000000;
         int searchnum = 128;
         std::vector<float> features(dim * ntotal);
@@ -145,14 +163,14 @@ mv op_models/* $MX_INDEX_MODELPATH
         Norm(ntotal, features, dim);
         try {
             // Initialize the index.
-            faiss::ascend::AscendIndexFlatConfig conf(device, resourceSize);
+            faiss::ascend::AscendIndexFlatConfig conf({deviceId}, resourceSize);
             auto metricType = faiss::METRIC_INNER_PRODUCT;
             faiss::ascend::AscendIndexFlat index(dim, metricType, conf);
             index.reset();
             // Add the base database.
             printf("add start!\r\n");
             index.add(ntotal, features.data());
-            size_t tmpTotal = index.getBaseSize(0);
+            size_t tmpTotal = index.getBaseSize(deviceId);
             if (tmpTotal != ntotal) {
                 printf("------- Error -----------------\n");
                 return -1;
@@ -176,8 +194,8 @@ mv op_models/* $MX_INDEX_MODELPATH
                 te - ts,
                 1000 * searchnum * loopTimes / (te - ts));
             return 0;
-        } catch(...) {
-            printf("Exception caught! \r\n");
+        } catch(const std::exception &e) {
+            printf("Exception caught: %s\r\n", e.what());
             return -1;
         }
     }

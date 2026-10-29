@@ -2,9 +2,9 @@
 
 ## Log Description<a name="en-us_TOPIC_0000001506334653"></a>
 
-The retrieval log component is developed based on the [CANN Software Installation Guide](https://www.hiascend.com/document/detail/en/CANNCommunityEdition/latest/softwareinst/instg/instg_0000.html?OS=openEuler&InstallType=netyum) and [CANN Log Reference](https://www.hiascend.com/document/detail/en/CANNCommunityEdition/latest/maintenref/logreference/logreference_0001.html).
+The retrieval log component is developed based on the [CANN Software Installation Guide](https://www.hiascend.com/document/detail/en/CANNCommunityEdition/910/softwareinst/instg/instg_0000.html) and [CANN Log Reference](https://www.hiascend.com/document/detail/en/CANNCommunityEdition/910/maintenref/logreference/logreference_0001.html).
 
-For standard mode deployments, retrieval logs are application logs. For details, see [Viewing Logs (Ascend EP)](https://www.hiascend.com/document/detail/en/CANNCommunityEdition/latest/maintenref/logreference/logreference_0002.html). The default path is `$HOME/ascend/log`. You can also use the `ASCEND_PROCESS_LOG_PATH` environment variable to specify the log storage path. The command is as follows:
+For standard mode deployments, retrieval logs are application logs. For details, see [Viewing Logs (Ascend EP)](https://www.hiascend.com/document/detail/en/CANNCommunityEdition/910/maintenref/logreference/logreference_0002.html). The default path is `$HOME/ascend/log`. You can also use the `ASCEND_PROCESS_LOG_PATH` environment variable to specify the log storage path. The command is as follows:
 
 ```bash
 export ASCEND_PROCESS_LOG_PATH=$HOME/xxx
@@ -20,15 +20,15 @@ export ASCEND_GLOBAL_LOG_LEVEL=1
 
 If this parameter is not specified, the default log level is ERROR. The possible values of `ASCEND_GLOBAL_LOG_LEVEL` are as follows:
 
-- `0`: DEBUG
+`0`: DEBUG
 
-- `1`: INFO
+`1`: INFO
 
-- `2`: WARNING
+`2`: WARNING
 
-- `3`: ERROR
+`3`: ERROR
 
-- `4`: NULL. No logs are output.
+`4`: NULL. No logs are output.
 
 > [!NOTE]
 >
@@ -80,7 +80,7 @@ export IVFRABITQ_VERIFY_COARSE_CENTER=0
 export IVFRABITQ_VERIFY_COARSE_CENTER=1
 
 # Boundary test (copyFrom triggers updateCoarseCenterImpl)
-./TestAscendIndexIVFRaBitQBoundary --gtest_filter=*CoarseCenterCopy10048* 2>&1 | tee coarse_verify.log
+./TestAscendIndexIVFRaBitQBoundary --gtest_filter="*CoarseCenterCopy10048*" 2>&1 | tee coarse_verify.log
 
 grep -E 'CoarseCenterVerify|zeroRowsAfter2512' coarse_verify.log
 ```
@@ -160,3 +160,62 @@ grep 'L1 dist golden\|jaccard' search.log
 ### Further Reading
 
 - [FAQ: IVFRaBitQ Retrieval Recall Issues](./07_faq.md#ivfrabitq-recall-low-nlist-10048)
+
+## Device Memory Debugging<a name="ascendfaiss-mem-debug"></a>
+
+AscendFaiss provides two **optional** environment variables for troubleshooting Device HBM allocation failures and changes in memory usage during index upload or expansion. **Both are disabled by default** and have zero overhead on the production path. Enable them as needed only in development or integration testing environments. For a list of the environment variables, see the [Appendix](./09_appendix.md#ascendfaiss-mem-debug-env).
+
+> [!NOTE]
+>
+> - The environment variables are read and cached **the first time the process queries them**. You must export them **before** running the application or test case.
+> - Debugging logs are output to stderr and are also written to application logs (with the `[MemDebug]` prefix). You are advised to redirect the output to a `.log` file for easier use with `grep`.
+> - When the master switch is enabled, AscendFaiss queries `aclrtGetMemInfo(ACL_HBM_MEM)` and prints sampled results. **Do not enable it continuously during performance benchmarking.**
+
+### Environment Variables
+
+**Table 2** Device memory debugging environment variables
+
+<table><tbody>
+<tr><td align="center" valign="middle"><strong>Environment Variable</strong></td><td align="center" valign="middle"><strong>Value</strong></td><td width="70" align="center" valign="middle"><strong>Default</strong></td><td align="center" valign="middle"><strong>Purpose</strong></td></tr>
+<tr><td valign="middle">ASCENDFAISS_MEM_DEBUG</td><td valign="middle">Non-empty and not <code>0</code> / <code>false</code> / <code>off</code> (case-insensitive)</td><td width="70" align="center" valign="middle">Disabled</td><td valign="middle">Master switch. Enables allocation sampling and HBM headroom printing. Dumps a ring buffer of the most recent allocations when <code>aclrtMalloc</code> fails.</td></tr>
+<tr><td valign="middle">ASCENDFAISS_MEM_DEBUG_EVERY</td><td valign="middle">Positive integer N</td><td width="70" align="center" valign="middle"><code>64</code></td><td valign="middle">Sampling period. Prints allocation details when the allocation sequence number satisfies <code>seq % N == 0</code>, or when <code>size ≤ 4096</code>. Falls back to <code>64</code> when this variable is unset, invalid, or <code>0</code>.</td></tr>
+</tbody></table>
+
+To disable the debugging environment variables, run the following commands:
+
+```bash
+unset ASCENDFAISS_MEM_DEBUG ASCENDFAISS_MEM_DEBUG_EVERY
+# Or
+export ASCENDFAISS_MEM_DEBUG=0
+```
+
+### Usage Example
+
+```bash
+# Enable memory debugging (samples every 64th allocation by default)
+export ASCENDFAISS_MEM_DEBUG=1
+
+# Increase the sampling density (prints every 8th allocation)
+export ASCENDFAISS_MEM_DEBUG=1
+export ASCENDFAISS_MEM_DEBUG_EVERY=8
+
+# Run the service or unit tests and save the logs
+./your_app 2>&1 | tee mem_debug.log
+grep '\[MemDebug\]' mem_debug.log
+```
+
+### Log Interpretation
+
+|Log Keyword|Meaning|
+|--|--|
+|`[MemDebug] alloc seq=...`|A sampled record of one Device allocation: the sequence number, size, space, device, and HBM free/total before the allocation.|
+|`[MemDebug] ... HBM free=...`|A snapshot of the HBM headroom on critical paths (such as `copyVectorToDevice_*`, `DeviceMemArena::Grow`, and `IndexIVFRaBitQ_resize`).|
+|`[MemDebug] aclrtMalloc FAILED ...`|An allocation failure: the requested size, space, and device, the error code, and the HBM free/total at the time of failure.|
+|`dumping last N alloc records`|Up to the 64 most recent allocation records before the failure (from oldest to newest), used to identify the consecutive allocations that exhaust Device memory.|
+
+**Typical troubleshooting process:**
+
+1. Before reproducing an OOM or `aclrtMalloc` failure, set `ASCENDFAISS_MEM_DEBUG=1`.
+2. In the failure log, check whether `HBM_free` is close to 0, and check `size` and `space` (`DEVICE` or `DEVICE_HUGEPAGE`).
+3. Use the most recent allocation records in the dump to correlate them with the service phase (index upload, list resize, or arena grow) and narrow down the leak or the peak allocation point.
+4. To sample more densely, increase the frequency: `export ASCENDFAISS_MEM_DEBUG_EVERY=1` (every allocation is printed, which produces a large volume of logs).

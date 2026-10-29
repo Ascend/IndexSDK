@@ -1,23 +1,31 @@
 # Release Notes
 
+## Key Features
+
+Adds support for the IVFPQ index on Atlas A3 inference products and Atlas 950PR products.
+
 ## Version Information
 
 ### Product Version Information
 
-<a name="en-us_topic_0000001938532254_en-us_topic_0000001935094108__Ref249955742"></a>
-<table><tbody><tr id="en-us_topic_0000001938532254_en-us_topic_0000001935094108_row244mcpsimp"><th class="firstcol" valign="top" width="25%" id="mcps1.1.3.1.1"><p id="en-us_topic_0000001938532254_en-us_topic_0000001935094108_p246mcpsimp"><a name="en-us_topic_0000001938532254_en-us_topic_0000001935094108_p246mcpsimp"></a><a name="en-us_topic_0000001938532254_en-us_topic_0000001935094108_p246mcpsimp"></a>Product Name</p>
+<table><tbody><tr><th class="firstcol" valign="top" width="25%"><p>Product Name</p>
 </th>
-<td class="cellrowborder" valign="top" width="75%" headers="mcps1.1.3.1.1 "><p id="en-us_topic_0000001938532254_en-us_topic_0000001935094108_p1684675795511"><a name="en-us_topic_0000001938532254_en-us_topic_0000001935094108_p1684675795511"></a><a name="en-us_topic_0000001938532254_en-us_topic_0000001935094108_p1684675795511"></a><span id="ph925512229126"><a name="ph925512229126"></a><a name="ph925512229126"></a>Index SDK</span></p>
+<td class="cellrowborder" valign="top" width="75%"><p>Index SDK</p>
 </td>
 </tr>
-<tr id="en-us_topic_0000001938532254_en-us_topic_0000001935094108_row255mcpsimp"><th class="firstcol" valign="top" width="25%" id="mcps1.1.3.2.1"><p id="en-us_topic_0000001938532254_en-us_topic_0000001935094108_p257mcpsimp"><a name="en-us_topic_0000001938532254_en-us_topic_0000001935094108_p257mcpsimp"></a><a name="en-us_topic_0000001938532254_en-us_topic_0000001935094108_p257mcpsimp"></a>Product Version</p>
+<tr><th class="firstcol" valign="top" width="25%"><p>Product Version</p>
 </th>
-<td class="cellrowborder" valign="top" width="75%" headers="mcps1.1.3.2.1 "><p id="en-us_topic_0000001938532254_en-us_topic_0000001935094108_p233mcpsimp"><a name="en-us_topic_0000001938532254_en-us_topic_0000001935094108_p233mcpsimp"></a><a name="en-us_topic_0000001938532254_en-us_topic_0000001935094108_p233mcpsimp"></a>26.1.0</p>
+<td class="cellrowborder" valign="top" width="75%"><p>26.2.0</p>
 </td>
 </tr>
-<tr id="en-us_topic_0000001938532254_en-us_topic_0000001935094108_row7259721105019"><th class="firstcol" valign="top" width="25%" id="mcps1.1.3.3.1"><p id="en-us_topic_0000001938532254_en-us_topic_0000001935094108_p7260182135013"><a name="en-us_topic_0000001938532254_en-us_topic_0000001935094108_p7260182135013"></a><a name="en-us_topic_0000001938532254_en-us_topic_0000001935094108_p7260182135013"></a>Version Type</p>
+<tr><th class="firstcol" valign="top" width="25%"><p>Version Type</p>
 </th>
-<td class="cellrowborder" valign="top" width="75%" headers="mcps1.1.3.3.1 "><p id="en-us_topic_0000001938532254_en-us_topic_0000001935094108_p72606219501"><a name="en-us_topic_0000001938532254_en-us_topic_0000001935094108_p72606219501"></a><a name="en-us_topic_0000001938532254_en-us_topic_0000001935094108_p72606219501"></a>Release Version</p>
+<td class="cellrowborder" valign="top" width="75%"><p>Release Version</p>
+</td>
+</tr>
+<tr><th class="firstcol" valign="top" width="25%"><p>Maintenance Period</p>
+</th>
+<td class="cellrowborder" valign="top" width="75%"><p>For details, see the <a href="https://atomgit.com/Ascend/IndexSDK/blob/master/README.md#%E7%89%88%E6%9C%AC%E7%BB%B4%E6%8A%A4%E7%AD%96%E7%95%A5">Maintenance Policy</a>.</p>
 </td>
 </tr>
 </tbody>
@@ -27,9 +35,29 @@
 
 **Table 1**  Index SDK Software Version Compatibility
 
-| Index SDK | CANN Version | Ascend HDK Version |
-| ------------ | ------------- | ------------ |
-| 26.1.0 | 9.1.0 | 26.1.0 |
+<table><thead align="left"><tr><th class="cellrowborder" valign="top" width="25%"><p>Product Name</p>
+</th>
+<th class="cellrowborder" valign="top" width="75%"><p>Version</p>
+</th>
+</tr>
+</thead>
+<tbody><tr><td class="cellrowborder" valign="top" width="25%"><p>Index SDK</p>
+</td>
+<td class="cellrowborder" valign="top" width="75%"><p>26.2.0</p>
+</td>
+</tr>
+<tr><td class="cellrowborder" valign="top" width="25%"><p>Ascend HDK</p>
+</td>
+<td class="cellrowborder" valign="top" width="75%"><p>26.2.0</p>
+</td>
+</tr>
+<tr><td class="cellrowborder" valign="top" width="25%"><p>CANN</p>
+</td>
+<td class="cellrowborder" valign="top" width="75%"><p>9.2.0</p>
+</td>
+</tr>
+</tbody>
+</table>
 
 ## Version Compatibility
 
@@ -39,108 +67,147 @@
 
 **Table 2**  Index SDK and CANN Version Compatibility
 
-<table style="table-layout: fixed; width: 433px"><colgroup>
-<col style="width: 156px">
-<col style="width: 88px">
-<col style="width: 91px">
-<col style="width: 98px">
-</colgroup>
-<thead>
-  <tr>
-    <th rowspan="2">Index SDK</th>
-    <th colspan="3">CANN Version</th>
-  </tr>
-  <tr>
-    <th>8.5.0</th>
-    <th>9.0.0</th>
-    <th>9.1.0</th>
-  </tr></thead>
-<tbody>
-  <tr>
-    <td>7.3.0</td>
-    <td>Y</td>
-    <td>/</td>
-    <td>/</td>
-  </tr>
-  <tr>
-    <td>26.0.0</td>
-    <td>Y</td>
-    <td>Y</td>
-    <td>/</td>
-  </tr>
-  <tr>
-    <td>26.1.0</td>
-    <td>Y</td>
-    <td>Y</td>
-    <td>Y</td>
-  </tr>
-</tbody>
+<table style="table-layout: fixed; width: 900px; text-align:center">
+  <colgroup>
+    <col style="width: 150px">
+    <col style="width: 150px">
+    <col style="width: 150px">
+    <col style="width: 150px">
+    <col style="width: 150px">
+    <col style="width: 150px">
+  </colgroup>
+  <thead>
+    <tr>
+      <th rowspan="2">Index SDK</th>
+      <th colspan="5">CANN Version</th>
+    </tr>
+    <tr>
+      <th>8.3.RC1</th>
+      <th>8.5.0</th>
+      <th>9.0.0</th>
+      <th>9.1.0</th>
+      <th>9.2.0</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>7.3.0</td>
+      <td>Y</td>
+      <td>Y</td>
+      <td>/</td>
+      <td>/</td>
+      <td>/</td>
+    </tr>
+    <tr>
+      <td>26.0.0</td>
+      <td>Y</td>
+      <td>Y</td>
+      <td>Y</td>
+      <td>/</td>
+      <td>/</td>
+    </tr>
+    <tr>
+      <td>26.1.0</td>
+      <td>Y</td>
+      <td>Y</td>
+      <td>Y</td>
+      <td>Y</td>
+      <td>Y</td>
+    </tr>
+    <tr>
+      <td>26.2.0</td>
+      <td>Y</td>
+      <td>Y</td>
+      <td>Y</td>
+      <td>Y</td>
+      <td>Y</td>
+    </tr>
+  </tbody>
 </table>
 
 **Table 3**  Index SDK and Ascend HDK Version Compatibility
 
-<table style="table-layout: fixed; width: 433px"><colgroup>
-<col style="width: 156px">
-<col style="width: 88px">
-<col style="width: 91px">
-<col style="width: 98px">
-</colgroup>
-<thead>
-  <tr>
-    <th rowspan="2">Index SDK</th>
-    <th colspan="3">Ascend HDK Version</th>
-  </tr>
-  <tr>
-    <th>25.5.0</th>
-    <th>26.0.RC1</th>
-    <th>26.1.0</th>
-  </tr></thead>
-<tbody>
-  <tr>
-    <td>7.3.0</td>
-    <td>Y</td>
-    <td>/</td>
-    <td>/</td>
-  </tr>
-  <tr>
-    <td>26.0.0</td>
-    <td>Y</td>
-    <td>Y</td>
-    <td>/</td>
-  </tr>
-  <tr>
-    <td>26.1.0</td>
-    <td>Y</td>
-    <td>Y</td>
-    <td>Y</td>
-  </tr>
-</tbody>
+<table style="table-layout: fixed; width: 900px; text-align:center">
+  <colgroup>
+    <col style="width: 150px">
+    <col style="width: 150px">
+    <col style="width: 150px">
+    <col style="width: 150px">
+    <col style="width: 150px">
+    <col style="width: 150px">
+  </colgroup>
+  <thead>
+    <tr>
+      <th rowspan="2">Index SDK</th>
+      <th colspan="5">Ascend HDK Version</th>
+    </tr>
+    <tr>
+      <th>25.3.0</th>
+      <th>25.5.0</th>
+      <th>26.0.0</th>
+      <th>26.1.0</th>
+      <th>26.2.0</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>7.3.0</td>
+      <td>Y</td>
+      <td>Y</td>
+      <td>/</td>
+      <td>/</td>
+      <td>/</td>
+    </tr>
+    <tr>
+      <td>26.0.0</td>
+      <td>Y</td>
+      <td>Y</td>
+      <td>Y</td>
+      <td>/</td>
+      <td>/</td>
+    </tr>
+    <tr>
+      <td>26.1.0</td>
+      <td>Y</td>
+      <td>Y</td>
+      <td>Y</td>
+      <td>Y</td>
+      <td>Y</td>
+    </tr>
+    <tr>
+      <td>26.2.0</td>
+      <td>Y</td>
+      <td>Y</td>
+      <td>Y</td>
+      <td>Y</td>
+      <td>Y</td>
+    </tr>
+  </tbody>
 </table>
 
 ## Important Usage Notes
 
-None
+The newly developed IVFPQ index algorithm is compatible with CANN 8.5.0 and later versions. Versions earlier than CANN 8.5.0 are not supported.
 
 ## Update Notes
 
 ### New Features
 
-| Feature | Description | Supported Product Model |
-|---------|--------------------------------------------|----------|
-| TS FlatIP and Int8Cos Support on A2/A3 Platforms | TS FlatIP and Int8Cos support A2 and A3 platforms: a base library with 60 million entries on A2 and 125 million entries on A3, 256 dimensions, batch sizes of 1 to 256, and TopK of 200. | Atlas 800I A3 SuperPoD Server<br>Atlas 800I A2 Inference Server |
-| IVF-RabitQ Index Support on A2/A3 Platforms | IVF-RabitQ supports A2 and A3 platforms: a base library with 10 million entries, 128 dimensions, TopK of 300, and FP32 data precision. | Atlas 800I A3 SuperPoD Server<br>Atlas 800I A2 Inference Server |
-
-### Service Interface Changes
-
 **Index SDK**
 
-- IVF-RabitQ adds `train`, `remove_ids`, `copyFrom`, `copyTo`, and `update`.
+- The IVFPQ index supports Atlas A3 inference products and Atlas 950PR products.
 
 ### Key Feature Changes
 
 **Index SDK**
 
 - No key feature changes are involved.
+
+### Service Interface Changes
+
+**Index SDK**
+
+- No service interface changes are involved.
 
 ### Resolved Issues
 
@@ -160,11 +227,25 @@ None
 
 None
 
-## 26.1.0 Documentation
+## Documentation
 
-| Document | Description | Update Notes |
-|--|--|--|
-| *Index SDK 26.1.0 User Guide* | Mainly includes the Index SDK usage process, algorithm descriptions, operator generation instructions, API descriptions, and other commonly used operations. | For details, see [Index SDK 26.1.0 User Guide](01_introduction.md#software-architecture). |
+<table><thead align="left"><tr><th class="cellrowborder" valign="top" width="25%"><p>Document Name</p>
+</th>
+<th class="cellrowborder" valign="top" width="50%"><p>Description</p>
+</th>
+<th class="cellrowborder" valign="top" width="25%"><p>Update Notes</p>
+</th>
+</tr>
+</thead>
+<tbody><tr><td class="cellrowborder" valign="top" width="25%"><p>Index SDK 26.2.0 User Guide</p>
+</td>
+<td class="cellrowborder" valign="top" width="50%"><p>Mainly includes the Index SDK usage process, algorithm descriptions, operator generation instructions, API descriptions, and other commonly used operations.</p>
+</td>
+<td class="cellrowborder" valign="top" width="25%"><p>For details, see the <a href="01_introduction.md#software-architecture">Index SDK 26.2.0 User Guide</a>.</p>
+</td>
+</tr>
+</tbody>
+</table>
 
 ## Virus Scan Results
 
@@ -173,3 +254,9 @@ Virus scan passed.
 ## Vulnerability Fixes
 
 None
+
+## Revision History
+
+| Document Version | Release Date | Change Description |
+| --- | --- | --- |
+| 01 | 2026-09-30 | First official release. |
