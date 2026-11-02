@@ -488,12 +488,38 @@ VSTAR检索当前只支持<term>Atlas推理系列产品</term>，涉及VSTAR业�
 #### IVFRaBitQ<a name="ZH-CN_TOPIC_0000002513317244"></a>
 
 <a name="table1844216303913"></a>
-<table><tbody>
-<tr><td width="140" align="center" valign="middle">用法</td><td valign="middle"><strong><code>python3 ivfrabitq_generate_model.py -d &lt;dim&gt; -c &lt;coarse_centroid_num&gt; --cores &lt;core_num&gt; -p &lt;process_id&gt; -pool &lt;pool_size&gt; -t &lt;npu_type&gt; -m &lt;metric_type&gt;</code></strong></td></tr>
-<tr><td width="140" align="center" valign="middle">参数名称</td><td valign="middle">&lt;dim&gt;：特征向量维度，默认值为“128”。<br>&lt;coarse_centroid_num&gt;：一级簇聚类中心个数。默认值为“16384”。<br>&lt;core_num&gt;：昇腾AI处理器AI Core的个数，默认为“40”。不指定该值时，根据&lt;npu_type&gt;配置：当&lt;npu_type&gt;配置为910B3时，&lt;core_num&gt;配置为40。<br>&lt;process_id&gt;：批量生成算子多进程调度的进程ID，默认值为“0”，无需设置。<br>&lt;pool_size&gt;：批量生成算子多进程调度的进程池大小，默认值为“10”。<br>&lt;npu_type&gt;：硬件形态，当前&lt;npu_type&gt;支持Atlas A2推理系列产品，Atlas A3推理系列产品和Ascend 950PR系列产品，默认值为“910B4”。如果无法确定具体的npu_type，则在安装昇腾AI处理器的服务器执行<strong><code>npu-smi info</code></strong>命令进行查询，将查询到的“Name”最后一位数字删除，即是npu_type的取值。对于Atlas 800I A3超节点服务器，可以通过<strong><code>npu-smi info -t board -i 0 -c 0</code></strong>命令进行查询，获取NPU Name信息，910_NPU Name即是npu_type的取值。对于Ascend 950PR系列产品请将npu_type设置为“Ascend950PR”。<br>&lt;metric_type&gt;：向量计算方式，用于显式指定使用“L2”还是“IP”距离进行计算，默认为“L2”。<br>--help | -h：查询帮助信息。</td></tr>
-<tr><td width="140" align="center" valign="middle">说明</td><td valign="middle">执行此命令，用户可以得到一组算子模型文件，用户需要自行修改命令中的参数。例如对于Atlas 800I A2推理服务器生成128维，聚类中心nlist1024，L2距离算子：python3 ivfrabitq_generate_model.py -d 128 -c 1024 -t 910B4 -m L2<br>升级到支持IDSelector前置过滤的版本后，IVFRaBitQ L2算子输入发生变化，需要重新执行该命令生成算子模型。</td></tr>
-<tr><td width="140" align="center" valign="middle">约束说明</td><td valign="middle">● dim ∈ {128}<br>● &lt;coarse_centroid_num&gt; ∈ {1024, 2048, 4096, 8192, 10048, 16384, 32768}<br>● 1 ≤ &lt;pool_size&gt; ≤ 32</td></tr>
-</tbody></table>
+<table><tbody><tr id="row124438353916"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.1.1"><p id="p1944314323914"><a name="p1944314323914"></a><a name="p1944314323914"></a>用法</p>
+</th>
+<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.1.1 "><p id="p033194912546"><a name="p033194912546"></a><a name="p033194912546"></a>python3 ivfrabitq_generate_model.py -d &lt;dim&gt; -c &lt;coarse_centroid_num&gt; --cores &lt;core_num&gt; -p &lt;process_id&gt; -pool &lt;pool_size&gt; -t &lt;npu_type&gt; -m &lt;metric_type&gt; --quant-bits &lt;quant_bits&gt;</p>
+</td>
+</tr>
+<tr id="row1344373183918"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.2.1"><p id="p244314363910"><a name="p244314363910"></a><a name="p244314363910"></a>参数名称</p>
+</th>
+<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.2.1 "><p id="p472394917248"><a name="p472394917248"></a><a name="p472394917248"></a>&lt;dim&gt;：特征向量维度，默认值为“128”。</p>
+<p id="p1572494913240"><a name="p1572494913240"></a><a name="p1572494913240"></a>&lt;coarse_centroid_num&gt;：一级簇聚类中心个数。默认值为“16384”。</p>
+<p id="p113021935175610"><a name="p113021935175610"></a><a name="p113021935175610"></a>&lt;core_num&gt;：<span id="ph83021535135613"><a name="ph83021535135613"></a><a name="ph83021535135613"></a>昇腾AI处理器</span>AI Core的个数，默认为“40”。不指定该值时，根据&lt;npu_type&gt;配置：当&lt;npu_type&gt;配置为910B3时，&lt;core_num&gt;配置为40。</p>
+<p id="p10302153517569"><a name="p10302153517569"></a><a name="p10302153517569"></a>&lt;process_id&gt;：批量生成算子多进程调度的进程ID，默认值为“0”，无需设置。</p>
+<p id="p849220202265"><a name="p849220202265"></a><a name="p849220202265"></a>&lt;pool_size&gt;：批量生成算子多进程调度的进程池大小，默认值为“10”。</p>
+<p id="p174921720102611"><a name="p174921720102611"></a><a name="p174921720102611"></a>&lt;npu_type&gt;：硬件形态，当前&lt;npu_type&gt;支持<term>Atlas A2 推理系列产品</term>，<term>Atlas A3 推理系列产品</term>，默认值为“910B4”。如果无法确定具体的npu_type，则在安装<span id="ph16510123015103"><a name="ph16510123015103"></a><a name="ph16510123015103"></a>昇腾AI处理器</span>的服务器执行<strong id="b1611533911102"><a name="b1611533911102"></a><a name="b1611533911102"></a>npu-smi info</strong>命令进行查询，将查询到的“Name”最后一位数字删除，即是npu_type的取值。对于<span id="ph1411710191414"><a name="ph1411710191414"></a><a name="ph1411710191414"></a>Atlas 800I A3 超节点服务器</span>，可以通过<strong id="b12401152416117"><a name="b12401152416117"></a><a name="b12401152416117"></a>npu-smi info -t board -i 0 -c 0</strong>命令进行查询，获取NPU Name信息，910_NPU Name即是npu_type的取值。</p>
+<p id="p116211110135912"><a name="p116211110135912"></a><a name="p116211110135912"></a>&lt;metric_type&gt;：向量计算方式，用于显式指定使用“L2”还是“IP”距离进行计算，默认为“L2”。</p>
+<p id="p116211110135913">&lt;quant_bits&gt;：RaBitQ每维度量化比特数，取值为1、2或4，默认值为“1”。取值大于1时仅支持L2距离，且不支持Ascend 950PR系列产品，维度上限为：quant_bits=2时dim ≤ 512，quant_bits=4时dim ≤ 256。</p>
+<p id="p4302153511569"><a name="p4302153511569"></a><a name="p4302153511569"></a>--help | -h：查询帮助信息。</p>
+</td>
+</tr>
+<tr id="row44439314393"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.3.1"><p id="p1444316303912"><a name="p1444316303912"></a><a name="p1444316303912"></a>说明</p>
+</th>
+<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.3.1 "><p id="p144431434393"><a name="p144431434393"></a><a name="p144431434393"></a>执行此命令，用户可以得到一组算子模型文件，用户需要自行修改命令中的参数。例如对于Atlas 800I A2 生成128维，聚类中心nlist1024，L2距离算子：python3 ivfrabitq_generate_model.py -d 128 -c 1024 -t 910B4 -m L2</p>
+<p>升级到支持IDSelector前置过滤的版本后，IVFRaBitQ L2算子输入发生变化，需要重新执行该命令生成算子模型。</p>
+<p>如需生成多比特量化算子，可指定--quant-bits，例如生成128维、2比特量化、L2距离算子：python3 ivfrabitq_generate_model.py -d 128 -c 1024 -t 910B4 -m L2 --quant-bits 2</p>
+</td>
+</tr>
+<tr id="row19923139133710"><th class="firstcol" valign="top" width="14.580000000000002%" id="mcps1.1.3.4.1"><p id="p68850165377"><a name="p68850165377"></a><a name="p68850165377"></a>约束说明</p>
+</th>
+<td class="cellrowborder" valign="top" width="85.42%" headers="mcps1.1.3.4.1 "><a name="ul16885121613379"></a><a name="ul16885121613379"></a><ul id="ul16885121613379"><li>dim ∈ {128}</li><li>&lt;coarse_centroid_num&gt; ∈ {1024, 2048, 4096, 8192, 10048, 16384, 32768}</li><li>1 ≤ &lt;pool_size&gt; ≤ 32</li><li>&lt;quant_bits&gt; ∈ {1, 2, 4}，默认为1；quant_bits &gt; 1时仅支持L2距离、不支持Ascend 950PR系列产品；quant_bits=2时dim ≤ 512，quant_bits=4时dim ≤ 256</li></ul>
+</td>
+</tr>
+</tbody>
+</table>
 
 **涉及算法<a name="section16686174317488"></a>**
 

@@ -39,11 +39,11 @@ static const int32_t GM_ALIGN = 512;  // 全局内存对齐大小
 namespace optiling
 {
 
-static void SetLutAndCodeTilingInfo(gert::TilingContext *context, DistanceIVFRabitqL2FP32TilingData &tiling,
-                                    int32_t ubSize)
+static ge::graphStatus SetLutAndCodeTilingInfo(gert::TilingContext *context, DistanceIVFRabitqL2FP32TilingData &tiling,
+                                               int32_t ubSize)
 {
     int32_t dimLength = tiling.get_dimLength();
-    int32_t lutLength = dimLength / 8;
+    int32_t lutLength = tiling.get_lutLength();
     int32_t lutDimLength = context->GetInputShape(QUERYLUT)->GetStorageShape().GetDim(1);  // 一般为固定值256
 
     int32_t codeBlockLength = context->GetInputShape(BASE)->GetStorageShape().GetDim(0);
@@ -58,20 +58,30 @@ static void SetLutAndCodeTilingInfo(gert::TilingContext *context, DistanceIVFRab
     int32_t remianSize = (ubSize * 9 / 10) - lutTotalSize - burstMaskSize;
 
     // idx_calc_que 存放gather偏移，占用内存 dimLength / 8 * INT32_BYTES
-    // codes_in_que、codes_half_que、codes_int32_que 存放 code_tile_length 行量化编码，每行占用内存 dimLength / 8 *
-    // INT8_BYTES、dimLength / 8 * HALF_BYTES、dimLength / 8 * INT32_BYTES select_out_que 存放code_tile_length
-    // 行gather结果，每行占用内存 dimLength / 8 * FLOAT32_BYTES ip_out_que 存放code_tile_length
-    // 个内积结果，每个结果占用内存 FLOAT32_BYTES
-    int32_t code_tile_length = (remianSize - dimLength / 8 * INT32_BYTES) /
-                               (dimLength / 8 * INT8_BYTES + dimLength / 8 * HALF_BYTES + dimLength / 8 * INT32_BYTES +
-                                dimLength / 8 * FLOAT32_BYTES + FLOAT32_BYTES);
+    // 当前 tile 在第二次 Cast 后释放 codes/half，随后复用同一块 codes_in 预取下一块，
+    // 因此预算里仍然只留一份 codes_in，避免把 code tile 缩短。
+    // codes_half_que、codes_int32_que 各一份。select_out_que 存放 gather 结果，ip_out_que 存放内积。
+    int32_t code_tile_length =
+        (remianSize - lutLength * INT32_BYTES) / (lutLength * INT8_BYTES + lutLength * HALF_BYTES +
+                                                  lutLength * INT32_BYTES + lutLength * FLOAT32_BYTES + FLOAT32_BYTES);
+    // 多比特下 lutLength 随 quantBits 膨胀，极端 dim 可能耗尽 UB 预算：
+    // code_tile_length <= 0 会让 kernel 侧 tile 数与 GM 偏移错乱，lut_tile_length 为 0 会让
+    // lutLength % lut_tile_length 整数除零，这里直接判定非法并在 tiling 阶段失败。
+    if (code_tile_length <= 0)
+    {
+        return ge::GRAPH_FAILED;
+    }
     tiling.set_codeTileLength(code_tile_length);
     std::cout << "code tile length: " << code_tile_length << std::endl;
 
     // select_out_que 可复用，用以存储分段输入的 centroid LUT
     // select_out_que 大小为 dimLength / 8 * code_tile_lengt 个float，而 LUT 每行为 lutDimLength 个 float
     // 据此可计算每次搬运多少行LUT
-    int32_t lut_tile_length = dimLength / 8 * code_tile_length / lutDimLength;
+    int32_t lut_tile_length = lutLength * code_tile_length / lutDimLength;
+    if (lut_tile_length <= 0)
+    {
+        return ge::GRAPH_FAILED;
+    }
     if (lutLength < lut_tile_length)
     {
         lutTileNum = 1;
@@ -96,6 +106,7 @@ static void SetLutAndCodeTilingInfo(gert::TilingContext *context, DistanceIVFRab
     tiling.set_lutTileNum(lutTileNum);
     tiling.set_lutTileLength(lutTileLength);
     tiling.set_lastLutTileLength(lastLutTileLength);
+    return ge::GRAPH_SUCCESS;
 }
 
 static void SetDistTilingInfo(gert::TilingContext *context, DistanceIVFRabitqL2FP32TilingData &tiling, int32_t ubSize)
@@ -112,12 +123,23 @@ static ge::graphStatus TilingFunc(gert::TilingContext *context)
     DistanceIVFRabitqL2FP32TilingData tiling;
     ASCENDC_RETURN_IF_NOT(context != nullptr, ge::GRAPH_FAILED);
 
-    int metricType = *(context->GetAttrs()->GetAttrPointer<int>(0));
+    const auto *attrs = context->GetAttrs();
+    ASCENDC_RETURN_IF_NOT(attrs != nullptr, ge::GRAPH_FAILED);
+    const int *metricTypeAttr = attrs->GetAttrPointer<int>(0);
+    const int *quantBitsAttr = attrs->GetAttrPointer<int>(1);
+    ASCENDC_RETURN_IF_NOT(metricTypeAttr != nullptr && quantBitsAttr != nullptr, ge::GRAPH_FAILED);
+    int metricType = *metricTypeAttr;
     if (metricType != METRIC_L2 && metricType != METRIC_INNER_PRODUCT)
     {
         return ge::GRAPH_FAILED;
     }
     tiling.set_metricType(metricType);
+    int quantBits = *quantBitsAttr;
+    if (quantBits != 1 && quantBits != 2 && quantBits != 4)
+    {
+        return ge::GRAPH_FAILED;
+    }
+    tiling.set_quantBits(quantBits);
 
     const auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     uint64_t ubSize = 0;
@@ -130,9 +152,10 @@ static ge::graphStatus TilingFunc(gert::TilingContext *context)
     {
         return ge::GRAPH_FAILED;
     }
-    int32_t dimLength = context->GetInputShape(BASE)->GetStorageShape().GetDim(1);  // indexcode维度 存储类型为int8
-    tiling.set_dimLength(dimLength * 8);
-    SetLutAndCodeTilingInfo(context, tiling, ubSize);
+    int32_t codeLength = context->GetInputShape(BASE)->GetStorageShape().GetDim(1);  // bytes per encoded vector
+    tiling.set_lutLength(codeLength);
+    tiling.set_dimLength(codeLength * 8 / quantBits);
+    ASCENDC_RETURN_IF_NOT(SetLutAndCodeTilingInfo(context, tiling, ubSize) == ge::GRAPH_SUCCESS, ge::GRAPH_FAILED);
     SetDistTilingInfo(context, tiling, ubSize);
     int32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     context->SetBlockDim(aivNum);
@@ -196,7 +219,7 @@ static ge::graphStatus InferDataType(gert::InferDataTypeContext *context)
  *      querylut: batch * d / 4 * 16
  *      centroidslut: nlist * d / 4 * 16
  *      centroidsid: corenum
- *      base: ni * d/8
+ *      base: ni * (d * quant_bits / 8)
  *      offset: corenum
  *      actual_size: corenum
  *      indexl2: ni
@@ -306,6 +329,7 @@ class DistanceIVFRabitqL2FP32 : public OpDef
             .UnknownShapeFormat({ge::FORMAT_ND});
 
         this->Attr("metric_type").AttrType(REQUIRED).Int();
+        this->Attr("quant_bits").AttrType(REQUIRED).Int();
         this->SetInferShape(ge::InferShape);
         this->SetInferDataType(ge::InferDataType);
 
