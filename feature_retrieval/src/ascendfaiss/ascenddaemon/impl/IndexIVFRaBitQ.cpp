@@ -188,10 +188,21 @@ void ReserveExpanded(DeviceVector<uint8_t> &vec, size_t needBytes, size_t hardCa
 const int IVF_RABITQ_BLOCK_SIZE = 16384 * 2;
 const int SCAN_BIT = 8;
 const int LUT_NUM = std::pow(2, SCAN_BIT);
-IndexIVFRaBitQ::IndexIVFRaBitQ(int numList, int dim, int nprobes, const std::string &metricType, int64_t resourceSize)
-    : IndexIVF(numList, dim * 4, dim, nprobes, resourceSize), blockSize(IVF_RABITQ_BLOCK_SIZE)
+IndexIVFRaBitQ::IndexIVFRaBitQ(int numList, int dim, int nprobes, const std::string &metricType, int64_t resourceSize,
+                               int quantBits)
+    : IndexIVF(numList, dim * 4, dim, nprobes, resourceSize), blockSize(IVF_RABITQ_BLOCK_SIZE), quantBits_(quantBits)
 {
     ASCEND_THROW_IF_NOT(dim % CUBE_ALIGN == 0);
+    ASCEND_THROW_IF_NOT_MSG(quantBits_ == 1 || quantBits_ == 2 || quantBits_ == 4,
+                            "RaBitQ quantBits must be 1, 2, or 4");
+    ASCEND_THROW_IF_NOT_MSG(quantBits_ == 1 || metricType == "L2", "Multi-bit RaBitQ POC only supports L2");
+    ASCEND_THROW_IF_NOT_MSG(quantBits_ != 2 || dim <= 512,
+                            "2-bit RaBitQ POC supports dimensions up to 512 (query LUT UB limit)");
+    ASCEND_THROW_IF_NOT_MSG(quantBits_ != 4 || dim <= 256,
+                            "4-bit RaBitQ POC supports dimensions up to 256 (query LUT UB limit)");
+    ASCEND_THROW_IF_NOT_MSG(quantBits_ == 1 || (!faiss::ascend::SocUtils::GetInstance().IsAscendA5() &&
+                                                !faiss::ascend::SocUtils::GetInstance().IsAscend310P()),
+                            "Multi-bit RaBitQ POC only supports the A3/Cube distance path");
     ASCEND_THROW_IF_NOT_MSG(metricType == "L2" || metricType == "IP", "Unsupported metric type!");
     if (metricType == "L2")
     {
@@ -218,9 +229,9 @@ IndexIVFRaBitQ::IndexIVFRaBitQ(int numList, int dim, int nprobes, const std::str
     CentroidL2OnDevice = CREATE_UNIQUE_PTR(DeviceVector<float>, MemorySpace::DEVICE_HUGEPAGE);
     CentroidL2OnDevice->resize(numList);
     LUTMatrixOnDevice = CREATE_UNIQUE_PTR(DeviceVector<float>, MemorySpace::DEVICE_HUGEPAGE);
-    LUTMatrixOnDevice->resize(SCAN_BIT * LUT_NUM);
+    LUTMatrixOnDevice->resize(SCAN_BIT * LUT_NUM * quantBits_);
     CentroidLUTOnDevice = CREATE_UNIQUE_PTR(DeviceVector<float>, MemorySpace::DEVICE_HUGEPAGE);
-    CentroidLUTOnDevice->resize(numList * dims / SCAN_BIT * LUT_NUM);
+    CentroidLUTOnDevice->resize(numList * getCodePartBytes() * LUT_NUM);
     uploadLUTMatrix();
     distResultOnDevice = CREATE_UNIQUE_PTR(DeviceVector<float>, MemorySpace::DEVICE_HUGEPAGE);
     distResultSpace = CORE_NUM * static_cast<size_t>(IVF_RABITQ_BLOCK_SIZE);
@@ -473,7 +484,7 @@ APP_ERROR IndexIVFRaBitQ::resize(int listId, size_t numVecs)
     pIndexL1 = IndexL1OnDevice[listId]->data() < pIndexL1 ? IndexL1OnDevice[listId]->data() : pIndexL1;
 
     auto &blockList = baseFp32[listId];
-    const size_t codePart = static_cast<size_t>((dims + 7) / 8);
+    const size_t codePart = getCodePartBytes();
     const size_t blockCapBytes = chunk * codePart;
 
     size_t remainingVecs = numVecs;
@@ -546,7 +557,8 @@ size_t IndexIVFRaBitQ::getListLength(int listId) const
 void IndexIVFRaBitQ::uploadLUTMatrix()
 {
     APP_LOG_INFO("IndexIVFRaBitQ  create LUTMatrix started\n");
-    std::vector<float> LUTMatrix(SCAN_BIT * LUT_NUM, 0);
+    const int lutColumns = LUT_NUM * quantBits_;
+    std::vector<float> LUTMatrix(SCAN_BIT * lutColumns, 0);
     for (int i = 0; i < SCAN_BIT; i++)
     {
         int mask = (1 << i);
@@ -554,13 +566,18 @@ void IndexIVFRaBitQ::uploadLUTMatrix()
         {
             if (j & mask)
             {
-                LUTMatrix[i * LUT_NUM + j] = 1;
+                // The matmul emits adjacent 256-entry tables for bit planes
+                // ordered from MSB to LSB (e.g. 4-bit weights 8, 4, 2, 1).
+                for (int plane = 0; plane < quantBits_; ++plane)
+                {
+                    LUTMatrix[i * lutColumns + plane * LUT_NUM + j] = static_cast<float>(1 << (quantBits_ - 1 - plane));
+                }
             }
         }
     }
 
     auto ret = aclrtMemcpy(LUTMatrixOnDevice->data(), LUTMatrixOnDevice->size() * sizeof(float), LUTMatrix.data(),
-                           SCAN_BIT * LUT_NUM * sizeof(float), ACL_MEMCPY_HOST_TO_DEVICE);
+                           LUTMatrix.size() * sizeof(float), ACL_MEMCPY_HOST_TO_DEVICE);
     ASCEND_THROW_IF_NOT_FMT(ret == ACL_SUCCESS, "Failed to aclrtMemcpy LUTMatrix, result is: %d\n", ret);
 }
 
@@ -622,8 +639,9 @@ APP_ERROR IndexIVFRaBitQ::updateCoarseCenterImpl(std::vector<float> &centerData)
 
     // <x, c> LUT预计算
     AscendTensor<float, DIMS_2> centroidsrotate(centroidsOnDevice->data(), {numLists * dims / SCAN_BIT, SCAN_BIT});
-    AscendTensor<float, DIMS_2> lutmatrixDev(LUTMatrixOnDevice->data(), {SCAN_BIT, LUT_NUM});
-    AscendTensor<float, DIMS_2> centroidslut(CentroidLUTOnDevice->data(), {numLists * dims / SCAN_BIT, LUT_NUM});
+    AscendTensor<float, DIMS_2> lutmatrixDev(LUTMatrixOnDevice->data(), {SCAN_BIT, LUT_NUM * quantBits_});
+    AscendTensor<float, DIMS_2> centroidslut(CentroidLUTOnDevice->data(),
+                                             {numLists * dims / SCAN_BIT, LUT_NUM * quantBits_});
     runCenterLUTOp(centroidsrotate, lutmatrixDev, centroidslut, stream);
     ret = synchronizeStream(stream);
     APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "synchronizeStream default stream: %i\n", ret);
@@ -685,9 +703,9 @@ APP_ERROR IndexIVFRaBitQ::resetCenterLUTOp()
     {
         AscendOpDesc desc("MatmulAtFP32");
         std::vector<int64_t> codesShape({numLists * dims / SCAN_BIT, SCAN_BIT});
-        std::vector<int64_t> matrixShape({SCAN_BIT, LUT_NUM});
+        std::vector<int64_t> matrixShape({SCAN_BIT, LUT_NUM * quantBits_});
 
-        std::vector<int64_t> lutResultShape({numLists * dims / SCAN_BIT, LUT_NUM});
+        std::vector<int64_t> lutResultShape({numLists * dims / SCAN_BIT, LUT_NUM * quantBits_});
         desc.addInputTensorDesc(ACL_FLOAT, codesShape.size(), codesShape.data(), ACL_FORMAT_ND);
         desc.addInputTensorDesc(ACL_FLOAT, matrixShape.size(), matrixShape.data(), ACL_FORMAT_ND);
         desc.addOutputTensorDesc(ACL_FLOAT, lutResultShape.size(), lutResultShape.data(), ACL_FORMAT_ND);
@@ -737,7 +755,7 @@ size_t IndexIVFRaBitQ::addTiling(int listId, size_t numVecs, std::vector<uint64_
     baseSizeHost[0] = std::min(leftInBlock, numVecs);
     indexl2offsetHost[0] = ntotal;
     offsetHost[0] =
-        (reinterpret_cast<uint64_t>(baseFp32[listId].at(blockIdx)->data() + offsetInBlock * ((dims + 7) / 8)) -
+        (reinterpret_cast<uint64_t>(baseFp32[listId].at(blockIdx)->data() + offsetInBlock * getCodePartBytes()) -
          reinterpret_cast<uint64_t>(pBaseFp32));
     for (size_t i = 1; i + 1 < tileNum; i++)
     {
@@ -813,7 +831,7 @@ APP_ERROR IndexIVFRaBitQ::addVectors(int listId, size_t numVecs, const float *co
         AscendTensor<float, DIMS_1> indexesl1(IndexL1OnDevice[listId]->data() + indexl2offsetHost[i], {blockSize});
         AscendTensor<uint8_t, DIMS_2> indexCodes(
             reinterpret_cast<uint8_t *>(reinterpret_cast<uint64_t>(pBaseFp32) + offsetHost[i]),
-            {blockSize, (dims + 7) / 8});
+            {blockSize, static_cast<int>(getCodePartBytes())});
         // o = Por, ||or||^2 预计算
         runIndexRotateL2Op(indexOriginVec, vectorSizeVec, rotatematrixDev, indexRotateVec, indexL2Vec, stream);
         ret = synchronizeStream(stream);
@@ -905,7 +923,7 @@ APP_ERROR IndexIVFRaBitQ::resetIndexCodeAndPreComputeOp()
         std::vector<int64_t> centroidShape({1, dims});
         std::vector<int64_t> centroidl2Shape({1});
 
-        std::vector<int64_t> indexCodeShape({blockSize, dims / 8});
+        std::vector<int64_t> indexCodeShape({blockSize, static_cast<int64_t>(getCodePartBytes())});
         std::vector<int64_t> l2ResultShape({blockSize});
         std::vector<int64_t> l1ResultShape({blockSize});
         desc.addInputTensorDesc(ACL_INT32, sizeShape.size(), sizeShape.data(), ACL_FORMAT_ND);
@@ -924,6 +942,7 @@ APP_ERROR IndexIVFRaBitQ::resetIndexCodeAndPreComputeOp()
         {
             aclopSetAttrInt(desc.opAttr, "metric_type", 1);
         }
+        aclopSetAttrInt(desc.opAttr, "quant_bits", quantBits_);
 
         op.reset();
         op = CREATE_UNIQUE_PTR(AscendOperator, desc);
@@ -1019,9 +1038,9 @@ APP_ERROR IndexIVFRaBitQ::resetQueryLUTOp()
     {
         AscendOpDesc desc("MatmulAtFP32");
         std::vector<int64_t> queryShape({batch * dims / SCAN_BIT, SCAN_BIT});
-        std::vector<int64_t> matrixShape({SCAN_BIT, LUT_NUM});
+        std::vector<int64_t> matrixShape({SCAN_BIT, LUT_NUM * quantBits_});
 
-        std::vector<int64_t> lutResultShape({batch * dims / SCAN_BIT, LUT_NUM});
+        std::vector<int64_t> lutResultShape({batch * dims / SCAN_BIT, LUT_NUM * quantBits_});
         desc.addInputTensorDesc(ACL_FLOAT, queryShape.size(), queryShape.data(), ACL_FORMAT_ND);
         desc.addInputTensorDesc(ACL_FLOAT, matrixShape.size(), matrixShape.data(), ACL_FORMAT_ND);
         desc.addOutputTensorDesc(ACL_FLOAT, lutResultShape.size(), lutResultShape.data(), ACL_FORMAT_ND);
@@ -1258,12 +1277,12 @@ bool IndexIVFRaBitQ::l2DisOpReset(std::unique_ptr<AscendOperator> &op, int64_t b
 {
     AscendOpDesc desc;
     std::vector<int64_t> queryl2Shape({batch});
-    std::vector<int64_t> querylutShape({batch * dims / SCAN_BIT, LUT_NUM});
-    std::vector<int64_t> centroidslutShape({numLists * dims / SCAN_BIT, LUT_NUM});
+    std::vector<int64_t> querylutShape({batch * static_cast<int64_t>(getCodePartBytes()), LUT_NUM});
+    std::vector<int64_t> centroidslutShape({numLists * static_cast<int64_t>(getCodePartBytes()), LUT_NUM});
     std::vector<int64_t> queryidShape({CORE_NUM});
     std::vector<int64_t> centroidsidShape({CORE_NUM});
     std::vector<int64_t> centroidsl2Shape({CORE_NUM});
-    std::vector<int64_t> codesShape({IVF_RABITQ_BLOCK_SIZE, dims / 8});
+    std::vector<int64_t> codesShape({IVF_RABITQ_BLOCK_SIZE, static_cast<int64_t>(getCodePartBytes())});
     std::vector<int64_t> offsetShape({CORE_NUM});
     std::vector<int64_t> sizeShape({CORE_NUM});
     std::vector<int64_t> indexl2Shape({IVF_RABITQ_BLOCK_SIZE});
@@ -1310,6 +1329,10 @@ bool IndexIVFRaBitQ::l2DisOpReset(std::unique_ptr<AscendOperator> &op, int64_t b
     {
         aclopSetAttrInt(desc.opAttr, "metric_type", 1);
     }
+    if (!faiss::ascend::SocUtils::GetInstance().IsAscendA5())
+    {
+        aclopSetAttrInt(desc.opAttr, "quant_bits", quantBits_);
+    }
     op.reset();
     op = CREATE_UNIQUE_PTR(AscendOperator, desc);
     return op->init();
@@ -1338,6 +1361,8 @@ void IndexIVFRaBitQ::runL2DistOp(
     AscendTensor<float, DIMS_2, size_t> &subVcMaxDis, AscendTensor<uint16_t, DIMS_2, size_t> &subOpFlag,
     aclrtStream stream)
 {
+    // subQuerylut keeps the physical matmul shape [batch*d/8, 256*bits].
+    // The distance op reinterprets the same bytes as [batch*codeBytes, 256].
     int batch = static_cast<int>(subQuerylut.getSize(0) / (dims / SCAN_BIT));
 
     AscendOperator *op = nullptr;
@@ -1666,8 +1691,9 @@ APP_ERROR IndexIVFRaBitQ::searchImplL2(AscendTensor<float, DIMS_2> &queries, Asc
     AscendTensor<float, DIMS_2, size_t> centroidsl2(mem, {iterNum, coreNum}, stream);
     AscendTensor<uint32_t, DIMS_2, size_t> baseSize(mem, {iterNum, coreNum}, stream);
     AscendTensor<float, DIMS_2, size_t> centroidsLutVec(
-        CentroidLUTOnDevice->data(), {static_cast<size_t>(numLists * dims / SCAN_BIT), static_cast<size_t>(LUT_NUM)});
-    AscendTensor<uint8_t, DIMS_2, size_t> codeVec(pBaseFp32, {ivfRabitqBlockSize, static_cast<size_t>(dims / 8)});
+        CentroidLUTOnDevice->data(),
+        {static_cast<size_t>(numLists) * getCodePartBytes(), static_cast<size_t>(LUT_NUM)});
+    AscendTensor<uint8_t, DIMS_2, size_t> codeVec(pBaseFp32, {ivfRabitqBlockSize, getCodePartBytes()});
     AscendTensor<float, DIMS_1, size_t> Indexl2(pIndexL2, {ivfRabitqBlockSize});
     AscendTensor<float, DIMS_1, size_t> Indexl1(pIndexL1, {ivfRabitqBlockSize});
     size_t vcMaxLen = static_cast<size_t>((ivfRabitqBlockSize + IVF_RABITQ_BURST_LEN - 1) / IVF_RABITQ_BURST_LEN * 2);
@@ -1957,7 +1983,7 @@ APP_ERROR IndexIVFRaBitQ::searchImplL1(AscendTensor<float, DIMS_2> &queries, Asc
 
     // <x, q> LUT预计算
     AscendTensor<float, DIMS_2> queriesfastscan(rotateQueries.data(), {n * dims / SCAN_BIT, SCAN_BIT});
-    AscendTensor<float, DIMS_2> lutmatrixDev(LUTMatrixOnDevice->data(), {SCAN_BIT, LUT_NUM});
+    AscendTensor<float, DIMS_2> lutmatrixDev(LUTMatrixOnDevice->data(), {SCAN_BIT, LUT_NUM * quantBits_});
     runQueryLUTOp(n, queriesfastscan, lutmatrixDev, queriesLut, stream);
     ret = synchronizeStream(stream);
     APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "synchronizeStream default stream: %i\n", ret);
@@ -1975,7 +2001,7 @@ APP_ERROR IndexIVFRaBitQ::searchWithBatch(int n, const float *x, int k, float *d
     AscendTensor<float, DIMS_2> queries(mem, {n, dims}, stream);
     AscendTensor<float, DIMS_2> rotateQueries(mem, {n, dims}, stream);
     AscendTensor<float, DIMS_1> queryL2(mem, {n}, stream);
-    AscendTensor<float, DIMS_2> queriesLut(mem, {n * dims / SCAN_BIT, LUT_NUM}, stream);
+    AscendTensor<float, DIMS_2> queriesLut(mem, {n * dims / SCAN_BIT, LUT_NUM * quantBits_}, stream);
     auto ret =
         aclrtMemcpy(queries.data(), queries.getSizeInBytes(), x, n * dims * sizeof(float), ACL_MEMCPY_HOST_TO_DEVICE);
     APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "copy query error %d", ret);
@@ -2006,8 +2032,8 @@ APP_ERROR IndexIVFRaBitQ::searchWithBatch(int n, const float *x, int k, float *d
 
 size_t IndexIVFRaBitQ::getCodeSize() const
 {
-    size_t codePartBytes = utils::divUp(dims, 8);  // 压缩码部分
-    size_t factorBytes = 2 * sizeof(float);        // L2因子 + L1因子，各4字节
+    size_t codePartBytes = getCodePartBytes();  // 压缩码部分
+    size_t factorBytes = 2 * sizeof(float);     // L2因子 + L1因子，各4字节
     return codePartBytes + factorBytes;
 }
 
@@ -2064,7 +2090,7 @@ APP_ERROR IndexIVFRaBitQ::getListRawCodes(int listId, std::vector<uint8_t> &rawC
 
     // 拷贝压缩码部分（baseFp32）
     const auto &blocks = baseFp32[listId];
-    size_t codePartBytesPerVec = utils::divUp(dims, 8);
+    size_t codePartBytesPerVec = getCodePartBytes();
     size_t codePartTotal = numVecs * codePartBytesPerVec;
     size_t copied = 0;
 
@@ -2136,8 +2162,8 @@ APP_ERROR IndexIVFRaBitQ::addEncodedVectors(int listId, size_t numVecs, const ui
     auto streamPtr = resources.getDefaultStream();
     auto stream = streamPtr->GetStream();
 
-    size_t codePartBytes = utils::divUp(dims, 8);  // 压缩码部分字节数
-    size_t factorBytes = sizeof(float);            // 每个因子字节数
+    size_t codePartBytes = getCodePartBytes();  // 压缩码部分字节数
+    size_t factorBytes = sizeof(float);         // 每个因子字节数
 
     const uint8_t *allCodesPtr = encodedCodes;
     const uint8_t *allL2Ptr = encodedCodes + numVecs * codePartBytes;
@@ -2337,7 +2363,7 @@ void IndexIVFRaBitQ::moveVectorForward(int listId, idx_t srcIdx, idx_t dstIdx)
     RemoveForwardParam param = {static_cast<size_t>(srcIdx1), static_cast<size_t>(srcIdx2),
                                 static_cast<size_t>(dstIdx1), static_cast<size_t>(dstIdx2)};
 
-    auto ret = RemoveForwardNDFormat(param, (dims + 7) / 8, baseFp32[listId]);
+    auto ret = RemoveForwardNDFormat(param, getCodePartBytes(), baseFp32[listId]);
     ASCEND_THROW_IF_NOT_FMT(ret == ACL_SUCCESS, "RemoveForwardNDFormat error %d", ret);
 
     RemoveForwardParam L1param = {static_cast<size_t>(listId), static_cast<size_t>(srcIdx), static_cast<size_t>(listId),

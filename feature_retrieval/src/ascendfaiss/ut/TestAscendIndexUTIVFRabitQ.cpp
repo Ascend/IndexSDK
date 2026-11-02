@@ -520,6 +520,182 @@ TEST(TestAscendIndexIVFRaBitQ, CopyFromAndCopyToRoundTripPreencodedData)
     ASSERT_NO_THROW(deviceIndex.train(1, vector.data()));
 }
 
+TEST(TestAscendIndexIVFRaBitQ, AttachedRefineSourcesRejectMutationAndResetReleasesSources)
+{
+    auto config = MakeConfig();
+    config.needRefine = true;
+    faiss::ascend::AscendIndexIVFRaBitQ index(DIM, faiss::METRIC_L2, NLIST, config);
+    std::vector<float> data(DIM, 1.0f);
+    index.ntotal = 1;
+    index.impl_->idToDeviceMap[0] = 0;
+    index.attachRefineSources(data.data(), 1);
+    EXPECT_TRUE(index.impl_->refineSourcesAttached());
+    ExpectExceptionContains([&] { index.loadRefineSources(data.data(), 1); }, "conflicts");
+    faiss::idx_t id = 0;
+    ExpectExceptionContains([&] { index.impl_->addPaged(1, data.data(), &id); }, "conflicts");
+    ExpectExceptionContains([&] { index.impl_->deleteImpl(1, &id); }, "conflicts");
+    ExpectExceptionContains([&] { index.impl_->update(1, data.data(), &id); }, "conflicts");
+    EXPECT_EQ(index.ntotal, 1);
+    index.reset();
+    EXPECT_FALSE(index.impl_->refineSourcesAttached());
+    EXPECT_TRUE(index.impl_->srcIndexes.empty());
+    EXPECT_EQ(index.impl_->attachedSrcRows_, 0);
+    index.ntotal = 1;
+    index.impl_->idToDeviceMap[0] = 0;
+    ASSERT_NO_THROW(index.loadRefineSources(data.data(), 1));
+    data[0] = 2.0f;
+    EXPECT_FLOAT_EQ(index.impl_->srcIndexes[0], 1.0f);
+    ExpectExceptionContains([&] { index.attachRefineSources(data.data(), 1); }, "conflicts");
+    index.reset();
+    EXPECT_TRUE(index.impl_->srcIndexes.empty());
+    index.ntotal = 1;
+    index.impl_->idToDeviceMap[0] = 0;
+    EXPECT_NO_THROW(index.attachRefineSources(data.data(), 1));
+}
+
+TEST(TestAscendIndexIVFRaBitQ, CopiedRefineSourcesRejectMutationAndValidateSearch)
+{
+    auto source = MakePretrainedCpuIndex();
+    const faiss::idx_t ids[] = {0, 1, 2};
+    source.index->invlists->update_entries(source.listId, 0, 3, ids, source.codes.data());
+    auto config = MakeConfig();
+    config.needRefine = true;
+    faiss::ascend::AscendIndexIVFRaBitQ index(DIM, faiss::METRIC_L2, NLIST, config);
+    ASSERT_NO_THROW(index.copyFrom(source.index.get()));
+    auto originals = MakePatternData(3, DIM);
+    std::vector<float> beforeDist(2), afterDist(2);
+    std::vector<faiss::idx_t> beforeIds(2), afterIds(2);
+    ExpectExceptionContains([&] { index.search(1, originals.data(), 2, beforeDist.data(), beforeIds.data()); },
+                            "refine sources are not ready");
+    // Missing originals must also prevent appending to an imported index.
+    const faiss::idx_t next = 3;
+    ExpectExceptionContains([&] { index.add_with_ids(1, originals.data(), &next); }, "not ready");
+    ExpectExceptionContains([&] { index.update(1, originals.data(), ids); }, "not ready");
+    EXPECT_EQ(index.ntotal, 3);
+    ASSERT_NO_THROW(index.loadRefineSources(originals.data(), 3));
+    ASSERT_NO_THROW(index.search(1, originals.data(), 2, beforeDist.data(), beforeIds.data()));
+    ExpectExceptionContains([&] { index.remove_ids(1, ids); }, "copied refine sources");
+    ExpectExceptionContains([&] { index.update(1, originals.data() + DIM, ids); }, "copied refine sources");
+    EXPECT_EQ(index.ntotal, 3);
+    EXPECT_EQ(index.impl_->srcIndexes, originals);
+    ASSERT_NO_THROW(index.search(1, originals.data(), 2, afterDist.data(), afterIds.data()));
+    EXPECT_EQ(beforeDist, afterDist);
+    EXPECT_EQ(beforeIds, afterIds);
+    // Validate the entire ID batch before any vector is added.
+    const faiss::idx_t invalid[] = {3, 5};
+    ExpectExceptionContains([&] { index.add_with_ids(2, originals.data(), invalid); }, "sequential IDs");
+    EXPECT_EQ(index.ntotal, 3);
+    EXPECT_EQ(index.impl_->srcIndexes, originals);
+    ASSERT_NO_THROW(index.add_with_ids(1, originals.data(), &next));
+    EXPECT_EQ(index.ntotal, 4);
+    EXPECT_EQ(index.impl_->srcIndexes.size(), 4U * DIM);
+    index.impl_->srcIndexes.pop_back();
+    ExpectExceptionContains([&] { index.search(1, originals.data(), 2, afterDist.data(), afterIds.data()); },
+                            "refine sources are not ready");
+    ASSERT_NO_THROW(index.loadRefineSources(MakePatternData(4, DIM).data(), 4));
+    ASSERT_NO_THROW(index.reset());
+    // Both implicit IDs and explicit sequential IDs support incremental add.
+    ASSERT_NO_THROW(index.add(1, originals.data()));
+    const faiss::idx_t one = 1;
+    ASSERT_NO_THROW(index.add_with_ids(1, originals.data() + DIM, &one));
+    EXPECT_EQ(index.ntotal, 2);
+    EXPECT_TRUE(std::equal(originals.begin(), originals.begin() + 2 * DIM, index.impl_->srcIndexes.begin()));
+    ASSERT_NO_THROW(index.search(1, originals.data(), 2, afterDist.data(), afterIds.data()));
+}
+
+TEST(TestAscendIndexIVFRaBitQ, RefineSourceLoadingRejectsSparseAndDuplicateIds)
+{
+    for (const std::vector<faiss::idx_t>& ids :
+         {std::vector<faiss::idx_t>{0, 1, 3}, std::vector<faiss::idx_t>{0, 0, 1}})
+    {
+        auto source = MakePretrainedCpuIndex();
+        source.index->invlists->update_entries(source.listId, 0, ids.size(), ids.data(), source.codes.data());
+        faiss::ascend::AscendIndexIVFRaBitQ index(DIM, faiss::METRIC_L2, NLIST, MakeConfig());
+        ASSERT_NO_THROW(index.copyFrom(source.index.get()));
+        auto originals = MakePatternData(3, DIM);
+        ExpectExceptionContains([&] { index.loadRefineSources(originals.data(), 3); }, "unique IDs");
+        ExpectExceptionContains([&] { index.attachRefineSources(originals.data(), 3); }, "unique IDs");
+        EXPECT_TRUE(index.impl_->srcIndexes.empty());
+        EXPECT_FALSE(index.impl_->refineSourcesAttached());
+        EXPECT_EQ(index.ntotal, 3);
+    }
+}
+
+TEST(TestAscendIndexIVFRaBitQ, AttachedRefineSourcesValidateRowCountBeforeSearch)
+{
+    auto source = MakePretrainedCpuIndex(false);
+    auto config = MakeConfig();
+    config.needRefine = true;
+    faiss::ascend::AscendIndexIVFRaBitQ index(DIM, faiss::METRIC_L2, NLIST, config);
+    ASSERT_NO_THROW(index.copyFrom(source.index.get()));
+    auto originals = MakePatternData(1, DIM);
+    ASSERT_NO_THROW(index.add(1, originals.data()));
+    index.impl_->srcIndexes.clear();
+    ASSERT_NO_THROW(index.attachRefineSources(originals.data(), 1));
+    float distance = 0;
+    faiss::idx_t label = -1;
+    ASSERT_NO_THROW(index.search(1, originals.data(), 1, &distance, &label));
+    // Simulate inconsistent metadata; a non-null pointer alone must not pass.
+    index.impl_->attachedSrcRows_ = 0;
+    ExpectExceptionContains([&] { index.search(1, originals.data(), 1, &distance, &label); }, "row count");
+    EXPECT_EQ(index.ntotal, 1);
+}
+
+TEST(TestAscendIndexIVFRaBitQ, MultiBitCarrierRoundTripsAndRejectsInvalidLayouts)
+{
+    const auto& soc = faiss::ascend::SocUtils::GetInstance();
+    if (soc.IsAscendA5() || soc.IsAscend310P()) GTEST_SKIP();
+    for (int bits : {2, 4})
+    {
+        auto config = MakeConfig();
+        config.quantBits = bits;
+        faiss::ascend::AscendIndexIVFRaBitQ source(DIM, faiss::METRIC_L2, NLIST, config);
+        auto actual = source.impl_->getActualIndex(0);
+        auto centroids = MakePatternData(NLIST, DIM);
+        ASSERT_EQ(actual->updateCoarseCenterImpl(centroids), ::ascend::APP_ERR_OK);
+        const ::ascend::Index::idx_t id = 0;
+        std::vector<uint8_t> raw(actual->getCodeSize(), 0);
+        for (size_t i = 0; i < static_cast<size_t>(DIM * bits / 8); ++i) raw[i] = static_cast<uint8_t>(i);
+        ASSERT_EQ(actual->addEncodedVectors(9, 1, raw.data(), &id), ::ascend::APP_ERR_OK);
+        source.is_trained = true;
+        source.ntotal = 1;
+        faiss::IndexIVFRaBitQ carrier;
+        ASSERT_NO_THROW(source.copyTo(&carrier));
+        EXPECT_EQ(carrier.rabitq.nb_bits, static_cast<size_t>(bits));
+        EXPECT_EQ(carrier.code_size, raw.size() + sizeof(uint64_t) + sizeof(uint32_t));
+        faiss::ascend::AscendIndexIVFRaBitQ restored(DIM, faiss::METRIC_L2, NLIST, config);
+        ASSERT_NO_THROW(restored.copyFrom(&carrier));
+        std::vector<uint8_t> restoredRaw;
+        ASSERT_EQ(restored.impl_->getActualIndex(0)->getListRawCodes(9, restoredRaw), ::ascend::APP_ERR_OK);
+        EXPECT_EQ(restoredRaw, raw);
+        faiss::IndexIVFRaBitQ roundTrip;
+        ASSERT_NO_THROW(restored.copyTo(&roundTrip));
+        const auto* before = carrier.invlists->get_codes(9);
+        const auto* after = roundTrip.invlists->get_codes(9);
+        EXPECT_EQ(std::memcmp(before, after, carrier.code_size), 0);
+        std::vector<uint8_t> invalid(before, before + carrier.code_size);
+        carrier.invlists->release_codes(9, before);
+        roundTrip.invlists->release_codes(9, after);
+        std::vector<float> refine(DIM, 0.0f);
+        restored.attachRefineSources(refine.data(), 1);
+        ASSERT_NO_THROW(restored.copyFrom(&carrier));
+        EXPECT_FALSE(restored.impl_->refineSourcesAttached());
+        ASSERT_NO_THROW(restored.loadRefineSources(refine.data(), 1));
+        ASSERT_NO_THROW(restored.copyFrom(&carrier));
+        EXPECT_TRUE(restored.impl_->srcIndexes.empty());
+        faiss::ascend::AscendIndexIVFRaBitQ wrongBits(DIM, faiss::METRIC_L2, NLIST, MakeConfig());
+        ExpectExceptionContains([&] { wrongBits.copyFrom(&carrier); }, "quantBits mismatch");
+        ++carrier.code_size;
+        ExpectExceptionContains([&] { restored.copyFrom(&carrier); }, "code size mismatch");
+        --carrier.code_size;
+        // A native or damaged carrier without the Ascend trailer must be rejected.
+        invalid[raw.size()] ^= 1;
+        carrier.invlists->update_entries(9, 0, 1, &id, invalid.data());
+        ExpectExceptionContains([&] { restored.copyFrom(&carrier); }, "not an Ascend carrier");
+        EXPECT_EQ(restored.ntotal, 1);
+    }
+}
+
 TEST(TestAscendIndexIVFRaBitQ, CopyOperationsRejectInvalidIndexes)
 {
     faiss::ascend::AscendIndexIVFRaBitQ deviceIndex(DIM, faiss::METRIC_L2, NLIST, MakeConfig());

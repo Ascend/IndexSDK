@@ -92,8 +92,19 @@ class AscendIndexIVFRaBitQImpl : public AscendIndexIVFImpl
     // Copy data to a CPU IndexIVFRaBitQ
     void copyTo(faiss::IndexIVFRaBitQ *index) const;
 
+    void loadRefineSources(const float *x, idx_t n);
+
+    // 零拷贝方式挂载精排原文：只保存指针，不做深拷贝。
+    // 契约：IDs 完整覆盖 [0, ntotal)，原文第 ID 行对应该向量。
+    // 调用方保证 x 的 n 行数据在挂载期间有效；挂载期间禁止 add/update/delete。
+    // 与 loadRefineSources（深拷贝）及 add（addPaged 追加 srcIndexes）互斥使用。
+    void attachRefineSources(const float *x, idx_t n);
+    bool refineSourcesAttached() const { return attachedSrc_ != nullptr; }
+
    protected:
     void threadUnsafeReset() override;
+    void checkRefineIds();
+    const float *getRefineSources() const;
 
     void mergeSearchResultSingleQuery(idx_t qIdx, size_t devices, std::vector<std::vector<float>> &dist,
                                       std::vector<std::vector<ascend_idx_t>> &label, idx_t n, idx_t k,
@@ -131,6 +142,8 @@ class AscendIndexIVFRaBitQImpl : public AscendIndexIVFImpl
 
     AscendIndexIVFRaBitQ *intf_;
     std::vector<float> srcIndexes;
+    const float *attachedSrc_ = nullptr;  // attach 模式下外部提供的精排原文（零拷贝，不持有所有权）
+    idx_t attachedSrcRows_ = 0;
     std::vector<float> centroidsData;
     std::vector<float> orthogonalMatrix;
     std::unique_ptr<::ascend::IndexIVFFlat> assignIndex;  // 复用ivfflat一阶段检索能力加速add过程和npu聚类

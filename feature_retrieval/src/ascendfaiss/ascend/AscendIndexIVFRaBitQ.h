@@ -72,6 +72,23 @@ struct AscendIndexIVFRaBitQConfig : public AscendIndexIVFConfig
     bool needRefine;
     int matrixSeed;
     float refineAlpha;
+
+    // RaBitQ bits per dimension. 1 keeps the original format; 2 and 4 enable
+    // the A3/L2 multi-bit proof-of-concept bit-plane format.
+    int quantBits = 1;
+
+    // Coarse k-means iterations. <=0 keeps AscendIndexIVFConfig::cp.niter (default 10).
+    int niter = 0;
+
+    // NPU k-means layout when useKmeansPP is true and more than one device is set:
+    // Replica = TrainFp32 on device 0 (full sample);
+    // Slice = DistributedTrainFp32 (shard the sample across devices).
+    enum class TrainMode
+    {
+        Replica = 0,
+        Slice = 1
+    };
+    TrainMode trainMode = TrainMode::Replica;
 };
 
 class AscendIndexIVFRaBitQImpl;
@@ -90,14 +107,15 @@ class AscendIndexIVFRaBitQ : public AscendIndexIVF
 
     void train(idx_t n, const float* x) override;
 
-    // Copy what we need from a CPU IndexIVFRaBitQ
-    // This copies all IVFRaBitQ-specific data for complete state transfer
+    // Copy all IVFRaBitQ state from a CPU carrier. For quantBits=2/4 the CPU
+    // object stores the extended codes for persistence; CPU search is not supported.
     void copyFrom(const faiss::IndexIVFRaBitQ* index);
 
-    // Copy what we have to a CPU IndexIVFRaBitQ
-    // This copies all IVFRaBitQ-specific data for complete state transfer
+    // Copy all IVFRaBitQ state to a CPU carrier. The code_size field records
+    // whether each inverted-list entry contains a 1-bit, 2-bit, or 4-bit code.
     void copyTo(faiss::IndexIVFRaBitQ* index) const;
 
+    // Delete/update are rejected while copied or attached refine sources exist.
     void remove_ids(size_t n, const idx_t* ids);
 
     std::vector<idx_t> update(idx_t n, const float* x, const idx_t* ids);
@@ -107,6 +125,14 @@ class AscendIndexIVFRaBitQ : public AscendIndexIVF
                 const SearchParameters* params = nullptr) const override;
 
     void invalidateFilterCache() const;
+
+    // Refine uses ID as the source row: existing IDs must cover [0, ntotal).
+    // Copies n == ntotal rows. Further adds must use IDs ntotal, ntotal+1, ...
+    void loadRefineSources(const float* x, idx_t n);
+
+    // Zero-copy attachment with the same ID/row contract. Add/delete/update are rejected until reset/copyFrom.
+    // Caller owns the buffer and must keep all n rows valid until reset/copyFrom or index destruction.
+    void attachRefineSources(const float* x, idx_t n);
 
    protected:
     std::shared_ptr<AscendIndexIVFRaBitQImpl> impl_;
