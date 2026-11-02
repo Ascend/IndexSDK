@@ -38,7 +38,8 @@ constexpr uint8_t IVF_RABITQ_OPTIMIZE_BATCH_THRES = 48;
 class IndexIVFRaBitQ : public IndexIVF
 {
    public:
-    IndexIVFRaBitQ(int numList, int dim, int nprobes, const std::string &metricType, int64_t resourceSize = -1);
+    IndexIVFRaBitQ(int numList, int dim, int nprobes, const std::string &metricType, int64_t resourceSize = -1,
+                   int quantBits = 1);
 
     ~IndexIVFRaBitQ() override;
 
@@ -84,6 +85,8 @@ class IndexIVFRaBitQ : public IndexIVF
                          const RabitqIdFilterHost *idFilter = nullptr, int searchNprobe = 0);
 
     size_t getCodeSize() const;
+
+    size_t getCodePartBytes() const { return static_cast<size_t>(dims) * static_cast<size_t>(quantBits_) / 8; }
 
     APP_ERROR getListIds(int listId, std::vector<int64_t> &ids) const;
 
@@ -259,6 +262,8 @@ class IndexIVFRaBitQ : public IndexIVF
     const void *cachedPrefixFilterSrc = nullptr;
     size_t cachedPrefixFilterBytes = 0;
     uint64_t cachedPrefixFilterGeneration = 0;
+
+    int quantBits_ = 1;
 };
 }  // namespace ascend
 

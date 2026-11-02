@@ -59,6 +59,46 @@ const size_t ADD_PAGE_SIZE = (UNIT_PAGE_SIZE * KB * KB - RETAIN_SIZE);
 const size_t UNIT_VEC_SIZE = 5120;
 const size_t ADD_VEC_SIZE = UNIT_VEC_SIZE * KB;
 
+// Faiss 1.14 uses a larger per-vector layout for native multi-bit RaBitQ.
+// Ascend keeps a compact [bit planes][L2][L1] payload and stores this trailer
+// in the extra carrier bytes. Keep the original marker value so indexes saved
+// by the earlier 2-bit implementation remain compatible.
+constexpr uint64_t RABITQ_MULTIBIT_CARRIER_MAGIC = 0x4153435242513201ULL;
+constexpr uint32_t RABITQ_MULTIBIT_CARRIER_VERSION = 1;
+constexpr size_t RABITQ_MULTIBIT_CARRIER_TRAILER_SIZE = sizeof(uint64_t) + sizeof(uint32_t);
+
+size_t getAscendRaBitQCodePartSize(int dims, int quantBits)
+{
+    return static_cast<size_t>(dims) * static_cast<size_t>(quantBits) / 8;
+}
+
+size_t getAscendRaBitQPayloadSize(int dims, int quantBits)
+{
+    return getAscendRaBitQCodePartSize(dims, quantBits) + 2 * sizeof(float);
+}
+
+size_t getFaissRaBitQCarrierSize(int dims, int quantBits)
+{
+    const size_t payloadSize = getAscendRaBitQPayloadSize(dims, quantBits);
+    return quantBits > 1 ? payloadSize + RABITQ_MULTIBIT_CARRIER_TRAILER_SIZE : payloadSize;
+}
+
+void writeMultiBitCarrierTrailer(uint8_t* dst)
+{
+    std::memcpy(dst, &RABITQ_MULTIBIT_CARRIER_MAGIC, sizeof(RABITQ_MULTIBIT_CARRIER_MAGIC));
+    std::memcpy(dst + sizeof(RABITQ_MULTIBIT_CARRIER_MAGIC), &RABITQ_MULTIBIT_CARRIER_VERSION,
+                sizeof(RABITQ_MULTIBIT_CARRIER_VERSION));
+}
+
+bool isAscendMultiBitCarrier(const uint8_t* trailer)
+{
+    uint64_t magic = 0;
+    uint32_t version = 0;
+    std::memcpy(&magic, trailer, sizeof(magic));
+    std::memcpy(&version, trailer + sizeof(magic), sizeof(version));
+    return magic == RABITQ_MULTIBIT_CARRIER_MAGIC && version == RABITQ_MULTIBIT_CARRIER_VERSION;
+}
+
 extern "C"
 {
     /* declare LAPACK functions */
@@ -180,6 +220,10 @@ AscendIndexIVFRaBitQImpl::AscendIndexIVFRaBitQImpl(AscendIndexIVFRaBitQ* intf, i
     : AscendIndexIVFImpl(intf, dims, metric, nlist, config), intf_(intf), ivfrabitqConfig(config)
 {
     checkParams();
+    if (config.niter > 0)
+    {
+        ivfConfig.cp.niter = config.niter;
+    }
     initIndexes();
 
     initDeviceAddNumMap();
@@ -217,10 +261,25 @@ void AscendIndexIVFRaBitQImpl::checkParams() const
                            "Unsupported dimensions %d, should be in {64, 128, 256, 384, 512, 768, 1024, 2048}",
                            this->intf_->d);
     FAISS_THROW_IF_NOT_MSG(ivfConfig.deviceList.size() != 0, "deviceList is empty");
+    FAISS_THROW_IF_NOT_MSG(
+        ivfrabitqConfig.quantBits == 1 || ivfrabitqConfig.quantBits == 2 || ivfrabitqConfig.quantBits == 4,
+        "RaBitQ quantBits must be 1, 2, or 4");
+    FAISS_THROW_IF_NOT_MSG(ivfrabitqConfig.quantBits == 1 || this->intf_->metric_type == MetricType::METRIC_L2,
+                           "Multi-bit RaBitQ POC only supports L2 metric");
+    FAISS_THROW_IF_NOT_MSG(ivfrabitqConfig.quantBits != 2 || this->intf_->d <= 512,
+                           "2-bit RaBitQ POC supports dimensions up to 512 (query LUT UB limit)");
+    FAISS_THROW_IF_NOT_MSG(ivfrabitqConfig.quantBits != 4 || this->intf_->d <= 256,
+                           "4-bit RaBitQ POC supports dimensions up to 256 (query LUT UB limit)");
 }
 
 std::vector<idx_t> AscendIndexIVFRaBitQImpl::update(idx_t n, const float* x, const idx_t* ids)
 {
+    FAISS_THROW_IF_NOT_MSG(attachedSrc_ == nullptr, "update conflicts with attached refine sources; reset first.");
+    FAISS_THROW_IF_NOT_MSG(srcIndexes.empty(), "update conflicts with copied refine sources; reset first.");
+    if (ivfrabitqConfig.needRefine)
+    {
+        getRefineSources();  // Reject missing originals before update's delete/add sequence.
+    }
     FAISS_THROW_IF_NOT_MSG(x != nullptr, "vector list is nullptr!");
     FAISS_THROW_IF_NOT_MSG(ids != nullptr, "vector ID list is nullptr!");
     FAISS_THROW_IF_NOT_MSG(n > 0, "vector number must be greater than 0!");
@@ -369,7 +428,7 @@ void AscendIndexIVFRaBitQImpl::copyVectorToDevice(int n)
         size_t listsDone = 0;
         size_t vecsUploaded = 0;
         size_t bytesEst = 0;  // codes(16) + L1(4) + L2(4) + id(8) at dim=128 scales with d
-        const size_t codeBytes = static_cast<size_t>((this->intf_->d + 7) / 8);
+        const size_t codeBytes = getAscendRaBitQCodePartSize(this->intf_->d, ivfrabitqConfig.quantBits);
         const size_t perVecBytes = codeBytes + 2 * sizeof(float) + sizeof(ascend_idx_t);
 
         if (memDebug)
@@ -447,8 +506,20 @@ size_t AscendIndexIVFRaBitQImpl::getAddPagedSize(int n) const
 
 void AscendIndexIVFRaBitQImpl::addPaged(int n, const float* x, const idx_t* ids)
 {
+    FAISS_THROW_IF_NOT_MSG(attachedSrc_ == nullptr, "add conflicts with attached refine sources; reset first.");
     APP_LOG_INFO("AscendIndexIVFRaBitQImpl addPaged operation started.\n");
     FAISS_THROW_IF_NOT_MSG(x != nullptr, "x cannot be nullptr");
+    const bool keepRefineSources = ivfrabitqConfig.needRefine || !srcIndexes.empty();
+    if (keepRefineSources)
+    {
+        FAISS_THROW_IF_NOT_MSG(srcIndexes.size() == static_cast<size_t>(intf_->ntotal) * intf_->d,
+                               "refine sources are not ready: loadRefineSources before adding vectors.");
+        FAISS_THROW_IF_NOT_MSG(ids != nullptr, "refine requires explicit sequential IDs.");
+        for (int i = 0; i < n; ++i)
+        {
+            FAISS_THROW_IF_NOT_MSG(ids[i] == intf_->ntotal + i, "refine requires sequential IDs starting at ntotal.");
+        }
+    }
     size_t totalSize = static_cast<size_t>(n) * getAddElementSize();
     size_t addPageSize = ADD_PAGE_SIZE;
     if (totalSize > addPageSize || static_cast<size_t>(n) > ADD_VEC_SIZE * 10)
@@ -473,7 +544,7 @@ void AscendIndexIVFRaBitQImpl::addPaged(int n, const float* x, const idx_t* ids)
         addImpl(n, x, ids);
     }
     copyVectorToDevice(n);
-    if (ivfrabitqConfig.needRefine)
+    if (keepRefineSources)
     {
         this->srcIndexes.insert(this->srcIndexes.end(), x,
                                 x + static_cast<size_t>(n) * static_cast<size_t>(this->intf_->d));
@@ -502,8 +573,8 @@ std::shared_ptr<::ascend::Index> AscendIndexIVFRaBitQImpl::createIndex(int devic
     {
         metric = "IP";
     }
-    std::shared_ptr<::ascend::IndexIVF> index =
-        std::make_shared<::ascend::IndexIVFRaBitQ>(nlist, this->intf_->d, nprobe, metric, indexConfig.resourceSize);
+    std::shared_ptr<::ascend::IndexIVF> index = std::make_shared<::ascend::IndexIVFRaBitQ>(
+        nlist, this->intf_->d, nprobe, metric, indexConfig.resourceSize, ivfrabitqConfig.quantBits);
     auto ret = index->init();
     FAISS_THROW_IF_NOT_FMT(ret == ::ascend::APP_ERR_OK, "Failed to create index ivf rabitq, result is %d", ret);
 
@@ -615,7 +686,16 @@ void AscendIndexIVFRaBitQImpl::train(idx_t n, const float* x, bool clearNpuData)
         {
             printf("Ascend cluster start training %zu vectors\n", pQuantizerImpl->npuClus->GetNTotal());
         }
-        pQuantizerImpl->npuClus->TrainFp32(this->ivfConfig.cp.niter, tmpCentroids.data(), clearNpuData);
+        if (ivfrabitqConfig.trainMode == AscendIndexIVFRaBitQConfig::TrainMode::Slice &&
+            indexConfig.deviceList.size() > 1)
+        {
+            pQuantizerImpl->npuClus->DistributedTrainFp32(this->ivfConfig.cp.niter, tmpCentroids.data(),
+                                                          indexConfig.deviceList, clearNpuData);
+        }
+        else
+        {
+            pQuantizerImpl->npuClus->TrainFp32(this->ivfConfig.cp.niter, tmpCentroids.data(), clearNpuData);
+        }
         updateCoarseCenter(tmpCentroids);
         FAISS_THROW_IF_NOT(aclrtSetDevice(ivfConfig.deviceList[0]) == ACL_ERROR_NONE);
         ::ascend::AscendTensor<float, ::ascend::DIMS_2> centroidsTrained(tmpCentroids.data(), {nlist, intf_->d});
@@ -1082,12 +1162,12 @@ void AscendIndexIVFRaBitQImpl::indexSearch(IndexParam<float, float, ascend_idx_t
 void AscendIndexIVFRaBitQImpl::indexSearch(IndexParam<float, float, ascend_idx_t>& param,
                                            const ::ascend::RabitqIdFilterHost* idFilter, int searchNprobe) const
 {
-    auto pIndex = getActualIndex(param.deviceId);
     const float* indexPtr = nullptr;
     if (ivfrabitqConfig.needRefine)
     {
-        indexPtr = this->srcIndexes.data();
+        indexPtr = getRefineSources();
     }
+    auto pIndex = getActualIndex(param.deviceId);
     auto ret = pIndex->searchImpl(param.n, param.query, param.k, param.distance, param.label, indexPtr, idFilter,
                                   searchNprobe);
     FAISS_THROW_IF_NOT_FMT(ret == ::ascend::APP_ERR_OK, "Failed to search index,deviceId is %d, result is: %d\n",
@@ -1283,6 +1363,8 @@ void AscendIndexIVFRaBitQImpl::searchWithSelector(idx_t n, const float* x, idx_t
 
 void AscendIndexIVFRaBitQImpl::deleteImpl(int n, const idx_t* ids)
 {
+    FAISS_THROW_IF_NOT_MSG(attachedSrc_ == nullptr, "delete conflicts with attached refine sources; reset first.");
+    FAISS_THROW_IF_NOT_MSG(srcIndexes.empty(), "delete conflicts with copied refine sources; reset first.");
     APP_LOG_INFO("AscendIndexIVFRaBitQImpl deleteImpl operation started: n=%d.\n", n);
     size_t deviceCnt = indexConfig.deviceList.size();
     std::unordered_map<int, std::vector<idx_t>> idMap;
@@ -1396,6 +1478,9 @@ void AscendIndexIVFRaBitQImpl::removeIdMapping(const std::vector<idx_t>& ids)
 void AscendIndexIVFRaBitQImpl::threadUnsafeReset()
 {
     AscendIndexIVFImpl::threadUnsafeReset();
+    attachedSrc_ = nullptr;
+    attachedSrcRows_ = 0;
+    srcIndexes.clear();
     std::lock_guard<std::mutex> lock(mapMutex);
     idToDeviceMap.clear();
     for (auto& info : deviceInfos)
@@ -1405,6 +1490,54 @@ void AscendIndexIVFRaBitQImpl::threadUnsafeReset()
 }
 
 size_t AscendIndexIVFRaBitQImpl::getAddElementSize() const { return static_cast<size_t>(intf_->d) * sizeof(float); }
+
+void AscendIndexIVFRaBitQImpl::loadRefineSources(const float* x, idx_t n)
+{
+    FAISS_THROW_IF_NOT_MSG(attachedSrc_ == nullptr, "loadRefineSources conflicts with attached refine sources.");
+    FAISS_THROW_IF_NOT_MSG(x != nullptr, "refine source x can not be nullptr.");
+    FAISS_THROW_IF_NOT_FMT(n == this->intf_->ntotal, "refine source n (%ld) must equal ntotal (%ld)", n,
+                           this->intf_->ntotal);
+    checkRefineIds();
+    srcIndexes.assign(x, x + static_cast<size_t>(n) * static_cast<size_t>(this->intf_->d));
+}
+
+void AscendIndexIVFRaBitQImpl::attachRefineSources(const float* x, idx_t n)
+{
+    FAISS_THROW_IF_NOT_MSG(x != nullptr, "refine source x can not be nullptr.");
+    FAISS_THROW_IF_NOT_FMT(n == this->intf_->ntotal, "refine source n (%ld) must equal ntotal (%ld)", n,
+                           this->intf_->ntotal);
+    FAISS_THROW_IF_NOT_MSG(srcIndexes.empty(),
+                           "attachRefineSources conflicts with copied refine sources; "
+                           "use loadRefineSources or attachRefineSources, not both.");
+    checkRefineIds();
+    attachedSrc_ = x;  // 零拷贝：仅保存指针，生命周期由调用方保证
+    attachedSrcRows_ = n;
+}
+
+void AscendIndexIVFRaBitQImpl::checkRefineIds()
+{
+    std::lock_guard<std::mutex> lock(mapMutex);
+    FAISS_THROW_IF_NOT_MSG(idToDeviceMap.size() == static_cast<size_t>(intf_->ntotal),
+                           "refine requires unique IDs covering [0, ntotal).");
+    for (const auto& entry : idToDeviceMap)
+    {
+        FAISS_THROW_IF_NOT_MSG(entry.first >= 0 && entry.first < intf_->ntotal,
+                               "refine requires unique IDs covering [0, ntotal).");
+    }
+}
+
+const float* AscendIndexIVFRaBitQImpl::getRefineSources() const
+{
+    if (attachedSrc_ != nullptr)
+    {
+        FAISS_THROW_IF_NOT_MSG(attachedSrcRows_ == intf_->ntotal,
+                               "attached refine source row count must match ntotal.");
+        return attachedSrc_;
+    }
+    FAISS_THROW_IF_NOT_MSG(srcIndexes.size() == static_cast<size_t>(intf_->ntotal) * intf_->d,
+                           "refine sources are not ready: loadRefineSources or attachRefineSources before search.");
+    return srcIndexes.data();
+}
 
 // copy from cpu index
 void AscendIndexIVFRaBitQImpl::copyFrom(const faiss::IndexIVFRaBitQ* index)
@@ -1417,7 +1550,45 @@ void AscendIndexIVFRaBitQImpl::copyFrom(const faiss::IndexIVFRaBitQ* index)
     FAISS_THROW_IF_NOT_MSG(index->nlist == static_cast<size_t>(nlist), "nlist mismatch");
     FAISS_THROW_IF_NOT_MSG(indexConfig.deviceList.size() > 0, "Device list is empty");
 
+    const size_t codePartBytesPerVec = getAscendRaBitQCodePartSize(intf_->d, ivfrabitqConfig.quantBits);
+    const size_t payloadSize = getAscendRaBitQPayloadSize(intf_->d, ivfrabitqConfig.quantBits);
+    const size_t expectedCodeSize = getFaissRaBitQCarrierSize(intf_->d, ivfrabitqConfig.quantBits);
+    FAISS_THROW_IF_NOT_FMT(static_cast<int>(index->rabitq.nb_bits) == ivfrabitqConfig.quantBits,
+                           "RaBitQ quantBits mismatch: file has %zu bits, but the Ascend index requests %d",
+                           static_cast<size_t>(index->rabitq.nb_bits), ivfrabitqConfig.quantBits);
+    FAISS_THROW_IF_NOT_FMT(index->rabitq.compute_code_size(intf_->d, index->rabitq.nb_bits) == expectedCodeSize,
+                           "Unsupported Faiss RaBitQ carrier layout for quantBits=%d and dim=%d",
+                           ivfrabitqConfig.quantBits, intf_->d);
+    FAISS_THROW_IF_NOT_FMT(
+        index->code_size == expectedCodeSize,
+        "RaBitQ code size mismatch: file has %zu bytes/vector, but quantBits=%d and dim=%d require %zu. "
+        "Load the index with the same quantBits used when it was saved.",
+        index->code_size, ivfrabitqConfig.quantBits, intf_->d, expectedCodeSize);
+    FAISS_THROW_IF_NOT_MSG(index->invlists != nullptr, "Input index has no inverted lists");
+    FAISS_THROW_IF_NOT_FMT(index->invlists->code_size == expectedCodeSize,
+                           "Inverted-list code size mismatch: got %zu, expected %zu", index->invlists->code_size,
+                           expectedCodeSize);
+    if (ivfrabitqConfig.quantBits > 1)
+    {
+        bool foundCode = false;
+        bool validCarrier = false;
+        for (int listId = 0; listId < nlist; ++listId)
+        {
+            if (index->invlists->list_size(listId) == 0) continue;
+            const uint8_t* firstCode = index->invlists->get_codes(listId);
+            validCarrier = isAscendMultiBitCarrier(firstCode + payloadSize);
+            index->invlists->release_codes(listId, firstCode);
+            foundCode = true;
+            break;
+        }
+        FAISS_THROW_IF_NOT_MSG(!foundCode || validCarrier,
+                               "Input is a native Faiss multi-bit RaBitQ index, not an Ascend carrier");
+    }
+
     AscendIndexIVFImpl::copyFrom(index);
+    attachedSrc_ = nullptr;
+    attachedSrcRows_ = 0;
+    srcIndexes.clear();
 
     // Orthogonal matrix: FAISS has no corresponding storage interface,
     // regenerate with the same seed configuration
@@ -1458,7 +1629,6 @@ void AscendIndexIVFRaBitQImpl::copyFrom(const faiss::IndexIVFRaBitQ* index)
     assignIndex->addVectorsAsCentroid(centroidsTrained);
 
     // copy inverted lists
-    FAISS_THROW_IF_NOT_MSG(index->invlists != nullptr, "Input index has no inverted lists");
     size_t deviceCnt = indexConfig.deviceList.size();
     size_t codeSize = index->code_size;
 
@@ -1471,8 +1641,7 @@ void AscendIndexIVFRaBitQImpl::copyFrom(const faiss::IndexIVFRaBitQ* index)
         const uint8_t* codes = index->invlists->get_codes(listId);
 
         // ArrayInvertedLists storage format: [vec0: code+L2+L1][vec1: code+L2+L1]...
-        size_t codePartBytesPerVec = ::ascend::utils::divUp(intf_->d, 8);  // Compressed code bytes per vector
-        size_t factorBytesPerVec = sizeof(float);                          // Factor bytes per vector
+        size_t factorBytesPerVec = sizeof(float);  // Factor bytes per vector
 
         // Create temporary buffers for each device to store encoded data and IDs
         std::vector<std::vector<uint8_t>> perDeviceCodes(deviceCnt);
@@ -1571,9 +1740,21 @@ void AscendIndexIVFRaBitQImpl::copyTo(faiss::IndexIVFRaBitQ* index) const
 
     auto firstDevIdx = getActualIndex(indexConfig.deviceList[0]);
     size_t devCodeSize = firstDevIdx->getCodeSize();
-    index->code_size = devCodeSize;
+    const size_t codePartBytesPerVec = getAscendRaBitQCodePartSize(intf_->d, ivfrabitqConfig.quantBits);
+    const size_t payloadSize = getAscendRaBitQPayloadSize(intf_->d, ivfrabitqConfig.quantBits);
+    const size_t carrierCodeSize = getFaissRaBitQCarrierSize(intf_->d, ivfrabitqConfig.quantBits);
+    FAISS_THROW_IF_NOT_FMT(devCodeSize == payloadSize,
+                           "Device RaBitQ code size mismatch: got %zu bytes/vector, expected %zu for quantBits=%d",
+                           devCodeSize, payloadSize, ivfrabitqConfig.quantBits);
+    index->code_size = carrierCodeSize;
 
     index->rabitq.d = intf_->d;
+    index->rabitq.metric_type = intf_->metric_type;
+    index->rabitq.nb_bits = static_cast<size_t>(ivfrabitqConfig.quantBits);
+    index->rabitq.code_size = carrierCodeSize;
+    FAISS_THROW_IF_NOT_FMT(index->rabitq.compute_code_size(intf_->d, index->rabitq.nb_bits) == carrierCodeSize,
+                           "Unsupported Faiss RaBitQ carrier layout for quantBits=%d and dim=%d",
+                           ivfrabitqConfig.quantBits, intf_->d);
 
     // copy centroids
     std::vector<float> hostCentroids;
@@ -1592,11 +1773,17 @@ void AscendIndexIVFRaBitQImpl::copyTo(faiss::IndexIVFRaBitQ* index) const
         quantizer = new faiss::IndexFlatL2(intf_->d);
     }
     quantizer->add(nlist, hostCentroids.data());
+    if (index->own_fields)
+    {
+        delete index->quantizer;
+    }
     index->quantizer = quantizer;
     index->quantizer_trains_alone = 0;
+    index->own_fields = true;
+    index->direct_map.clear();
 
     // copy inverted lists
-    auto* newInvlists = new faiss::ArrayInvertedLists(nlist, devCodeSize);
+    auto newInvlists = std::make_unique<faiss::ArrayInvertedLists>(nlist, carrierCodeSize);
     size_t deviceCnt = indexConfig.deviceList.size();
     int totalCopied = 0;
 
@@ -1612,8 +1799,7 @@ void AscendIndexIVFRaBitQImpl::copyTo(faiss::IndexIVFRaBitQ* index) const
         if (totalLen == 0) continue;
 
         // getListRawCodes return format: [all codes][all L2][all L1]
-        size_t codePartBytesPerVec = ::ascend::utils::divUp(intf_->d, 8);  // Compressed code bytes per vector
-        size_t factorBytesPerVec = sizeof(float);                          // Factor bytes per vector
+        size_t factorBytesPerVec = sizeof(float);  // Factor bytes per vector
 
         size_t totalCodeBytes = totalLen * codePartBytesPerVec;
         size_t totalFactorBytes = totalLen * factorBytesPerVec;
@@ -1676,24 +1862,26 @@ void AscendIndexIVFRaBitQImpl::copyTo(faiss::IndexIVFRaBitQ* index) const
         }
 
         // Convert to per-vector format: [vec0: code+L2+L1][vec1: code+L2+L1]...
-        std::vector<uint8_t> allCodes(totalLen * devCodeSize);
-        size_t allCodesOffset = 0;
+        std::vector<uint8_t> allCodes(totalLen * carrierCodeSize, 0);
         for (size_t i = 0; i < totalLen; ++i)
         {
-            auto memcpyRet = memcpy_s(allCodes.data() + allCodesOffset, totalLen * devCodeSize - allCodesOffset,
-                                      allCodesPart.data() + i * codePartBytesPerVec, codePartBytesPerVec);
+            uint8_t* carrier = allCodes.data() + i * carrierCodeSize;
+            auto memcpyRet =
+                memcpy_s(carrier, carrierCodeSize, allCodesPart.data() + i * codePartBytesPerVec, codePartBytesPerVec);
             FAISS_THROW_IF_NOT_FMT(memcpyRet == 0, "memcpy_s failed for codes interleave, ret=%d", memcpyRet);
-            allCodesOffset += codePartBytesPerVec;
 
-            memcpyRet = memcpy_s(allCodes.data() + allCodesOffset, totalLen * devCodeSize - allCodesOffset,
+            memcpyRet = memcpy_s(carrier + codePartBytesPerVec, carrierCodeSize - codePartBytesPerVec,
                                  allL2Part.data() + i * factorBytesPerVec, factorBytesPerVec);
             FAISS_THROW_IF_NOT_FMT(memcpyRet == 0, "memcpy_s failed for L2 interleave, ret=%d", memcpyRet);
-            allCodesOffset += factorBytesPerVec;
 
-            memcpyRet = memcpy_s(allCodes.data() + allCodesOffset, totalLen * devCodeSize - allCodesOffset,
+            memcpyRet = memcpy_s(carrier + codePartBytesPerVec + factorBytesPerVec,
+                                 carrierCodeSize - codePartBytesPerVec - factorBytesPerVec,
                                  allL1Part.data() + i * factorBytesPerVec, factorBytesPerVec);
             FAISS_THROW_IF_NOT_FMT(memcpyRet == 0, "memcpy_s failed for L1 interleave, ret=%d", memcpyRet);
-            allCodesOffset += factorBytesPerVec;
+            if (ivfrabitqConfig.quantBits > 1)
+            {
+                writeMultiBitCarrierTrailer(carrier + payloadSize);
+            }
         }
 
         // Add to inverted lists
@@ -1701,7 +1889,7 @@ void AscendIndexIVFRaBitQImpl::copyTo(faiss::IndexIVFRaBitQ* index) const
         totalCopied += totalLen;
     }
 
-    index->replace_invlists(newInvlists, true);
+    index->replace_invlists(newInvlists.release(), true);
     index->own_fields = true;
 
     FAISS_THROW_IF_NOT_FMT(totalCopied == intf_->ntotal, "Total vectors mismatch: expected %ld, got %ld", intf_->ntotal,

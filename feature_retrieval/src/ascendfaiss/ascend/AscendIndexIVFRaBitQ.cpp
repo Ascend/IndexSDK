@@ -106,5 +106,17 @@ void AscendIndexIVFRaBitQ::invalidateFilterCache() const
     FAISS_THROW_IF_NOT_MSG(impl_ != nullptr, "impl_ is nullptr!");
     impl_->invalidateFilterCache();
 }
+
+void AscendIndexIVFRaBitQ::loadRefineSources(const float* x, idx_t n)
+{
+    FAISS_THROW_IF_NOT_MSG(impl_ != nullptr, "impl_ is nullptr!");
+    impl_->loadRefineSources(x, n);
+}
+
+void AscendIndexIVFRaBitQ::attachRefineSources(const float* x, idx_t n)
+{
+    FAISS_THROW_IF_NOT_MSG(impl_ != nullptr, "impl_ is nullptr!");
+    impl_->attachRefineSources(x, n);
+}
 }  // namespace ascend
 }  // namespace faiss

@@ -4,6 +4,13 @@
 
 AscendIndexIVFRaBitQ利用IVF进行加速，是二级近似检索算法。当前支持L2距离计算。
 
+启用 `needRefine` 时，精排按 ID 读取原文第 ID 行，ID 必须完整覆盖 `[0, ntotal)`。
+`loadRefineSources(x, n)` 深拷贝原文，`attachRefineSources(x, n)` 零拷贝挂载原文，二者均要求 `n == ntotal`，且互斥使用。
+通过 `copyFrom` 导入索引后，须先装载或挂载对应原文再执行精排搜索；原文未就绪或行数不匹配时搜索会报错。
+保存了深拷贝原文后禁止 `update` 和 `remove_ids`；仍可通过 `add` 或连续 ID 的 `add_with_ids` 追加向量及原文，新 ID 必须从当前 `ntotal` 开始。
+挂载原文后禁止 `add`、`update` 和 `remove_ids`；调用方须保证全部原文行在挂载期间有效，库不持有外部内存的所有权。
+`reset` 和 `copyFrom` 会清除上述原文状态。未启用精排且未装载原文的普通检索不受连续 ID 约束。
+
 ## AscendIndexIVFRaBitQ接口<a name="ZH-CN_TOPIC_0000002513317654"></a>
 
 <a name="table7235918388"></a>
