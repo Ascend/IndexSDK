@@ -76,7 +76,7 @@ docker run \
     -v /usr/local/Ascend/driver/lib64/:/usr/local/Ascend/driver/lib64/ \
     -v /usr/local/Ascend/driver/version.info:/usr/local/Ascend/driver/version.info \
     -v /etc/ascend_install.info:/etc/ascend_install.info \
-    -it atlas/index:tag bash
+    -it ascend/index:tag bash
 ```
 
 ### 3.3 Generate Operators

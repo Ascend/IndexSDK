@@ -118,7 +118,9 @@ In `TestAscendIReduction.cpp`, specify the directory of the corresponding NN-bas
     bash custom_opp_{arch}.run
 
     cd ${MXINDEX_INSTALL_PATH}/tools/
-    # Generate the aicpu and flat 512-dimensional operators
+    # Generate the aicpu and flat 512-dimensional operators (https://gitcode.com/Ascend/IndexSDK/blob/master/docs/en/05_user_guide.md#flat)
+    python3 flat_generate_model.py -t npu-type -d 512
+    python3 aicpu_generate_model.py -t npu-type
     ```
 
     Set the environment variables for the operators and move the operators to the operator directory:
