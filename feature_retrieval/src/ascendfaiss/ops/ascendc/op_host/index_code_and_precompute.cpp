@@ -66,12 +66,23 @@ static ge::graphStatus TilingFunc(gert::TilingContext *context)
     // 获取平台信息（如核心数、内存大小）
     ASCENDC_RETURN_IF_NOT(context != nullptr, ge::GRAPH_FAILED);
 
-    int metricType = *(context->GetAttrs()->GetAttrPointer<int>(0));
+    const auto *attrs = context->GetAttrs();
+    ASCENDC_RETURN_IF_NOT(attrs != nullptr, ge::GRAPH_FAILED);
+    const int *metricTypeAttr = attrs->GetAttrPointer<int>(0);
+    const int *quantBitsAttr = attrs->GetAttrPointer<int>(1);
+    ASCENDC_RETURN_IF_NOT(metricTypeAttr != nullptr && quantBitsAttr != nullptr, ge::GRAPH_FAILED);
+    int metricType = *metricTypeAttr;
     if (metricType != 0 && metricType != 1)
     {  // 0: L2, 1: IP
         return ge::GRAPH_FAILED;
     }
     tiling.set_metricType(metricType);
+    int quantBits = *quantBitsAttr;
+    if (quantBits != 1 && quantBits != 2 && quantBits != 4)
+    {
+        return ge::GRAPH_FAILED;
+    }
+    tiling.set_quantBits(quantBits);
 
     const auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     uint64_t ub_size = 0;
@@ -97,9 +108,17 @@ static ge::graphStatus TilingFunc(gert::TilingContext *context)
 
     // 根据 dim_len 等，确定tileLength：表示每次循环处理的向量数量
     int32_t tileLength = (ub_size - 2048) / (dim_len * FLOAT32_BYTES * 10 * 2 + FLOAT32_BYTES * 2) / 16 * 16;
-    int32_t tileLengthStage1 = (ub_size - 2048 - dim_len * FLOAT32_BYTES) /
-                               (dim_len * FLOAT32_BYTES * 2 + dim_len / 8 * UINT8_BYTES + FLOAT32_BYTES * 2);
+    int32_t tileLengthStage1 =
+        (ub_size - 2048 - dim_len * FLOAT32_BYTES) /
+        (dim_len * FLOAT32_BYTES * 2 + dim_len / 8 * quantBits * UINT8_BYTES + FLOAT32_BYTES * 2);
     int32_t tileLengthStage2 = (ub_size - 2048 - FLOAT32_BYTES * 2) / (5 * FLOAT32_BYTES * 2) / 16 * 16;
+
+    // 大 dim + 多 bit 时分母随 quantBits 放大，tileLengthStage1 可能被截成 0 或负数，
+    // tileLength/tileLengthStage2 的分母也可能为 0，统一做非正保护避免除零与错误分片。
+    if (tileLength <= 0 || tileLengthStage1 <= 0 || tileLengthStage2 <= 0)
+    {
+        return ge::GRAPH_FAILED;
+    }
 
     if (tileLengthStage1 > MAX_PER_LOOP_PROCESS_LEN)
     {
@@ -147,10 +166,25 @@ namespace ge
 {
 static ge::graphStatus InferShape(gert::InferShapeContext *context)
 {
+    if (context == nullptr || context->GetAttrs() == nullptr)
+    {
+        return GRAPH_FAILED;
+    }
     const gert::Shape *shape = context->GetInputShape(1);  // vec*dim
+    if (shape == nullptr || shape->GetDimNum() != 2)
+    {
+        return GRAPH_FAILED;
+    }
     uint32_t numCode = shape->GetDim(0);
     uint32_t dim = shape->GetDim(1);
-    gert::Shape shape1({numCode, dim / 8});
+    const int32_t *quantBitsAttr = context->GetAttrs()->GetAttrPointer<int>(1);
+    // 图编译阶段 InferShape 独立于 Tiling 执行，必须自行校验属性非空且取值合法
+    if (quantBitsAttr == nullptr || (*quantBitsAttr != 1 && *quantBitsAttr != 2 && *quantBitsAttr != 4))
+    {
+        return GRAPH_FAILED;
+    }
+    int quantBits = *quantBitsAttr;
+    gert::Shape shape1({numCode, dim * static_cast<uint32_t>(quantBits) / 8});
     gert::Shape shape2({numCode});
     gert::Shape shape3({numCode, dim});
 
@@ -179,9 +213,9 @@ static ge::graphStatus InferDataType(gert::InferDataTypeContext *context)
  *      centroid: 1 * d
  *      centroidl2: 1
  * output:
- *      codes_result: indexes - centroid 取符号 -> n * d/8
+ *      codes_result: indexes - centroid quantized -> n * d * quant_bits / 8
  *      l2_result: ||indexes - centroid||^2 = ||indexes||^2 - 2<indexes, centroid> + ||centroid||^2 -> n  (IP: ||indexes
- * - centroid||^2 - ||indexes||^2) l1_result: 2||indexes - centroid||^2 * sqrt(d) / ||indexes - centroid||1 -> n
+ * - centroid||^2 - ||indexes||^2) l1_result: per-vector estimator factor -> n
  */
 namespace ops
 {
@@ -232,6 +266,7 @@ class IndexCodeAndPrecompute : public OpDef
             .UnknownShapeFormat({ge::FORMAT_ND});
 
         this->Attr("metric_type").AttrType(REQUIRED).Int();
+        this->Attr("quant_bits").AttrType(REQUIRED).Int();
         this->SetInferShape(ge::InferShape);
         this->SetInferDataType(ge::InferDataType);
 

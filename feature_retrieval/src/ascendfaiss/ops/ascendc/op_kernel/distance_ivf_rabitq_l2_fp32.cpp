@@ -62,7 +62,14 @@ class DistanceIVFRabitqL2FP32
         this->dimLength = tiling_.dimLength;  // 这个dimLength应该是原向量的dim
         this->codeBlockLength = tiling_.codeBlockLength;
         this->lutDimLength = tiling_.lutDimLength;  // lut的维度 值应该固定256
-        this->lutLength = tiling_.lutLength;        // = this->dimLength / 8
+        this->lutLength = tiling_.lutLength;        // bytes per encoded vector
+        this->quantBits = tiling_.quantBits;
+        // host 侧 TilingFunc 已校验 {1,2,4}，此处兜底防止异常 tiling 导致
+        // rowStep=0 死循环或负数下标
+        if (this->quantBits != 1 && this->quantBits != 2 && this->quantBits != 4)
+        {
+            this->quantBits = 1;
+        }
 
         this->lutTileNum = tiling_.lutTileNum;
         this->lutTileLength = tiling_.lutTileLength;          // 每次处理多少lut
@@ -79,7 +86,8 @@ class DistanceIVFRabitqL2FP32
         }
 
         this->maskNum = this->dimLength / this->mask;
-        this->multiplier = static_cast<T>(2) / sqrt(static_cast<T>(this->dimLength));
+        this->multiplier =
+            this->quantBits == 1 ? static_cast<T>(2) / sqrt(static_cast<T>(this->dimLength)) : static_cast<T>(1);
 
         queryid_gm_.SetGlobalBuffer((__gm__ uint32_t *)queryid);
         uint32_t cur_queryid = queryid_gm_.GetValue(this->blockIdx);  // 获取当前coreid对应的查询id
@@ -157,7 +165,6 @@ class DistanceIVFRabitqL2FP32
                                                    static_cast<uint64_t>(this->burstMaskNum) * sizeof(uint64_t)));
 
         this->codeTileLength = tiling_.codeTileLength;  // 每次处理多少codes
-
         this->codeTileNum = (actualSizeVal + this->codeTileLength - 1) / this->codeTileLength;
         this->lastCodeTileLength = actualSizeVal % this->codeTileLength;
         if (this->lastCodeTileLength == 0)
@@ -177,12 +184,11 @@ class DistanceIVFRabitqL2FP32
         pipe_->InitBuffer(in_querylut_que, 1,
                           RoundUp(this->lutLength * this->lutDimLength * sizeof(T),
                                   64));  // querylut全部拉取，该空间可以存储q-c
-        pipe_->InitBuffer(codes_in_que, 1, RoundUp(this->dimLength / 8 * this->codeTileLength, 64));
-        pipe_->InitBuffer(codes_half_que, 1, RoundUp(this->dimLength / 8 * this->codeTileLength * sizeof(half), 64));
-        pipe_->InitBuffer(codes_int32_que, 1,
-                          RoundUp(this->dimLength / 8 * this->codeTileLength * sizeof(int32_t), 64));
-        pipe_->InitBuffer(idx_calc_que, 1, RoundUp(this->dimLength / 8 * sizeof(int32_t), 64));
-        pipe_->InitBuffer(select_out_que, 1, RoundUp(this->dimLength / 8 * this->codeTileLength * sizeof(T), 64));
+        pipe_->InitBuffer(codes_in_que, 1, RoundUp(this->lutLength * this->codeTileLength, 64));
+        pipe_->InitBuffer(codes_half_que, 1, RoundUp(this->lutLength * this->codeTileLength * sizeof(half), 64));
+        pipe_->InitBuffer(codes_int32_que, 1, RoundUp(this->lutLength * this->codeTileLength * sizeof(int32_t), 64));
+        pipe_->InitBuffer(idx_calc_que, 1, RoundUp(this->lutLength * sizeof(int32_t), 64));
+        pipe_->InitBuffer(select_out_que, 1, RoundUp(this->lutLength * this->codeTileLength * sizeof(T), 64));
         pipe_->InitBuffer(ip_out_que, 1, RoundUp(this->codeTileLength * sizeof(T), 64));
         pipe_->InitBuffer(burst_mask_buf_, RoundUp(this->burstMaskNum * sizeof(uint64_t), 32));
     }
@@ -231,11 +237,18 @@ class DistanceIVFRabitqL2FP32
             select_out_que.FreeTensor(centroidslutLocal);
         }
         PipeBarrier<PIPE_V>();
-        for (int i = 0; i < this->lutLength; i++)
+        // The last bit-plane has unit weight, so its 0xff LUT entry is the
+        // sum of q-c for each group. Use it to subtract the unsigned-code
+        // midpoint after all weighted bit planes have been accumulated.
+        const int32_t firstRow = this->quantBits == 1 ? 0 : this->quantBits - 1;
+        const int32_t rowStep = this->quantBits;
+        for (int i = firstRow; i < this->lutLength; i += rowStep)
         {
             this->sumQuery += querylutLocal.GetValue(i * this->lutDimLength + this->lutDimLength - 1);
         }
-        this->sumQuery = this->sumQuery / sqrt(static_cast<T>(this->dimLength)) * (T)(-1);
+        const T centerOffset = static_cast<T>((1 << this->quantBits) - 1) / static_cast<T>(2);
+        this->sumQuery *=
+            this->quantBits == 1 ? static_cast<T>(-1) / sqrt(static_cast<T>(this->dimLength)) : -centerOffset;
         PipeBarrier<PIPE_ALL>();
         in_querylut_que.EnQue(querylutLocal);  // 将q-c结果放入in_querylut_que
     }
@@ -260,11 +273,11 @@ class DistanceIVFRabitqL2FP32
         BuildAllBurstMasks();
         LocalTensor<T> querylutLocal = in_querylut_que.DeQue<T>();
         LocalTensor<int32_t> idxLocal = idx_calc_que.AllocTensor<int32_t>();
-        CreateVecIndex(idxLocal, 0, this->dimLength / 8);
+        CreateVecIndex(idxLocal, 0, this->lutLength);
         PipeBarrier<PIPE_V>();
         ShiftLeft(idxLocal, idxLocal, 8,
-                  this->dimLength / 8);  // 每行 LUT 为 2^8 个，因此每行的偏移值需要左移 8
-        PipeBarrier<PIPE_ALL>();
+                  this->lutLength);  // 每行 LUT 为 2^8 个，因此每行的偏移值需要左移 8
+        PipeBarrier<PIPE_V>();
         for (int32_t i = 0; i < this->codeTileNum; i++)
         {
             int32_t copyLength = this->codeTileLength;
@@ -288,11 +301,10 @@ class DistanceIVFRabitqL2FP32
     {
         LocalTensor<uint8_t> codesLocal = codes_in_que.AllocTensor<uint8_t>();
 
-        uint8_t paddingBytes = RoundUp(this->dimLength / 8 * copyLength, 32) - this->dimLength / 8 * copyLength;
+        uint8_t paddingBytes = RoundUp(this->lutLength * copyLength, 32) - this->lutLength * copyLength;
         DataCopyPadExtParams<uint8_t> padParams{true, 0, paddingBytes, 0};
-        DataCopyExtParams copyParams1{1, (uint32_t)(this->dimLength / 8 * copyLength * sizeof(uint8_t)), 0, 0, 0};
-        DataCopyPad(codesLocal, code_gm_[this->dimLength / 8 * progress * this->codeTileLength], copyParams1,
-                    padParams);
+        DataCopyExtParams copyParams1{1, (uint32_t)(this->lutLength * copyLength * sizeof(uint8_t)), 0, 0, 0};
+        DataCopyPad(codesLocal, code_gm_[this->lutLength * progress * this->codeTileLength], copyParams1, padParams);
         codes_in_que.EnQue(codesLocal);
     }
 
@@ -302,16 +314,14 @@ class DistanceIVFRabitqL2FP32
         LocalTensor<uint8_t> codesLocal = codes_in_que.DeQue<uint8_t>();
         LocalTensor<half> codesHalfLocal = codes_half_que.AllocTensor<half>();
         LocalTensor<int32_t> codesInt32Local = codes_int32_que.AllocTensor<int32_t>();
-
-        LocalTensor<T> selResultLocal = select_out_que.AllocTensor<T>();
-        LocalTensor<T> ipResultLocal = ip_out_que.AllocTensor<T>();
-
-        uint32_t codeSize = this->dimLength / 8 * copyLength;
+        uint32_t codeSize = this->lutLength * copyLength;
         Cast(codesHalfLocal, codesLocal, RoundMode::CAST_NONE, codeSize);
         PipeBarrier<PIPE_V>();
         Cast(codesInt32Local, codesHalfLocal, RoundMode::CAST_ROUND, codeSize);
         PipeBarrier<PIPE_V>();
-        uint32_t addNum = this->dimLength / 8;
+        codes_in_que.FreeTensor(codesLocal);
+        codes_half_que.FreeTensor(codesHalfLocal);
+        uint32_t addNum = this->lutLength;
         int32_t addTileNum = (addNum + 63) / 64;
         uint8_t repeatStride = addNum / 8;
         for (int32_t k = 0; k < addTileNum; k++)
@@ -329,9 +339,8 @@ class DistanceIVFRabitqL2FP32
             {
                 int32_t len = copyLength - i;
                 if (len > 255) len = 255;
-                // dimLength是64的倍数, dimLength / 8 是 32B 对齐
-                Add(codesInt32Local[i * this->dimLength / 8 + k * 64], idxLocal[k * 64],
-                    codesInt32Local[i * this->dimLength / 8 + k * 64], maskLen, len,
+                Add(codesInt32Local[i * this->lutLength + k * 64], idxLocal[k * 64],
+                    codesInt32Local[i * this->lutLength + k * 64], maskLen, len,
                     {1, 1, 1, repeatStride, 0, repeatStride});
             }
         }
@@ -339,15 +348,25 @@ class DistanceIVFRabitqL2FP32
         ShiftLeft(codesInt32Local, codesInt32Local, 2,
                   codeSize);  // sizeof(float) = 2^2，因此字节偏移需要左移 2
         PipeBarrier<PIPE_V>();
+        GatherReduceStore(progress, copyLength, vecsLocal, codesInt32Local);
+    }
+
+    __aicore__ inline void GatherReduceStore(int32_t progress, int32_t copyLength, LocalTensor<T> vecsLocal,
+                                             LocalTensor<int32_t> codesInt32Local)
+    {
+        LocalTensor<T> selResultLocal = select_out_que.AllocTensor<T>();
+        LocalTensor<T> ipResultLocal = ip_out_que.AllocTensor<T>();
+        uint32_t codeSize = this->lutLength * copyLength;
+        uint32_t addNum = this->lutLength;
+        uint8_t repeatStride = addNum / 8;
         Gather(selResultLocal, vecsLocal, codesInt32Local.ReinterpretCast<uint32_t>(), (uint32_t)0, codeSize);
         PipeBarrier<PIPE_V>();
 
         codes_int32_que.FreeTensor(codesInt32Local);
-        if (this->dimLength / 8 > 64)
+        if (this->lutLength > 64)
         {
             LocalTensor<uint8_t> tmpLocal = codes_int32_que.AllocTensor<uint8_t>();
-            uint32_t shape[] = {static_cast<uint32_t>(this->codeTileLength),
-                                static_cast<uint32_t>(this->dimLength / 8)};
+            uint32_t shape[] = {static_cast<uint32_t>(this->codeTileLength), static_cast<uint32_t>(this->lutLength)};
             AscendC::ReduceSum<float, AscendC::Pattern::Reduce::AR, true>(ipResultLocal, selResultLocal, tmpLocal,
                                                                           shape, true);
             PipeBarrier<PIPE_V>();
@@ -359,19 +378,17 @@ class DistanceIVFRabitqL2FP32
             {
                 int32_t len = copyLength - i;
                 if (len > 255) len = 255;
-                WholeReduceSum<T>(ipResultLocal[i], selResultLocal[this->dimLength / 8 * i], this->dimLength / 8, len,
-                                  1, 1, repeatStride);
+                WholeReduceSum<T>(ipResultLocal[i], selResultLocal[this->lutLength * i], this->lutLength, len, 1, 1,
+                                  repeatStride);
             }
             PipeBarrier<PIPE_V>();
         }
-
-        PipeBarrier<PIPE_ALL>();
+        ip_out_que.EnQue(ipResultLocal);
+        ipResultLocal = ip_out_que.DeQue<T>();
         DataCopyExtParams copyParams{1, (uint32_t)(copyLength * sizeof(T)), 0, 0, 0};
         DataCopyPad(result_gm_[progress * this->codeTileLength], ipResultLocal, copyParams);
         ip_out_que.FreeTensor(ipResultLocal);
         select_out_que.FreeTensor(selResultLocal);
-        codes_in_que.FreeTensor(codesLocal);
-        codes_half_que.FreeTensor(codesHalfLocal);
     }
 
     __aicore__ inline void DistCompute()
@@ -779,6 +796,7 @@ class DistanceIVFRabitqL2FP32
     int32_t minNum;
 
     int32_t metric;
+    int32_t quantBits;
     int64_t filterMode = 0;
     int64_t filterAux0 = 0;
     int64_t filterAux1 = 0;

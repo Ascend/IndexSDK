@@ -70,6 +70,14 @@ class IndexCodeAndPrecompute
         tiling_ = *tiling_data;
         this->dimLength = tiling_.dimLength;  // 向量维度
         this->maskNum = this->dimLength / this->mask;
+        this->quantBits = tiling_.quantBits;
+        // host 侧 TilingFunc 已校验 {1,2,4}，此处兜底防止异常 tiling 触发
+        // 1 << (quantBits - 1) 移位 UB 与除零
+        if (this->quantBits != 1 && this->quantBits != 2 && this->quantBits != 4)
+        {
+            this->quantBits = 1;
+        }
+        this->codeLength = this->dimLength * this->quantBits / 8;
 
         this->metric = tiling_.metricType;
 
@@ -95,9 +103,10 @@ class IndexCodeAndPrecompute
         centroidl2_gm_.SetGlobalBuffer((__gm__ T *)centroidl2, 1);                                // centroidl2: 1
 
         // 补充考虑dim非8位对齐的场景
-        codes_res_gm_.SetGlobalBuffer((__gm__ uint8_t *)codes_result + offset / 8, length / 8);  //  n * d/8
-        l2_res_gm_.SetGlobalBuffer((__gm__ T *)l2_result + this->vecOffset, this->vecLength);    // l2_result: n
-        l1_res_gm_.SetGlobalBuffer((__gm__ T *)l1_result + this->vecOffset, this->vecLength);    // l1_result: n
+        codes_res_gm_.SetGlobalBuffer((__gm__ uint8_t *)codes_result + this->vecOffset * this->codeLength,
+                                      this->vecLength * this->codeLength);
+        l2_res_gm_.SetGlobalBuffer((__gm__ T *)l2_result + this->vecOffset, this->vecLength);  // l2_result: n
+        l1_res_gm_.SetGlobalBuffer((__gm__ T *)l1_result + this->vecOffset, this->vecLength);  // l1_result: n
 
         // InitBuffer：根据block负责的vecLength，确定tileNum、tileLength、lastTileLength
         this->tileLengthStage1 = tiling_.tileLengthStage1;  // vector 单元第一次循环处理的向量数量
@@ -137,7 +146,7 @@ class IndexCodeAndPrecompute
         pipe_->InitBuffer(in_center_que, 1, RoundUp(this->dimLength * sizeof(T), 64));
         pipe_->InitBuffer(out_l1_que, 1, RoundUp(this->tileLength * sizeof(T), 64));
         pipe_->InitBuffer(out_l2_que, 1, RoundUp(this->tileLength * sizeof(T), 64));
-        pipe_->InitBuffer(out_codes_que, 1, RoundUp(this->tileLength * this->dimLength / 8 * sizeof(uint8_t), 64));
+        pipe_->InitBuffer(out_codes_que, 1, RoundUp(this->tileLength * this->codeLength * sizeof(uint8_t), 64));
 
         pipe_->InitBuffer(tmp_que, 1, RoundUp(this->tileLength * this->dimLength * sizeof(T), 64));
     }
@@ -280,29 +289,98 @@ class IndexCodeAndPrecompute
         }
         PipeBarrier<PIPE_V>();
 
-        // 双值量化
-        CompareScalar(codesResultLocal, indexesLocal, (float32_t)0, AscendC::CMPMODE::GE, this->dimLength * copyLength);
-        PipeBarrier<PIPE_V>();
-
-        for (int32_t i = 0; i < copyLength; i++)
+        if (this->quantBits == 1)
         {
-            // Abs + ReduceSum
-            Abs(indexesLocal[i * this->dimLength], indexesLocal[i * this->dimLength], this->dimLength);
+            CompareScalar(codesResultLocal, indexesLocal, (float32_t)0, AscendC::CMPMODE::GE,
+                          this->dimLength * copyLength);
             PipeBarrier<PIPE_V>();
 
-            // dimLength不是64的倍数时？
-            Add(indexesLocal[i * this->dimLength], indexesLocal[i * this->dimLength + this->mask],
-                indexesLocal[i * this->dimLength], this->mask, this->maskNum - 1, {1, 1, 1, 0, 8, 0});
-            PipeBarrier<PIPE_V>();
+            for (int32_t i = 0; i < copyLength; i++)
+            {
+                Abs(indexesLocal[i * this->dimLength], indexesLocal[i * this->dimLength], this->dimLength);
+                PipeBarrier<PIPE_V>();
+                Add(indexesLocal[i * this->dimLength], indexesLocal[i * this->dimLength + this->mask],
+                    indexesLocal[i * this->dimLength], this->mask, this->maskNum - 1, {1, 1, 1, 0, 8, 0});
+                PipeBarrier<PIPE_V>();
+            }
+
+            int32_t repStride = 8 * this->maskNum;
+            for (int32_t i = 0; i < copyLength; i += 255)
+            {
+                int32_t len = copyLength - i;
+                if (len > 255) len = 255;
+                WholeReduceSum<T>(l1ResultLocal[i], indexesLocal[i * this->dimLength], this->mask, len, 1, 1,
+                                  repStride);
+            }
+        }
+        else
+        {
+            // Multi-bit ERaBitQ format, interleaved per 8 dimensions. Each
+            // group stores quantBits bit-plane bytes from MSB to LSB. The
+            // unsigned code xu is centered as z = xu - (2^bits - 1) / 2.
+            // Quantizing |x| / RMS to half-integer levels preserves the
+            // original 2-bit layout and extends it naturally to 4 bits.
+            PipeBarrier<PIPE_ALL>();
+            const int32_t groups = this->dimLength / 8;
+            const int32_t magnitudeLevels = 1 << (this->quantBits - 1);
+            for (int32_t i = 0; i < copyLength; ++i)
+            {
+                T norm2 = static_cast<T>(0);
+                for (int32_t j = 0; j < this->dimLength; ++j)
+                {
+                    T value = indexesLocal.GetValue(i * this->dimLength + j);
+                    norm2 += value * value;
+                }
+                const T rms = sqrt(norm2 / static_cast<T>(this->dimLength));
+                // Keep the existing 2-bit threshold (1 * RMS). Four-bit
+                // uses a 0.5 * RMS step so its outer level reaches 3.75 RMS
+                // instead of leaving most of the additional levels unused.
+                const T quantStep = rms * static_cast<T>(2) / static_cast<T>(this->quantBits);
+                T innerProduct = static_cast<T>(0);
+                for (int32_t group = 0; group < groups; ++group)
+                {
+                    uint8_t planeBytes[4] = {0, 0, 0, 0};
+                    for (int32_t bit = 0; bit < 8; ++bit)
+                    {
+                        T value = indexesLocal.GetValue(i * this->dimLength + group * 8 + bit);
+                        T absValue = value >= static_cast<T>(0) ? value : -value;
+                        int32_t magnitude = 0;
+                        if (quantStep > static_cast<T>(0))
+                        {
+                            magnitude = static_cast<int32_t>(absValue / quantStep);
+                        }
+                        if (magnitude >= magnitudeLevels)
+                        {
+                            magnitude = magnitudeLevels - 1;
+                        }
+                        const bool positive = value >= static_cast<T>(0);
+                        const int32_t unsignedCode =
+                            positive ? magnitudeLevels + magnitude : magnitudeLevels - 1 - magnitude;
+                        for (int32_t plane = 0; plane < this->quantBits; ++plane)
+                        {
+                            const int32_t shift = this->quantBits - 1 - plane;
+                            if ((unsignedCode & (1 << shift)) != 0)
+                            {
+                                planeBytes[plane] |= static_cast<uint8_t>(1U << bit);
+                            }
+                        }
+                        innerProduct += absValue * (static_cast<T>(magnitude) + static_cast<T>(0.5));
+                    }
+                    for (int32_t plane = 0; plane < this->quantBits; ++plane)
+                    {
+                        codesResultLocal.SetValue(i * this->codeLength + group * this->quantBits + plane,
+                                                  planeBytes[plane]);
+                    }
+                }
+                l1ResultLocal.SetValue(i, innerProduct > static_cast<T>(0) ? innerProduct : static_cast<T>(1.0));
+            }
         }
 
-        int32_t repStride = 8 * this->maskNum;
-        for (int32_t i = 0; i < copyLength; i += 255)
-        {
-            int32_t len = copyLength - i;
-            if (len > 255) len = 255;
-            WholeReduceSum<T>(l1ResultLocal[i], indexesLocal[i * this->dimLength], this->mask, len, 1, 1, repStride);
-        }
+        // 多比特分支的 codes/l1 由标量单元写入，V_MTE3 事件不覆盖标量管线，
+        // 需要补充 S->MTE3 同步，避免 DataCopyPad 搬走未写完的数据。
+        int32_t eventIDSToMTE3 = static_cast<int32_t>(GetTPipePtr()->FetchEventID(AscendC::HardEvent::S_MTE3));
+        AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(eventIDSToMTE3);
+        AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(eventIDSToMTE3);
 
         int32_t eventIDVToMTE3 = static_cast<int32_t>(GetTPipePtr()->FetchEventID(AscendC::HardEvent::V_MTE3));
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(eventIDVToMTE3);
@@ -322,8 +400,8 @@ class IndexCodeAndPrecompute
         LocalTensor<T> l1ResultLocal = out_l1_que.DeQue<T>();
         LocalTensor<T> l2ResultLocal = out_l2_que.DeQue<T>();
 
-        DataCopyExtParams copyParams1{1, (uint32_t)(copyLength * this->dimLength / 8 * sizeof(uint8_t)), 0, 0, 0};
-        DataCopyPad(codes_res_gm_[progress * this->tileLength * this->dimLength / 8], codesResultLocal, copyParams1);
+        DataCopyExtParams copyParams1{1, (uint32_t)(copyLength * this->codeLength * sizeof(uint8_t)), 0, 0, 0};
+        DataCopyPad(codes_res_gm_[progress * this->tileLength * this->codeLength], codesResultLocal, copyParams1);
 
         DataCopyExtParams copyParams2{1, (uint32_t)(copyLength * sizeof(T)), 0, 0, 0};
         DataCopyPad(l1_res_gm_[progress * this->tileLength], l1ResultLocal, copyParams2);
@@ -376,7 +454,7 @@ class IndexCodeAndPrecompute
         // l1因子。残差 L1 为 0（向量与质心重合，或 tile 尾部 0 填充）时避免 0/0 得到 NaN、正数/0 得到 Inf。
         // 分母抬到 1e-12 后，分子同为 0 则因子为 0；正常残差大于该值，结果不变。L2 与 IP 共用这次除法。
         constexpr float kResidualL1Eps = 1e-12f;
-        float32_t para_dim = 2 * sqrt((float)this->dimLength);
+        float32_t para_dim = this->quantBits == 1 ? 2 * sqrt((float)this->dimLength) : 2.0f;
         Maxs(indexSubCenterLocal, indexSubCenterLocal, kResidualL1Eps, copyLength);
         PipeBarrier<PIPE_V>();
         Div(l1ResultLocal, l2ResultLocal, indexSubCenterLocal, copyLength);
@@ -447,6 +525,8 @@ class IndexCodeAndPrecompute
     int32_t lastTileLength;  // vector 单元最后一次循环处理的向量数量
 
     int32_t metric;  // metric type: L2(0), IP(1)
+    int32_t quantBits;
+    int32_t codeLength;
 
     int32_t tileLengthStage1;
     int32_t tileLengthStage2;
