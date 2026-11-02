@@ -118,7 +118,9 @@ cd .. && rm -rf release-1.8.1.tar.gz googletest-release-1.8.1
     bash custom_opp_{arch}.run
 
     cd ${MXINDEX_INSTALL_PATH}/tools/
-    # 生成aicpu和flat 512维的算子
+    # 生成aicpu和flat 512维的算子（https://gitcode.com/Ascend/IndexSDK/blob/master/docs/zh/05_user_guide.md#flat）
+    python3 flat_generate_model.py -t npu-type -d 512
+    python3 aicpu_generate_model.py -t npu-type
     ```
 
     设置算子的环境变量，并将算子移动至算子目录：
