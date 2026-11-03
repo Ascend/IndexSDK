@@ -16,6 +16,8 @@
  * -------------------------------------------------------------------------
  */
 
+#define ASCENDC_CUBE_ONLY
+
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/matmul.h"
@@ -27,7 +29,12 @@ using namespace matmul;
 namespace
 {
 constexpr uint32_t BURST_LEN_HIGH = 64;
-}
+
+constexpr uint16_t FLATIP_CUBE_READY_ID = 1;
+constexpr uint16_t FLATIP_AIV_READ_DONE_ID = 2;
+constexpr uint8_t SYNC_MODE2 = 2;
+constexpr uint32_t FLATIP_CUBE_SLOT_NUM = 2;
+}  // namespace
 
 namespace IndexOps
 {
@@ -52,6 +59,8 @@ class DistanceFlatIPWith950
 
    private:
     __aicore__ inline void SetFlag(uint32_t aivBlkIdx);
+
+    __aicore__ inline void SetDistSlot(uint32_t iterIdx);
 
     __aicore__ inline void ComputeLoopParameters();
 
@@ -118,6 +127,10 @@ class DistanceFlatIPWith950
 
     // matmul结果暂存于GM user workspace，每个block分配一段独立缓冲区
     GlobalTensor<half> distGm;
+
+    __gm__ half *distSlotBase{nullptr};
+    uint32_t distSlotElemCnt{0};
+    uint32_t distSlotIterIdx{0};
 
     TPipe pipe;
 
@@ -231,25 +244,34 @@ __aicore__ inline void DistanceFlatIPWith950::Init(GM_ADDR query, GM_ADDR mask, 
     flagGM.SetGlobalBuffer(reinterpret_cast<__gm__ uint16_t *>(flag), vecCoreNum * Utils::CUBE_ALIGN);
     distMaxGM.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(maxDist), queryNum * burstSizeOfBlock);
 
-    // matmul GM输出缓冲区：从user workspace中按cube组号分配（28份，同组AIC+AIV共享）
-    // AIC写matmul结果到distGm[blockIdx]，paired AIV从同一distGm[blockIdx]读取
-    // 2个AIV按GetSubBlockIdx分割query段做后处理，写不同最终GM地址
+    // host 侧 userWorkspaceSize 必须按 FLATIP_CUBE_SLOT_NUM 倍槽位分配（见 op_host）。
     // workspace参数已经是GetUserWorkspace(workspace)返回的用户workspace地址
-    distGm.SetGlobalBuffer(
-        reinterpret_cast<__gm__ half *>(usrWorkspace) + blockIdx * queryNumEachLoop * codeNumEachLoop,
-        queryNumEachLoop * codeNumEachLoop);
+    distSlotElemCnt = queryNumEachLoop * codeNumEachLoop;
+    distSlotBase = reinterpret_cast<__gm__ half *>(usrWorkspace) + blockIdx * (FLATIP_CUBE_SLOT_NUM * distSlotElemCnt);
+    distSlotIterIdx = 0;
+    SetDistSlot(0);
+}
+
+__aicore__ inline void DistanceFlatIPWith950::SetDistSlot(uint32_t iterIdx)
+{
+    distGm.SetGlobalBuffer(distSlotBase + (iterIdx % FLATIP_CUBE_SLOT_NUM) * distSlotElemCnt, distSlotElemCnt);
 }
 
 __aicore__ inline void DistanceFlatIPWith950::Process()
 {
-    // 950 MIX 1:2：tiling必须传给REGIST_MATMUL_OBJ（第4参数），不调用Init
-    // 参考distance_ivf_flat_ip_fp32.cpp/rotate_and_l2_at_fp32.cpp
-    REGIST_MATMUL_OBJ(&pipe, GetSysWorkSpacePtr(), matmulObj, &tiling);
+    // 初始化由该宏完成，不在计算循环内调用Init。
+    if ASCEND_IS_AIC
+    {
+        REGIST_MATMUL_OBJ(&pipe, GetSysWorkSpacePtr(), matmulObj, &tiling);
+    }
 
-    // AIC跑matmul(cube指令)，AIV跑后处理(vector指令)，由matmul API内部调度
-    pipe.InitBuffer(distQueue, 1, queryNumEachLoop * codeNumEachLoop * sizeof(half));
-    pipe.InitBuffer(distExtremumQueue, 1, queryNumEachLoop * burstSizeEachLoop * sizeof(half));
-    pipe.InitBuffer(maskQue, 1, queryNumEachLoop * maskLenEachLoop * sizeof(uint8_t));
+    // AIV只做后处理(vector指令)：mask + extremum + 搬回GM，UB缓冲仅在AIV侧分配
+    if ASCEND_IS_AIV
+    {
+        pipe.InitBuffer(distQueue, 1, queryNumEachLoop * codeNumEachLoop * sizeof(half));
+        pipe.InitBuffer(distExtremumQueue, 1, queryNumEachLoop * burstSizeEachLoop * sizeof(half));
+        pipe.InitBuffer(maskQue, 1, queryNumEachLoop * maskLenEachLoop * sizeof(uint8_t));
+    }
 
     if (codeNumEachCore > 0)
     {
@@ -270,9 +292,14 @@ __aicore__ inline void DistanceFlatIPWith950::Process()
     }
 
     SyncAll();
-    if (blockIdx == 0)
+    // flag由AIV block 0统一写全部vecCoreNum个，其余核不写；CUBE_ONLY下AIC同样满足GetBlockIdx()==0，
+    // 故必须用ASCEND_IS_AIV守卫，避免AIC0重复执行InitBuffer/Duplicate/DataCopy(flagGlobal)。
+    if ASCEND_IS_AIV
     {
-        SetFlag(0);
+        if (GetBlockIdx() == 0)
+        {
+            SetFlag(0);
+        }
     }
 }
 
@@ -280,9 +307,12 @@ __aicore__ inline void DistanceFlatIPWith950::DistanceComputeLoop(uint32_t aicor
                                                                   uint32_t queryMoveOffset, uint32_t queryMoveNum,
                                                                   bool isTail)
 {
-    // SetTensorA：所有核均执行，确保matmul握手一致
-    GlobalTensor<half> curQueryGM = queryGM[queryMoveOffset * dim];
-    matmulObj.SetTensorA(curQueryGM);
+    // SetTensorA：CUBE_ONLY 下 matmul 只在 AIC 上执行，AIV 不调用任何 matmul API
+    if ASCEND_IS_AIC
+    {
+        GlobalTensor<half> curQueryGM = queryGM[queryMoveOffset * dim];
+        matmulObj.SetTensorA(curQueryGM);
+    }
 
     // code分块的循环计算次数
     uint32_t codeLoopTime = aicoreCodeNum / codeNumEachLoop;
@@ -394,25 +424,30 @@ __aicore__ inline void DistanceFlatIPWith950::CubeComputeLoop(uint32_t codeMoveO
                                                               uint32_t queryMoveOffset, uint32_t queryMoveNum,
                                                               bool isTail)
 {
-    // === 所有核：matmul计算 ===
-    GlobalTensor<half> curLoopCodeGM = codeGM[codeMoveOffset * dim];
-    matmulObj.SetTensorB(curLoopCodeGM, true);
-    if (isTail)
+    if ASCEND_IS_AIC
     {
-        matmulObj.SetTail(queryMoveNum, codeMoveNum, dim);
+        AscendC::CrossCoreWaitFlag(FLATIP_AIV_READ_DONE_ID);
+        SetDistSlot(distSlotIterIdx);
+
+        GlobalTensor<half> curLoopCodeGM = codeGM[codeMoveOffset * dim];
+        matmulObj.SetTensorB(curLoopCodeGM, true);
+        if (isTail)
+        {
+            matmulObj.SetTail(queryMoveNum, codeMoveNum, dim);
+        }
+
+        matmulObj.IterateAll<false>(distGm, 0, false, true);
+        matmulObj.End();
+
+        AscendC::CrossCoreSetFlag<SYNC_MODE2, PIPE_FIX>(FLATIP_CUBE_READY_ID);
     }
 
-    matmulObj.IterateAll<false>(distGm, 0, false, true);
-    matmulObj.WaitIterateAll();
-    // End在每次WaitIterateAll后调用，参考distance_ivf_flat_ip_fp32.cpp的WaitGemmQB
-    // 不调用End会导致下一次IterateAll挂起（matmul内部资源未释放）
-    matmulObj.End();
-
-    // === AIV核：从GM搬回UB做后处理（mask + extremum + 写回GM）===
-    // 只让subBlockIdx==1的AIV跑后处理，避免同组2个AIV写同一GM地址
-    // 另一个AIV空转，等待matmul握手完成即可
     if ASCEND_IS_AIV
     {
+        AscendC::CrossCoreSetFlag<SYNC_MODE2, PIPE_MTE2>(FLATIP_AIV_READ_DONE_ID);
+        AscendC::CrossCoreWaitFlag(FLATIP_CUBE_READY_ID);
+        SetDistSlot(distSlotIterIdx);
+
         if (GetSubBlockIdx() == 1)
         {
             LocalTensor<half> distTensor = distQueue.AllocTensor<half>();
@@ -446,6 +481,8 @@ __aicore__ inline void DistanceFlatIPWith950::CubeComputeLoop(uint32_t codeMoveO
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(evtMte3Mte2);
         }  // end if (GetSubBlockIdx() == 1)
     }  // end if ASCEND_IS_AIV
+
+    distSlotIterIdx++;
 }
 
 }  // namespace IndexOps

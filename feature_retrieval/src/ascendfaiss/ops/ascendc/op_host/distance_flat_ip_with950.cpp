@@ -25,7 +25,8 @@
 namespace
 {
 constexpr uint32_t BASE_N = 128;  // N维分块基本单位，与FP32参考路径保持一致
-}
+constexpr size_t CUBE_SLOT_NUM = 2;
+}  // namespace
 
 namespace optiling
 {
@@ -163,15 +164,13 @@ static ge::graphStatus TilingFunc(gert::TilingContext *context)
     // 设置TilingData数据长度。这两步完成tiling的传递
     context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
 
-    // GM输出模式下，每个cube组(blockIdx 0..cubeCoreNum-1)分配一段matmul结果暂存空间
-    // 同组AIC+2AIV共享同一段workspace，AIC写入，subBlockIdx==1的AIV读取做后处理
     uint32_t queryNum = tiling.get_queryNum();
     constexpr uint32_t queryLoopLimit = 128;
     constexpr uint32_t codeNumEachLoop = 512;
     uint32_t queryNumEachLoop = Utils::Min(queryNum, queryLoopLimit);
     queryNumEachLoop = Utils::DivUp(queryNumEachLoop, Utils::CUBE_ALIGN) * Utils::CUBE_ALIGN;
     const size_t userWorkspaceSize =
-        static_cast<size_t>(queryNumEachLoop) * codeNumEachLoop * sizeof(uint16_t) * cubeCoreNum;
+        CUBE_SLOT_NUM * static_cast<size_t>(queryNumEachLoop) * codeNumEachLoop * sizeof(uint16_t) * cubeCoreNum;
     const uint32_t sysWorkspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
 
     size_t *currentWorkspace = context->GetWorkspaceSizes(1);

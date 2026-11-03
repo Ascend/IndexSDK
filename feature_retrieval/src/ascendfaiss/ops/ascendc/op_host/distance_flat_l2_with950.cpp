@@ -38,10 +38,12 @@ constexpr uint32_t QUERY_MAX_SIZE = 32;
 // kernel 侧 codeBatchSize=AlignUp(CORE_PROC_CODE_GRAIN/MIN_BATCH, CUBE_ALIGN/2) 与目的地址步进
 // codeCopyOutBatchOffset=DivUp(codeSizeEachLoop, MIN_BATCH) 仅在两者同为512时相等(均为8)，
 // kernel 的 CopyOutL2DistMin 输出布局依赖该等式；本文件 TilingFunc 中
-// userSize(queryAlignAll * CODE_PROC_PER_LOOP_MAX) 同样与之耦合。
+// userSize(queryAlignEpi * CODE_PROC_PER_LOOP_MAX) 同样与之耦合。
 // 任一侧单独调整会同时静默破坏极值输出布局与 workspace 大小，必须两侧同步修改。
 constexpr uint32_t CODE_PROC_PER_LOOP_MAX = 512;
 constexpr uint32_t MIN_BATCH = 64;
+constexpr uint32_t BASE_N = 128;
+constexpr size_t CUBE_SLOT_NUM = 2;
 enum class DIR
 {
     INPUT = 0,
@@ -149,19 +151,17 @@ static ge::graphStatus TilingCube(gert::TilingContext *context, DistanceFlatL2Wi
     // 否则 Cube 会按 16 向上取整导致 C 矩阵按填充后的 M 写出，越界污染相邻缓冲区
     // 实际参与计算的 query 行数仍由 kernel 侧的 SetTail 校正为真实值。
 
-    // code 矩阵每个 codeLoop 只从 HBM 读一遍（此前 M 被 UB 限制在 querySizeEachLoop，
-    // 导致 code 被重复读取 queryLoopTimes 遍）。后处理仍按 querySizeEachLoop 分块，
-    // 故 L2Norm matmul 的 M/N 仍用「分块对齐」尺寸。
     uint32_t queryAlignEpi = Utils::DivUp(querySizeEachLoop, Utils::CUBE_ALIGN) * Utils::CUBE_ALIGN;
-    uint32_t queryAlignAll = Utils::DivUp(tiling.get_querySize(), Utils::CUBE_ALIGN) * Utils::CUBE_ALIGN;
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     MatmulApiTiling cubeTilingIp(ascendcPlatform);
     cubeTilingIp.SetAType(TPosition::GM, CubeFormat::ND, DataType::DT_FLOAT16);
     cubeTilingIp.SetBType(TPosition::GM, CubeFormat::ND, DataType::DT_FLOAT16, true);
     cubeTilingIp.SetCType(TPosition::GM, CubeFormat::ND, DataType::DT_FLOAT);
-    cubeTilingIp.SetShape(queryAlignAll, codeSizeEachLoop, dimSize);
-    cubeTilingIp.SetOrgShape(queryAlignAll, codeSizeEachLoop, dimSize);
+    cubeTilingIp.SetShape(queryAlignEpi, codeSizeEachLoop, dimSize);
+    cubeTilingIp.SetOrgShape(queryAlignEpi, codeSizeEachLoop, dimSize);
+    // 固定K轴分块为1，N轴分块不超过BASE_N，避免小维度场景下分块非法(与ip_with950一致)
+    cubeTilingIp.SetFixSplit(1, Utils::Min(BASE_N, codeSizeEachLoop), -1);
     cubeTilingIp.SetBufferSpace(-1, -1, -1);
     int ret = cubeTilingIp.GetTiling(tiling.cubeTilingIp);
     if (ret == -1)
@@ -216,12 +216,9 @@ static ge::graphStatus TilingFunc(gert::TilingContext *context)
     tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
     context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
 
-    // MIX 1:2中两个AIV可能并发发起Matmul请求。分别为每个AIV保留IP和query范数的GM中间结果。
-    // (queryAlignEpi) 分配。两者都必须与 kernel 侧 ipElemCnt/normElemCnt 及 matmul tiling 的 M 一致。
     size_t queryAlignEpi = Utils::DivUp(tiling.get_querySizeEachLoop(), Utils::CUBE_ALIGN) * Utils::CUBE_ALIGN;
-    size_t queryAlignAll = Utils::DivUp(tiling.get_querySize(), Utils::CUBE_ALIGN) * Utils::CUBE_ALIGN;
-    size_t userSize =
-        (queryAlignAll * CODE_PROC_PER_LOOP_MAX + queryAlignEpi * queryAlignEpi) * tiling.get_aivNum() * sizeof(float);
+    size_t userSize = CUBE_SLOT_NUM * (queryAlignEpi * CODE_PROC_PER_LOOP_MAX + queryAlignEpi * queryAlignEpi) *
+                      tiling.get_aivNum() * sizeof(float);
     size_t *currentWorkspace = context->GetWorkspaceSizes(1);
     if (currentWorkspace == nullptr)
     {
