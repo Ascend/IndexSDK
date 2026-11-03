@@ -1,0 +1,595 @@
+/*
+ * -------------------------------------------------------------------------
+ * This file is part of the IndexSDK project.
+ * Copyright (c) 2026 Huawei Technologies Co.,Ltd.
+ *
+ * IndexSDK is licensed under Mulan PSL v2.
+ * You can use this software according to the terms and conditions of the Mulan PSL v2.
+ * You may obtain a copy of Mulan PSL v2 at:
+ *
+ *          http://license.coscl.org.cn/MulanPSL2
+ *
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND,
+ * EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
+ * MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
+ * See the Mulan PSL v2 for more details.
+ * -------------------------------------------------------------------------
+ */
+
+/*
+ * IVFRaBitQ 多比特、多卡 QPS 与召回率测试，以下命令均在仓库根目录执行。
+ * 前置条件：安装配套 host/ops 库及匹配 dim、nlist、quant-bits 的算子模型；
+ * A3 需要 aicpu / ivfflat / ivfrabitq 算子，编译需要 Faiss 1.14.1。
+ *
+ * 编译：bash examples/build.sh TestAscendIndexIVFRaBitQQps
+ * 参数帮助：./examples/build/TestAscendIndexIVFRaBitQQps --help
+ *
+ * 示例：两卡分片，依次测试 1/2/4-bit；首次建库并保存索引和 GT，后续运行复用。
+ * for bits in 1 2 4; do
+ *   ./examples/build/TestAscendIndexIVFRaBitQQps \
+ *     --devices 0,1 --search-mode shard --quant-bits "$bits" --refine none \
+ *     --dim 128 --ntotal 100000 --nlist 1024 --nprobe 32 --nq 1,8,32 \
+ *     --candidate-topk 300 --target-topk 100 --recall-nq 10 --warmup 5 --loops 20 \
+ *     --index-path "./rabitq_${bits}bit.index" --gt-path ./rabitq_100k.gt \
+ *     --csv "./rabitq_${bits}bit.csv"
+ * done
+ * 注意：每次运行前需准备好当前 bits 对应的模型，不同位数使用不同索引文件。
+ *
+ * 多卡：shard 将底库分布到多卡，每批查询广播到各卡并合并结果；
+ *       replica 每卡存完整底库，将一批 nq 分配到各卡，无需合并（nq=1 仅用一卡）。
+ * 计时：wait 按 --loops 执行；sustain 按 --duration 秒连续执行同步 search。
+ *       例如在上方命令追加 --qps-mode sustain --duration 60。
+ * 精排：--refine none 测粗排；npu 使用 SDK 精排，cpu 使用本工具的 Host 精排。
+ *       npu/cpu 均需 --src-bin；原文为无文件头的 float32 [ntotal, dim] 数据。
+ *       原文存在时用其建库，不存在时建库阶段生成并保存；加载索引时精排原文必须存在。
+ *       npu 精排不支持进程内 nprobe/候选 TopK 矩阵；--npu-k 控制 CPU 精排候选数，
+ *       SDK 精排的候选扩展由 --refine-alpha 控制（默认按 npu-k / candidate-topk 计算）。
+ * 参数：--nprobe 和 --candidate-topk 可用逗号列表；2-bit dim<=512，4-bit dim<=256，均为 L2。
+ * 复用：加载已有索引时必须提供匹配的 --gt-path；--rebuild 1 强制重建索引。
+ *       同一底库可用 --reuse-gt 1 复用 GT，但 ntotal、dim、seed、原文和召回参数须保持一致。
+ * 大库：5 亿底库可设 --ntotal 500000000 --nlist 32768；同时调整模型、资源及分块大小。
+ */
+
+#include <faiss/IndexFlat.h>
+#include <faiss/IndexIVFRaBitQ.h>
+#include <faiss/ascend/AscendIndexIVFRaBitQ.h>
+#include <faiss/index_io.h>
+#include <fcntl.h>
+#include <gtest/gtest.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
+
+#include <algorithm>
+#include <atomic>
+#include <cerrno>
+#include <cfloat>
+#include <chrono>
+#include <climits>
+#include <cmath>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <exception>
+#include <functional>
+#include <memory>
+#include <numeric>
+#include <random>
+#include <set>
+#include <sstream>
+#include <stdexcept>
+#include <string>
+#include <thread>
+#include <unordered_map>
+#include <vector>
+
+namespace
+{
+constexpr int kDefaultDim = 128;
+constexpr size_t kDefaultNtotal = 500000000;
+constexpr int kDefaultNlist = 32768;
+constexpr int kDefaultNprobe = 200;
+constexpr int kDefaultK = 300;
+constexpr int kDefaultNpuK = 5000;
+constexpr int kDefaultWarmup = 5;
+constexpr int kDefaultLoops = 20;
+constexpr int kDefaultResourceMb = 4096;
+constexpr int kDefaultAddChunk = 1000000;
+constexpr int kDefaultRecallNq = 100;
+constexpr int kTrainMultiplier = 40;
+constexpr size_t kMaxTrainNum = 7000000;
+constexpr uint32_t kDefaultSeed = 5678;
+constexpr uint32_t kQuerySeed = 9012;
+constexpr int kMilliSecond = 1000;
+constexpr double kNpuHostOverhead = 1.15;
+constexpr int kMemGb = 1024 * 1024;
+
+enum class RefineMode
+{
+    None = 0,
+    Npu = 1,
+    Cpu = 2
+};
+
+std::vector<int> g_devices = {0};
+int g_dim = kDefaultDim;
+size_t g_ntotal = kDefaultNtotal;
+int g_nlist = kDefaultNlist;
+int g_nprobe = kDefaultNprobe;
+int g_k = kDefaultK;
+std::vector<int> g_nprobes = {kDefaultNprobe};
+std::vector<int> g_candidateTopks = {kDefaultK};
+int g_npuK = kDefaultNpuK;
+int g_quantBits = 1;
+int g_recallK = 0;
+int g_warmup = kDefaultWarmup;
+int g_loops = kDefaultLoops;
+int g_durationSec = 0;
+int g_resourceMb = kDefaultResourceMb;
+int g_addChunk = kDefaultAddChunk;
+int g_recallNq = kDefaultRecallNq;
+int g_useKmeansPp = 1;
+int g_niter = 10;
+int g_trainSlice = 0;
+int g_searchReplica = 0;
+int g_attachSrc = 0;  // 1=replica 共享同一份精排原文（attachRefineSources 零拷贝），0=每副本深拷贝
+int g_qpsSustain = 0;
+uint32_t g_seed = kDefaultSeed;
+float g_refineAlpha = -1.0f;
+std::vector<int> g_nq = {1, 8, 16, 32};
+std::vector<RefineMode> g_refine = {RefineMode::None, RefineMode::Npu};
+std::string g_indexPath = "./ivfrabitq.index";
+std::string g_srcBin;
+std::string g_gtPath;
+std::string g_csvPath;
+int g_rebuild = 0;
+int g_reuseGt = 0;
+
+const int kValidNlists[] = {1024, 2048, 4096, 8192, 10048, 16384, 32768};
+const int kValidDims[] = {64, 128, 256, 384, 512, 768, 1024};
+
+inline double GetMillisecs()
+{
+    const auto now = std::chrono::steady_clock::now().time_since_epoch();
+    return std::chrono::duration<double, std::milli>(now).count();
+}
+
+std::string DevicesJson();
+
+void PrintUsage(const char *prog)
+{
+    printf(
+        "Usage: %s [--devices 0] [--dim 128] [--ntotal 500000000] [--nlist 32768] [--nprobe 200,400]\n"
+        "  [--candidate-topk 300,512] [--target-topk 100] [--npu-k 5000] [--quant-bits 1]\n"
+        "  [--nq 1,8,16,32] [--recall-nq 100] [--warmup 5] [--loops 20]\n"
+        "  [--resource-mb 4096] [--add-chunk 1000000] [--index-path ./ivfrabitq.index]\n"
+        "  [--src-bin path] [--gt-path path] [--rebuild 0] [--reuse-gt 0] [--csv path]\n"
+        "  [--seed 5678] [--use-kmeans-pp 1] [--niter 10] [--train-mode replica|slice]\n"
+        "  [--search-mode shard|replica] [--qps-mode wait|sustain] [--duration 60] [gtest flags]\n",
+        prog);
+    printf("  none: NPU search k (needRefine=false)\n");
+    printf("  npu:  search k with SDK refine (needs --src-bin for srcIndexes)\n");
+    printf("  cpu:  NPU coarse search k=npu-k, host-side refine on --src-bin (mmap, multi-thread)\n");
+    printf("  Existing --src-bin is raw headerless float32 input in row-major [ntotal, dim] layout.\n");
+    printf("  Comma-separated --nprobe/--candidate-topk run a matrix after one index build/load.\n");
+    printf("  If --index-path exists and --rebuild=0, skip train/add and load the index.\n");
+    printf(
+        "  --reuse-gt 1: reuse an existing GT file while rebuilding an index; only use with identical data "
+        "parameters.\n");
+    printf("  --niter: coarse k-means iterations (default 10). --train-mode only affects train.\n");
+    printf("  --search-mode shard: one index, SDK shards data and broadcasts queries (default).\n");
+    printf("  --search-mode replica: one full copy per device; split nq across copies (no merge).\n");
+    printf("  --qps-mode wait: stop-and-wait, --loops batches (default).\n");
+    printf("  --qps-mode sustain: back-to-back search for --duration seconds (default 60).\n");
+    printf("  --candidate-topk: approximate candidates returned by RaBitQ (--k is a legacy alias).\n");
+    printf("  --target-topk: exact GT cutoff; candidate coverage equals Recall@target after exact rerank\n");
+    printf("                 (--recall-k is a legacy alias).\n");
+    printf("  Multi-bit POC: A3 L2, 2-bit dim <= 512, 4-bit dim <= 256, refine=none.\n");
+}
+
+bool ParseLong(const char *text, long &out)
+{
+    if (text == nullptr)
+    {
+        return false;
+    }
+    char *end = nullptr;
+    errno = 0;
+    const long value = strtol(text, &end, 10);
+    if (errno != 0 || end == text || *end != '\0')
+    {
+        return false;
+    }
+    out = value;
+    return true;
+}
+
+bool ParseUll(const char *text, unsigned long long &out)
+{
+    if (text == nullptr || text[0] == '-')
+    {
+        return false;
+    }
+    char *end = nullptr;
+    errno = 0;
+    const unsigned long long value = strtoull(text, &end, 10);
+    if (errno != 0 || end == text || *end != '\0')
+    {
+        return false;
+    }
+    out = value;
+    return true;
+}
+
+bool ParseIntList(const std::string &text, std::vector<int> &out, bool allowZero)
+{
+    std::istringstream input(text);
+    std::string token;
+    std::vector<int> values;
+    while (std::getline(input, token, ','))
+    {
+        long value = 0;
+        if (!ParseLong(token.c_str(), value) || value > INT_MAX || value < (allowZero ? 0 : 1))
+        {
+            printf("invalid list value: %s\n", token.c_str());
+            return false;
+        }
+        values.push_back(static_cast<int>(value));
+    }
+    if (values.empty() || text.back() == ',')
+    {
+        return false;
+    }
+    out = values;
+    return true;
+}
+
+bool ParseRefineList(const std::string &text, std::vector<RefineMode> &out)
+{
+    std::istringstream input(text);
+    std::string token;
+    std::vector<RefineMode> values;
+    while (std::getline(input, token, ','))
+    {
+        if (token == "none" || token == "0")
+        {
+            values.push_back(RefineMode::None);
+        }
+        else if (token == "npu" || token == "1")
+        {
+            values.push_back(RefineMode::Npu);
+        }
+        else if (token == "cpu" || token == "2")
+        {
+            values.push_back(RefineMode::Cpu);
+        }
+        else
+        {
+            printf("invalid refine token: %s (use none,npu,cpu)\n", token.c_str());
+            return false;
+        }
+    }
+    if (values.empty() || text.back() == ',')
+    {
+        return false;
+    }
+    out.swap(values);
+    return true;
+}
+
+bool HasMode(RefineMode mode) { return std::find(g_refine.begin(), g_refine.end(), mode) != g_refine.end(); }
+
+bool InSet(int value, const int *arr, int n)
+{
+    for (int i = 0; i < n; ++i)
+    {
+        if (arr[i] == value)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool ParseCli(int *argc, char **argv)
+{
+    const std::unordered_map<std::string, int *> integers = {{"--dim", &g_dim},
+                                                             {"--nlist", &g_nlist},
+                                                             {"--npu-k", &g_npuK},
+                                                             {"--quant-bits", &g_quantBits},
+                                                             {"--recall-k", &g_recallK},
+                                                             {"--target-topk", &g_recallK},
+                                                             {"--recall-nq", &g_recallNq},
+                                                             {"--warmup", &g_warmup},
+                                                             {"--loops", &g_loops},
+                                                             {"--duration", &g_durationSec},
+                                                             {"--resource-mb", &g_resourceMb},
+                                                             {"--add-chunk", &g_addChunk},
+                                                             {"--rebuild", &g_rebuild},
+                                                             {"--reuse-gt", &g_reuseGt},
+                                                             {"--niter", &g_niter},
+                                                             {"--use-kmeans-pp", &g_useKmeansPp}};
+    const std::unordered_map<std::string, std::string *> strings = {
+        {"--index-path", &g_indexPath}, {"--src-bin", &g_srcBin}, {"--gt-path", &g_gtPath}, {"--csv", &g_csvPath}};
+    const std::unordered_map<std::string, std::vector<int> *> lists = {{"--devices", &g_devices},
+                                                                       {"--nq", &g_nq},
+                                                                       {"--nprobe", &g_nprobes},
+                                                                       {"--k", &g_candidateTopks},
+                                                                       {"--candidate-topk", &g_candidateTopks}};
+    std::vector<char *> kept{argv[0]};
+    for (int i = 1; i < *argc; ++i)
+    {
+        const std::string argument(argv[i]);
+        if (argument == "--help")
+        {
+            PrintUsage(argv[0]);
+            return false;
+        }
+        if (argument.compare(0, 8, "--gtest_") == 0)
+        {
+            kept.push_back(argv[i]);
+            continue;
+        }
+        const size_t equal = argument.find('=');
+        const std::string flag = argument.substr(0, equal);
+        const auto integer = integers.find(flag);
+        const auto string = strings.find(flag);
+        const auto list = lists.find(flag);
+        const bool isMode = flag == "--train-mode" || flag == "--search-mode" || flag == "--qps-mode";
+        if (integer == integers.end() && string == strings.end() && list == lists.end() && !isMode &&
+            flag != "--refine" && flag != "--refine-alpha" && flag != "--ntotal" && flag != "--seed" &&
+            flag != "--attach-src")
+        {
+            printf("unknown argument: %s\n", argument.c_str());
+            PrintUsage(argv[0]);
+            return false;
+        }
+        if (equal == std::string::npos && i + 1 >= *argc)
+        {
+            printf("missing value for %s\n", flag.c_str());
+            PrintUsage(argv[0]);
+            return false;
+        }
+        const std::string value = equal == std::string::npos ? argv[++i] : argument.substr(equal + 1);
+        if (string != strings.end())
+        {
+            *string->second = value;
+        }
+        else if (list != lists.end())
+        {
+            if (!ParseIntList(value, *list->second, flag == "--devices"))
+            {
+                PrintUsage(argv[0]);
+                return false;
+            }
+            g_nprobe = g_nprobes.front();
+            g_k = g_candidateTopks.front();
+        }
+        else if (flag == "--refine")
+        {
+            if (!ParseRefineList(value, g_refine))
+            {
+                PrintUsage(argv[0]);
+                return false;
+            }
+        }
+        else if (isMode)
+        {
+            int *target = flag == "--train-mode"    ? &g_trainSlice
+                          : flag == "--search-mode" ? &g_searchReplica
+                                                    : &g_qpsSustain;
+            const char *zero = flag == "--train-mode" ? "replica" : flag == "--search-mode" ? "shard" : "wait";
+            const char *one = flag == "--train-mode" ? "slice" : flag == "--search-mode" ? "replica" : "sustain";
+            if (value == zero || value == "0" || (flag == "--qps-mode" && value == "stop"))
+            {
+                *target = 0;
+            }
+            else if (value == one || value == "1")
+            {
+                *target = 1;
+            }
+            else
+            {
+                printf("%s must be %s or %s\n", flag.c_str() + 2, zero, one);
+                return false;
+            }
+        }
+        else if (flag == "--refine-alpha")
+        {
+            char *end = nullptr;
+            errno = 0;
+            const float alpha = strtof(value.c_str(), &end);
+            if (errno != 0 || end == value.c_str() || *end != '\0' || alpha < 1.0f)
+            {
+                printf("refine-alpha must be >= 1\n");
+                return false;
+            }
+            g_refineAlpha = alpha;
+        }
+        else if (flag == "--ntotal")
+        {
+            unsigned long long count = 0;
+            if (!ParseUll(value.c_str(), count) || count == 0)
+            {
+                printf("ntotal must be > 0\n");
+                return false;
+            }
+            g_ntotal = static_cast<size_t>(count);
+        }
+        else
+        {
+            long number = 0;
+            if (!ParseLong(value.c_str(), number) || number < 0 || number > INT_MAX ||
+                (flag == "--attach-src" && number > 1))
+            {
+                printf("invalid value for %s: %s\n", flag.c_str(), value.c_str());
+                return false;
+            }
+            if (flag == "--seed")
+            {
+                g_seed = static_cast<uint32_t>(number);
+            }
+            else if (flag == "--attach-src")
+            {
+                g_attachSrc = static_cast<int>(number);
+            }
+            else
+            {
+                *integer->second = static_cast<int>(number);
+            }
+        }
+    }
+    std::copy(kept.begin(), kept.end(), argv);
+    *argc = static_cast<int>(kept.size());
+    argv[*argc] = nullptr;
+    return true;
+}
+
+bool ValidateCli()
+{
+    if (g_devices.empty())
+    {
+        printf("devices must not be empty\n");
+        return false;
+    }
+    if (!InSet(g_dim, kValidDims, static_cast<int>(sizeof(kValidDims) / sizeof(kValidDims[0]))))
+    {
+        printf("unsupported dim %d\n", g_dim);
+        return false;
+    }
+    if (!InSet(g_nlist, kValidNlists, static_cast<int>(sizeof(kValidNlists) / sizeof(kValidNlists[0]))))
+    {
+        printf("unsupported nlist %d\n", g_nlist);
+        return false;
+    }
+    if (std::any_of(g_nprobes.begin(), g_nprobes.end(), [](int value) { return value <= 0 || value > g_nlist; }))
+    {
+        printf("every nprobe must be in (0, nlist]\n");
+        return false;
+    }
+    if (std::any_of(g_candidateTopks.begin(), g_candidateTopks.end(), [](int value) { return value <= 0; }) ||
+        g_npuK <= 0)
+    {
+        printf("k and npu-k must be > 0\n");
+        return false;
+    }
+    if (g_quantBits != 1 && g_quantBits != 2 && g_quantBits != 4)
+    {
+        printf("quant-bits must be 1, 2, or 4\n");
+        return false;
+    }
+    if (g_recallK == 0)
+    {
+        g_recallK = *std::min_element(g_candidateTopks.begin(), g_candidateTopks.end());
+    }
+    const int minCandidateTopk = *std::min_element(g_candidateTopks.begin(), g_candidateTopks.end());
+    const int maxCandidateTopk = *std::max_element(g_candidateTopks.begin(), g_candidateTopks.end());
+    if (g_recallK < 0 || g_recallK > minCandidateTopk)
+    {
+        printf("target-topk (%d) must be in (0, minimum candidate-topk=%d]\n", g_recallK, minCandidateTopk);
+        return false;
+    }
+    if (g_quantBits == 2 && g_dim > 512)
+    {
+        printf("2-bit POC only supports dim <= 512\n");
+        return false;
+    }
+    if (g_quantBits == 4 && g_dim > 256)
+    {
+        printf("4-bit POC only supports dim <= 256\n");
+        return false;
+    }
+    // multi-bit + npu 精排可用：SDK refine 用原文（srcIndexes）重排，与 quantBits 无关；
+    // multi-bit 的真实约束（L2、dim 上限）由 Impl 层校验。
+    if (HasMode(RefineMode::Npu) && (g_nprobes.size() > 1 || g_candidateTopks.size() > 1))
+    {
+        printf("npu refine does not support an in-process nprobe/TopK matrix; use --refine none\n");
+        return false;
+    }
+    if (g_npuK < maxCandidateTopk)
+    {
+        printf("npu-k (%d) must be >= maximum candidate-topk (%d)\n", g_npuK, maxCandidateTopk);
+        return false;
+    }
+    if (g_addChunk <= 0 || g_recallNq <= 0 || g_loops <= 0)
+    {
+        printf("add-chunk, recall-nq and loops must be > 0\n");
+        return false;
+    }
+    if (g_warmup < 0)
+    {
+        printf("warmup must be >= 0\n");
+        return false;
+    }
+    if (g_durationSec < 0)
+    {
+        printf("duration must be >= 0\n");
+        return false;
+    }
+    if (g_qpsSustain != 0 && g_durationSec <= 0)
+    {
+        g_durationSec = 60;
+        printf("qps-mode=sustain: --duration defaulted to 60s\n");
+    }
+    if (g_qpsSustain == 0 && g_durationSec > 0)
+    {
+        printf("qps-mode=wait: --duration ignored, using --loops=%d\n", g_loops);
+    }
+    const int maxNq = *std::max_element(g_nq.begin(), g_nq.end());
+    if (static_cast<size_t>(maxNq) > g_ntotal || static_cast<size_t>(g_recallNq) > g_ntotal)
+    {
+        printf("nq and recall-nq must be <= ntotal\n");
+        return false;
+    }
+    if (HasMode(RefineMode::Npu) && g_srcBin.empty())
+    {
+        printf("npu refine requires --src-bin\n");
+        return false;
+    }
+    if (HasMode(RefineMode::Cpu) && g_srcBin.empty())
+    {
+        printf("cpu refine requires --src-bin\n");
+        return false;
+    }
+    if (HasMode(RefineMode::Cpu) && g_npuK > 5000)
+    {
+        printf("cpu refine requires --npu-k <= 5000 (NPU coarse search MAX_K)\n");
+        return false;
+    }
+    // --src-bin 与 refine 档位解耦：存在则读取复用，不存在则建库时落盘；仅 npu 档加载时强依赖（见 LoadSrcBin）
+    if (g_indexPath.empty())
+    {
+        printf("index-path must not be empty\n");
+        return false;
+    }
+    if (g_refineAlpha < 0.0f)
+    {
+        // 矩阵模式下 candidate-topk 有多个取值，用最大值计算默认 alpha，避免候选扩展被低估
+        g_refineAlpha = static_cast<float>(g_npuK) / static_cast<float>(maxCandidateTopk);
+    }
+    if (g_niter <= 0 || g_niter > 65536)
+    {
+        printf("niter must be in (0, 65536]\n");
+        return false;
+    }
+    if (g_reuseGt != 0 && g_reuseGt != 1)
+    {
+        printf("reuse-gt must be 0 or 1\n");
+        return false;
+    }
+    if (g_trainSlice != 0 && g_devices.size() <= 1)
+    {
+        printf("train-mode=slice needs more than one --devices; falling back to replica at train time\n");
+    }
+    if (g_searchReplica != 0 && g_devices.size() <= 1)
+    {
+        printf("search-mode=replica with one device is equivalent to single-card search\n");
+    }
+    if (g_searchReplica != 0 && g_trainSlice != 0)
+    {
+        printf("search-mode=replica builds on device0 only; train-mode=slice falls back to replica train\n");
+    }
+    return true;
+}
