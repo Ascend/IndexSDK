@@ -40,16 +40,16 @@ static std::mutex mtx;
 
 static std::string GetDistOpName(int nq)
 {
-    std::string opName = "DistanceFlatIP";
-    if (faiss::ascend::SocUtils::GetInstance().IsAscend910B() || faiss::ascend::SocUtils::GetInstance().IsAscendA5())
+    if (faiss::ascend::SocUtils::GetInstance().IsAscendA5())
     {
-        opName = "DistanceFlatIP";
+        return "DistanceFlatIPWith950";
     }
-    else
+    if (faiss::ascend::SocUtils::GetInstance().IsAscend910B())
     {
-        opName = (nq > OPTIMIZE_BATCH_THRES) ? "DistanceFlatIPMaxsBatch" : "DistanceFlatIPMaxs";
+        return "DistanceFlatIP";
     }
-    return opName;
+
+    return (nq > OPTIMIZE_BATCH_THRES) ? "DistanceFlatIPMaxsBatch" : "DistanceFlatIPMaxs";
 }
 
 IndexFlatIPAicpu::IndexFlatIPAicpu(int dim, int64_t resourceSize) : IndexFlat(dim, resourceSize) {}
@@ -241,6 +241,7 @@ APP_ERROR IndexFlatIPAicpu::searchPaged(size_t pageId, size_t pageNum, AscendTen
     ret = synchronizeStream(streamAicpu);
     APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "synchronizeStream aicpu stream failed: %i\n",
                              ret);
+
     return APP_ERR_OK;
 }
 

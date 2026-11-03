@@ -20,9 +20,16 @@
 #include <cstdio>
 #include <type_traits>
 
+// CUBE_ONLY：matmul 仅在 AIC 上执行，AIV 完全不调用 matmul API。
+// 只有这样 AIC/AIV 之间才能用裸 CrossCore flag 做显式同步(参考 ascendc_l2_norm_with950 /
+// ascendc_ivfpq_subspace_distance)：AIC 写 cube 结果到 GM 槽后置 CUBE_READY，AIV 读完置
+// AIV_READ_DONE，AIC 收到后才写下一槽，从而彻底消除「AIC 覆盖 AIV 正在读的槽」的竞争。
+#define ASCENDC_CUBE_ONLY
+
 #include "kernel_operator.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "lib/matmul_intf.h"
+#include "lib/matrix/matmul/matmul.h"
 #include "op_kernel_common.h"
 
 using namespace AscendC;
@@ -42,13 +49,22 @@ constexpr uint32_t BURST_BLOCK_RATIO = 2;
 //   codeBatchSize(=AlignUp(CORE_PROC_CODE_GRAIN/MIN_BATCH, CUBE_ALIGN/2))
 // 必须等于 codeCopyOutBatchOffset(=DivUp(codeSizeEachLoop, MIN_BATCH))，
 // 该等式仅在两个常量同为512时成立(均为8)。单独调整任一侧会静默破坏 CopyOutL2DistMin 的
-// 输出布局与 host 侧 workspace 大小(queryAlignAll*CODE_PROC_PER_LOOP_MAX)，必须两侧同步修改。
+// 输出布局与 host 侧 workspace 大小(queryAlignEpi*CODE_PROC_PER_LOOP_MAX)，必须两侧同步修改。
 constexpr uint32_t CORE_PROC_CODE_GRAIN = 512;
+
+constexpr uint16_t FLATL2_CUBE_READY_ID = 1;
+// AIV 读完本轮结果后置该 flag，AIC 收到后才写下一轮槽位。
+// 只有这条反向握手才能保证「AIC 写 GM」与「AIV 读 GM」不重叠：单向 flag 下 AIV 刚通过
+// wait 就开始搬运 64KB，而 AIC 已经在打下一轮 fixpipe，AIV 会读到半刷新的矩阵。
+// mode2 语义是「同组两个 AIV 都 set 之后，AIC 的 wait 才放行」，因此两个次块都必须置位。
+constexpr uint16_t FLATL2_AIV_READ_DONE_ID = 2;
+constexpr uint8_t SYNC_MODE2 = 2;
+// Ip/L2Norm 中间结果在 GM 上的双缓冲槽数：槽位 = iterIdx % FLATL2_CUBE_SLOT_NUM
+constexpr uint32_t FLATL2_CUBE_SLOT_NUM = 2;
 }  // namespace
 
 namespace IndexOps
 {
-// 后续如果DistFlatL2Kernel 需要支持更多类型 可以参考如下通过特化新的类型来完成
 template <typename T>
 struct TraitsUpgradeType
 {
@@ -74,10 +90,18 @@ class DistanceFlatL2With950
                                 GM_ADDR outputflag, const DistanceFlatL2With950TilingData *__restrict tiling,
                                 GM_ADDR usrWorkspace);
 
-    __aicore__ inline void process();
-
     // flag写入，从kernel入口调用
     __aicore__ inline void SetFlagReady();
+
+    __aicore__ inline void RegisterMatmul();
+    __aicore__ inline void ProcessCube();
+
+    // AIV 侧：初始化 vector 侧缓冲并执行后处理主循环，读槽前等 CUBE_READY、读完置 AIV_READ_DONE
+    __aicore__ inline void InitVectorBuffer();
+    __aicore__ inline void ProcessVector();
+
+    // 所有核共同收尾：等 MTE3 落盘 + SyncAll + AIV block0 写 ready flag
+    __aicore__ inline void Finish();
 
    private:
     // code 预归一化(y^2) 每 codeLoop 只加载/抬升一次(gm -> ub)，供该轮所有 query 分块复用。
@@ -88,9 +112,16 @@ class DistanceFlatL2With950
                                    LocalTensor<UpGradeDataType> &queryL2NormAllLocal,
                                    LocalTensor<UpGradeDataType> &codePreNormLocal);
 
-    // 预计算一批 query 的 L2 范数，写入 queryL2NormAllLocal[normOffset .. normOffset+queryProcNum)
-    __aicore__ inline void ComputeQueryL2Norm(uint32_t queryOffset, uint32_t queryProcNum, uint32_t normOffset,
-                                              LocalTensor<UpGradeDataType> &queryL2NormAllLocal, bool isTail);
+    // AIC：计算一批 query 的 L2 范数(query * query^T)，结果写入 queryDotQueryGlobal 当前槽
+    __aicore__ inline void ComputeQueryNormCube(uint32_t queryOffset, uint32_t queryProcNum, bool isTail);
+
+    // AIV：从 queryDotQueryGlobal 当前槽取对角线，写入 queryL2NormAllLocal[normOffset .. +queryProcNum)
+    __aicore__ inline void QueryNormPostProcess(uint32_t normOffset, uint32_t queryProcNum,
+                                                LocalTensor<UpGradeDataType> &queryL2NormAllLocal);
+
+    // 切换 Ip / L2Norm 中间结果的 GM 双缓冲槽位
+    __aicore__ inline void SetIpSlot(uint32_t iterIdx);
+    __aicore__ inline void SetNormSlot(uint32_t iterIdx);
 
     // compute part1:query_local^2 + code_l2_local^2 (vector)
     __aicore__ inline void ComputeL2NormSum(uint32_t queryProcNum, uint32_t normOffset,
@@ -98,12 +129,11 @@ class DistanceFlatL2With950
                                             LocalTensor<UpGradeDataType> &queryL2NormAllLocal,
                                             LocalTensor<UpGradeDataType> &codePreNormLocal);
 
-    // compute part2:x * y
-    __aicore__ inline void ComputeInnerProduct(uint32_t codeLoopIdx);
+    // compute part2:x * y。M 取本轮 query 分块(queryProcNum)，与 host cubeTilingIp 的 M 一致
+    __aicore__ inline void ComputeInnerProduct(uint32_t codeLoopIdx, uint32_t queryProcNum, uint32_t codeProcNum);
 
     // compute l2Distance:part1 - 2*part2
-    __aicore__ inline void ComputeL2Distance(uint32_t queryLoopIdx, uint32_t queryProcNum,
-                                             LocalTensor<DataType> &l2DistanceTensor,
+    __aicore__ inline void ComputeL2Distance(uint32_t queryProcNum, LocalTensor<DataType> &l2DistanceTensor,
                                              LocalTensor<UpGradeDataType> &l2DistanceLocal);
 
     // compute l2DistanceMin
@@ -127,8 +157,6 @@ class DistanceFlatL2With950
     __aicore__ inline void InitGlobalTensor(GM_ADDR inputQueries, GM_ADDR mask, GM_ADDR inputCodes,
                                             GM_ADDR inputL2PreNorm, GM_ADDR outputL2Dist, GM_ADDR outputL2DistMin,
                                             GM_ADDR outputflag, GM_ADDR usrWorkspace);
-
-    __aicore__ inline void InitMemoryQueue();
 
     __aicore__ inline void InitTilingArgs();
 
@@ -155,6 +183,12 @@ class DistanceFlatL2With950
     GlobalTensor<UpGradeDataType> innerProductGloabal;
     GlobalTensor<UpGradeDataType> queryDotQueryGlobal;
 
+    // Ip / L2Norm 中间结果在 GM 上的双缓冲基址与单槽元素数
+    __gm__ UpGradeDataType *ipSlotBase{nullptr};
+    __gm__ UpGradeDataType *normSlotBase{nullptr};
+    uint32_t ipSlotElemCnt{0};
+    uint32_t normSlotElemCnt{0};
+
     TPipe pipe;
     TQue<QuePosition::VECOUT, BUFFER_NUM> queryL2NormQue;
     TQue<QuePosition::VECIN, BUFFER_NUM> queryDotQueryQue;
@@ -169,10 +203,6 @@ class DistanceFlatL2With950
     // 950 归约符号还原掩码(int16=0x7FFF)：清除 pair 索引槽取负后残留的符号位
     TBuf<QuePosition::VECCALC> signMaskBuf;
 
-    // dims range:32 64 128 256 384 512 1024
-    // query range:48 36 32 30 24 18 16 12 8 6 4 2 1
-    // code range: (0, 16384]
-    // shape info
     uint32_t codeSize{0};   // 本block实际参与计算的code数(来自ActualNum)
     uint32_t blockSize{0};  // 整块block的code数，作为输出行距基准(来自tiling codeSize)
     uint32_t querySize{0};
@@ -189,7 +219,7 @@ class DistanceFlatL2With950
     uint32_t querySizeEachLoop{0};
     uint32_t querySizeLastLoop{0};
     uint32_t queryAlign{0};     // 后处理分块的 M 对齐尺寸(=AlignUp(querySizeEachLoop,16))
-    uint32_t queryAlignAll{0};  // 全量 query 的 M 对齐尺寸(=AlignUp(querySize,16))，用于 Ip matmul
+    uint32_t queryAlignAll{0};  // 全量 query 的 M 对齐尺寸(=AlignUp(querySize,16))，用于 query 范数缓冲
     uint32_t queryLoopTimes{0};
     uint32_t queryCopyOutOffset{0};
     uint32_t queryCopyOutBatchOffset{0};
@@ -300,12 +330,27 @@ __aicore__ inline void DistanceFlatL2With950<DataType>::InitGlobalTensor(GM_ADDR
     // 因为matmul由AIV发起、AIC执行Cube计算，C张量输出地址必须一致。
     uint32_t workIdx = 2 * coreId;
 
-    // workspace分配保持一致；query 范数中间结果仍按后处理分块(queryAlign)分配。
-    uint32_t ipElemCnt = queryAlignAll * codeSizeEachLoop;
-    uint32_t normElemCnt = queryAlign * queryAlign;
-    auto userWork = (__gm__ UpGradeDataType *)usrWorkspace + workIdx * (ipElemCnt + normElemCnt);
-    innerProductGloabal.SetGlobalBuffer(userWork, ipElemCnt);
-    queryDotQueryGlobal.SetGlobalBuffer(userWork + ipElemCnt, normElemCnt);
+    ipSlotElemCnt = queryAlign * codeSizeEachLoop;
+    normSlotElemCnt = queryAlign * queryAlign;
+    auto groupBase = (__gm__ UpGradeDataType *)usrWorkspace +
+                     workIdx * (FLATL2_CUBE_SLOT_NUM * ipSlotElemCnt + FLATL2_CUBE_SLOT_NUM * normSlotElemCnt);
+    ipSlotBase = groupBase;
+    normSlotBase = groupBase + FLATL2_CUBE_SLOT_NUM * ipSlotElemCnt;
+    SetIpSlot(0);
+    SetNormSlot(0);
+}
+
+template <typename DataType>
+__aicore__ inline void DistanceFlatL2With950<DataType>::SetIpSlot(uint32_t iterIdx)
+{
+    innerProductGloabal.SetGlobalBuffer(ipSlotBase + (iterIdx % FLATL2_CUBE_SLOT_NUM) * ipSlotElemCnt, ipSlotElemCnt);
+}
+
+template <typename DataType>
+__aicore__ inline void DistanceFlatL2With950<DataType>::SetNormSlot(uint32_t iterIdx)
+{
+    queryDotQueryGlobal.SetGlobalBuffer(normSlotBase + (iterIdx % FLATL2_CUBE_SLOT_NUM) * normSlotElemCnt,
+                                        normSlotElemCnt);
 }
 
 template <typename DataType>
@@ -340,10 +385,9 @@ __aicore__ inline void DistanceFlatL2With950<DataType>::InitTilingArgs()
 }
 
 template <typename DataType>
-__aicore__ inline void DistanceFlatL2With950<DataType>::InitMemoryQueue()
+__aicore__ inline void DistanceFlatL2With950<DataType>::InitVectorBuffer()
 {
-    // MIX 1:2模式：所有核(AIC+AIV)的pipe buffer尺寸必须一致，否则matmul握手失败
-
+    // AIV 侧后处理所需的 UB 缓冲（CUBE_ONLY 下不再要求与 AIC 缓冲尺寸一致）
     pipe.InitBuffer(queryDotQueryQue, BUFFER_NUM, queryAlign * queryAlign * sizeof(UpGradeDataType));
     // query 范数缓冲覆盖全部 query(queryAlignAll)，一次分配后分块写入
     pipe.InitBuffer(queryL2NormQue, BUFFER_NUM, queryAlignAll * sizeof(UpGradeDataType));
@@ -355,13 +399,10 @@ __aicore__ inline void DistanceFlatL2With950<DataType>::InitMemoryQueue()
     pipe.InitBuffer(l2DistanceLocalQue, BUFFER_NUM, querySizeEachLoop * codeSizeEachLoop * sizeof(UpGradeDataType));
     pipe.InitBuffer(l2DistanceMinQue, BUFFER_NUM, codeBatchSize * querySizeEachLoop * 2 * sizeof(DataType));
     pipe.InitBuffer(maskQue, BUFFER_NUM, querySizeEachLoop * maskLenEachLoop * sizeof(uint8_t));
-    // 符号还原掩码：所有核(AIC+AIV)同样分配，避免MIX 1:2握手不一致
+    // 950 归约符号还原掩码(int16=0x7FFF)：清除 pair 索引槽取负后残留的符号位
     pipe.InitBuffer(signMaskBuf, querySizeEachLoop * codeBatchSize * BURST_BLOCK_RATIO * sizeof(int16_t));
-    if ASCEND_IS_AIV
-    {
-        LocalTensor<int16_t> signMask = signMaskBuf.Get<int16_t>(querySizeEachLoop * codeBatchSize * BURST_BLOCK_RATIO);
-        Duplicate(signMask, static_cast<int16_t>(0x7FFF), querySizeEachLoop * codeBatchSize * BURST_BLOCK_RATIO);
-    }
+    LocalTensor<int16_t> signMask = signMaskBuf.Get<int16_t>(querySizeEachLoop * codeBatchSize * BURST_BLOCK_RATIO);
+    Duplicate(signMask, static_cast<int16_t>(0x7FFF), querySizeEachLoop * codeBatchSize * BURST_BLOCK_RATIO);
 }
 
 template <typename DataType>
@@ -410,30 +451,26 @@ __aicore__ inline void DistanceFlatL2With950<DataType>::ComputeL2NormSum(
 }
 
 template <typename DataType>
-__aicore__ inline void DistanceFlatL2With950<DataType>::ComputeInnerProduct(uint32_t codeLoopIdx)
+__aicore__ inline void DistanceFlatL2With950<DataType>::ComputeInnerProduct(uint32_t codeLoopIdx, uint32_t queryProcNum,
+                                                                            uint32_t codeProcNum)
 {
-    // M = 全量 query：每轮只发一次 matmul，code 矩阵从 HBM 仅读一遍。
-    // SetTail 按真实 query 行数校正(非仅尾部)，使 matmul tiling 的 M(已按 CUBE_ALIGN 补齐)被校正回真实值。
-    matmulObjIp.SetTail(querySize, codeSizeEachLoop, dimSize);
+    matmulObjIp.SetTail(queryProcNum, codeProcNum, dimSize);
 
     auto codeOffset = codeLoopIdx * codeSizeEachLoop * dimSize;
     matmulObjIp.SetTensorB(codesGlobal[codeOffset], true);
-    // 默认MIX模式由AIV发起Matmul请求，AIC在高阶API内部执行Cube计算。
-    matmulObjIp.template IterateAll<false>(innerProductGloabal, 0, false, true);
 
-    matmulObjIp.WaitIterateAll();
+    matmulObjIp.template IterateAll<false>(innerProductGloabal, 0, false, true);
     matmulObjIp.End();
 }
 
 template <typename DataType>
-__aicore__ inline void DistanceFlatL2With950<DataType>::ComputeL2Distance(uint32_t queryLoopIdx, uint32_t queryProcNum,
+__aicore__ inline void DistanceFlatL2With950<DataType>::ComputeL2Distance(uint32_t queryProcNum,
                                                                           LocalTensor<DataType> &l2DistanceTensor,
                                                                           LocalTensor<UpGradeDataType> &l2DistanceLocal)
 {
     auto innerProductLocal = innerProductQue.AllocTensor<UpGradeDataType>();
-    // 结果按 M=全量query 存放，需按后处理分块的 query 行偏移取回本块
-    auto ipOffset = queryLoopIdx * querySizeEachLoop * codeSizeEachLoop;
-    DataCopy(innerProductLocal, innerProductGloabal[ipOffset], queryProcNum * codeSizeEachLoop);
+    // C 矩阵即本轮 query 分块(M=queryProcNum)的结果，从偏移 0 读回
+    DataCopy(innerProductLocal, innerProductGloabal, queryProcNum * codeSizeEachLoop);
 
     // Ascend950 MIX 1:2：使用动态事件ID避免与Matmul内部事件冲突
     auto evtMte2S = static_cast<int32_t>(GetTPipePtr()->FetchEventID(AscendC::HardEvent::MTE2_S));
@@ -549,8 +586,6 @@ __aicore__ inline void DistanceFlatL2With950<DataType>::SetFlagReady()
     uint16_t zero = 0;
     Duplicate(flagLocal, zero, flagElemCnt);
 
-    // Ascend950: Scalar/Vector share PIPE_S, Duplicate(V)→SetValue(S) sequential, no flag needed.
-    // 写aivNum个flag（与TopK AICPU的coreNum_一致），每个AIV核一个flag
     uint16_t readyFlag = 1;
     for (uint32_t i = 0; i < pTilingDevice->aivNum; i++)
     {
@@ -563,7 +598,6 @@ __aicore__ inline void DistanceFlatL2With950<DataType>::SetFlagReady()
     AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(evtSMte3);
     DataCopy(flagGlobal, flagLocal, flagElemCnt);
 
-    // 退出kernel前确认ready位已从UB写到GM，供另一条流上的AICPU观察。
     auto evtMte3S = static_cast<int32_t>(GetTPipePtr()->FetchEventID(AscendC::HardEvent::MTE3_S));
     AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(evtMte3S);
     AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(evtMte3S);
@@ -625,7 +659,7 @@ __aicore__ inline void DistanceFlatL2With950<DataType>::Compute(uint32_t queryLo
         {
             auto l2DistanceLocal = l2DistanceLocalQue.AllocTensor<UpGradeDataType>();
             ComputeL2NormSum(queryProcNum, normOffset, l2DistanceLocal, queryL2NormAllLocal, codePreNormLocal);
-            ComputeL2Distance(queryLoopIdx, queryProcNum, l2DistanceTensor, l2DistanceLocal);
+            ComputeL2Distance(queryProcNum, l2DistanceTensor, l2DistanceLocal);
             l2DistanceLocalQue.FreeTensor(l2DistanceLocal);
         };
     }
@@ -636,13 +670,12 @@ __aicore__ inline void DistanceFlatL2With950<DataType>::Compute(uint32_t queryLo
     const uint32_t distanceNum = queryProcNum * codeSizeEachLoop;
     const uint32_t pairNum = queryProcNum * codeBatchSize * BURST_BLOCK_RATIO;
     const DataType negOne = static_cast<DataType>(-1);
-    // 950: WholeReduceMin 的 [值,索引] pair 输出为静默空实现（同源 A/B 已坐实），改用 WholeReduceMax 在负距离域求最小。
-    // 1) 源取负 → 2) WholeReduceMax 产出 [-min, argmin] → 3) 还原源 → 4) 还原 pair 各槽符号
+
     Muls(l2DistanceTensor, l2DistanceTensor, negOne, distanceNum);
     ComputeL2DistanceMin(queryProcNum, codeProcNum, l2DistanceTensor, l2DistanceMinTensor);
-    // 还原源：CopyOutL2Dist 需要正值全量距离（host stage-two 会回扫 indists）
+
     Muls(l2DistanceTensor, l2DistanceTensor, negOne, distanceNum);
-    // 还原 pair：值槽 -min --(*-1)--> min；索引槽 j --(*-1)--> -j，再按位清符号位 --> j
+
     Muls(l2DistanceMinTensor, l2DistanceMinTensor, negOne, pairNum);
     {
         auto pairInt16 = l2DistanceMinTensor.template ReinterpretCast<int16_t>();
@@ -650,8 +683,6 @@ __aicore__ inline void DistanceFlatL2With950<DataType>::Compute(uint32_t queryLo
         And(pairInt16, pairInt16, signMask, pairNum);
     }
 
-    // Ascend950: 两块输出UB均由 Vector 流写入(全距离来自 Cast/Select，极值 pair 来自 WholeReduceMax + 符号还原)，
-    // 统一用一次 V_MTE3 保证写入对后续 MTE3 搬运可见（与参考内核 distance_flat_ip_with950 一致）。
     auto evtVMte3 = static_cast<int32_t>(GetTPipePtr()->FetchEventID(AscendC::HardEvent::V_MTE3));
     AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(evtVMte3);
     AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(evtVMte3);
@@ -668,9 +699,8 @@ __aicore__ inline void DistanceFlatL2With950<DataType>::Compute(uint32_t queryLo
 }
 
 template <typename DataType>
-__aicore__ inline void DistanceFlatL2With950<DataType>::ComputeQueryL2Norm(
-    uint32_t queryOffset, uint32_t queryProcNum, uint32_t normOffset, LocalTensor<UpGradeDataType> &queryL2NormAllLocal,
-    bool isTail)
+__aicore__ inline void DistanceFlatL2With950<DataType>::ComputeQueryNormCube(uint32_t queryOffset,
+                                                                             uint32_t queryProcNum, bool isTail)
 {
     if (isTail)
     {
@@ -679,101 +709,154 @@ __aicore__ inline void DistanceFlatL2With950<DataType>::ComputeQueryL2Norm(
 
     matmulObjL2Norm.SetTensorA(querysGlobal[queryOffset]);
     matmulObjL2Norm.SetTensorB(querysGlobal[queryOffset], true);
-    // 统一为flat_ip/int8-950写法：IterateAll<false>(...,0,false,true) + WaitIterateAll + End。
-    // 缺少WaitIterateAll会导致AIV在Cube写GM完成前读取queryDotQueryGlobal（竞争）。
-    matmulObjL2Norm.template IterateAll<false>(queryDotQueryGlobal, 0, false, true);
-    matmulObjL2Norm.WaitIterateAll();
-    // 切换到matmulObjIp前必须释放当前Matmul对象的内部资源。
-    matmulObjL2Norm.End();
 
-    if ASCEND_IS_AIV
-    {
-        if (GetSubBlockIdx() == 1)
-        {
-            auto queryDotQueryLocal = queryDotQueryQue.AllocTensor<UpGradeDataType>();
-            DataCopy(queryDotQueryLocal, queryDotQueryGlobal, queryAlign * queryAlign);
-            queryDotQueryQue.EnQue<UpGradeDataType>(queryDotQueryLocal);
-            queryDotQueryLocal = queryDotQueryQue.DeQue<UpGradeDataType>();
-            auto evtMte2S = static_cast<int32_t>(GetTPipePtr()->FetchEventID(AscendC::HardEvent::MTE2_S));
-            AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(evtMte2S);
-            AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(evtMte2S);
-            for (auto i = 0; i < queryProcNum; i++)
-            {
-                // C矩阵的行距由matmul tiling的N决定(=queryAlign)，与host侧SetShape保持一致
-                auto querySquareSum = queryDotQueryLocal.GetValue(i * queryAlign + i);
-                queryL2NormAllLocal.SetValue(normOffset + i, querySquareSum);
-            }
-            queryDotQueryQue.FreeTensor(queryDotQueryLocal);
-        }
-    }
+    matmulObjL2Norm.template IterateAll<false>(queryDotQueryGlobal, 0, false, true);
+    matmulObjL2Norm.End();
 }
 
 template <typename DataType>
-__aicore__ inline void DistanceFlatL2With950<DataType>::process()
+__aicore__ inline void DistanceFlatL2With950<DataType>::QueryNormPostProcess(
+    uint32_t normOffset, uint32_t queryProcNum, LocalTensor<UpGradeDataType> &queryL2NormAllLocal)
+{
+    auto queryDotQueryLocal = queryDotQueryQue.AllocTensor<UpGradeDataType>();
+    DataCopy(queryDotQueryLocal, queryDotQueryGlobal, queryAlign * queryAlign);
+    queryDotQueryQue.EnQue<UpGradeDataType>(queryDotQueryLocal);
+    queryDotQueryLocal = queryDotQueryQue.DeQue<UpGradeDataType>();
+    auto evtMte2S = static_cast<int32_t>(GetTPipePtr()->FetchEventID(AscendC::HardEvent::MTE2_S));
+    AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(evtMte2S);
+    AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(evtMte2S);
+    for (auto i = 0; i < queryProcNum; i++)
+    {
+        // C矩阵的行距由matmul tiling的N决定(=queryAlign)，与host侧SetShape保持一致
+        auto querySquareSum = queryDotQueryLocal.GetValue(i * queryAlign + i);
+        queryL2NormAllLocal.SetValue(normOffset + i, querySquareSum);
+    }
+    queryDotQueryQue.FreeTensor(queryDotQueryLocal);
+}
+
+template <typename DataType>
+__aicore__ inline void DistanceFlatL2With950<DataType>::RegisterMatmul()
 {
     // 多个Matmul对象必须与各自的tiling成对注册，且先于所有InitBuffer调用。
     REGIST_MATMUL_OBJ(&pipe, GetSysWorkSpacePtr(), matmulObjIp, &cubeTilingIp, matmulObjL2Norm, &cubeTilingL2Norm);
-    InitMemoryQueue();
+}
 
-    // AIC和AIV保持相同的Matmul调用序列；每组奇数编号的AIV执行Vector后处理。
-    if (corePorcCodeSize != 0)
+template <typename DataType>
+__aicore__ inline void DistanceFlatL2With950<DataType>::ProcessCube()
+{
+    if (corePorcCodeSize == 0)
     {
-        // 1) 预计算全部 query 的 L2 范数：分块顺序调用 L2Norm matmul，后处理子核各分块一次写入
-        //    queryL2NormAllLocal 的对应偏移(normOffset)。GM 中间结果 queryDotQueryGlobal 按 cube 组共享，
-        //    顺序复用不会冲突。
-        LocalTensor<UpGradeDataType> queryL2NormAllLocal;
-        if ASCEND_IS_AIV
-        {
-            if (GetSubBlockIdx() == 1)
-            {
-                queryL2NormAllLocal = queryL2NormQue.AllocTensor<UpGradeDataType>();
-            }
-        }
+        return;
+    }
+
+    // 阶段1：逐 query 分块计算 L2 范数(query * query^T)
+    for (auto queryLoopIdx = 0; queryLoopIdx < queryLoopTimes; queryLoopIdx++)
+    {
+        bool isQueryTail = (queryLoopIdx == (queryLoopTimes - 1));
+        auto queryProcNum = isQueryTail ? querySizeLastLoop : querySizeEachLoop;
+        auto queryOffset = queryLoopIdx * querySizeEachLoop * dimSize;
+
+        AscendC::CrossCoreWaitFlag(FLATL2_AIV_READ_DONE_ID);
+        SetNormSlot(queryLoopIdx);
+        ComputeQueryNormCube(queryOffset, queryProcNum, isQueryTail);
+        AscendC::CrossCoreSetFlag<SYNC_MODE2, PIPE_FIX>(FLATL2_CUBE_READY_ID);
+    }
+
+    // 阶段2：code 外层 + query 内层，M 取本轮 query 分块(queryProcNum)
+    uint32_t iterIdx = 0;
+    for (auto codeLoopIdx = 0; codeLoopIdx < codeLoopTimes; codeLoopIdx++)
+    {
+        auto codeProcNum = (codeLoopIdx != (codeLoopTimes - 1)) ? codeSizeEachLoop : codeSizeLastLoop;
         for (auto queryLoopIdx = 0; queryLoopIdx < queryLoopTimes; queryLoopIdx++)
         {
             bool isQueryTail = (queryLoopIdx == (queryLoopTimes - 1));
             auto queryProcNum = isQueryTail ? querySizeLastLoop : querySizeEachLoop;
             auto queryOffset = queryLoopIdx * querySizeEachLoop * dimSize;
-            auto normOffset = queryLoopIdx * querySizeEachLoop;
-            ComputeQueryL2Norm(queryOffset, queryProcNum, normOffset, queryL2NormAllLocal, isQueryTail);
-        }
 
-        // 2) code 外层循环：M 取「全量 query」，每个 codeLoop 只发一次 matmul，code 矩阵从 HBM 仅读一遍。
-        //    后处理仍按 querySizeEachLoop 分块(UB 不涨)，从 Ip GM 结果中按 query 行偏移分块取回。
-        matmulObjIp.SetTensorA(querysGlobal[0]);
-        for (auto codeLoopIdx = 0; codeLoopIdx < codeLoopTimes; codeLoopIdx++)
-        {
-            auto codeProcNum = (codeLoopIdx != (codeLoopTimes - 1)) ? codeSizeEachLoop : codeSizeLastLoop;
-            // ComputeInnerProduct内部已完成IterateAll/WaitIterateAll/End
-            ComputeInnerProduct(codeLoopIdx);
-            if ASCEND_IS_AIV
-            {
-                if (GetSubBlockIdx() == 1)
-                {
-                    LocalTensor<UpGradeDataType> codePreNormLocal;
-                    LoadCodePreNorm(codeLoopIdx, codePreNormLocal);
-                    for (auto queryLoopIdx = 0; queryLoopIdx < queryLoopTimes; queryLoopIdx++)
-                    {
-                        bool isQueryTail = (queryLoopIdx == (queryLoopTimes - 1));
-                        auto queryProcNum = isQueryTail ? querySizeLastLoop : querySizeEachLoop;
-                        auto normOffset = queryLoopIdx * querySizeEachLoop;
-                        Compute(queryLoopIdx, codeLoopIdx, queryProcNum, codeProcNum, normOffset, queryL2NormAllLocal,
-                                codePreNormLocal);
-                    }
-                    codeL2NormCastQue.FreeTensor(codePreNormLocal);
-                }
-            }
+            AscendC::CrossCoreWaitFlag(FLATL2_AIV_READ_DONE_ID);
+            SetIpSlot(iterIdx);
+            matmulObjIp.SetTensorA(querysGlobal[queryOffset]);
+            ComputeInnerProduct(codeLoopIdx, queryProcNum, codeProcNum);
+            AscendC::CrossCoreSetFlag<SYNC_MODE2, PIPE_FIX>(FLATL2_CUBE_READY_ID);
+            iterIdx++;
         }
+    }
+}
 
-        if ASCEND_IS_AIV
+template <typename DataType>
+__aicore__ inline void DistanceFlatL2With950<DataType>::ProcessVector()
+{
+    if (corePorcCodeSize == 0)
+    {
+        return;
+    }
+
+    LocalTensor<UpGradeDataType> queryL2NormAllLocal;
+    if (GetSubBlockIdx() == 1)
+    {
+        queryL2NormAllLocal = queryL2NormQue.AllocTensor<UpGradeDataType>();
+    }
+
+    // 阶段1：query 范数
+    for (auto queryLoopIdx = 0; queryLoopIdx < queryLoopTimes; queryLoopIdx++)
+    {
+        bool isQueryTail = (queryLoopIdx == (queryLoopTimes - 1));
+        auto queryProcNum = isQueryTail ? querySizeLastLoop : querySizeEachLoop;
+        auto normOffset = queryLoopIdx * querySizeEachLoop;
+
+        AscendC::CrossCoreSetFlag<SYNC_MODE2, PIPE_MTE2>(FLATL2_AIV_READ_DONE_ID);
+        AscendC::CrossCoreWaitFlag(FLATL2_CUBE_READY_ID);
+        SetNormSlot(queryLoopIdx);
+        if (GetSubBlockIdx() == 1)
         {
-            if (GetSubBlockIdx() == 1)
-            {
-                queryL2NormQue.FreeTensor(queryL2NormAllLocal);
-            }
+            QueryNormPostProcess(normOffset, queryProcNum, queryL2NormAllLocal);
         }
     }
 
+    // 阶段2：内积 + L2 距离后处理；code 外层 + query 内层，与 AIC 顺序一致
+    uint32_t iterIdx = 0;
+    for (auto codeLoopIdx = 0; codeLoopIdx < codeLoopTimes; codeLoopIdx++)
+    {
+        auto codeProcNum = (codeLoopIdx != (codeLoopTimes - 1)) ? codeSizeEachLoop : codeSizeLastLoop;
+        // 每个 code 分块只加载一次 code 预归一化，供本轮所有 query 分块复用
+        LocalTensor<UpGradeDataType> codePreNormLocal;
+
+        for (auto queryLoopIdx = 0; queryLoopIdx < queryLoopTimes; queryLoopIdx++)
+        {
+            bool isQueryTail = (queryLoopIdx == (queryLoopTimes - 1));
+            auto queryProcNum = isQueryTail ? querySizeLastLoop : querySizeEachLoop;
+            auto normOffset = queryLoopIdx * querySizeEachLoop;
+
+            AscendC::CrossCoreSetFlag<SYNC_MODE2, PIPE_MTE2>(FLATL2_AIV_READ_DONE_ID);
+            AscendC::CrossCoreWaitFlag(FLATL2_CUBE_READY_ID);
+            SetIpSlot(iterIdx);
+            if (GetSubBlockIdx() == 1)
+            {
+                if (queryLoopIdx == 0)
+                {
+                    LoadCodePreNorm(codeLoopIdx, codePreNormLocal);
+                }
+                Compute(queryLoopIdx, codeLoopIdx, queryProcNum, codeProcNum, normOffset, queryL2NormAllLocal,
+                        codePreNormLocal);
+            }
+            iterIdx++;
+        }
+
+        if (GetSubBlockIdx() == 1)
+        {
+            codeL2NormCastQue.FreeTensor(codePreNormLocal);
+        }
+    }
+
+    if (GetSubBlockIdx() == 1)
+    {
+        queryL2NormQue.FreeTensor(queryL2NormAllLocal);
+    }
+}
+
+template <typename DataType>
+__aicore__ inline void DistanceFlatL2With950<DataType>::Finish()
+{
     if ASCEND_IS_AIV
     {
         if (GetSubBlockIdx() == 1)
@@ -809,7 +892,6 @@ extern "C" __global__ __aicore__ void distance_flat_l2_with950(GM_ADDR queries, 
     }
 
     // 声明MIX 1:2模型：aicNum个AIC + 2*aicNum个AIV
-    // Matmul高阶API在MIX模式下由AIV发起、AIC执行Cube计算。
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
 
     GET_TILING_DATA(tiling_data, tiling);
@@ -819,5 +901,17 @@ extern "C" __global__ __aicore__ void distance_flat_l2_with950(GM_ADDR queries, 
 
     IndexOps::DistanceFlatL2With950<half> op;
     op.Init(queries, mask, codes, l2PreNorm, actualNum, l2Distance, l2DistanceMin, flag, pTilingDevice, usrWorkspace);
-    op.process();
+
+    if ASCEND_IS_AIC
+    {
+        op.RegisterMatmul();
+        op.ProcessCube();
+    }
+    if ASCEND_IS_AIV
+    {
+        op.InitVectorBuffer();
+        op.ProcessVector();
+    }
+    // 所有核共同收尾（SyncAll 是全局屏障，AIC/AIV 都必须参与）
+    op.Finish();
 }
