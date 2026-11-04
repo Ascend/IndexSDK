@@ -56,13 +56,13 @@
 #include <faiss/index_io.h>
 #include <fcntl.h>
 #include <gtest/gtest.h>
+#include <omp.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
 
 #include <algorithm>
-#include <atomic>
 #include <cerrno>
 #include <cfloat>
 #include <chrono>
@@ -134,7 +134,7 @@ int g_useKmeansPp = 1;
 int g_niter = 10;
 int g_trainSlice = 0;
 int g_searchReplica = 0;
-int g_attachSrc = 0;  // 1=replica 共享同一份精排原文（attachRefineSources 零拷贝），0=每副本深拷贝
+int g_attachSrc = 0;  // 1=共享同一份精排原文（attachRefineSources 零拷贝），0=深拷贝
 int g_qpsSustain = 0;
 uint32_t g_seed = kDefaultSeed;
 float g_refineAlpha = -1.0f;
@@ -1049,4 +1049,611 @@ RecallReport ComputeRecall(const std::vector<std::vector<DistId>> &gt, const fai
     out.rAtK = static_cast<float>(rAt / nq * 100.0);
     out.candCov = (cand != nullptr) ? static_cast<float>(cov / nq * 100.0) : 0.0f;
     return out;
+}
+
+size_t TrainNum()
+{
+    const size_t cap = static_cast<size_t>(g_nlist) * static_cast<size_t>(kTrainMultiplier);
+    size_t n = std::min(g_ntotal, cap);
+    if (n > kMaxTrainNum)
+    {
+        n = kMaxTrainNum;
+    }
+    return n;
+}
+
+long MemAvailableKb()
+{
+    FILE *fp = std::fopen("/proc/meminfo", "r");
+    if (fp == nullptr)
+    {
+        return -1;
+    }
+    char key[64];
+    long value = 0;
+    char unit[32];
+    long avail = -1;
+    while (std::fscanf(fp, "%63s %ld %31s", key, &value, unit) == 3)
+    {
+        if (std::strcmp(key, "MemAvailable:") == 0)
+        {
+            avail = value;
+            break;
+        }
+    }
+    std::fclose(fp);
+    return avail;
+}
+
+int SearchReplicaCount() { return (g_searchReplica != 0) ? static_cast<int>(g_devices.size()) : 1; }
+
+const char *SearchModeName() { return (g_searchReplica != 0) ? "replica" : "shard"; }
+
+const char *QpsModeName() { return (g_qpsSustain != 0) ? "sustain" : "wait"; }
+
+std::vector<int> BuildDevices()
+{
+    if (g_searchReplica != 0)
+    {
+        return {g_devices[0]};
+    }
+    return g_devices;
+}
+
+bool HostRamEnoughForNpu()
+{
+    // attach 模式下 6 个 replica 共享同一份原文，只按 1 份估算
+    const int copies = (g_attachSrc != 0) ? 1 : SearchReplicaCount();
+    const double needGb = static_cast<double>(g_ntotal) * static_cast<double>(g_dim) * sizeof(float) /
+                          (1024.0 * 1024.0 * 1024.0) * static_cast<double>(copies);
+    const long availKb = MemAvailableKb();
+    printf("npu refine srcIndexes estimate=%.2f GB host (copies=%d), MemAvailable=%.2f GB\n", needGb, copies,
+           availKb < 0 ? -1.0 : static_cast<double>(availKb) / kMemGb);
+    fflush(stdout);
+    if (availKb < 0)
+    {
+        return true;
+    }
+    const double availGb = static_cast<double>(availKb) / kMemGb;
+    return availGb >= needGb * kNpuHostOverhead;
+}
+
+std::string DevicesJson()
+{
+    std::ostringstream out;
+    out << "[";
+    for (size_t i = 0; i < g_devices.size(); ++i)
+    {
+        if (i != 0)
+        {
+            out << ",";
+        }
+        out << g_devices[i];
+    }
+    out << "]";
+    return out.str();
+}
+
+std::unique_ptr<faiss::ascend::AscendIndexIVFRaBitQ> MakeIndex(bool needRefine, const std::vector<int> &devices)
+{
+    const int64_t resourceSize = static_cast<int64_t>(g_resourceMb) * 1024 * 1024;
+    faiss::ascend::AscendIndexIVFRaBitQConfig conf(devices, true, needRefine, 12345, g_refineAlpha, resourceSize);
+    conf.useKmeansPP = (g_useKmeansPp != 0);
+    conf.niter = g_niter;
+    conf.cp.niter = g_niter;
+    conf.quantBits = g_quantBits;
+    conf.trainMode = (g_trainSlice != 0) ? faiss::ascend::AscendIndexIVFRaBitQConfig::TrainMode::Slice
+                                         : faiss::ascend::AscendIndexIVFRaBitQConfig::TrainMode::Replica;
+    auto index = std::unique_ptr<faiss::ascend::AscendIndexIVFRaBitQ>(
+        new faiss::ascend::AscendIndexIVFRaBitQ(g_dim, faiss::MetricType::METRIC_L2, g_nlist, conf));
+    index->verbose = true;
+    index->setNumProbes(g_nprobe);
+    return index;
+}
+
+std::unique_ptr<faiss::ascend::AscendIndexIVFRaBitQ> MakeIndex(bool needRefine)
+{
+    return MakeIndex(needRefine, BuildDevices());
+}
+
+using IndexPtr = std::unique_ptr<faiss::ascend::AscendIndexIVFRaBitQ>;
+
+void LoadReplicaCopies(std::vector<IndexPtr> &replicas, bool needRefine, const float *src)
+{
+    replicas.clear();
+    if (g_searchReplica == 0)
+    {
+        replicas.push_back(MakeIndex(needRefine, g_devices));
+        LoadIndex(*replicas.back(), g_indexPath);
+        if (src != nullptr)
+        {
+            if (g_attachSrc != 0)
+            {
+                replicas.back()->attachRefineSources(src, static_cast<faiss::idx_t>(g_ntotal));
+            }
+            else
+            {
+                replicas.back()->loadRefineSources(src, static_cast<faiss::idx_t>(g_ntotal));
+            }
+        }
+        return;
+    }
+    for (int deviceId : g_devices)
+    {
+        replicas.push_back(MakeIndex(needRefine, {deviceId}));
+        LoadIndex(*replicas.back(), g_indexPath);
+        if (src != nullptr)
+        {
+            if (g_attachSrc != 0)
+            {
+                // 零拷贝共享同一份 src，replica 不再各拷贝一份（src 由调用方保证生命周期）
+                replicas.back()->attachRefineSources(src, static_cast<faiss::idx_t>(g_ntotal));
+            }
+            else
+            {
+                replicas.back()->loadRefineSources(src, static_cast<faiss::idx_t>(g_ntotal));
+            }
+        }
+    }
+    printf("search-mode=replica loaded %zu full-index copies (attach-src=%d)\n", replicas.size(), g_attachSrc);
+    fflush(stdout);
+}
+
+void PromotePrimaryToReplicas(IndexPtr primary, std::vector<IndexPtr> &replicas, bool needRefine, const float *src)
+{
+    replicas.clear();
+    replicas.push_back(std::move(primary));
+    if (g_searchReplica == 0 || g_devices.size() <= 1)
+    {
+        return;
+    }
+    for (size_t i = 1; i < g_devices.size(); ++i)
+    {
+        replicas.push_back(MakeIndex(needRefine, {g_devices[i]}));
+        LoadIndex(*replicas.back(), g_indexPath);
+        if (src != nullptr)
+        {
+            if (g_attachSrc != 0)
+            {
+                replicas.back()->attachRefineSources(src, static_cast<faiss::idx_t>(g_ntotal));
+            }
+            else
+            {
+                replicas.back()->loadRefineSources(src, static_cast<faiss::idx_t>(g_ntotal));
+            }
+        }
+    }
+    printf("search-mode=replica loaded %zu full-index copies\n", replicas.size());
+    fflush(stdout);
+}
+
+void AddChunk(faiss::ascend::AscendIndexIVFRaBitQ &index, const float *x, size_t startId, size_t n)
+{
+    std::vector<faiss::idx_t> ids(n);
+    std::iota(ids.begin(), ids.end(), static_cast<faiss::idx_t>(startId));
+    index.add_with_ids(static_cast<faiss::idx_t>(n), x, ids.data());
+}
+
+struct StreamAddOptions
+{
+    bool readSrc = false;
+    bool updateGt = false;
+    BaseBinWriter *writer = nullptr;
+};
+
+void StreamAdd(faiss::ascend::AscendIndexIVFRaBitQ &index, const float *train, size_t trainNum,
+               std::vector<std::vector<DistId>> *gt, const float *queries, const StreamAddOptions &opt)
+{
+    if (opt.updateGt && (gt == nullptr || queries == nullptr))
+    {
+        throw std::runtime_error("updateGt requires GT storage and queries");
+    }
+    std::unique_ptr<FILE, decltype(&std::fclose)> input(nullptr, &std::fclose);
+    if (opt.readSrc)
+    {
+        input.reset(std::fopen(g_srcBin.c_str(), "rb"));
+        if (!input)
+        {
+            throw std::runtime_error("failed to open --src-bin for add");
+        }
+        const uint64_t trainBytes = static_cast<uint64_t>(trainNum) * static_cast<uint64_t>(g_dim) * sizeof(float);
+        if (fseeko(input.get(), static_cast<off_t>(trainBytes), SEEK_SET) != 0)
+        {
+            throw std::runtime_error("failed to seek --src-bin after train vectors");
+        }
+    }
+    const size_t chunk = static_cast<size_t>(g_addChunk);
+    size_t added = 0;
+    const double t0 = GetMillisecs();
+    auto handle = [&](const float *x, size_t start, size_t n)
+    {
+        if (opt.updateGt)
+        {
+            UpdateGt(*gt, queries, g_recallNq, x, start, n, g_dim, g_recallK);
+        }
+        if (opt.writer != nullptr && !opt.writer->Write(x, n))
+        {
+            throw std::runtime_error("write --src-bin failed");
+        }
+        AddChunk(index, x, start, n);
+        added += n;
+        if (added % (chunk * 10) == 0 || added == g_ntotal)
+        {
+            const double ms = GetMillisecs() - t0;
+            printf("%sadd progress %zu / %zu (%.1f vec/s)\n", opt.readSrc ? "src-bin " : "", added, g_ntotal,
+                   ms > 0.0 ? (added * 1000.0 / ms) : 0.0);
+            fflush(stdout);
+        }
+    };
+    handle(train, 0, trainNum);
+    std::vector<float> buf;
+    while (added < g_ntotal)
+    {
+        const size_t n = std::min(chunk, g_ntotal - added);
+        buf.resize(n * static_cast<size_t>(g_dim));
+        if (input)
+        {
+            if (std::fread(buf.data(), sizeof(float), buf.size(), input.get()) != buf.size())
+            {
+                throw std::runtime_error("short read while streaming --src-bin");
+            }
+        }
+        else
+        {
+            FillRange(buf.data(), added, n, g_dim, g_seed);
+        }
+        handle(buf.data(), added, n);
+    }
+}
+
+struct BenchRow
+{
+    const char *refine = "none";
+    int nprobe = 0;
+    int nq = 0;
+    int npuK = 0;
+    long long batches = 0;
+    double durationS = 0.0;
+    double npuQps = 0.0;
+    double npuMs = 0.0;
+    double e2eQps = 0.0;
+    double e2eMs = 0.0;
+    RecallReport recall;
+};
+
+void PrintRow(const BenchRow &row)
+{
+    printf(
+        "ROW quant_bits=%d refine=%s search_mode=%s qps_mode=%s replicas=%d nprobe=%d nq=%d ntotal=%zu npu_k=%d "
+        "candidate_topk=%d target_topk=%d "
+        "duration_s=%.3f batches=%lld npu_QPS=%.4f npu_ms=%.4f "
+        "e2e_QPS=%.4f e2e_ms=%.4f "
+        "r1@1=%.2f r1@10=%.2f r1@100=%.2f r1@300=%.2f R@%d=%.2f rerank_recall=%.2f\n",
+        g_quantBits, row.refine, SearchModeName(), QpsModeName(), SearchReplicaCount(), row.nprobe, row.nq, g_ntotal,
+        row.npuK, g_k, g_recallK, row.durationS, row.batches, row.npuQps, row.npuMs, row.e2eQps, row.e2eMs,
+        row.recall.r1At1, row.recall.r1At10, row.recall.r1At100, row.recall.r1At300, g_recallK, row.recall.rAtK,
+        row.recall.candCov);
+    fflush(stdout);
+}
+
+void WriteCsvHeader(FILE *fp)
+{
+    std::fprintf(fp,
+                 "quant_bits,refine,search_mode,qps_mode,replicas,nprobe,nq,ntotal,npu_k,k,recall_k,duration_s,batches,"
+                 "npu_qps,npu_ms,e2e_"
+                 "qps,e2e_ms,"
+                 "r1_at1,r1_at10,r1_at100,r1_at300,r_at_k,cand_cov\n");
+}
+
+void WriteCsvRow(FILE *fp, const BenchRow &row)
+{
+    std::fprintf(fp,
+                 "%d,%s,%s,%s,%d,%d,%d,%zu,%d,%d,%d,%.6f,%lld,%.6f,%.6f,%.6f,%.6f,"
+                 "%.4f,%.4f,%.4f,%.4f,%.4f,%.4f\n",
+                 g_quantBits, row.refine, SearchModeName(), QpsModeName(), SearchReplicaCount(), row.nprobe, row.nq,
+                 g_ntotal, row.npuK, g_k, g_recallK, row.durationS, row.batches, row.npuQps, row.npuMs, row.e2eQps,
+                 row.e2eMs, row.recall.r1At1, row.recall.r1At10, row.recall.r1At100, row.recall.r1At300,
+                 row.recall.rAtK, row.recall.candCov);
+}
+
+void SearchNpu(std::vector<IndexPtr> &indexes, int nq, int k, const float *query, float *dist, faiss::idx_t *label)
+{
+    if (indexes.empty())
+    {
+        throw std::runtime_error("search indexes empty");
+    }
+    if (indexes.size() == 1 || nq <= 1)
+    {
+        indexes[0]->search(nq, query, k, dist, label);
+        return;
+    }
+    const int nRep = static_cast<int>(indexes.size());
+    const int base = nq / nRep;
+    const int rem = nq % nRep;
+    std::vector<std::thread> workers;
+    std::vector<std::exception_ptr> errors(static_cast<size_t>(nRep));
+    int offset = 0;
+    for (int i = 0; i < nRep; ++i)
+    {
+        const int nqi = base + (i < rem ? 1 : 0);
+        const int qOff = offset;
+        offset += nqi;
+        if (nqi <= 0)
+        {
+            continue;
+        }
+        workers.emplace_back(
+            [&, i, nqi, qOff]()
+            {
+                try
+                {
+                    const size_t qStride = static_cast<size_t>(qOff) * static_cast<size_t>(g_dim);
+                    const size_t rStride = static_cast<size_t>(qOff) * static_cast<size_t>(k);
+                    indexes[static_cast<size_t>(i)]->search(nqi, query + qStride, k, dist + rStride, label + rStride);
+                }
+                catch (...)
+                {
+                    errors[static_cast<size_t>(i)] = std::current_exception();
+                }
+            });
+    }
+    for (auto &worker : workers)
+    {
+        worker.join();
+    }
+    for (auto &err : errors)
+    {
+        if (err)
+        {
+            std::rethrow_exception(err);
+        }
+    }
+}
+
+double TimeLoops(int loops, const std::function<void()> &fn, long long *batchesOut)
+{
+    const double ts = GetMillisecs();
+    for (int i = 0; i < loops; ++i)
+    {
+        fn();
+    }
+    if (batchesOut != nullptr)
+    {
+        *batchesOut = loops;
+    }
+    return (GetMillisecs() - ts) / loops;
+}
+
+double TimeSustain(double durationSec, int nq, const std::function<void()> &fn, long long *batchesOut)
+{
+    const double budgetMs = durationSec * static_cast<double>(kMilliSecond);
+    const double ts = GetMillisecs();
+    const double deadline = ts + budgetMs;
+    long long batches = 0;
+    double lastLog = ts;
+    while (GetMillisecs() < deadline)
+    {
+        fn();
+        ++batches;
+        const double now = GetMillisecs();
+        if (now - lastLog >= 5000.0)
+        {
+            const double elapsed = now - ts;
+            const double qps = elapsed > 0.0 ? (kMilliSecond * batches * nq / elapsed) : 0.0;
+            printf("sustain nq=%d elapsed=%.1fs batches=%lld qps=%.2f\n", nq, elapsed / kMilliSecond, batches, qps);
+            fflush(stdout);
+            lastLog = now;
+        }
+    }
+    const double elapsed = GetMillisecs() - ts;
+    if (batchesOut != nullptr)
+    {
+        *batchesOut = batches;
+    }
+    if (batches <= 0)
+    {
+        throw std::runtime_error("sustain completed 0 batches; increase --duration");
+    }
+    return elapsed / static_cast<double>(batches);
+}
+
+double TimeSearch(int nq, const std::function<void()> &fn, long long *batchesOut)
+{
+    if (g_qpsSustain != 0)
+    {
+        return TimeSustain(static_cast<double>(g_durationSec), nq, fn, batchesOut);
+    }
+    return TimeLoops(g_loops, fn, batchesOut);
+}
+
+RecallReport RecallSearch(std::vector<IndexPtr> &indexes, const float *query,
+                          const std::vector<std::vector<DistId>> &gt, bool includeCandidates)
+{
+    const size_t buf = static_cast<size_t>(g_recallNq) * static_cast<size_t>(g_k);
+    std::vector<float> dist(buf, 0.0f);
+    std::vector<faiss::idx_t> label(buf, -1);
+    SearchNpu(indexes, g_recallNq, g_k, query, dist.data(), label.data());
+    return ComputeRecall(gt, label.data(), g_recallNq, g_k, g_recallK, includeCandidates ? label.data() : nullptr,
+                         includeCandidates ? g_k : 0);
+}
+
+BenchRow BenchSearch(std::vector<IndexPtr> &indexes, int nq, const float *query, const RecallReport &recall,
+                     const char *refine)
+{
+    const size_t buf = static_cast<size_t>(nq) * static_cast<size_t>(g_k);
+    std::vector<float> dist(buf, 0.0f);
+    std::vector<faiss::idx_t> label(buf, -1);
+    for (int i = 0; i < g_warmup; ++i)
+    {
+        SearchNpu(indexes, nq, g_k, query, dist.data(), label.data());
+    }
+    long long batches = 0;
+    const double avgMs =
+        TimeSearch(nq, [&]() { SearchNpu(indexes, nq, g_k, query, dist.data(), label.data()); }, &batches);
+    BenchRow row;
+    row.refine = refine;
+    row.nprobe = g_nprobe;
+    row.nq = nq;
+    row.npuK = g_k;
+    row.batches = batches;
+    row.durationS = avgMs * static_cast<double>(batches) / kMilliSecond;
+    row.npuMs = avgMs;
+    row.e2eMs = avgMs;
+    row.npuQps = kMilliSecond * nq / avgMs;
+    row.e2eQps = row.npuQps;
+    row.recall = recall;
+    return row;
+}
+
+// ---------- cpu 档：NPU 粗排 k=npu-k 回传 Host，Host 用 src-bin 原文精排 ----------
+
+class MmapSrc
+{
+   public:
+    MmapSrc(const std::string &path, size_t ntotal, int dim)
+    {
+        const uint64_t needBytes = static_cast<uint64_t>(ntotal) * static_cast<uint64_t>(dim) * sizeof(float);
+        fd_ = open(path.c_str(), O_RDONLY);
+        if (fd_ < 0)
+        {
+            throw std::runtime_error("cpu refine: failed to open --src-bin: " + path);
+        }
+        struct stat info;
+        if (fstat(fd_, &info) != 0 || static_cast<uint64_t>(info.st_size) < needBytes)
+        {
+            close(fd_);
+            fd_ = -1;
+            throw std::runtime_error("cpu refine: --src-bin too small: " + path);
+        }
+        data_ = static_cast<const float *>(mmap(nullptr, needBytes, PROT_READ, MAP_PRIVATE, fd_, 0));
+        if (data_ == MAP_FAILED)
+        {
+            close(fd_);
+            fd_ = -1;
+            data_ = nullptr;
+            throw std::runtime_error("cpu refine: mmap --src-bin failed: " + path);
+        }
+        bytes_ = needBytes;
+    }
+    ~MmapSrc()
+    {
+        if (data_ != nullptr)
+        {
+            munmap(const_cast<float *>(data_), bytes_);
+        }
+        if (fd_ >= 0)
+        {
+            close(fd_);
+        }
+    }
+    MmapSrc(const MmapSrc &) = delete;
+    MmapSrc &operator=(const MmapSrc &) = delete;
+    const float *Get() const { return data_; }
+
+   private:
+    int fd_ = -1;
+    const float *data_ = nullptr;
+    uint64_t bytes_ = 0;
+};
+
+// 单查询：从粗排候选 label 里取原文算 L2(q,v)，维护 top-finalK max-heap
+void RefineOneQuery(const float *src, int dim, const float *query, const faiss::idx_t *candLabel, int candK, int finalK,
+                    float *outDist, faiss::idx_t *outLabel)
+{
+    std::vector<DistId> heap;
+    heap.reserve(static_cast<size_t>(finalK));
+    for (int j = 0; j < candK; ++j)
+    {
+        const faiss::idx_t id = candLabel[j];
+        if (id < 0 || static_cast<uint64_t>(id) >= g_ntotal)
+        {
+            continue;
+        }
+        const float *vec = src + static_cast<uint64_t>(id) * static_cast<uint64_t>(dim);
+        HeapPush(heap, finalK, L2sqr(query, vec, dim), id);
+    }
+    HeapToSorted(heap);
+    const int got = static_cast<int>(heap.size());
+    for (int j = 0; j < finalK; ++j)
+    {
+        if (j < got)
+        {
+            outDist[j] = heap[static_cast<size_t>(j)].first;
+            outLabel[j] = heap[static_cast<size_t>(j)].second;
+        }
+        else
+        {
+            outDist[j] = 0.0f;
+            outLabel[j] = -1;
+        }
+    }
+}
+
+// 多线程对 nq 条查询做 Host 精排（供 recall 与 bench 共用）
+void RefineHost(const float *src, const float *query, const faiss::idx_t *candLabel, int candK, int nq, int finalK,
+                float *outDist, faiss::idx_t *outLabel)
+{
+#pragma omp parallel for num_threads(std::min(nq, omp_get_max_threads()))
+    for (int q = 0; q < nq; ++q)
+    {
+        RefineOneQuery(src, g_dim, query + static_cast<uint64_t>(q) * static_cast<uint64_t>(g_dim),
+                       candLabel + static_cast<uint64_t>(q) * static_cast<uint64_t>(candK), candK, finalK,
+                       outDist + static_cast<uint64_t>(q) * static_cast<uint64_t>(finalK),
+                       outLabel + static_cast<uint64_t>(q) * static_cast<uint64_t>(finalK));
+    }
+}
+
+RecallReport RecallCpuRefine(std::vector<IndexPtr> &indexes, const float *query, const MmapSrc &src,
+                             const std::vector<std::vector<DistId>> &gt)
+{
+    const size_t candBuf = static_cast<size_t>(g_recallNq) * static_cast<size_t>(g_npuK);
+    std::vector<float> candDist(candBuf, 0.0f);
+    std::vector<faiss::idx_t> candLabel(candBuf, -1);
+    SearchNpu(indexes, g_recallNq, g_npuK, query, candDist.data(), candLabel.data());
+    const size_t buf = static_cast<size_t>(g_recallNq) * static_cast<size_t>(g_k);
+    std::vector<float> dist(buf, 0.0f);
+    std::vector<faiss::idx_t> label(buf, -1);
+    RefineHost(src.Get(), query, candLabel.data(), g_npuK, g_recallNq, g_k, dist.data(), label.data());
+    // cand_cov：粗排候选对 GT 的覆盖率（npu 档拿不到候选，cpu 档独有）
+    return ComputeRecall(gt, label.data(), g_recallNq, g_k, g_recallK, candLabel.data(), g_npuK);
+}
+
+BenchRow BenchCpuRefine(std::vector<IndexPtr> &indexes, int nq, const float *query, const MmapSrc &src,
+                        const RecallReport &recall)
+{
+    const size_t candBuf = static_cast<size_t>(nq) * static_cast<size_t>(g_npuK);
+    std::vector<float> candDist(candBuf, 0.0f);
+    std::vector<faiss::idx_t> candLabel(candBuf, -1);
+    const size_t buf = static_cast<size_t>(nq) * static_cast<size_t>(g_k);
+    std::vector<float> dist(buf, 0.0f);
+    std::vector<faiss::idx_t> label(buf, -1);
+    double npuTotalMs = 0.0;
+    auto benchOnce = [&]()
+    {
+        const double npuStart = GetMillisecs();
+        SearchNpu(indexes, nq, g_npuK, query, candDist.data(), candLabel.data());
+        npuTotalMs += GetMillisecs() - npuStart;
+        RefineHost(src.Get(), query, candLabel.data(), g_npuK, nq, g_k, dist.data(), label.data());
+    };
+    for (int i = 0; i < g_warmup; ++i)
+    {
+        benchOnce();
+    }
+    npuTotalMs = 0.0;
+    long long batches = 0;
+    const double avgMs = TimeSearch(nq, benchOnce, &batches);
+    BenchRow row;
+    row.refine = "cpu";
+    row.nprobe = g_nprobe;
+    row.nq = nq;
+    row.npuK = g_npuK;
+    row.batches = batches;
+    row.durationS = avgMs * static_cast<double>(batches) / kMilliSecond;
+    // e2e 含粗排+回传+Host 精排
+    row.npuMs = npuTotalMs / static_cast<double>(batches);
+    row.e2eMs = avgMs;
+    row.npuQps = kMilliSecond * nq / row.npuMs;
+    row.e2eQps = kMilliSecond * nq / avgMs;
+    row.recall = recall;
+    return row;
 }
