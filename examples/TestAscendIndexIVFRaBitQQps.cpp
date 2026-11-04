@@ -593,3 +593,460 @@ bool ValidateCli()
     }
     return true;
 }
+
+uint32_t MixSeed(uint32_t seed, uint64_t id)
+{
+    uint64_t x = (id + 1ULL) * 0x9E3779B97F4A7C15ULL;
+    x ^= static_cast<uint64_t>(seed);
+    x ^= x >> 30;
+    x *= 0xBF58476D1CE4E5B9ULL;
+    x ^= x >> 27;
+    x *= 0x94D049BB133111EBULL;
+    x ^= x >> 31;
+    return static_cast<uint32_t>(x);
+}
+
+void NormOne(float *vec, int dim)
+{
+    float l2norm = 0.0f;
+    for (int j = 0; j < dim; ++j)
+    {
+        l2norm += vec[j] * vec[j];
+    }
+    l2norm = std::sqrt(l2norm);
+    if (std::fabs(l2norm) < FLT_EPSILON)
+    {
+        const float fill = 1.0f / std::sqrt(static_cast<float>(dim));
+        for (int j = 0; j < dim; ++j)
+        {
+            vec[j] = fill;
+        }
+        return;
+    }
+    for (int j = 0; j < dim; ++j)
+    {
+        vec[j] /= l2norm;
+    }
+}
+
+void FillRange(float *data, size_t startId, size_t n, int dim, uint32_t seed)
+{
+#pragma omp parallel for
+    for (long long i = 0; i < static_cast<long long>(n); ++i)
+    {
+        const uint64_t id = startId + static_cast<size_t>(i);
+        std::mt19937 gen(MixSeed(seed, id));
+        std::uniform_real_distribution<float> dis(0.0f, 1.0f);
+        float *row = data + static_cast<size_t>(i) * static_cast<size_t>(dim);
+        for (int d = 0; d < dim; ++d)
+        {
+            row[d] = dis(gen);
+        }
+        NormOne(row, dim);
+    }
+}
+
+float L2sqr(const float *a, const float *b, int dim)
+{
+    float sum = 0.0f;
+    for (int i = 0; i < dim; ++i)
+    {
+        const float d = a[i] - b[i];
+        sum += d * d;
+    }
+    return sum;
+}
+
+using DistId = std::pair<float, faiss::idx_t>;
+
+void HeapPush(std::vector<DistId> &heap, int k, float dist, faiss::idx_t id)
+{
+    if (static_cast<int>(heap.size()) < k)
+    {
+        heap.emplace_back(dist, id);
+        std::push_heap(heap.begin(), heap.end());
+        return;
+    }
+    if (dist < heap.front().first)
+    {
+        std::pop_heap(heap.begin(), heap.end());
+        heap.back() = DistId(dist, id);
+        std::push_heap(heap.begin(), heap.end());
+    }
+}
+
+void HeapToSorted(std::vector<DistId> &heap)
+{
+    if (heap.empty())
+    {
+        return;
+    }
+    std::sort_heap(heap.begin(), heap.end());
+}
+
+void UpdateGt(std::vector<std::vector<DistId>> &gt, const float *queries, int recallNq, const float *chunk,
+              size_t startId, size_t n, int dim, int k)
+{
+#pragma omp parallel for
+    for (int q = 0; q < recallNq; ++q)
+    {
+        const float *query = queries + static_cast<size_t>(q) * static_cast<size_t>(dim);
+        for (size_t i = 0; i < n; ++i)
+        {
+            const float dist = L2sqr(query, chunk + i * static_cast<size_t>(dim), dim);
+            HeapPush(gt[static_cast<size_t>(q)], k, dist, static_cast<faiss::idx_t>(startId + i));
+        }
+    }
+}
+
+class BaseBinWriter
+{
+   public:
+    BaseBinWriter() = default;
+    BaseBinWriter(const BaseBinWriter &) = delete;
+    BaseBinWriter &operator=(const BaseBinWriter &) = delete;
+
+    bool Open(const std::string &path, size_t ntotal, int dim)
+    {
+        Close();
+        dim_ = dim;
+        fp_ = std::fopen(path.c_str(), "wb");
+        if (fp_ == nullptr)
+        {
+            printf("failed to open --src-bin for write: %s\n", path.c_str());
+            return false;
+        }
+        const double gb =
+            static_cast<double>(ntotal) * static_cast<double>(dim) * sizeof(float) / (1024.0 * 1024.0 * 1024.0);
+        printf("writing --src-bin %s (%.2f GB, %zu vectors)\n", path.c_str(), gb, ntotal);
+        return true;
+    }
+
+    bool Write(const float *x, size_t n)
+    {
+        if (fp_ == nullptr)
+        {
+            printf("--src-bin is not open for write\n");
+            return false;
+        }
+        const size_t count = n * static_cast<size_t>(dim_);
+        if (std::fwrite(x, sizeof(float), count, fp_) != count)
+        {
+            printf("fwrite --src-bin failed after %zu vectors\n", written_);
+            return false;
+        }
+        written_ += n;
+        return true;
+    }
+
+    void Close()
+    {
+        if (fp_ != nullptr)
+        {
+            std::fclose(fp_);
+            fp_ = nullptr;
+        }
+    }
+
+    ~BaseBinWriter() { Close(); }
+
+   private:
+    FILE *fp_ = nullptr;
+    int dim_ = 0;
+    size_t written_ = 0;
+};
+
+bool FileExists(const std::string &path) { return access(path.c_str(), F_OK) == 0; }
+
+bool ValidateSrcBin(const std::string &path)
+{
+    struct stat info;
+    if (stat(path.c_str(), &info) != 0)
+    {
+        printf("failed to stat --src-bin %s: %s\n", path.c_str(), std::strerror(errno));
+        return false;
+    }
+    const uint64_t expected = static_cast<uint64_t>(g_ntotal) * static_cast<uint64_t>(g_dim) * sizeof(float);
+    const uint64_t actual = static_cast<uint64_t>(info.st_size);
+    if (actual != expected)
+    {
+        printf("src-bin byte size mismatch: actual=%llu expected=%llu (ntotal=%zu dim=%d)\n",
+               static_cast<unsigned long long>(actual), static_cast<unsigned long long>(expected), g_ntotal, g_dim);
+        return false;
+    }
+    printf("use existing src-bin %s bytes=%llu vectors=%zu dim=%d\n", path.c_str(),
+           static_cast<unsigned long long>(actual), g_ntotal, g_dim);
+    return true;
+}
+
+bool LoadTrainFromSrcBin(const std::string &path, size_t trainNum, std::vector<float> &train)
+{
+    train.resize(trainNum * static_cast<size_t>(g_dim));
+    FILE *fp = std::fopen(path.c_str(), "rb");
+    if (fp == nullptr)
+    {
+        printf("failed to open --src-bin for train: %s\n", path.c_str());
+        return false;
+    }
+    const size_t got = std::fread(train.data(), sizeof(float), train.size(), fp);
+    std::fclose(fp);
+    if (got != train.size())
+    {
+        printf("failed to read train vectors from --src-bin: got=%zu expected=%zu floats\n", got, train.size());
+        return false;
+    }
+    printf("loaded %zu train vectors from src-bin\n", trainNum);
+    return true;
+}
+
+void SaveIndex(const faiss::ascend::AscendIndexIVFRaBitQ &index, const std::string &path)
+{
+    faiss::IndexFlatL2 quantizer(g_dim);
+    faiss::IndexIVFRaBitQ cpu(&quantizer, g_dim, static_cast<size_t>(g_nlist), faiss::METRIC_L2);
+    index.copyTo(&cpu);
+    printf("write index %s ntotal=%ld quant_bits=%d code_size=%zu\n", path.c_str(), static_cast<long>(cpu.ntotal),
+           g_quantBits, cpu.code_size);
+    faiss::write_index(&cpu, path.c_str());
+}
+
+void LoadIndex(faiss::ascend::AscendIndexIVFRaBitQ &index, const std::string &path)
+{
+    const double loadT0 = GetMillisecs();
+    printf("read index %s\n", path.c_str());
+    std::unique_ptr<faiss::Index> raw(faiss::read_index(path.c_str()));
+    const double readMs = GetMillisecs() - loadT0;
+    auto *cpu = dynamic_cast<faiss::IndexIVFRaBitQ *>(raw.get());
+    if (cpu == nullptr)
+    {
+        throw std::runtime_error("index-path is not IndexIVFRaBitQ");
+    }
+    printf("loaded CPU carrier ntotal=%ld code_size=%zu, requested quant_bits=%d\n", static_cast<long>(cpu->ntotal),
+           cpu->code_size, g_quantBits);
+    const double copyT0 = GetMillisecs();
+    index.copyFrom(cpu);
+    const double copyFromMs = GetMillisecs() - copyT0;
+    index.setNumProbes(g_nprobe);
+    printf("loaded ntotal=%ld nlist=%ld\n", static_cast<long>(index.ntotal), static_cast<long>(index.getNumLists()));
+    printf("INDEX_LOAD quant_bits=%d devices=%s read_ms=%.3f copyfrom_ms=%.3f total_ms=%.3f path=%s\n", g_quantBits,
+           DevicesJson().c_str(), readMs, copyFromMs, GetMillisecs() - loadT0, path.c_str());
+    fflush(stdout);
+}
+
+bool SaveGt(const std::string &path, const std::vector<std::vector<DistId>> &gt)
+{
+    FILE *fp = std::fopen(path.c_str(), "wb");
+    if (fp == nullptr)
+    {
+        printf("failed to open --gt-path for write: %s\n", path.c_str());
+        return false;
+    }
+    const int32_t magic = 0x47545251;
+    const int32_t nq = static_cast<int32_t>(gt.size());
+    const int32_t k = g_recallK;
+    if (std::fwrite(&magic, sizeof(magic), 1, fp) != 1 || std::fwrite(&nq, sizeof(nq), 1, fp) != 1 ||
+        std::fwrite(&k, sizeof(k), 1, fp) != 1)
+    {
+        std::fclose(fp);
+        return false;
+    }
+    for (auto heap : gt)
+    {
+        HeapToSorted(heap);
+        const int32_t n = static_cast<int32_t>(heap.size());
+        if (std::fwrite(&n, sizeof(n), 1, fp) != 1)
+        {
+            std::fclose(fp);
+            return false;
+        }
+        for (const DistId &item : heap)
+        {
+            if (std::fwrite(&item.first, sizeof(float), 1, fp) != 1 ||
+                std::fwrite(&item.second, sizeof(faiss::idx_t), 1, fp) != 1)
+            {
+                std::fclose(fp);
+                return false;
+            }
+        }
+    }
+    std::fclose(fp);
+    printf("wrote gt %s queries=%d\n", path.c_str(), nq);
+    return true;
+}
+
+bool LoadGt(const std::string &path, std::vector<std::vector<DistId>> &gt)
+{
+    FILE *fp = std::fopen(path.c_str(), "rb");
+    if (fp == nullptr)
+    {
+        printf("failed to open --gt-path for read: %s\n", path.c_str());
+        return false;
+    }
+    int32_t magic = 0;
+    int32_t nq = 0;
+    int32_t k = 0;
+    if (std::fread(&magic, sizeof(magic), 1, fp) != 1 || magic != 0x47545251 ||
+        std::fread(&nq, sizeof(nq), 1, fp) != 1 || std::fread(&k, sizeof(k), 1, fp) != 1)
+    {
+        std::fclose(fp);
+        return false;
+    }
+    if (nq != g_recallNq || k != g_recallK)
+    {
+        printf("gt shape mismatch: file nq=%d k=%d, expected nq=%d k=%d\n", nq, k, g_recallNq, g_recallK);
+        std::fclose(fp);
+        return false;
+    }
+    gt.assign(static_cast<size_t>(nq), {});
+    for (int32_t q = 0; q < nq; ++q)
+    {
+        int32_t n = 0;
+        if (std::fread(&n, sizeof(n), 1, fp) != 1 || n < 0 || n > k)
+        {
+            printf("gt file corrupt at query %d: n=%d (k=%d)\n", q, n, k);
+            std::fclose(fp);
+            return false;
+        }
+        gt[static_cast<size_t>(q)].resize(static_cast<size_t>(n));
+        for (int32_t i = 0; i < n; ++i)
+        {
+            DistId item;
+            if (std::fread(&item.first, sizeof(float), 1, fp) != 1 ||
+                std::fread(&item.second, sizeof(faiss::idx_t), 1, fp) != 1)
+            {
+                std::fclose(fp);
+                return false;
+            }
+            gt[static_cast<size_t>(q)][static_cast<size_t>(i)] = item;
+        }
+    }
+    std::fclose(fp);
+    printf("loaded gt %s queries=%d\n", path.c_str(), nq);
+    return true;
+}
+
+bool LoadSrcBin(const std::string &path, std::vector<float> &src)
+{
+    const size_t need = g_ntotal * static_cast<size_t>(g_dim);
+    src.resize(need);
+    FILE *fp = std::fopen(path.c_str(), "rb");
+    if (fp == nullptr)
+    {
+        printf("failed to open --src-bin for read: %s\n", path.c_str());
+        return false;
+    }
+    const size_t got = std::fread(src.data(), sizeof(float), need, fp);
+    std::fclose(fp);
+    if (got != need)
+    {
+        printf("src-bin size mismatch: got %zu floats, expect %zu\n", got, need);
+        return false;
+    }
+    printf("loaded src-bin %s vectors=%zu\n", path.c_str(), g_ntotal);
+    return true;
+}
+
+struct RecallReport
+{
+    float r1At1 = 0.0f;
+    float r1At10 = 0.0f;
+    float r1At100 = 0.0f;
+    float r1At300 = 0.0f;
+    float rAtK = 0.0f;
+    float candCov = 0.0f;
+};
+
+RecallReport ComputeRecall(const std::vector<std::vector<DistId>> &gt, const faiss::idx_t *ann, int nq, int annK,
+                           int finalK, const faiss::idx_t *cand, int candK)
+{
+    RecallReport out;
+    if (nq <= 0)
+    {
+        return out;
+    }
+    int hit1 = 0;
+    int hit10 = 0;
+    int hit100 = 0;
+    int hit300 = 0;
+    double rAt = 0.0;
+    double cov = 0.0;
+    for (int q = 0; q < nq; ++q)
+    {
+        const faiss::idx_t nn = gt[static_cast<size_t>(q)].empty() ? static_cast<faiss::idx_t>(-1)
+                                                                   : gt[static_cast<size_t>(q)].front().second;
+        std::set<faiss::idx_t> annSet;
+        int foundAt = -1;
+        for (int j = 0; j < finalK && j < annK; ++j)
+        {
+            const faiss::idx_t id = ann[static_cast<size_t>(q) * static_cast<size_t>(annK) + static_cast<size_t>(j)];
+            if (id >= 0)
+            {
+                annSet.insert(id);
+            }
+            if (foundAt < 0 && id == nn)
+            {
+                foundAt = j;
+            }
+        }
+        if (foundAt == 0)
+        {
+            ++hit1;
+        }
+        if (foundAt >= 0 && foundAt < 10)
+        {
+            ++hit10;
+        }
+        if (foundAt >= 0 && foundAt < 100)
+        {
+            ++hit100;
+        }
+        if (foundAt >= 0 && foundAt < 300)
+        {
+            ++hit300;
+        }
+        std::set<faiss::idx_t> gtSet;
+        const int gk = std::min(finalK, static_cast<int>(gt[static_cast<size_t>(q)].size()));
+        for (int j = 0; j < gk; ++j)
+        {
+            gtSet.insert(gt[static_cast<size_t>(q)][static_cast<size_t>(j)].second);
+        }
+        int inter = 0;
+        for (faiss::idx_t id : annSet)
+        {
+            if (gtSet.count(id) != 0)
+            {
+                ++inter;
+            }
+        }
+        rAt += (gk > 0) ? (static_cast<double>(inter) / static_cast<double>(gk)) : 0.0;
+        if (cand != nullptr && candK > 0)
+        {
+            std::set<faiss::idx_t> candSet;
+            for (int j = 0; j < candK; ++j)
+            {
+                const faiss::idx_t id =
+                    cand[static_cast<size_t>(q) * static_cast<size_t>(candK) + static_cast<size_t>(j)];
+                if (id >= 0)
+                {
+                    candSet.insert(id);
+                }
+            }
+            int cover = 0;
+            for (faiss::idx_t id : gtSet)
+            {
+                if (candSet.count(id) != 0)
+                {
+                    ++cover;
+                }
+            }
+            cov += (gk > 0) ? (static_cast<double>(cover) / static_cast<double>(gk)) : 0.0;
+        }
+    }
+    const float inv = 100.0f / static_cast<float>(nq);
+    out.r1At1 = static_cast<float>(hit1) * inv;
+    out.r1At10 = static_cast<float>(hit10) * inv;
+    out.r1At100 = static_cast<float>(hit100) * inv;
+    out.r1At300 = static_cast<float>(hit300) * inv;
+    out.rAtK = static_cast<float>(rAt / nq * 100.0);
+    out.candCov = (cand != nullptr) ? static_cast<float>(cov / nq * 100.0) : 0.0f;
+    return out;
+}
