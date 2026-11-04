@@ -1102,8 +1102,8 @@ std::vector<int> BuildDevices()
 
 bool HostRamEnoughForNpu()
 {
-    // attach 模式下 6 个 replica 共享同一份原文，只按 1 份估算
-    const int copies = (g_attachSrc != 0) ? 1 : SearchReplicaCount();
+    // attach 模式共享 src 向量；深拷贝模式还需计入加载时的 src 向量
+    const int copies = (g_attachSrc != 0) ? 1 : SearchReplicaCount() + 1;
     const double needGb = static_cast<double>(g_ntotal) * static_cast<double>(g_dim) * sizeof(float) /
                           (1024.0 * 1024.0 * 1024.0) * static_cast<double>(copies);
     const long availKb = MemAvailableKb();
@@ -1656,4 +1656,238 @@ BenchRow BenchCpuRefine(std::vector<IndexPtr> &indexes, int nq, const float *que
     row.e2eQps = kMilliSecond * nq / avgMs;
     row.recall = recall;
     return row;
+}
+
+TEST(TestAscendIndexIVFRaBitQ, LargeScaleQpsRecall)
+{
+    try
+    {
+        const size_t trainNum = TrainNum();
+        const int maxNq = std::max(*std::max_element(g_nq.begin(), g_nq.end()), g_recallNq);
+        const bool loadExisting = (g_rebuild == 0) && FileExists(g_indexPath);
+        printf(
+            "IVFRaBitQ QPS recall: devices=%s dim=%d ntotal=%zu nlist=%d nprobe=%d quant_bits=%d candidate_topk=%d "
+            "target_topk=%d npu_k=%d "
+            "refine-alpha=%.6f trainNum=%zu recall_nq=%d resource_mb=%d niter=%d train-mode=%s "
+            "search-mode=%s qps-mode=%s replicas=%d duration=%d loops=%d index=%s load=%d reuse_gt=%d\n",
+            DevicesJson().c_str(), g_dim, g_ntotal, g_nlist, g_nprobe, g_quantBits, g_k, g_recallK, g_npuK,
+            g_refineAlpha, trainNum, g_recallNq, g_resourceMb, g_niter, g_trainSlice != 0 ? "slice" : "replica",
+            SearchModeName(), QpsModeName(), SearchReplicaCount(), g_durationSec, g_loops, g_indexPath.c_str(),
+            loadExisting ? 1 : 0, g_reuseGt);
+        fflush(stdout);
+
+        printf("generate query\n");
+        std::vector<float> queries(static_cast<size_t>(maxNq) * static_cast<size_t>(g_dim));
+        FillRange(queries.data(), 0, static_cast<size_t>(maxNq), g_dim, kQuerySeed);
+
+        std::vector<std::vector<DistId>> gt(static_cast<size_t>(g_recallNq));
+        bool gtReady = false;
+        if (!g_gtPath.empty() && FileExists(g_gtPath) && (g_rebuild == 0 || g_reuseGt != 0))
+        {
+            ASSERT_TRUE(LoadGt(g_gtPath, gt));
+            gtReady = true;
+        }
+
+        std::unique_ptr<faiss::ascend::AscendIndexIVFRaBitQ> stored;
+        if (loadExisting)
+        {
+            stored = MakeIndex(false);
+            LoadIndex(*stored, g_indexPath);
+        }
+        else
+        {
+            const bool useSrcInput = !g_srcBin.empty() && FileExists(g_srcBin);
+            std::vector<float> train(trainNum * static_cast<size_t>(g_dim));
+            if (useSrcInput)
+            {
+                ASSERT_TRUE(ValidateSrcBin(g_srcBin));
+                ASSERT_TRUE(LoadTrainFromSrcBin(g_srcBin, trainNum, train));
+            }
+            else
+            {
+                printf("generate train\n");
+                FillRange(train.data(), 0, trainNum, g_dim, g_seed);
+            }
+            stored = MakeIndex(false);
+            printf("start train\n");
+            stored->train(static_cast<faiss::idx_t>(trainNum), train.data());
+            BaseBinWriter writer;
+            StreamAddOptions opt;
+            opt.readSrc = useSrcInput;
+            opt.updateGt = !gtReady;
+            if (!useSrcInput && !g_srcBin.empty())
+            {
+                ASSERT_TRUE(writer.Open(g_srcBin, g_ntotal, g_dim));
+                opt.writer = &writer;
+            }
+            printf("start add %s needRefine=false\n", useSrcInput ? "from existing src-bin" : "generated vectors");
+            StreamAdd(*stored, train.data(), trainNum, &gt, queries.data(), opt);
+            writer.Close();
+            if (!gtReady)
+            {
+                for (auto &h : gt)
+                {
+                    HeapToSorted(h);
+                }
+                gtReady = true;
+                if (!g_gtPath.empty())
+                {
+                    ASSERT_TRUE(SaveGt(g_gtPath, gt));
+                }
+            }
+            SaveIndex(*stored, g_indexPath);
+        }
+        ASSERT_TRUE(gtReady);
+        ASSERT_EQ(static_cast<size_t>(stored->ntotal), g_ntotal);
+
+        std::vector<IndexPtr> searchers;
+        PromotePrimaryToReplicas(std::move(stored), searchers, false, nullptr);
+
+        std::vector<BenchRow> rows;
+        FILE *csv = nullptr;
+        if (!g_csvPath.empty())
+        {
+            csv = std::fopen(g_csvPath.c_str(), "w");
+            if (csv != nullptr)
+            {
+                WriteCsvHeader(csv);
+            }
+        }
+
+        if (HasMode(RefineMode::None))
+        {
+            for (int nprobe : g_nprobes)
+            {
+                g_nprobe = nprobe;
+                for (auto &index : searchers)
+                {
+                    index->setNumProbes(g_nprobe);
+                }
+                for (int candidateTopk : g_candidateTopks)
+                {
+                    g_k = candidateTopk;
+                    printf("measure matrix quant_bits=%d nprobe=%d candidate_topk=%d target_topk=%d recall_nq=%d\n",
+                           g_quantBits, g_nprobe, g_k, g_recallK, g_recallNq);
+                    const RecallReport recNone = RecallSearch(searchers, queries.data(), gt, true);
+                    for (int nq : g_nq)
+                    {
+                        const BenchRow row = BenchSearch(searchers, nq, queries.data(), recNone, "none");
+                        PrintRow(row);
+                        if (csv != nullptr)
+                        {
+                            WriteCsvRow(csv, row);
+                        }
+                        rows.push_back(row);
+                    }
+                }
+            }
+        }
+
+        if (HasMode(RefineMode::Cpu))
+        {
+            try
+            {
+                // 复用 needRefine=false 索引（与 none 档同库），粗排 k=npu-k 回传 Host 后本地精排。
+                // 必须在 npu 档之前跑：npu 块会 searchers.clear() 并重建 needRefine=true 索引。
+                MmapSrc src(g_srcBin, g_ntotal, g_dim);
+                printf("measure recall cpu, recall_nq=%d npu_k=%d\n", g_recallNq, g_npuK);
+                const RecallReport recCpu = RecallCpuRefine(searchers, queries.data(), src, gt);
+                for (int nq : g_nq)
+                {
+                    BenchRow row = BenchCpuRefine(searchers, nq, queries.data(), src, recCpu);
+                    PrintRow(row);
+                    if (csv != nullptr)
+                    {
+                        WriteCsvRow(csv, row);
+                    }
+                    rows.push_back(std::move(row));
+                }
+            }
+            catch (std::exception &e)
+            {
+                printf("skip cpu refine: %s\n", e.what());
+                if (!HasMode(RefineMode::None) && !HasMode(RefineMode::Npu))
+                {
+                    throw;
+                }
+            }
+        }
+
+        if (HasMode(RefineMode::Npu))
+        {
+            if (!HostRamEnoughForNpu())
+            {
+                printf("skip npu refine: host RAM not enough for srcIndexes\n");
+                fflush(stdout);
+                if (!HasMode(RefineMode::None))
+                {
+                    FAIL() << "npu refine requested but host RAM is insufficient";
+                }
+            }
+            else
+            {
+                searchers.clear();
+                printf("create index needRefine=true refineAlpha=%.6f internal_k=%d\n", g_refineAlpha,
+                       static_cast<int>(g_k * g_refineAlpha));
+                std::vector<float> src;
+                ASSERT_TRUE(LoadSrcBin(g_srcBin, src));
+                LoadReplicaCopies(searchers, true, src.data());
+                printf("measure recall npu, recall_nq=%d\n", g_recallNq);
+                const RecallReport recNpu = RecallSearch(searchers, queries.data(), gt, false);
+                for (int nq : g_nq)
+                {
+                    const BenchRow row = BenchSearch(searchers, nq, queries.data(), recNpu, "npu");
+                    PrintRow(row);
+                    if (csv != nullptr)
+                    {
+                        WriteCsvRow(csv, row);
+                    }
+                    rows.push_back(row);
+                }
+            }
+        }
+
+        printf(
+            "summary bits refine search qps reps nprobe nq batches candidate_topk target_topk npu_QPS e2e_QPS r1@1 "
+            "r1@10 "
+            "r1@100 r1@300 R@target_topk rerank_recall\n");
+        for (const BenchRow &row : rows)
+        {
+            printf(
+                "%4d %-5s %-7s %-7s %4d %6d %4d %7lld %11d %8d %10.2f %10.2f %7.2f %7.2f %8.2f %8.2f "
+                "%12.2f %8.2f\n",
+                g_quantBits, row.refine, SearchModeName(), QpsModeName(), SearchReplicaCount(), row.nprobe, row.nq,
+                row.batches, row.npuK, g_recallK, row.npuQps, row.e2eQps, row.recall.r1At1, row.recall.r1At10,
+                row.recall.r1At100, row.recall.r1At300, row.recall.rAtK, row.recall.candCov);
+        }
+        fflush(stdout);
+        if (csv != nullptr)
+        {
+            std::fclose(csv);
+        }
+        ASSERT_FALSE(rows.empty());
+    }
+    catch (std::exception &e)
+    {
+        FAIL() << "Exception occurred: " << e.what();
+    }
+}
+
+}  // namespace
+
+int main(int argc, char **argv)
+{
+    if (!ParseCli(&argc, argv) || !ValidateCli())
+    {
+        return 1;
+    }
+    printf(
+        "TestAscendIndexIVFRaBitQQps: devices=%s dim=%d ntotal=%zu nlist=%d nprobe=%d quant-bits=%d candidate-topk=%d "
+        "target-topk=%d npu-k=%d "
+        "search-mode=%s qps-mode=%s replicas=%d duration=%d loops=%d\n",
+        DevicesJson().c_str(), g_dim, g_ntotal, g_nlist, g_nprobe, g_quantBits, g_k, g_recallK, g_npuK,
+        SearchModeName(), QpsModeName(), SearchReplicaCount(), g_durationSec, g_loops);
+    fflush(stdout);
+    testing::InitGoogleTest(&argc, argv);
+    return RUN_ALL_TESTS();
 }
