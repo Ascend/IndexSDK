@@ -65,6 +65,8 @@
     <!-- end id13 -->
     <!-- npu="950" id12 -->
     - [AscendIndexCagra](./api/02_approximate_retrieval/18_AscendIndexCagra.md)
+    - [AscendCagraGraphBuilder](./api/02_approximate_retrieval/19_AscendCagraGraphBuilder.md)
+    - [AscendCagraGraphBuildConfig](./api/02_approximate_retrieval/20_AscendCagraGraphBuildConfig.md)
     <!-- end id12 -->
   - [属性过滤检索]()
     - [AscendIndexTS](./api/03_attribute_filtering-based_retrieval/01_AscendIndexTS.md)
