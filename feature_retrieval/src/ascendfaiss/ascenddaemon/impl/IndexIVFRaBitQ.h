@@ -169,16 +169,17 @@ class IndexIVFRaBitQ : public IndexIVF
                      AscendTensor<float, DIMS_2, size_t> &vmdistResult, AscendTensor<int64_t, DIMS_2, size_t> &ids,
                      AscendTensor<uint32_t, DIMS_2, size_t> &sizes, AscendTensor<int64_t, DIMS_1, size_t> &blockNumPerQ,
                      AscendTensor<uint16_t, DIMS_2, size_t> &flags, AscendTensor<int64_t, DIMS_1> &attrs,
-                     AscendTensor<float, DIMS_2, size_t> &outdists, AscendTensor<uint64_t, DIMS_2, size_t> &outlabel,
-                     aclrtStream stream);
+                     AscendTensor<int64_t, DIMS_2, size_t> &blockSlots, AscendTensor<float, DIMS_2, size_t> &outdists,
+                     AscendTensor<uint64_t, DIMS_2, size_t> &outlabel, aclrtStream stream);
     APP_ERROR fillDisOpInputData(
         int k, size_t batch, size_t totalBlockNum, size_t coreNum, AscendTensor<uint64_t, DIMS_2, size_t> &offset,
         AscendTensor<uint64_t, DIMS_2, size_t> &indexl2offset, AscendTensor<uint64_t, DIMS_2, size_t> &indexl1offset,
         AscendTensor<uint32_t, DIMS_2, size_t> &queryid, AscendTensor<uint32_t, DIMS_2, size_t> &centroidsid,
         AscendTensor<float, DIMS_2, size_t> &centroidsl2, AscendTensor<uint32_t, DIMS_2, size_t> &baseSize,
         AscendTensor<int64_t, DIMS_2, size_t> &ids, AscendTensor<int64_t, DIMS_1, size_t> &blockNumPerQ,
-        AscendTensor<int64_t, DIMS_1> &attrs, AscendTensor<int64_t, DIMS_2> &l1TopNprobeIndicesHost,
-        AscendTensor<float, DIMS_2> &l1TopNprobeDistsHost,
+        AscendTensor<int64_t, DIMS_2, size_t> &blockSlots, AscendTensor<int64_t, DIMS_1> &attrs,
+        AscendTensor<int64_t, DIMS_2> &l1TopNprobeIndicesHost, AscendTensor<float, DIMS_2> &l1TopNprobeDistsHost,
+        const std::vector<int64_t> &blockNumPlan, size_t maxBlocksPerQ,
         aicpu::RabitqIdFilterMode selMode = aicpu::RABITQ_ID_FILTER_NONE, int64_t selPtr = 0, int64_t selAux0 = 0,
         int64_t selAux1 = 0, int64_t selNegate = 0);
     APP_ERROR fillL2TopkOpInputData(int k, size_t batch, size_t coreNum, AscendTensor<int64_t, DIMS_1> &attrs,
@@ -186,6 +187,8 @@ class IndexIVFRaBitQ : public IndexIVF
                                     int64_t selPtr = 0, int64_t selAux0 = 0, int64_t selAux1 = 0,
                                     int64_t selNegate = 0);
     APP_ERROR fillL1TopkOpInputData(AscendTensor<int64_t, DIMS_1> &attrsInput, int probeK);
+    // Retries the AI CPU count query if the constructor ran before a device was set on this thread.
+    void EnsureTopkGroupSizeResolved();
     void fillDisOpInputDataByBlock(
         size_t batch, size_t coreNum, size_t ivfRabitqBlockSize, AscendTensor<uint32_t, DIMS_2, size_t> &queryidHostVec,
         AscendTensor<uint32_t, DIMS_2, size_t> &centroidsidHostVec,
@@ -194,7 +197,8 @@ class IndexIVFRaBitQ : public IndexIVF
         AscendTensor<uint64_t, DIMS_2, size_t> &indexl2OffsetHostVec,
         AscendTensor<uint64_t, DIMS_2, size_t> &indexl1OffsetHostVec, AscendTensor<int64_t, DIMS_2, size_t> &idsHostVec,
         AscendTensor<int64_t, DIMS_1, size_t> &blockNumPerQHostVec,
-        AscendTensor<int64_t, DIMS_2> &l1TopNprobeIndicesHost, AscendTensor<float, DIMS_2> &l1TopNprobeDistsHost);
+        AscendTensor<int64_t, DIMS_2> &l1TopNprobeIndicesHost, AscendTensor<float, DIMS_2> &l1TopNprobeDistsHost,
+        const int64_t *slotPlan, size_t maxBlocksPerQ);
     void callL2DistanceOp(
         size_t batch, size_t totalBlockNum, size_t coreNum, size_t vcMaxLen, AscendTensor<float, DIMS_1> &queryL2Vec,
         AscendTensor<float, DIMS_2> &queryLutVec, AscendTensor<float, DIMS_2, size_t> &centroidsLutVec,
@@ -211,6 +215,8 @@ class IndexIVFRaBitQ : public IndexIVF
                          idx_t *labels) const;
     size_t getTotalBlockNum(size_t batch, AscendTensor<int64_t, DIMS_2> &l1TopNprobeIndicesHost, int k,
                             float *distances, idx_t *labels) const;
+    size_t getBlockNumPerQ(size_t batch, AscendTensor<int64_t, DIMS_2> &l1TopNprobeIndicesHost,
+                           std::vector<int64_t> &blockNumPerQ) const;
 
     APP_ERROR EnsureFilterPayloadOnDevice(const RabitqIdFilterHost *idFilter, int64_t &selPtr);
     APP_ERROR EnsurePrefixFilterPayloadOnDevice(const RabitqIdFilterHost *idFilter, int64_t &selPtr);
@@ -249,6 +255,11 @@ class IndexIVFRaBitQ : public IndexIVF
     float *pIndexL1;
     std::unique_ptr<DeviceVector<float>> distResultOnDevice;
     size_t distResultSpace;
+    int64_t topkLayoutMode_;
+    int64_t topkGroupSize_;
+    // False while topkGroupSize_ still holds the compile-time fallback because the device could not be
+    // queried at construction; the first search retries. See EnsureTopkGroupSizeResolved.
+    bool topkGroupSizeResolved_ = false;
 
     std::unique_ptr<DeviceVector<uint8_t>> cachedFilterPayload;
     const void *cachedFilterSrc = nullptr;

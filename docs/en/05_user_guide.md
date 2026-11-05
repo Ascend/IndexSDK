@@ -475,6 +475,10 @@ The operator generation environment must match the codebook generation environme
 
 [AscendIndexIVFRaBitQ](./api/02_approximate_retrieval/16_AscendIndexIVFRaBitQ.md#ascendindexivfrabitq)
 
+**Distance Operator Block Layout<a name="ivfrabitq-topk-layout-ref"></a>**
+
+By default, the L2 distance operator lays its blocks out on the core grid using the `group` layout (round-robin over adjacent queries within a window). An environment variable can restore the historical query-major contiguous layout as an A/B control arm. **This variable enables the new layout by default** and is read **once when the index is constructed**; the window width needs no configuration and is likewise resolved at construction by querying the device's AI CPU count. For the variable summary, see [Appendix](./09_appendix.md#ivfrabitq-topk-layout-env); for caveats and usage, see [Common Operations — IVFRaBitQ Distance Operator Block Layout](./08_common_operations.md#ivfrabitq-topk-layout).
+
 #### VSTAR Codebook File Generation
 
 ##### Overall Description

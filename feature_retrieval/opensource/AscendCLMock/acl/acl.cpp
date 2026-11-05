@@ -288,6 +288,36 @@ extern "C"
         return ACL_SUCCESS;
     }
 
+    // The simulator has no real cores, so report the same AI CPU count the kernels assume (THREAD_CNT, and
+    // TOPK_IVF_RABITQ_AICPU_NUM's fallback). The literal is repeated rather than included: this mock stands
+    // in for ACL and must not depend on operator headers. Keeping the answer deterministic matters for the
+    // TopK slot-plan UTs, which size the GROUPED window from ACL_DEV_ATTR_AICPU_CORE_NUM.
+    aclError aclrtGetDeviceCapability(int32_t deviceId, aclrtDevFeatureType devFeatureType, int32_t *value)
+    {
+        if (value == nullptr)
+        {
+            return ACL_ERROR_INVALID_PARAM;
+        }
+        if (AscendSimuEnv::getActiveDeviceId() == -1)
+        {
+            return ACL_ERROR_UNINITIALIZE;
+        }
+        (void)deviceId;
+        switch (devFeatureType)
+        {
+            case ACL_DEV_ATTR_AICPU_CORE_NUM:
+                *value = 6;
+                return ACL_SUCCESS;
+            case ACL_DEV_ATTR_AICORE_CORE_NUM:
+            case ACL_DEV_ATTR_CUBE_CORE_NUM:
+            case ACL_DEV_ATTR_VECTOR_CORE_NUM:
+                *value = 8;
+                return ACL_SUCCESS;
+            default:
+                return ACL_ERROR_INVALID_PARAM;
+        }
+    }
+
     aclError aclrtCreateStream(aclrtStream *stream)
     {
         auto deviceId = ENV().getActiveDeviceId();

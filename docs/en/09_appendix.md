@@ -33,6 +33,16 @@ The following environment variables are used for `AscendIndexIVFRaBitQ` developm
 |IVFRABITQ_DEBUG_L1_PROBE|`1` prints the probe list; `stats` prints the tile distribution; `full` includes golden comparison and complete statistics.|
 |IVFRABITQ_VERIFY_L1_DIST|When set to a non-`0` value, compares the CPU golden results with the NPU distance/probe results during the L1 search stage.|
 
+### IVFRaBitQ Block Layout Environment Variables<a name="ivfrabitq-topk-layout-env"></a>
+
+The following environment variable selects how the L2 distance operator lays its blocks out on the core grid. **Unlike the table above, it enables the new layout by default** — leaving it unset selects the `group` layout. Setting `IVFRABITQ_TOPK_LAYOUT=legacy` restores the historical layout, which serves as the control arm for A/B comparison. It is read **once when the index is constructed**, so it must be exported before the index is created. The window width needs no configuration; it is likewise resolved at construction by querying the device's AI CPU count. For details and caveats, see [IVFRaBitQ Distance Operator Block Layout](./08_common_operations.md#ivfrabitq-topk-layout).
+
+**Table 3** IVFRaBitQ block layout environment variables
+
+|Environment Variable|Description|
+|--|--|
+|IVFRABITQ_TOPK_LAYOUT|`legacy` or `group` (`grouped` is equivalent); defaults to `group`. `group` lays out blocks by round-robin over adjacent queries within a window; `legacy` is the historical query-major contiguous layout, kept only as the A/B baseline. Any other value is silently treated as the default. The window width is the device's AI CPU count (`aclrtGetDeviceCapability(ACL_DEV_ATTR_AICPU_CORE_NUM)`), falling back to `6` with a WARNING if the query fails, and forced to `1` under `legacy`.|
+
 ## Code Reference<a name="en-us_TOPIC_0000001456375372"></a>
 
 ### Introduction<a name="en-us_TOPIC_0000001456375408"></a>

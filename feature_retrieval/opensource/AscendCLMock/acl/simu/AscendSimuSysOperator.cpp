@@ -189,6 +189,7 @@ void TopkIvfRabitqFp32Operator(aclopHandle &opHandle)
     const int64_t *idAddresses = static_cast<const int64_t *>(opHandle.inputData[2].data);
     const uint32_t *blockSizes = static_cast<const uint32_t *>(opHandle.inputData[3].data);
     const int64_t *blocksPerQuery = static_cast<const int64_t *>(opHandle.inputData[4].data);
+    const int64_t *blockSlots = static_cast<const int64_t *>(opHandle.inputData[7].data);
     float *outDistances = static_cast<float *>(opHandle.outputData[0].data);
     uint64_t *outLabels = static_cast<uint64_t *>(opHandle.outputData[1].data);
 
@@ -202,16 +203,23 @@ void TopkIvfRabitqFp32Operator(aclopHandle &opHandle)
     std::fill(outDistances, outDistances + outputCount, std::numeric_limits<float>::infinity());
     std::fill(outLabels, outLabels + outputCount, std::numeric_limits<uint64_t>::max());
 
-    size_t blockCursor = 0;
+    // The host may fill the grid in any order, so a query's blocks are not contiguous: blockSlots is the only
+    // mapping from (query, i-th block of that query) back to a grid slot, exactly as the real kernel uses it.
+    const size_t slotsPerQuery = opHandle.inputData[7].size / sizeof(int64_t) / batch;
     const size_t blockCapacity =
         std::min(opHandle.inputData[2].size / sizeof(int64_t), opHandle.inputData[3].size / sizeof(uint32_t));
     for (size_t query = 0; query < batch; ++query)
     {
         const size_t queryBlocks = blocksPerQuery[query] > 0 ? static_cast<size_t>(blocksPerQuery[query]) : 0;
         size_t rank = 0;
-        for (size_t block = 0; block < queryBlocks && blockCursor + block < blockCapacity && rank < k; ++block)
+        for (size_t block = 0; block < queryBlocks && block < slotsPerQuery && rank < k; ++block)
         {
-            const size_t current = blockCursor + block;
+            const int64_t slot = blockSlots[query * slotsPerQuery + block];
+            if (slot < 0 || static_cast<size_t>(slot) >= blockCapacity)
+            {
+                continue;
+            }
+            const size_t current = static_cast<size_t>(slot);
             const auto *ids = reinterpret_cast<const int64_t *>(idAddresses[current]);
             if (ids == nullptr)
             {
@@ -223,7 +231,6 @@ void TopkIvfRabitqFp32Operator(aclopHandle &opHandle)
                 outDistances[query * k + rank] = static_cast<float>(rank);
             }
         }
-        blockCursor += queryBlocks;
     }
 }
 

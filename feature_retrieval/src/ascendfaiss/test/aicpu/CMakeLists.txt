@@ -25,7 +25,15 @@ set(OP_IMPL_FILES
     ${OP_PATH}/topk_ivfpq_l3_cpu_kernel.cpp
     ${OP_PATH}/topk_ivf_fuzzy_cpu_kernel.cpp
     ${OP_PATH}/topk_ivfsqt_l1_cpu_kernel.cpp
+    ${OP_PATH}/topk_ivf_rabitq_fp32_cpu_kernel.cpp
 )
+
+# The rabitq kernel includes roaring.h for the ROARING id-filter mode, so the UT target needs the same
+# amalgamation the production aicpu library builds against. Guarded the way the other consumers guard it: the
+# module is include-once and sets CROARING_AMALGAM_C as its sentinel.
+if(NOT DEFINED CROARING_AMALGAM_C)
+    include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/CRoaringAmalgam.cmake)
+endif()
 set(OP_UTIL_FILES
     ${OP_PATH}/utils/kernel_utils.cpp
 )
@@ -35,6 +43,7 @@ set(TEST_FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/test_topk_ivf.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/test_topk_ivf_fuzzy.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/test_topk_ivfsqt_l1.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_topk_ivf_rabitq_layout.cc
 )
 
 message(STATUS "OP_IMPL_FILES=${OP_IMPL_FILES}")
@@ -42,6 +51,7 @@ set(_cpu_kernels_llt_files
     ${TEST_FILES}
     ${OP_IMPL_FILES}
     ${OP_UTIL_FILES}
+    ${CROARING_AMALGAM_C}
 )
 
 link_directories(
@@ -60,6 +70,7 @@ target_include_directories(cpu_kernels_llt PRIVATE
     ${INDEX_ROOT}/ascenddaemon/utils
     ${OP_PATH}
     ${OP_PATH}/utils
+    ${CROARING_AMALGAM_INCLUDE_DIR}
     /usr/local/Ascend/driver/include/dvpp
     ${ASCEND_CUSTOM_PATH}/include/
 )

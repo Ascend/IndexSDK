@@ -76,6 +76,7 @@ enum TopkIvfRabitqAttrIdx : int32_t
     TOPK_IVF_RABITQ_ATTR_SEL_AUX0_IDX,
     TOPK_IVF_RABITQ_ATTR_SEL_AUX1_IDX,
     TOPK_IVF_RABITQ_ATTR_SEL_NEGATE_IDX,
+    TOPK_IVF_RABITQ_ATTR_LAYOUT_MODE_IDX,
     TOPK_IVF_RABITQ_ATTR_IDX_COUNT,
 };
 
@@ -105,6 +106,37 @@ struct RabitqSortedPrefixPayloadHeader
     int64_t prefixBucketCount;
     int64_t prefixOffsetBytes;
 };
+
+// Order the host fills the L2 distance grid in, and therefore the order the AI Core produces blocks and
+// the order TopK can consume them. Only the MODE travels to the kernel: it decides whether a query's
+// blocks are contiguous in the grid, which is all the kernel needs to know to address them. The group
+// granularity shapes the host-side fill alone and stays host-local.
+//
+// LEGACY is query-major contiguous: every block of query 0, then query 1, and so on. Later queries start
+// late and finish late -- a staircase. GROUPED round-robins within a window of `group` consecutive queries
+// and runs the windows back to back: a window's queries finish together and the next window starts on the
+// threads that just freed up. group=1 degenerates to the LEGACY order.
+enum TopkIvfRabitqLayoutMode : int32_t
+{
+    RABITQ_LAYOUT_LEGACY = 0,
+    RABITQ_LAYOUT_GROUPED,
+    RABITQ_LAYOUT_MODE_COUNT,
+};
+
+// Fallback AI CPU count for the GROUPED window, used only when the device cannot be asked: a window is
+// only ever drained `AICPU_NUM` queries at a time, so a wider one just delays every query's finish.
+//
+// The host normally resolves this at runtime from ACL (ACL_DEV_ATTR_AICPU_CORE_NUM; see
+// ResolveTopkGroupSize in IndexIVFRaBitQ.cpp) so a deployment never has to declare its own ctrl:AI CPU
+// split. This constant is what that query falls back to when no device is set yet, the ACL version
+// predates the attribute, or the code runs against a simulator. The value is the same one the other AI CPU
+// kernels cap their thread count at (THREAD_CNT), so the fallback matches long-standing behaviour.
+//
+// Note the two counts are not identical: ACL reports the device's AI CPU count, whereas the kernel sees
+// the per-context count via CpuKernelUtils::GetCPUNum (which it already mins with nq). On a shared card
+// the host therefore reads high, which costs parallelism but never correctness -- blockSlots is an
+// explicit bijection the kernel reads back, so the window width never affects which block a query scans.
+constexpr int64_t TOPK_IVF_RABITQ_AICPU_NUM = 6;
 
 enum TopkIvfpqL3AttrIdx : int32_t
 {

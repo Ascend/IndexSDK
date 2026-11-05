@@ -54,6 +54,13 @@ void orthonormalinit(std::vector<float>& matrix, int seed, int inputDim, int out
 }  // namespace ascend
 }  // namespace faiss
 
+namespace ascend
+{
+// Also kept in the implementation file; declared here so the UT can build the same slot plan the production
+// fill path builds and assert the two agree. See the block-grid tests at the bottom of this file.
+void BuildBlockSlotPlan(const std::vector<int64_t>& blockNumPerQ, size_t maxBlocksPerQ, int64_t group, int64_t* slots);
+}  // namespace ascend
+
 namespace
 {
 using testing::ElementsAre;
@@ -1305,6 +1312,337 @@ TEST(TestAscendIndexIVFRaBitQ, SearchParametersIVFInvalidNprobe)
         std::cout << "Exception in SearchParametersIVFInvalidNprobe test: " << msg << std::endl;
     }
     EXPECT_EQ(msg, "");
+}
+
+// ---------------------------------------------------------------------------
+// The host half of the block-slot contract.
+//
+// BuildBlockSlotPlan decides which absolute grid slot each block owns; fillDisOpInputDataByBlock must write
+// that block's eight per-block arrays into exactly that slot; the TopK kernel reads them back through
+// blockSlots[q][i]. A disagreement between the plan and the fill does not fail the search -- it silently
+// scores one query's block under another query, so the only symptom is quietly lower recall. These tests
+// assert the agreement directly instead of hoping a recall number notices.
+// ---------------------------------------------------------------------------
+
+constexpr size_t GRID_CORE_NUM = 4;
+
+// One logical block as the probe walk sees it, before the layout has any say in where it goes.
+struct LogicalBlock
+{
+    int64_t listId = 0;
+    size_t segIdx = 0;
+    float centroidL2 = 0.0f;
+};
+
+struct ProbePlan
+{
+    size_t batch = 0;
+    size_t width = 0;
+    std::vector<int64_t> listIds;
+    std::vector<float> centroidL2;
+};
+
+// Grows a list to `numVecs` vectors through the production resize path, so the block split, the arena
+// addresses and the pBaseFp32/pIndexL2/pIndexL1 minima are the real ones rather than a test's guess.
+void SeedList(::ascend::IndexIVFRaBitQ* index, int listId, size_t numVecs)
+{
+    ASSERT_EQ(index->resize(listId, numVecs), ::ascend::APP_ERR_OK);
+    index->listVecNum[static_cast<size_t>(listId)] += numVecs;
+    index->deviceListIndices[static_cast<size_t>(listId)]->resize(numVecs, false);
+}
+
+// Lists holding 1, 2, 3 and 1 blocks, probed so the six queries own 2, 5, 5, 2, 5 and 4 blocks. Unequal
+// per-query block counts are the only shape in which an off-by-one in the emit order or in the row stride can
+// still look plausible, and 23 blocks over 4 cores leaves a partial final iteration.
+ProbePlan SeedRaggedBatch(::ascend::IndexIVFRaBitQ* index)
+{
+    const size_t chunk = static_cast<size_t>(index->blockSize);
+    SeedList(index, 0, 100);
+    SeedList(index, 1, chunk + 100);
+    SeedList(index, 2, 2 * chunk + 100);
+    SeedList(index, 3, 50);
+
+    ProbePlan plan;
+    plan.batch = 6;
+    plan.width = 2;
+    plan.listIds = {0, 3, 1, 2, 2, 1, 0, 3, 1, 2, 2, 0};
+    plan.centroidL2.resize(plan.listIds.size());
+    for (size_t i = 0; i < plan.centroidL2.size(); ++i)
+    {
+        // Distinct per probe, so a block written into the wrong slot shows up as a mismatched centroid
+        // distance rather than blending in with its neighbour.
+        plan.centroidL2[i] = 0.5f + static_cast<float>(i);
+    }
+    return plan;
+}
+
+std::vector<std::vector<LogicalBlock>> WalkProbes(const ::ascend::IndexIVFRaBitQ* index, const ProbePlan& plan)
+{
+    std::vector<std::vector<LogicalBlock>> perQuery(plan.batch);
+    for (size_t q = 0; q < plan.batch; ++q)
+    {
+        for (size_t t = 0; t < plan.width; ++t)
+        {
+            const size_t probe = q * plan.width + t;
+            const int64_t listId = plan.listIds[probe];
+            const size_t blocks = index->baseFp32[static_cast<size_t>(listId)].size();
+            for (size_t seg = 0; seg < blocks; ++seg)
+            {
+                LogicalBlock blk;
+                blk.listId = listId;
+                blk.segIdx = seg;
+                blk.centroidL2 = plan.centroidL2[probe];
+                perQuery[q].push_back(blk);
+            }
+        }
+    }
+    return perQuery;
+}
+
+// Everything fillDisOpInputDataByBlock writes, kept together so a test can hand the eight tensors over and
+// then read the raw grids back.
+struct BlockGrid
+{
+    size_t iterNum = 0;
+    std::vector<uint32_t> queryId;
+    std::vector<uint32_t> centroidsId;
+    std::vector<float> centroidsL2;
+    std::vector<uint32_t> baseSize;
+    std::vector<uint64_t> offset;
+    std::vector<uint64_t> indexL2Offset;
+    std::vector<uint64_t> indexL1Offset;
+    std::vector<int64_t> ids;
+    std::vector<int64_t> blockNumPerQ;
+    std::vector<int64_t> slots;
+};
+
+// Drives the production fill for one layout. `group` is the plan's window width: 1 reproduces the
+// query-major legacy order, larger values interleave that many queries.
+BlockGrid FillGrid(::ascend::IndexIVFRaBitQ* index, const ProbePlan& plan, int64_t group)
+{
+    std::vector<int64_t> blockNumPlan;
+    std::vector<int64_t> probeIds = plan.listIds;
+    std::vector<float> probeDists = plan.centroidL2;
+    ::ascend::AscendTensor<int64_t, ::ascend::DIMS_2> probeIdsHost(
+        probeIds.data(), {static_cast<int>(plan.batch), static_cast<int>(plan.width)});
+    ::ascend::AscendTensor<float, ::ascend::DIMS_2> probeDistsHost(
+        probeDists.data(), {static_cast<int>(plan.batch), static_cast<int>(plan.width)});
+    const size_t maxBlocksPerQ = index->getBlockNumPerQ(plan.batch, probeIdsHost, blockNumPlan);
+
+    int64_t total = 0;
+    for (size_t q = 0; q < plan.batch; ++q)
+    {
+        total += blockNumPlan[q];
+    }
+
+    BlockGrid grid;
+    grid.iterNum = (static_cast<size_t>(total) + GRID_CORE_NUM - 1) / GRID_CORE_NUM;
+    const size_t cells = grid.iterNum * GRID_CORE_NUM;
+    // Sentinels rather than zeros: a cell the fill never touches has to be distinguishable from a cell it
+    // legitimately filled with query 0 / list 0 / offset 0.
+    grid.queryId.assign(cells, 0xFFFFFFFFu);
+    grid.centroidsId.assign(cells, 0xFFFFFFFFu);
+    grid.centroidsL2.assign(cells, -1.0f);
+    grid.baseSize.assign(cells, 0xFFFFFFFFu);
+    grid.offset.assign(cells, 0xFFFFFFFFFFFFFFFFull);
+    grid.indexL2Offset.assign(cells, 0xFFFFFFFFFFFFFFFFull);
+    grid.indexL1Offset.assign(cells, 0xFFFFFFFFFFFFFFFFull);
+    grid.ids.assign(cells, -1);
+    grid.blockNumPerQ.assign(plan.batch, -1);
+    grid.slots.assign(plan.batch * maxBlocksPerQ, -1);
+
+    ::ascend::BuildBlockSlotPlan(blockNumPlan, maxBlocksPerQ, group, grid.slots.data());
+
+    ::ascend::AscendTensor<uint32_t, ::ascend::DIMS_2, size_t> queryIdVec(grid.queryId.data(),
+                                                                          {grid.iterNum, GRID_CORE_NUM});
+    ::ascend::AscendTensor<uint32_t, ::ascend::DIMS_2, size_t> centroidsIdVec(grid.centroidsId.data(),
+                                                                              {grid.iterNum, GRID_CORE_NUM});
+    ::ascend::AscendTensor<float, ::ascend::DIMS_2, size_t> centroidsL2Vec(grid.centroidsL2.data(),
+                                                                           {grid.iterNum, GRID_CORE_NUM});
+    ::ascend::AscendTensor<uint32_t, ::ascend::DIMS_2, size_t> baseSizeVec(grid.baseSize.data(),
+                                                                           {grid.iterNum, GRID_CORE_NUM});
+    ::ascend::AscendTensor<uint64_t, ::ascend::DIMS_2, size_t> offsetVec(grid.offset.data(),
+                                                                         {grid.iterNum, GRID_CORE_NUM});
+    ::ascend::AscendTensor<uint64_t, ::ascend::DIMS_2, size_t> indexL2OffsetVec(grid.indexL2Offset.data(),
+                                                                                {grid.iterNum, GRID_CORE_NUM});
+    ::ascend::AscendTensor<uint64_t, ::ascend::DIMS_2, size_t> indexL1OffsetVec(grid.indexL1Offset.data(),
+                                                                                {grid.iterNum, GRID_CORE_NUM});
+    ::ascend::AscendTensor<int64_t, ::ascend::DIMS_2, size_t> idsVec(grid.ids.data(), {grid.iterNum, GRID_CORE_NUM});
+    ::ascend::AscendTensor<int64_t, ::ascend::DIMS_1, size_t> blockNumPerQVec(grid.blockNumPerQ.data(), {plan.batch});
+
+    index->fillDisOpInputDataByBlock(plan.batch, GRID_CORE_NUM, static_cast<size_t>(index->blockSize), queryIdVec,
+                                     centroidsIdVec, centroidsL2Vec, baseSizeVec, offsetVec, indexL2OffsetVec,
+                                     indexL1OffsetVec, idsVec, blockNumPerQVec, probeIdsHost, probeDistsHost,
+                                     grid.slots.data(), maxBlocksPerQ);
+    return grid;
+}
+
+TEST(TestIndexIVFRaBitQCore, BlockGridFillFollowsTheSlotPlan)
+{
+    faiss::ascend::AscendIndexIVFRaBitQ hostIndex(DIM, faiss::METRIC_L2, NLIST, MakeConfig());
+    auto actual = hostIndex.impl_->getActualIndex(0);
+    ASSERT_NE(actual, nullptr);
+
+    const ProbePlan plan = SeedRaggedBatch(actual);
+    const auto expected = WalkProbes(actual, plan);
+    const size_t chunk = static_cast<size_t>(actual->blockSize);
+
+    // group=1 is the legacy order, 4 and 6 straddle the AI CPU count, 8 is wider than the batch so the
+    // window clamps.
+    const int64_t groups[] = {1, 2, 4, 6, 8};
+    for (int64_t group : groups)
+    {
+        const BlockGrid grid = FillGrid(actual, plan, group);
+        const size_t maxBlocksPerQ = grid.slots.size() / plan.batch;
+        std::vector<int> timesWritten(grid.iterNum * GRID_CORE_NUM, 0);
+
+        for (size_t q = 0; q < plan.batch; ++q)
+        {
+            EXPECT_EQ(grid.blockNumPerQ[q], static_cast<int64_t>(expected[q].size()))
+                << "group=" << group << " q=" << q;
+
+            for (size_t i = 0; i < expected[q].size(); ++i)
+            {
+                const LogicalBlock& blk = expected[q][i];
+                const int64_t slot = grid.slots[q * maxBlocksPerQ + i];
+                ASSERT_GE(slot, 0) << "group=" << group << " q=" << q << " i=" << i;
+                // The grid is addressed as [slot / coreNum][slot % coreNum]; these tensors are row-major
+                // with width coreNum, so that is the flat cell the fill must have written.
+                const size_t iter = static_cast<size_t>(slot) / GRID_CORE_NUM;
+                const size_t cIdx = static_cast<size_t>(slot) % GRID_CORE_NUM;
+                ASSERT_LT(iter, grid.iterNum) << "group=" << group << " slot=" << slot;
+                const size_t cell = iter * GRID_CORE_NUM + cIdx;
+                timesWritten[cell]++;
+
+                const size_t listId = static_cast<size_t>(blk.listId);
+                const size_t listNum = actual->deviceListIndices[listId]->size();
+                // The values themselves are how a block is identified; what is under test is that this
+                // block's values landed in the slot the plan handed it and in no other.
+                EXPECT_EQ(grid.queryId[cell], static_cast<uint32_t>(q)) << "group=" << group << " slot=" << slot;
+                EXPECT_EQ(grid.centroidsId[cell], static_cast<uint32_t>(blk.listId))
+                    << "group=" << group << " slot=" << slot;
+                EXPECT_FLOAT_EQ(grid.centroidsL2[cell], blk.centroidL2) << "group=" << group << " slot=" << slot;
+                EXPECT_EQ(grid.baseSize[cell], static_cast<uint32_t>(std::min(listNum - blk.segIdx * chunk, chunk)))
+                    << "group=" << group << " slot=" << slot;
+                EXPECT_EQ(grid.ids[cell],
+                          reinterpret_cast<int64_t>(actual->deviceListIndices[listId]->data() + blk.segIdx * chunk))
+                    << "group=" << group << " slot=" << slot;
+                EXPECT_EQ(grid.offset[cell],
+                          reinterpret_cast<uint64_t>(actual->baseFp32[listId].at(blk.segIdx)->data()) -
+                              reinterpret_cast<uint64_t>(actual->pBaseFp32))
+                    << "group=" << group << " slot=" << slot;
+                EXPECT_EQ(grid.indexL2Offset[cell],
+                          reinterpret_cast<uint64_t>(actual->IndexL2OnDevice[listId]->data() + blk.segIdx * chunk) -
+                              reinterpret_cast<uint64_t>(actual->pIndexL2))
+                    << "group=" << group << " slot=" << slot;
+                EXPECT_EQ(grid.indexL1Offset[cell],
+                          reinterpret_cast<uint64_t>(actual->IndexL1OnDevice[listId]->data() + blk.segIdx * chunk) -
+                              reinterpret_cast<uint64_t>(actual->pIndexL1))
+                    << "group=" << group << " slot=" << slot;
+            }
+
+            // Columns past this query's block count belong to no block and must stay at the sentinel the
+            // caller seeds, otherwise a plain 0 there would alias grid slot 0.
+            for (size_t i = expected[q].size(); i < maxBlocksPerQ; ++i)
+            {
+                EXPECT_EQ(grid.slots[q * maxBlocksPerQ + i], -1) << "group=" << group << " q=" << q << " i=" << i;
+            }
+        }
+
+        size_t written = 0;
+        for (size_t cell = 0; cell < timesWritten.size(); ++cell)
+        {
+            EXPECT_LE(timesWritten[cell], 1) << "group=" << group << " cell=" << cell;
+            if (timesWritten[cell] == 1)
+            {
+                ++written;
+                continue;
+            }
+            // The grid is rounded up to a whole iteration, so the tail cells are never claimed.
+            EXPECT_EQ(grid.queryId[cell], 0xFFFFFFFFu) << "group=" << group << " cell=" << cell;
+            EXPECT_EQ(grid.ids[cell], -1) << "group=" << group << " cell=" << cell;
+        }
+        size_t totalBlocks = 0;
+        for (size_t q = 0; q < plan.batch; ++q)
+        {
+            totalBlocks += expected[q].size();
+        }
+        EXPECT_EQ(written, totalBlocks) << "group=" << group;
+    }
+}
+
+TEST(TestIndexIVFRaBitQCore, LegacyGroupKeepsEachQueryContiguous)
+{
+    faiss::ascend::AscendIndexIVFRaBitQ hostIndex(DIM, faiss::METRIC_L2, NLIST, MakeConfig());
+    auto actual = hostIndex.impl_->getActualIndex(0);
+    ASSERT_NE(actual, nullptr);
+
+    const ProbePlan plan = SeedRaggedBatch(actual);
+    const auto expected = WalkProbes(actual, plan);
+
+    // group=1 must reproduce the pre-layout addressing exactly: query q's blocks occupy the run of slots
+    // starting at the sum of the preceding queries' block counts. That is what lets LEGACY keep the
+    // kernel's contiguous shortcut instead of indirecting through blockSlots.
+    const BlockGrid legacy = FillGrid(actual, plan, 1);
+    const size_t maxBlocksPerQ = legacy.slots.size() / plan.batch;
+    int64_t prefix = 0;
+    for (size_t q = 0; q < plan.batch; ++q)
+    {
+        for (size_t i = 0; i < expected[q].size(); ++i)
+        {
+            EXPECT_EQ(legacy.slots[q * maxBlocksPerQ + i], prefix + static_cast<int64_t>(i)) << "q=" << q;
+        }
+        prefix += static_cast<int64_t>(expected[q].size());
+    }
+
+    // A wider window must still be a permutation of the same slots -- it reorders the grid, it does not
+    // change which blocks are in it or how many.
+    const BlockGrid grouped = FillGrid(actual, plan, 6);
+    std::vector<int64_t> legacySlots;
+    std::vector<int64_t> groupedSlots;
+    for (size_t q = 0; q < plan.batch; ++q)
+    {
+        for (size_t i = 0; i < expected[q].size(); ++i)
+        {
+            legacySlots.push_back(legacy.slots[q * maxBlocksPerQ + i]);
+            groupedSlots.push_back(grouped.slots[q * maxBlocksPerQ + i]);
+        }
+    }
+    std::sort(legacySlots.begin(), legacySlots.end());
+    std::sort(groupedSlots.begin(), groupedSlots.end());
+    EXPECT_EQ(legacySlots, groupedSlots);
+    EXPECT_EQ(legacy.blockNumPerQ, grouped.blockNumPerQ);
+}
+
+TEST(TestIndexIVFRaBitQCore, BlockNumPlanMatchesTheProbeWalkWidth)
+{
+    faiss::ascend::AscendIndexIVFRaBitQ hostIndex(DIM, faiss::METRIC_L2, NLIST, MakeConfig());
+    auto actual = hostIndex.impl_->getActualIndex(0);
+    ASSERT_NE(actual, nullptr);
+
+    const ProbePlan plan = SeedRaggedBatch(actual);
+    const auto expected = WalkProbes(actual, plan);
+
+    std::vector<int64_t> probeIds = plan.listIds;
+    ::ascend::AscendTensor<int64_t, ::ascend::DIMS_2> probeIdsHost(
+        probeIds.data(), {static_cast<int>(plan.batch), static_cast<int>(plan.width)});
+    std::vector<int64_t> blockNumPlan;
+    const size_t maxBlocksPerQ = actual->getBlockNumPerQ(plan.batch, probeIdsHost, blockNumPlan);
+
+    // getBlockNumPerQ sizes the slot table; the fill walks the probes again to decide how many blocks it
+    // actually emits. If the two ever disagreed on the probe width the rows would be the wrong size and the
+    // fill would run off the end of a row into the next query's slots.
+    ASSERT_EQ(blockNumPlan.size(), plan.batch);
+    size_t widest = 0;
+    for (size_t q = 0; q < plan.batch; ++q)
+    {
+        EXPECT_EQ(blockNumPlan[q], static_cast<int64_t>(expected[q].size())) << "q=" << q;
+        widest = std::max(widest, expected[q].size());
+    }
+    EXPECT_EQ(maxBlocksPerQ, widest);
+
+    const BlockGrid grid = FillGrid(actual, plan, 6);
+    EXPECT_EQ(grid.blockNumPerQ, blockNumPlan);
 }
 
 }  // namespace

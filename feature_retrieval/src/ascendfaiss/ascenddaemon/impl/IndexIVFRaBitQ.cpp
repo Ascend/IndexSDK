@@ -25,6 +25,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <limits>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -183,7 +184,97 @@ void ReserveExpanded(DeviceVector<uint8_t> &vec, size_t needBytes, size_t hardCa
     const size_t capBytes = ExpandCapacity(needBytes, hardCapBytes);
     vec.reserve(capBytes);
 }
+
+// The GROUPED window width, resolved from the device rather than configured. It has to match what the
+// TopK kernel can actually drain in parallel, which is min(GetCPUNum(ctx), nq): a window wider than that
+// just delays every query's finish, and a narrower one leaves threads idle. The min(nq) half is applied by
+// BuildBlockSlotPlan, so only the AI CPU count is resolved here.
+//
+// ACL reports the device's AI CPU count, not the per-context count the kernel sees, so on a card shared by
+// several index instances this reads high. That is safe in both directions -- blockSlots is an explicit
+// bijection the kernel reads back, so the width only ever costs parallelism, never correctness -- and a
+// too-wide window degenerates to the per-block round-robin that LEGACY already represents.
+//
+// Returns false when the device cannot answer (no device set on this thread yet, an ACL version without the
+// attribute, a simulator), leaving `width` untouched so the caller keeps whatever it had. Reporting failure
+// rather than silently substituting the constant is what lets the caller retry later: the index is often
+// constructed before aclrtSetDevice runs, and a one-shot resolve would pin the fallback for the process's
+// lifetime even after the device became available. The return code is checked rather than the value: a
+// failed query leaves `aicpuNum` untouched, and trusting it would size every window at 0.
+bool TryResolveTopkGroupSize(int64_t &width)
+{
+    int32_t deviceId = -1;
+    if (aclrtGetDevice(&deviceId) != ACL_ERROR_NONE)
+    {
+        return false;
+    }
+
+    int32_t aicpuNum = 0;
+    aclError ret = aclrtGetDeviceCapability(deviceId, ACL_DEV_ATTR_AICPU_CORE_NUM, &aicpuNum);
+    if (ret != ACL_ERROR_NONE || aicpuNum <= 0)
+    {
+        APP_LOG_WARNING(
+            "aclrtGetDeviceCapability(ACL_DEV_ATTR_AICPU_CORE_NUM) returned %d (value %d) on device %d; "
+            "keeping the TopK group window at %ld\n",
+            static_cast<int>(ret), aicpuNum, deviceId, static_cast<long>(width));
+        return false;
+    }
+    width = static_cast<int64_t>(aicpuNum);
+    return true;
+}
+
+int64_t GetLayoutModeEnv(const char *name, int64_t defVal)
+{
+    const char *raw = std::getenv(name);
+    if (raw == nullptr || raw[0] == '\0')
+    {
+        return defVal;
+    }
+    if (std::strcmp(raw, "legacy") == 0)
+    {
+        return aicpu::RABITQ_LAYOUT_LEGACY;
+    }
+    if (std::strcmp(raw, "group") == 0 || std::strcmp(raw, "grouped") == 0)
+    {
+        return aicpu::RABITQ_LAYOUT_GROUPED;
+    }
+    return defVal;
+}
+
 }  // namespace
+
+// Decides which absolute grid slot each block goes to: the i-th block emitted owns slot i, and the slot is
+// written back into `slots` at [query][i-th block of that query] so the kernel can find it again. `group` is
+// how many consecutive queries stay in flight together -- group=1 emits one query's blocks before touching
+// the next, which is exactly the query-major legacy order.
+// Kept out of the anonymous namespace so the UT can assert the plan and fillDisOpInputDataByBlock agree; the
+// bijection between the two is silent when broken and only shows up as quietly lower recall.
+void BuildBlockSlotPlan(const std::vector<int64_t> &blockNumPerQ, size_t maxBlocksPerQ, int64_t group, int64_t *slots)
+{
+    const size_t batch = blockNumPerQ.size();
+    const size_t window = std::min<size_t>(batch, group > 0 ? static_cast<size_t>(group) : 1);
+    std::vector<int64_t> emitted(batch, 0);
+    int64_t slot = 0;
+    for (size_t winStart = 0; winStart < batch; winStart += window)
+    {
+        const size_t winEnd = std::min(batch, winStart + window);
+        bool progressed = true;
+        while (progressed)
+        {
+            progressed = false;
+            for (size_t qIdx = winStart; qIdx < winEnd; ++qIdx)
+            {
+                if (emitted[qIdx] >= blockNumPerQ[qIdx])
+                {
+                    continue;
+                }
+                slots[qIdx * maxBlocksPerQ + static_cast<size_t>(emitted[qIdx])] = slot++;
+                emitted[qIdx]++;
+                progressed = true;
+            }
+        }
+    }
+}
 
 const int IVF_RABITQ_BLOCK_SIZE = 16384 * 2;
 const int SCAN_BIT = 8;
@@ -236,6 +327,22 @@ IndexIVFRaBitQ::IndexIVFRaBitQ(int numList, int dim, int nprobes, const std::str
     distResultOnDevice = CREATE_UNIQUE_PTR(DeviceVector<float>, MemorySpace::DEVICE_HUGEPAGE);
     distResultSpace = CORE_NUM * static_cast<size_t>(IVF_RABITQ_BLOCK_SIZE);
     distResultOnDevice->resize(distResultSpace);
+    // The window is the device's AI CPU count: that is how many of a window's queries the TopK kernel can
+    // actually drain in parallel, so widening it only delays every finish. See TryResolveTopkGroupSize.
+    // The index is routinely constructed before this thread has a device set, so a failure here is normal
+    // and not fatal: the constant stands in until the first search retries the query (see
+    // EnsureTopkGroupSizeResolved).
+    // LEGACY is kept only as the A/B baseline; it is the same fill order as group=1, so it needs no
+    // separate path beyond the kernel's contiguous addressing shortcut.
+    topkLayoutMode_ = GetLayoutModeEnv("IVFRABITQ_TOPK_LAYOUT", aicpu::RABITQ_LAYOUT_GROUPED);
+    topkGroupSize_ = aicpu::TOPK_IVF_RABITQ_AICPU_NUM;
+    topkGroupSizeResolved_ = TryResolveTopkGroupSize(topkGroupSize_);
+    if (topkLayoutMode_ == aicpu::RABITQ_LAYOUT_LEGACY)
+    {
+        topkGroupSize_ = 1;
+        // Nothing left to resolve: LEGACY emits one query's blocks at a time regardless of the AI CPU count.
+        topkGroupSizeResolved_ = true;
+    }
     auto ret = resetL1TopkOp();
     ASCEND_THROW_IF_NOT_MSG(ret == APP_ERR_OK, "resetL1TopkOp failed!");
     ret = resetL1DistOp();
@@ -1211,6 +1318,7 @@ APP_ERROR IndexIVFRaBitQ::resetL2TopkOp()
         std::vector<int64_t> shape4{batch};
         std::vector<int64_t> shape5{0, 32};
         std::vector<int64_t> shape6{aicpu::TOPK_IVF_RABITQ_ATTR_IDX_COUNT};
+        std::vector<int64_t> shapeSlots{batch, 0};
 
         std::vector<int64_t> shape7{batch, 0};
 
@@ -1221,6 +1329,7 @@ APP_ERROR IndexIVFRaBitQ::resetL2TopkOp()
         desc.addInputTensorDesc(ACL_INT64, shape4.size(), shape4.data(), ACL_FORMAT_ND);
         desc.addInputTensorDesc(ACL_UINT16, shape5.size(), shape5.data(), ACL_FORMAT_ND);
         desc.addInputTensorDesc(ACL_INT64, shape6.size(), shape6.data(), ACL_FORMAT_ND);
+        desc.addInputTensorDesc(ACL_INT64, shapeSlots.size(), shapeSlots.data(), ACL_FORMAT_ND);
 
         desc.addOutputTensorDesc(ACL_FLOAT, shape7.size(), shape7.data(), ACL_FORMAT_ND);
         desc.addOutputTensorDesc(ACL_UINT64, shape7.size(), shape7.data(), ACL_FORMAT_ND);
@@ -1240,17 +1349,15 @@ APP_ERROR IndexIVFRaBitQ::resetL2TopkOp()
     return APP_ERR_OK;
 }
 
-void IndexIVFRaBitQ::runL2TopkOp(int batch, AscendTensor<float, DIMS_2, size_t> &distResult,
-                                 AscendTensor<float, DIMS_2, size_t> &vmdistResult,
-                                 AscendTensor<int64_t, DIMS_2, size_t> &ids,
-                                 AscendTensor<uint32_t, DIMS_2, size_t> &sizes,
-                                 AscendTensor<int64_t, DIMS_1, size_t> &blockNumPerQ,
-                                 AscendTensor<uint16_t, DIMS_2, size_t> &flags, AscendTensor<int64_t, DIMS_1> &attrs,
-                                 AscendTensor<float, DIMS_2, size_t> &outdists,
-                                 AscendTensor<uint64_t, DIMS_2, size_t> &outlabel, aclrtStream stream)
+void IndexIVFRaBitQ::runL2TopkOp(
+    int batch, AscendTensor<float, DIMS_2, size_t> &distResult, AscendTensor<float, DIMS_2, size_t> &vmdistResult,
+    AscendTensor<int64_t, DIMS_2, size_t> &ids, AscendTensor<uint32_t, DIMS_2, size_t> &sizes,
+    AscendTensor<int64_t, DIMS_1, size_t> &blockNumPerQ, AscendTensor<uint16_t, DIMS_2, size_t> &flags,
+    AscendTensor<int64_t, DIMS_1> &attrs, AscendTensor<int64_t, DIMS_2, size_t> &blockSlots,
+    AscendTensor<float, DIMS_2, size_t> &outdists, AscendTensor<uint64_t, DIMS_2, size_t> &outlabel, aclrtStream stream)
 {
-    std::vector<const AscendTensorBase *> input{&distResult,   &vmdistResult, &ids,  &sizes,
-                                                &blockNumPerQ, &flags,        &attrs};
+    std::vector<const AscendTensorBase *> input{&distResult,   &vmdistResult, &ids,   &sizes,
+                                                &blockNumPerQ, &flags,        &attrs, &blockSlots};
     std::vector<const AscendTensorBase *> output{&outdists, &outlabel};
     AscendOperator *op = nullptr;
     if (topkL2Fp32.find(batch) != topkL2Fp32.end())
@@ -1404,13 +1511,14 @@ void IndexIVFRaBitQ::fillDisOpInputDataByBlock(
     AscendTensor<uint64_t, DIMS_2, size_t> &indexl2OffsetHostVec,
     AscendTensor<uint64_t, DIMS_2, size_t> &indexl1OffsetHostVec, AscendTensor<int64_t, DIMS_2, size_t> &idsHostVec,
     AscendTensor<int64_t, DIMS_1, size_t> &blockNumPerQHostVec, AscendTensor<int64_t, DIMS_2> &l1TopNprobeIndicesHost,
-    AscendTensor<float, DIMS_2> &l1TopNprobeDistsHost)
+    AscendTensor<float, DIMS_2> &l1TopNprobeDistsHost, const int64_t *slotPlan, size_t maxBlocksPerQ)
 {
-    size_t cIdx = 0;
-    size_t iter = 0;
     for (size_t qIdx = 0; qIdx < batch; qIdx++)
     {
         int64_t blockNumPerQ = 0;
+        size_t emitted = 0;
+        // Bound by the actual probe width of this request, not the member nprobe: a request may override it,
+        // and the slot plan was built against the same width.
         for (size_t tIdx = 0; tIdx < static_cast<size_t>(l1TopNprobeIndicesHost.getSize(1)); tIdx++)
         {
             int64_t listId = l1TopNprobeIndicesHost[qIdx][tIdx].value();
@@ -1419,6 +1527,13 @@ void IndexIVFRaBitQ::fillDisOpInputDataByBlock(
             blockNumPerQ += blockNum;
             for (size_t segIdx = 0; segIdx < blockNum; segIdx++)
             {
+                // The slot this block occupies in the grid is dictated by the layout plan, not by the order the
+                // probe walk reaches it: the plan interleaves queries so a window of them finishes together.
+                const int64_t slot = slotPlan[qIdx * maxBlocksPerQ + emitted];
+                const size_t iter = static_cast<size_t>(slot) / coreNum;
+                const size_t cIdx = static_cast<size_t>(slot) % coreNum;
+                emitted++;
+
                 queryidHostVec[iter][cIdx].value(qIdx);
                 centroidsidHostVec[iter][cIdx].value(listId);
                 centroidsl2HostVec[iter][cIdx].value(centerl2);
@@ -1440,13 +1555,28 @@ void IndexIVFRaBitQ::fillDisOpInputDataByBlock(
                     reinterpret_cast<uint64_t>(IndexL1OnDevice[listId]->data() + segIdx * ivfRabitqBlockSize) -
                     reinterpret_cast<uint64_t>(pIndexL1);
                 indexl1OffsetHostVec[iter][cIdx].value(indexl1OffsetSeg);
-
-                cIdx++;
-                iter += cIdx / coreNum;
-                cIdx %= coreNum;
             }
         }
         blockNumPerQHostVec[qIdx].value(blockNumPerQ);
+    }
+}
+
+// Retries the device query that the constructor could not answer. An index is commonly built before the
+// calling thread has run aclrtSetDevice, and resolving only once would pin the compile-time fallback for
+// the life of the process even after a device became available. Once resolved the flag latches, so the
+// steady-state search path costs one bool test; a device that never answers retries once per call, which
+// is two ACL queries against a search that stages thousands of blocks.
+void IndexIVFRaBitQ::EnsureTopkGroupSizeResolved()
+{
+    if (topkGroupSizeResolved_)
+    {
+        return;
+    }
+    if (TryResolveTopkGroupSize(topkGroupSize_))
+    {
+        topkGroupSizeResolved_ = true;
+        APP_LOG_INFO("TopK group window resolved to %ld after the device became available\n",
+                     static_cast<long>(topkGroupSize_));
     }
 }
 
@@ -1456,8 +1586,9 @@ APP_ERROR IndexIVFRaBitQ::fillDisOpInputData(
     AscendTensor<uint32_t, DIMS_2, size_t> &queryid, AscendTensor<uint32_t, DIMS_2, size_t> &centroidsid,
     AscendTensor<float, DIMS_2, size_t> &centroidsl2, AscendTensor<uint32_t, DIMS_2, size_t> &baseSize,
     AscendTensor<int64_t, DIMS_2, size_t> &ids, AscendTensor<int64_t, DIMS_1, size_t> &blockNumPerQ,
-    AscendTensor<int64_t, DIMS_1> &attrs, AscendTensor<int64_t, DIMS_2> &l1TopNprobeIndicesHost,
-    AscendTensor<float, DIMS_2> &l1TopNprobeDistsHost, aicpu::RabitqIdFilterMode selMode, int64_t selPtr,
+    AscendTensor<int64_t, DIMS_2, size_t> &blockSlots, AscendTensor<int64_t, DIMS_1> &attrs,
+    AscendTensor<int64_t, DIMS_2> &l1TopNprobeIndicesHost, AscendTensor<float, DIMS_2> &l1TopNprobeDistsHost,
+    const std::vector<int64_t> &blockNumPlan, size_t maxBlocksPerQ, aicpu::RabitqIdFilterMode selMode, int64_t selPtr,
     int64_t selAux0, int64_t selAux1, int64_t selNegate)
 {
     size_t iterNum = (totalBlockNum + coreNum - 1) / coreNum;
@@ -1480,10 +1611,17 @@ APP_ERROR IndexIVFRaBitQ::fillDisOpInputData(
     AscendTensor<int64_t, DIMS_2, size_t> idsHostVec(idsHost.data(), {iterNum, coreNum});
     std::vector<int64_t> blockNumPerQHost(batch, 0);
     AscendTensor<int64_t, DIMS_1, size_t> blockNumPerQHostVec(blockNumPerQHost.data(), {batch});
+
+    // -1 marks a slot a query does not own: rows are sized to the widest query, so shorter queries leave a
+    // tail. The kernel stops at blocknums[q] and never reads it, but a plain 0 there would alias grid slot 0.
+    std::vector<int64_t> blockSlotsHost(batch * maxBlocksPerQ, -1);
+    EnsureTopkGroupSizeResolved();
+    BuildBlockSlotPlan(blockNumPlan, maxBlocksPerQ, topkGroupSize_, blockSlotsHost.data());
+
     fillDisOpInputDataByBlock(batch, coreNum, ivfRabitqBlockSize, queryidHostVec, centroidsidHostVec,
                               centroidsl2HostVec, baseSizeHostVec, offsetHostVec, indexl2OffsetHostVec,
                               indexl1OffsetHostVec, idsHostVec, blockNumPerQHostVec, l1TopNprobeIndicesHost,
-                              l1TopNprobeDistsHost);
+                              l1TopNprobeDistsHost, blockSlotsHost.data(), maxBlocksPerQ);
     auto ret = aclrtMemcpy(offset.data(), offset.getSizeInBytes(), offsetHostVec.data(), offsetHostVec.getSizeInBytes(),
                            ACL_MEMCPY_HOST_TO_DEVICE);
     APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "copy offset to device failed %d", ret);
@@ -1511,6 +1649,9 @@ APP_ERROR IndexIVFRaBitQ::fillDisOpInputData(
     ret = aclrtMemcpy(blockNumPerQ.data(), blockNumPerQ.getSizeInBytes(), blockNumPerQHostVec.data(),
                       blockNumPerQHostVec.getSizeInBytes(), ACL_MEMCPY_HOST_TO_DEVICE);
     APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "copy blockNumPerQ to device failed %d", ret);
+    ret = aclrtMemcpy(blockSlots.data(), blockSlots.getSizeInBytes(), blockSlotsHost.data(),
+                      blockSlotsHost.size() * sizeof(int64_t), ACL_MEMCPY_HOST_TO_DEVICE);
+    APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "copy blockSlots to device failed %d", ret);
 
     fillL2TopkOpInputData(k, batch, coreNum, attrs, selMode, selPtr, selAux0, selAux1, selNegate);
     return APP_ERR_OK;
@@ -1539,6 +1680,7 @@ APP_ERROR IndexIVFRaBitQ::fillL2TopkOpInputData(int k, size_t batch, size_t core
     attrsVec[aicpu::TOPK_IVF_RABITQ_ATTR_SEL_AUX0_IDX] = selAux0;
     attrsVec[aicpu::TOPK_IVF_RABITQ_ATTR_SEL_AUX1_IDX] = selAux1;
     attrsVec[aicpu::TOPK_IVF_RABITQ_ATTR_SEL_NEGATE_IDX] = selNegate;
+    attrsVec[aicpu::TOPK_IVF_RABITQ_ATTR_LAYOUT_MODE_IDX] = topkLayoutMode_;
     auto ret = aclrtMemcpy(attrs.data(), attrs.getSizeInBytes(), attrsVec.data(), attrsVec.size() * sizeof(int64_t),
                            ACL_MEMCPY_HOST_TO_DEVICE);
     APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "copy attrs to device failed %d", ret);
@@ -1652,6 +1794,29 @@ size_t IndexIVFRaBitQ::getTotalBlockNum(size_t batch, AscendTensor<int64_t, DIMS
         }
     }
     return totalBlockNum;
+}
+
+size_t IndexIVFRaBitQ::getBlockNumPerQ(size_t batch, AscendTensor<int64_t, DIMS_2> &l1TopNprobeIndicesHost,
+                                       std::vector<int64_t> &blockNumPerQ) const
+{
+    blockNumPerQ.assign(batch, 0);
+    size_t maxBlocksPerQ = 0;
+    for (size_t qIdx = 0; qIdx < batch; qIdx++)
+    {
+        int64_t blockNum = 0;
+        // Must use the same probe width as the emit loop in fillDisOpInputDataByBlock, which is this
+        // request's width and not the member nprobe: a narrower plan would truncate blockSlots rows.
+        for (size_t probId = 0; probId < static_cast<size_t>(l1TopNprobeIndicesHost.getSize(1)); probId++)
+        {
+            int64_t listId = l1TopNprobeIndicesHost[qIdx][probId].value();
+            blockNum += static_cast<int64_t>(baseFp32[listId].size());
+        }
+        blockNumPerQ[qIdx] = blockNum;
+        maxBlocksPerQ = std::max(maxBlocksPerQ, static_cast<size_t>(blockNum));
+    }
+    // A zero-width tensor has no valid device allocation, and a batch where every query probes only empty
+    // lists is already short-circuited by getTotalBlockNum -- keep at least one column so the shape is legal.
+    return std::max<size_t>(maxBlocksPerQ, 1);
 }
 
 void IndexIVFRaBitQ::resizeDistResult(size_t iterNum, size_t coreNum, size_t ivfRabitqBlockSize)
@@ -1827,14 +1992,19 @@ APP_ERROR IndexIVFRaBitQ::searchImplL2(AscendTensor<float, DIMS_2> &queries, Asc
     APPERR_RETURN_IF_NOT_FMT(retCopyDistFilterAttrs == ACL_SUCCESS, APP_ERR_INNER_ERROR,
                              "copy dist filter attrs to device failed %d", retCopyDistFilterAttrs);
 
+    std::vector<int64_t> blockNumPlan;
+    size_t maxBlocksPerQ = getBlockNumPerQ(batch, l1TopNprobeIndicesHost, blockNumPlan);
+    AscendTensor<int64_t, DIMS_2, size_t> blockSlots(mem, {batch, maxBlocksPerQ}, stream);
     fillDisOpInputData(k, batch, totalBlockNum, coreNum, offset, indexl2offset, indexl1offset, queryid, centroidsid,
-                       centroidsl2, baseSize, ids, blocknumPerQ, attrs, l1TopNprobeIndicesHost, l1TopNprobeDistsHost,
-                       topkSelMode, topkSelPtr, topkSelAux0, topkSelAux1, topkSelNegate);
+                       centroidsl2, baseSize, ids, blocknumPerQ, blockSlots, attrs, l1TopNprobeIndicesHost,
+                       l1TopNprobeDistsHost, blockNumPlan, maxBlocksPerQ, topkSelMode, topkSelPtr, topkSelAux0,
+                       topkSelAux1, topkSelNegate);
     AscendTensor<float, DIMS_2, size_t> outDist(mem, {batch, static_cast<size_t>(k)}, stream);
     AscendTensor<idx_t, DIMS_2, size_t> outLabel(mem, {batch, static_cast<size_t>(k)}, stream);
     auto ret = synchronizeStream(stream);
     APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "synchronizeStream default stream: %i\n", ret);
-    runL2TopkOp(batch, disVec, vcMaxDisVec, ids, baseSize, blocknumPerQ, opFlag, attrs, outDist, outLabel, streamAicpu);
+    runL2TopkOp(batch, disVec, vcMaxDisVec, ids, baseSize, blocknumPerQ, opFlag, attrs, blockSlots, outDist, outLabel,
+                streamAicpu);
     callL2DistanceOp(batch, totalBlockNum, coreNum, vcMaxLen, queryL2, queriesLut, centroidsLutVec, queryid,
                      centroidsid, centroidsl2, offset, baseSize, indexl2offset, indexl1offset, opFlag, disVec,
                      vcMaxDisVec, codeVec, Indexl2, Indexl1, ids, distFilterAttrs, stream);
