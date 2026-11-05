@@ -36,6 +36,7 @@ class TopkIvfRabitqfP32CpuKernel : public CpuKernel
         Tensor *blocknums = nullptr;
         Tensor *opflag = nullptr;
         Tensor *attr = nullptr;
+        Tensor *blockSlots = nullptr;
     };
 
     struct Outputs
@@ -61,7 +62,23 @@ class TopkIvfRabitqfP32CpuKernel : public CpuKernel
 
     uint32_t CheckInputShapes(const Inputs &inputs);
 
-    void UpdateInOutShape(Inputs &inputs, Outputs &outputs) const;
+    // Resolves the dynamic dims the op desc leaves at 0, and fails if blockSlots' declared shape disagrees
+    // with what blocknums implies. Returns a status rather than void because that disagreement has to abort
+    // the call: the shape it would otherwise install is the stride every later read of the table uses.
+    uint32_t UpdateInOutShape(Inputs &inputs, Outputs &outputs) const;
+
+    // Check that the staged slot table really is a bijection from (query, i-th block of that query) onto
+    // [0, totalBlock). Only meaningful under a scattering layout; LEGACY derives slots from the prefix sum
+    // and never reads the table, so it returns OK immediately.
+    //
+    // Why this is a whole-table pass before any output is written, rather than a bound test inside SlotOf:
+    // the invariant being checked is not per-slot ("is this index in range") but global ("is the mapping
+    // injective and total"). An in-range duplicate — two queries handed the same slot, or one query handed
+    // the same slot twice — is exactly the failure that loses a block's candidates while double-counting
+    // another's, and no amount of per-slot range checking can see it. Running it up front also means a bad
+    // plan is rejected with PARAM_INVALID instead of being discovered partway through a heap that has
+    // already been written to.
+    uint32_t ValidateBlockSlots(const Inputs &inputs) const;
 
     void InitTopkHeap(Outputs &outputs) const;
 
@@ -71,14 +88,14 @@ class TopkIvfRabitqfP32CpuKernel : public CpuKernel
     template <typename C, typename Pred>
     void RunQueries(size_t tcnt, size_t tid, KernelTensor<float> &indists, KernelTensor<float> &vmdists,
                     KernelTensor<int64_t> &ids, KernelTensor<uint32_t> &size, KernelTensor<int64_t> &blocknums,
-                    KernelTensor<uint16_t> &opflag, KernelTensor<float> &outdists, KernelTensor<int64_t> &outlabels,
-                    C &&cmp, Pred &&isSelected);
+                    KernelTensor<uint16_t> &opflag, KernelTensor<int64_t> &blockSlots, KernelTensor<float> &outdists,
+                    KernelTensor<int64_t> &outlabels, C &&cmp, Pred &&isSelected);
 
     template <typename C>
     void RunBitmapQueries(size_t tcnt, size_t tid, KernelTensor<float> &indists, KernelTensor<float> &vmdists,
                           KernelTensor<int64_t> &ids, KernelTensor<uint32_t> &size, KernelTensor<int64_t> &blocknums,
-                          KernelTensor<uint16_t> &opflag, KernelTensor<float> &outdists,
-                          KernelTensor<int64_t> &outlabels, C &&cmp);
+                          KernelTensor<uint16_t> &opflag, KernelTensor<int64_t> &blockSlots,
+                          KernelTensor<float> &outdists, KernelTensor<int64_t> &outlabels, C &&cmp);
 
     template <typename C, typename Pred>
     void ComputeQuery(int64_t qidx, int64_t bidx, KernelTensor<float> &indistsTensor,
@@ -89,6 +106,8 @@ class TopkIvfRabitqfP32CpuKernel : public CpuKernel
     template <typename C>
     void Reorder(int64_t qidx, KernelTensor<float> &outdistsTensor, KernelTensor<int64_t> &outlabelsTensor, C &&cmp);
 
+    int64_t SlotOf(int64_t qidx, int64_t blkidx, KernelTensor<int64_t> &blockSlots) const;
+
    private:
     int64_t nq_ = 0;
     int64_t handleBatch_ = 0;
@@ -98,6 +117,8 @@ class TopkIvfRabitqfP32CpuKernel : public CpuKernel
     int64_t k_ = 0;
     int64_t burstLen_ = 0;
     int64_t core_ = 0;
+    int64_t layoutMode_ = RABITQ_LAYOUT_LEGACY;
+    int64_t maxBlocksPerQ_ = 0;
 
     RabitqIdFilterMode selMode_ = RABITQ_ID_FILTER_NONE;
     int64_t selNegate_ = 0;

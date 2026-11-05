@@ -529,6 +529,10 @@ VSTAR检索当前只支持<term>Atlas推理系列产品</term>，涉及VSTAR业�
 
 排查 coarse centroid 上传或 L1 粗排异常时，可通过调试环境变量分阶段定位故障点（默认关闭，不影响性能）。环境变量说明见《[附录](./09_appendix.md#ivfrabitq-debug-env)》，操作步骤与日志解读见《[常用操作 — IVFRaBitQ 运行时诊断](./08_common_operations.md#ivfrabitq-runtime-debug)》。
 
+**距离算子 block 编排<a name="ivfrabitq-topk-layout-ref"></a>**
+
+L2 距离算子的 block 在核网格上默认采用 group 编排（窗口内对相邻 query 轮转），可通过环境变量回退历史的 query-major 连续编排以作 A/B 对照。与上面的诊断开关不同，**该环境变量默认启用新编排**，且在**索引构造时**读取一次；窗口宽度无需配置，同样在索引构造时从设备查询 AI CPU 个数得到。环境变量说明见《[附录](./09_appendix.md#ivfrabitq-topk-layout-env)》，注意事项与用法见《[常用操作 — IVFRaBitQ 距离算子 block 编排](./08_common_operations.md#ivfrabitq-topk-layout)》。
+
 #### Cagra<a name="ZH-CN_TOPIC_0000002513317245"></a>
 
 <a name="table_cagra_op"></a>

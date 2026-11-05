@@ -160,3 +160,54 @@ grep 'L1 dist golden\|jaccard' search.log
 ### Further Reading
 
 - [FAQ: IVFRaBitQ Retrieval Recall Issues](./07_faq.md#ivfrabitq-recall-low-nlist-10048)
+
+## IVFRaBitQ Distance Operator Block Layout<a name="ivfrabitq-topk-layout"></a>
+
+The order in which the L2 distance operator lays its blocks out on the core grid can be switched with environment variables. Unlike the diagnostic switches above, **this group enables the new (`group`) layout by default**. Set `IVFRABITQ_TOPK_LAYOUT=legacy` to restore the historical query-major contiguous layout, which serves as the control arm for A/B comparison. For a summary of the variables, see [Appendix](./09_appendix.md#ivfrabitq-topk-layout-env).
+
+The historical layout fills the grid query-major: all blocks of query 0, then query 1, and so on. Later queries start late and therefore finish late, so the TopK side waits in a staircase pattern. The `group` layout instead round-robins over several adjacent queries within a window, running the windows back to back, so a window's queries finish at roughly the same time and the next window starts on the threads that just freed up.
+
+> [!NOTE]
+>
+>- Both variables are read **once when the `AscendIndexIVFRaBitQ` index is constructed** and cached. They are **not** re-read on each `search`. Export them **before** creating the index; changing them at runtime has no effect.
+>- The two layouts only change where blocks land on the grid, not the data that takes part in the computation. The TopK output is bit-for-bit identical, and `group=1` reproduces exactly the `legacy` fill order.
+>- This optimization changes the operator input count from 7 to 8, so **`TopkIvfRabitqFp32.om` must be regenerated** (`aicpu_generate_model.py` is already updated). Reusing an old `.om` fails the count check with `KERNEL_STATUS_PARAM_INVALID` rather than failing silently.
+
+### Environment Variables
+
+**Table 2** IVFRaBitQ block layout environment variables
+
+|Environment Variable|Values|Default|Purpose|
+|--|--|--|--|
+|IVFRABITQ_TOPK_LAYOUT|`legacy` or `group` (`grouped` is equivalent)|`group`|Selects the block layout. `legacy` is the historical query-major contiguous layout, kept only as the A/B baseline|
+
+An invalid value **falls back to the default silently, with no WARNING**: any string other than `legacy`/`group`/`grouped` is treated as the default `group`. To confirm which value actually took effect, rely on A/B measurements.
+
+The window width (how many adjacent queries one window holds) **needs no configuration; it is queried from the device at runtime.** What actually constrains it is how many of a window's queries the TopK operator can drain in parallel, so widening the window beyond that only delays every query's finish time. At index construction the host reads the device's AI CPU count through ACL's `aclrtGetDeviceCapability(ACL_DEV_ATTR_AICPU_CORE_NUM)` and uses it as the window width. Under the `legacy` layout the width is forced to `1`.
+
+If the constructing thread has not run `aclrtSetDevice` yet the query fails; the constant `6` stands in and the **first search** retries once, logging an INFO line with the width that ended up in effect. Building the index before setting the device therefore does not pin the fallback for good. If the device never answers (a CANN version without the attribute, a simulator), the constant `6` stays in use.
+
+> [!NOTE]
+>ACL reports the **device's** AI CPU count, whereas the operator sees the count granted to **this context** (`CpuKernelUtils::GetCPUNum`, which it already mins with `nq`). On a card shared by several index instances the former reads high. This costs parallelism but never correctness — `blockSlots` is an explicit bijection the operator reads back, so the window width never changes which blocks a query scans; a too-wide window at worst degenerates to the per-block round-robin that `legacy` already represents.
+
+To restore the historical layout:
+
+```bash
+# Control arm; the window width is forced to 1 here
+export IVFRABITQ_TOPK_LAYOUT=legacy
+
+# Restore the default (group layout, window width taken from the device AI CPU count)
+unset IVFRABITQ_TOPK_LAYOUT
+```
+
+### Examples
+
+```bash
+# Control arm: historical query-major layout
+export IVFRABITQ_TOPK_LAYOUT=legacy
+./your_benchmark 2>&1 | tee layout_legacy.log
+
+# Experiment arm: default group layout, window width taken from the device AI CPU count
+unset IVFRABITQ_TOPK_LAYOUT
+./your_benchmark 2>&1 | tee layout_group.log
+```

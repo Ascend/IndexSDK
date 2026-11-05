@@ -161,6 +161,57 @@ grep 'L1 dist golden\|jaccard' search.log
 
 - [FAQ：IVFRaBitQ recall 偏低](./07_faq.md#ivfrabitq-recall-low-nlist-10048)
 
+## IVFRaBitQ 距离算子 block 编排<a name="ivfrabitq-topk-layout"></a>
+
+L2 距离算子的 block 在核网格上的编排顺序可通过环境变量切换。与上文的诊断开关不同，**这组环境变量默认启用新编排（`group`）**；设为 `legacy` 回退历史的 query-major 连续编排，可作为 A/B 对比的对照组。环境变量一览见《[附录](./09_appendix.md#ivfrabitq-topk-layout-env)》。
+
+历史编排按 query-major 连续填充：query 0 的所有 block、再 query 1……靠后的 query 开始得晚、结束得也晚，TopK 侧呈阶梯状等待。`group` 编排在一个窗口内对若干相邻 query 做 round-robin，窗口之间首尾相接，使同一窗口的 query 几乎同时出完，下一窗口接着用刚空出来的线程。
+
+> [!NOTE]
+>
+>- 这两个变量在 **`AscendIndexIVFRaBitQ` 构造时**读取一次并缓存，**不是**每次 `search` 重读。必须在创建索引**之前** export，运行中修改不生效。
+>- 两种编排只改变 block 在网格中的落位，不改变参与计算的数据，TopK 输出逐位相同。`group=1` 的填充顺序与 `legacy` 完全一致。
+>- 本优化使算子输入个数由 7 变为 8，**必须重新生成 `TopkIvfRabitqFp32.om`**（`aicpu_generate_model.py` 已同步）。沿用旧 om 会在校验处直接报 `KERNEL_STATUS_PARAM_INVALID`，不会静默出错。
+
+### 环境变量说明
+
+**表 2** IVFRaBitQ block 编排环境变量
+
+|环境变量名|取值|默认|用途|
+|--|--|--|--|
+|IVFRABITQ\_TOPK\_LAYOUT|`legacy` 或 `group`（`grouped` 等价）|`group`|选择 block 编排方式。`legacy` 为历史的 query-major 连续编排，仅作 A/B 基线保留|
+
+该变量的**非法取值静默回退默认值，不打印 WARNING**：取 `legacy`/`group`/`grouped` 以外的字符串按默认 `group` 处理。设置后如需确认实际生效值，请以 A/B 实测结果为准。
+
+窗口宽度（一个窗口容纳多少个相邻 query）**无需配置，由运行时从设备查询**：真正约束它的是 TopK 算子能并行消费一个窗口的线程数，窗口再宽也只是把每个 query 的完成时间整体推后。索引构造时通过 ACL 的 `aclrtGetDeviceCapability(ACL_DEV_ATTR_AICPU_CORE_NUM)` 取本设备的 AI CPU 个数作为窗口宽度。`legacy` 编排下窗口宽度强制为 `1`。
+
+构造时若该线程尚未执行 `aclrtSetDevice`，查询会失败，此时先用常量 `6` 顶替，并在**首次检索**时自动重试一次；重试成功会打印一条 INFO 记录最终生效的宽度。因此「先建索引、后设设备」的用法不会把回退值永久锁死。若设备始终无法应答（CANN 版本不含该属性、仿真环境），则一直使用常量 `6`。
+
+> [!NOTE]
+>ACL 返回的是**设备**的 AI CPU 个数，而算子侧看到的是**本次 context** 分到的个数（`CpuKernelUtils::GetCPUNum`，算子内已与 `nq` 取 min）。同一张卡被多个索引实例共享时，前者会偏大。这只影响并行度、不影响正确性——`blockSlots` 是一张显式的双射表，算子按表读回，窗口宽度不改变任何 query 扫描哪些 block；窗口过宽至多退化为逐 block 轮转，即 `legacy` 已代表的行为。
+
+回退方式：
+
+```bash
+# 回退历史编排（A/B 的对照组）；此时窗口宽度被强制为 1
+export IVFRABITQ_TOPK_LAYOUT=legacy
+
+# 恢复默认（group 编排，窗口宽度自动取设备 AI CPU 个数）
+unset IVFRABITQ_TOPK_LAYOUT
+```
+
+### 使用示例
+
+```bash
+# 对照组：历史 query-major 编排
+export IVFRABITQ_TOPK_LAYOUT=legacy
+./your_benchmark 2>&1 | tee layout_legacy.log
+
+# 实验组：默认 group 编排，窗口宽度自动取设备 AI CPU 个数
+unset IVFRABITQ_TOPK_LAYOUT
+./your_benchmark 2>&1 | tee layout_group.log
+```
+
 ## Device 内存调试<a name="ascendfaiss-mem-debug"></a>
 
 AscendFaiss 提供两组**可选**环境变量，用于排查 Device HBM 分配失败、索引上传/扩容过程中的显存占用变化。**默认全部关闭**，对生产路径零开销；仅在开发/联调环境按需开启。环境变量一览见《[附录](./09_appendix.md#ascendfaiss-mem-debug-env)》。
@@ -173,7 +224,7 @@ AscendFaiss 提供两组**可选**环境变量，用于排查 Device HBM 分配�
 
 ### 环境变量说明
 
-**表 2** Device 内存调试环境变量
+**表 3** Device 内存调试环境变量
 
 <table><tbody>
 <tr><td align="center" valign="middle"><strong>环境变量名</strong></td><td align="center" valign="middle"><strong>取值</strong></td><td width="70" align="center" valign="middle"><strong>默认</strong></td><td align="center" valign="middle"><strong>用途</strong></td></tr>

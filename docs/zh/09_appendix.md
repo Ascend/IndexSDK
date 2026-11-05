@@ -33,11 +33,21 @@
 |IVFRABITQ\_VERIFY\_L1\_DIST|设为非 `0` 值时，在 L1 search 阶段对比 CPU golden 与 NPU 距离/probe。|
 |IVFRABITQ\_SELECTOR\_FILTER\_STAGE|配置 AscendIndexIVFRaBitQ IDSelector 过滤阶段，取值为 `auto`、`pre`、`post`、`both`。默认 `auto`：支持 L2 前置过滤的普通 kernel 路径使用 `pre`，SIMT 路径（Ascend 950）使用 `post`。SIMT 路径（Ascend 950）暂不支持 L2 前置过滤，强制设置为 `pre` 时会返回参数错误。|
 
+### IVFRaBitQ block 编排环境变量<a name="ivfrabitq-topk-layout-env"></a>
+
+以下环境变量用于切换 AscendIndexIVFRaBitQ 的 L2 距离算子 block 在核网格上的编排顺序。**与上表不同，该变量默认启用新编排**，不设置即为 `group` 编排；`IVFRABITQ_TOPK_LAYOUT=legacy` 回退历史编排，可作为 A/B 的对照组。该变量在**索引构造时**读取一次，需在创建索引前 export。窗口宽度无需配置，同样在索引构造时从设备查询 AI CPU 个数得到。详细用法与注意事项参见《[IVFRaBitQ 距离算子 block 编排](./08_common_operations.md#ivfrabitq-topk-layout)》。
+
+**表 3** IVFRaBitQ block 编排环境变量
+
+|环境变量名|说明|
+|--|--|
+|IVFRABITQ\_TOPK\_LAYOUT|取 `legacy` 或 `group`（`grouped` 等价），默认 `group`。`group` 在窗口内对相邻 query 做 round-robin 编排 block；`legacy` 为历史的 query-major 连续编排，仅作 A/B 基线保留。其他取值静默按默认处理。窗口宽度取设备 AI CPU 个数（`aclrtGetDeviceCapability(ACL_DEV_ATTR_AICPU_CORE_NUM)`），查询失败时回退 `6` 并打印 WARNING；`legacy` 下强制为 `1`。|
+
 ### Device 内存调试环境变量<a name="ascendfaiss-mem-debug-env"></a>
 
 以下环境变量用于排查 Device HBM 分配失败（如 `aclrtMalloc` OOM）、索引上传/扩容过程中的显存占用变化。**默认不设置**（关闭），对生产路径零开销。详细用法与日志解读参见《[Device 内存调试](./08_common_operations.md#ascendfaiss-mem-debug)》。
 
-**表 3** Device 内存调试环境变量
+**表 4** Device 内存调试环境变量
 
 |环境变量名|说明|
 |--|--|

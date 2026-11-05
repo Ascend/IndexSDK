@@ -85,18 +85,33 @@ uint32_t TopkIvfRabitqfP32CpuKernel::Compute(CpuKernelContext &ctx)
     blockOffset_.resize(nq_ + 1);
     KernelTensor<int64_t> blocknums(inputs.blocknums);
     int64_t offset = 0;
+    maxBlocksPerQ_ = 0;
     for (int64_t qidx = 0; qidx < nq_; qidx++)
     {
         blockOffset_[qidx] = offset;
         int64_t thisBlockNum = *(blocknums.GetSubTensorDim0(qidx));
         offset += thisBlockNum;
+        maxBlocksPerQ_ = std::max(maxBlocksPerQ_, thisBlockNum);
     }
     blockOffset_[nq_] = offset;
 
-    UpdateInOutShape(inputs, outputs);
+    ret = UpdateInOutShape(inputs, outputs);
+    if (ret != KERNEL_STATUS_OK)
+    {
+        KERNEL_LOG_ERROR("Failed to update in/out shape");
+        return ret;
+    }
+
+    // Must run after UpdateInOutShape, which is what resolves maxBlocksPerQ_ into the table's row stride,
+    // and before InitTopkHeap, so a rejected plan leaves the outputs untouched rather than half-initialised.
+    ret = ValidateBlockSlots(inputs);
+    if (ret != KERNEL_STATUS_OK)
+    {
+        KERNEL_LOG_ERROR("Failed to validate blockSlots");
+        return ret;
+    }
 
     InitTopkHeap(outputs);
-
     selRoaringView_ = nullptr;
     if (selMode_ == RABITQ_ID_FILTER_ROARING && selRoaringBuf_ != nullptr && selAux0_ > 0)
     {
@@ -159,6 +174,7 @@ uint32_t TopkIvfRabitqfP32CpuKernel::GetInOutAndCheck(const CpuKernelContext &ct
     inputs.blocknums = ctx.Input(INPUT_NUM4);
     inputs.opflag = ctx.Input(INPUT_NUM5);
     inputs.attr = ctx.Input(INPUT_NUM6);
+    inputs.blockSlots = ctx.Input(INPUT_NUM7);
     outputs.outdists = ctx.Output(INPUT_NUM0);
     outputs.outlabels = ctx.Output(INPUT_NUM1);
 
@@ -169,6 +185,7 @@ uint32_t TopkIvfRabitqfP32CpuKernel::GetInOutAndCheck(const CpuKernelContext &ct
     KERNEL_CHECK_NULLPTR(inputs.blocknums, KERNEL_STATUS_PARAM_INVALID, "Get input[4], name[blocknums] failed");
     KERNEL_CHECK_NULLPTR(inputs.opflag, KERNEL_STATUS_PARAM_INVALID, "Get input[5], name[opflag] failed");
     KERNEL_CHECK_NULLPTR(inputs.attr, KERNEL_STATUS_PARAM_INVALID, "Get input[6], name[attr] failed");
+    KERNEL_CHECK_NULLPTR(inputs.blockSlots, KERNEL_STATUS_PARAM_INVALID, "Get input[7], name[blockSlots] failed");
     KERNEL_CHECK_NULLPTR(outputs.outdists, KERNEL_STATUS_PARAM_INVALID, "Get output[0], name[outdists] failed");
     KERNEL_CHECK_NULLPTR(outputs.outlabels, KERNEL_STATUS_PARAM_INVALID, "Get output[1], name[outlabels] failed");
 
@@ -185,6 +202,8 @@ uint32_t TopkIvfRabitqfP32CpuKernel::GetInOutAndCheck(const CpuKernelContext &ct
                     ShapeToString(inputs.opflag->GetTensorShape()->GetDimSizes()).c_str());
     KERNEL_LOG_INFO("Shape of input[6][attr] is %s",
                     ShapeToString(inputs.attr->GetTensorShape()->GetDimSizes()).c_str());
+    KERNEL_LOG_INFO("Shape of input[7][blockSlots] is %s",
+                    ShapeToString(inputs.blockSlots->GetTensorShape()->GetDimSizes()).c_str());
 
     return KERNEL_STATUS_OK;
 }
@@ -200,6 +219,7 @@ uint32_t TopkIvfRabitqfP32CpuKernel::CheckInputShapes(const Inputs &inputs)
     auto shapeBlocknums = inputs.blocknums->GetTensorShape();
     auto shapeOpflag = inputs.opflag->GetTensorShape();
     auto shapeAttr = inputs.attr->GetTensorShape();
+    auto shapeBlockSlots = inputs.blockSlots->GetTensorShape();
 
     KERNEL_CHECK_TRUE(shapeIndists->GetDims() == INPUT_NUM2, KERNEL_STATUS_PARAM_INVALID,
                       "Dims of input[0][indists] must be 2");
@@ -213,6 +233,8 @@ uint32_t TopkIvfRabitqfP32CpuKernel::CheckInputShapes(const Inputs &inputs)
                       "Dims of input[4][blocknums] must be 1");
     KERNEL_CHECK_TRUE(shapeAttr->GetDims() == INPUT_NUM1, KERNEL_STATUS_PARAM_INVALID,
                       "Dims of input[6][attr] must be 1");
+    KERNEL_CHECK_TRUE(shapeBlockSlots->GetDims() == INPUT_NUM2, KERNEL_STATUS_PARAM_INVALID,
+                      "Dims of input[7][blockSlots] must be 2");
 
     flagSize_ = shapeOpflag->GetDimSize(INPUT_NUM1);
     nq_ = shapeBlocknums->GetDimSize(INPUT_NUM0);
@@ -231,12 +253,15 @@ uint32_t TopkIvfRabitqfP32CpuKernel::CheckInputShapes(const Inputs &inputs)
     selAux0_ = *(attr + TOPK_IVF_RABITQ_ATTR_SEL_AUX0_IDX);
     selAux1_ = *(attr + TOPK_IVF_RABITQ_ATTR_SEL_AUX1_IDX);
     const int64_t selPtr = *(attr + TOPK_IVF_RABITQ_ATTR_SEL_PTR_IDX);
+    layoutMode_ = *(attr + TOPK_IVF_RABITQ_ATTR_LAYOUT_MODE_IDX);
     selSorted_ = nullptr;
     selBitmap_ = nullptr;
     selRoaringBuf_ = nullptr;
 
     KERNEL_CHECK_TRUE(k_ > 0 && burstLen_ > 0 && asc_ >= 0 && core_ > 0 && nq_ > 0, KERNEL_STATUS_PARAM_INVALID,
                       "Value of asc, k, bustLen, core, nq must ge 0");
+    KERNEL_CHECK_TRUE(layoutMode_ >= 0 && layoutMode_ < RABITQ_LAYOUT_MODE_COUNT, KERNEL_STATUS_PARAM_INVALID,
+                      "Value of layoutMode must be in [0, %d)", RABITQ_LAYOUT_MODE_COUNT);
     KERNEL_CHECK_TRUE(selMode_ == RABITQ_ID_FILTER_NONE || selMode_ == RABITQ_ID_FILTER_RANGE ||
                           selMode_ == RABITQ_ID_FILTER_SORTED || selMode_ == RABITQ_ID_FILTER_BITMAP ||
                           selMode_ == RABITQ_ID_FILTER_ROARING,
@@ -287,7 +312,7 @@ uint32_t TopkIvfRabitqfP32CpuKernel::CheckInputShapes(const Inputs &inputs)
     return KERNEL_STATUS_OK;
 }
 
-void TopkIvfRabitqfP32CpuKernel::UpdateInOutShape(Inputs &inputs, Outputs &outputs) const
+uint32_t TopkIvfRabitqfP32CpuKernel::UpdateInOutShape(Inputs &inputs, Outputs &outputs) const
 {
     KERNEL_LOG_INFO("TopkIvfRabitqfP32CpuKernel UpdateInOutShape begin");
 
@@ -318,6 +343,31 @@ void TopkIvfRabitqfP32CpuKernel::UpdateInOutShape(Inputs &inputs, Outputs &outpu
     dimOpFlag[INPUT_NUM0] = allBlock;
     shapeOpFlag->SetDimSizes(dimOpFlag);
 
+    // blockSlots' row length is declared dynamic in the op desc and the framework leaves it at 0, so
+    // KernelTensor would derive a zero stride and every row would alias row 0. It has to be resolved from
+    // blocknums here, before any KernelTensor over it is constructed.
+    //
+    // The row width cannot come from the op desc instead: resetL2TopkOp builds the op per entry of
+    // searchBatchSizes at init time, and maxBlocksPerQ depends on how many blocks this request's L1 probe
+    // result actually selects, which is not known until the search runs. So the host and this function each
+    // compute the same number independently (host: getBlockNumPerQ; here: max over blocknums), and the only
+    // defence against the two drifting apart is to check them against each other -- hence the assert below
+    // rather than a silent overwrite. A mismatch means the host sized the device buffer to one width while
+    // the kernel is about to stride it by another, i.e. every row past the first reads at the wrong offset.
+    auto shapeBlockSlots = inputs.blockSlots->GetTensorShape();
+    std::vector<int64_t> dimBlockSlots = shapeBlockSlots->GetDimSizes();
+    const int64_t declaredRows = dimBlockSlots[INPUT_NUM0];
+    const int64_t declaredDim1 = dimBlockSlots[INPUT_NUM1];
+    // 0 is the legal "framework left it dynamic" value; anything else must agree with what we derived.
+    KERNEL_CHECK_TRUE(declaredDim1 == 0 || declaredDim1 == maxBlocksPerQ_, KERNEL_STATUS_PARAM_INVALID,
+                      "blockSlots declared row width %ld disagrees with maxBlocksPerQ %ld derived from blocknums",
+                      declaredDim1, maxBlocksPerQ_);
+    KERNEL_CHECK_TRUE(declaredRows == nq_, KERNEL_STATUS_PARAM_INVALID,
+                      "blockSlots declared rows %ld must equal nq %ld", declaredRows, nq_);
+    dimBlockSlots[INPUT_NUM0] = nq_;
+    dimBlockSlots[INPUT_NUM1] = maxBlocksPerQ_;
+    shapeBlockSlots->SetDimSizes(dimBlockSlots);
+
     auto shapeOutdists = outputs.outdists->GetTensorShape();
     std::vector<int64_t> dimOutdists;
     dimOutdists.push_back(nq_);
@@ -329,6 +379,61 @@ void TopkIvfRabitqfP32CpuKernel::UpdateInOutShape(Inputs &inputs, Outputs &outpu
     dimOutlabels.push_back(nq_);
     dimOutlabels.push_back(k_);
     shapeOutlabels->SetDimSizes(dimOutlabels);
+    return KERNEL_STATUS_OK;
+}
+
+uint32_t TopkIvfRabitqfP32CpuKernel::ValidateBlockSlots(const Inputs &inputs) const
+{
+    // LEGACY never consults the table -- SlotOf returns blockOffset_[q] + i, which is correct by
+    // construction -- so there is nothing to validate and the whole pass is skipped.
+    if (layoutMode_ == RABITQ_LAYOUT_LEGACY)
+    {
+        return KERNEL_STATUS_OK;
+    }
+
+    const int64_t totalBlock = blockOffset_[nq_];
+    if (totalBlock <= 0)
+    {
+        return KERNEL_STATUS_OK;
+    }
+
+    const int64_t *slots = static_cast<const int64_t *>(inputs.blockSlots->GetData());
+    KERNEL_CHECK_NULLPTR(slots, KERNEL_STATUS_PARAM_INVALID, "blockSlots data is null");
+    const int64_t *blocknums = static_cast<const int64_t *>(inputs.blocknums->GetData());
+    KERNEL_CHECK_NULLPTR(blocknums, KERNEL_STATUS_PARAM_INVALID, "blocknums data is null");
+
+    // One bit per grid slot. The table is the only thing that says which block a query reads, so the cost
+    // here is O(totalBlock) on a few thousand entries once per call, against a per-candidate inner loop that
+    // runs over millions -- it does not register.
+    //
+    // In-range plus injective is already the full bijection, with no third check needed: totalBlock is by
+    // construction the sum of blocknums (Compute accumulates it into blockOffset_[nq_]), so this loop visits
+    // exactly totalBlock entries. totalBlock distinct values drawn from [0, totalBlock) must exhaust the
+    // range, so surjectivity -- "no staged block goes unread" -- follows by pigeonhole rather than by
+    // counting.
+    std::vector<bool> seen(static_cast<size_t>(totalBlock), false);
+    for (int64_t qidx = 0; qidx < nq_; qidx++)
+    {
+        const int64_t thisBlockNum = blocknums[qidx];
+        KERNEL_CHECK_TRUE(thisBlockNum >= 0 && thisBlockNum <= maxBlocksPerQ_, KERNEL_STATUS_PARAM_INVALID,
+                          "blocknums[%ld]=%ld outside [0, maxBlocksPerQ=%ld]", qidx, thisBlockNum, maxBlocksPerQ_);
+        for (int64_t blkidx = 0; blkidx < thisBlockNum; blkidx++)
+        {
+            const int64_t slot = slots[qidx * maxBlocksPerQ_ + blkidx];
+            // In range. Without this the indexing in RunQueries walks off the staged distance grid into
+            // whatever follows it, and the candidates it finds there look perfectly valid.
+            KERNEL_CHECK_TRUE(slot >= 0 && slot < totalBlock, KERNEL_STATUS_PARAM_INVALID,
+                              "blockSlots[%ld][%ld]=%ld outside [0, %ld)", qidx, blkidx, slot, totalBlock);
+            // Injective. An in-range duplicate is the failure a range check cannot see: one block's
+            // candidates get scanned twice while another's are never scanned at all, and the only symptom
+            // is a recall number that is quietly too low.
+            KERNEL_CHECK_TRUE(!seen[static_cast<size_t>(slot)], KERNEL_STATUS_PARAM_INVALID,
+                              "blockSlots[%ld][%ld]=%ld is a duplicate slot", qidx, blkidx, slot);
+            seen[static_cast<size_t>(slot)] = true;
+        }
+    }
+
+    return KERNEL_STATUS_OK;
 }
 
 void TopkIvfRabitqfP32CpuKernel::InitTopkHeap(Outputs &outputs) const
@@ -350,22 +455,27 @@ template <typename C, typename Pred>
 void TopkIvfRabitqfP32CpuKernel::RunQueries(size_t tcnt, size_t tid, KernelTensor<float> &indists,
                                             KernelTensor<float> &vmdists, KernelTensor<int64_t> &ids,
                                             KernelTensor<uint32_t> &size, KernelTensor<int64_t> &blocknums,
-                                            KernelTensor<uint16_t> &opflag, KernelTensor<float> &outdists,
-                                            KernelTensor<int64_t> &outlabels, C &&cmp, Pred &&isSelected)
+                                            KernelTensor<uint16_t> &opflag, KernelTensor<int64_t> &blockSlots,
+                                            KernelTensor<float> &outdists, KernelTensor<int64_t> &outlabels, C &&cmp,
+                                            Pred &&isSelected)
 {
     for (int64_t qidx = tid; qidx < nq_; qidx += tcnt)
     {
-        size_t offset = blockOffset_[qidx];
         int64_t thisBlockNum = *(blocknums.GetSubTensorDim0(qidx));
         for (int64_t blkidx = 0; blkidx < thisBlockNum; blkidx++)
         {
-            if (*(size.GetSubTensorDim0(offset + blkidx)) == 0)
+            int64_t slot = SlotOf(qidx, blkidx, blockSlots);
+            if (slot < 0)
             {
                 continue;
             }
-            auto flagPtr = opflag.GetSubTensorDim0(offset + blkidx);
+            if (*(size.GetSubTensorDim0(slot)) == 0)
+            {
+                continue;
+            }
+            auto flagPtr = opflag.GetSubTensorDim0(slot);
             WAITING_FLAG_READY(*(flagPtr), TIMEOUT_CHECK_TICK, TIMEOUT_MS);
-            ComputeQuery(qidx, offset + blkidx, indists, vmdists, ids, size, outdists, outlabels, cmp, isSelected);
+            ComputeQuery(qidx, slot, indists, vmdists, ids, size, outdists, outlabels, cmp, isSelected);
         }
         Reorder(qidx, outdists, outlabels, cmp);
     }
@@ -380,6 +490,7 @@ void TopkIvfRabitqfP32CpuKernel::DoCompute(size_t tcnt, size_t tid, const Inputs
     KernelTensor<uint32_t> size(inputs.size);
     KernelTensor<int64_t> blocknums(inputs.blocknums);
     KernelTensor<uint16_t> opflag(inputs.opflag);
+    KernelTensor<int64_t> blockSlots(inputs.blockSlots);
 
     KernelTensor<float> outdists(outputs.outdists);
     KernelTensor<int64_t> outlabels(outputs.outlabels);
@@ -388,7 +499,7 @@ void TopkIvfRabitqfP32CpuKernel::DoCompute(size_t tcnt, size_t tid, const Inputs
     switch (selMode_)
     {
         case RABITQ_ID_FILTER_NONE:
-            RunQueries(tcnt, tid, indists, vmdists, ids, size, blocknums, opflag, outdists, outlabels, cmp,
+            RunQueries(tcnt, tid, indists, vmdists, ids, size, blocknums, opflag, blockSlots, outdists, outlabels, cmp,
                        [](int64_t) { return true; });
             break;
         case RABITQ_ID_FILTER_RANGE:
@@ -397,13 +508,13 @@ void TopkIvfRabitqfP32CpuKernel::DoCompute(size_t tcnt, size_t tid, const Inputs
             const int64_t hi = selAux1_;
             if (negate)
             {
-                RunQueries(tcnt, tid, indists, vmdists, ids, size, blocknums, opflag, outdists, outlabels, cmp,
-                           [lo, hi](int64_t id) { return id < lo || id >= hi; });
+                RunQueries(tcnt, tid, indists, vmdists, ids, size, blocknums, opflag, blockSlots, outdists, outlabels,
+                           cmp, [lo, hi](int64_t id) { return id < lo || id >= hi; });
             }
             else
             {
-                RunQueries(tcnt, tid, indists, vmdists, ids, size, blocknums, opflag, outdists, outlabels, cmp,
-                           [lo, hi](int64_t id) { return id >= lo && id < hi; });
+                RunQueries(tcnt, tid, indists, vmdists, ids, size, blocknums, opflag, blockSlots, outdists, outlabels,
+                           cmp, [lo, hi](int64_t id) { return id >= lo && id < hi; });
             }
             break;
         }
@@ -413,18 +524,18 @@ void TopkIvfRabitqfP32CpuKernel::DoCompute(size_t tcnt, size_t tid, const Inputs
             const int64_t n = selAux0_;
             if (sorted == nullptr || n <= 0)
             {
-                RunQueries(tcnt, tid, indists, vmdists, ids, size, blocknums, opflag, outdists, outlabels, cmp,
-                           [negate](int64_t) { return negate; });
+                RunQueries(tcnt, tid, indists, vmdists, ids, size, blocknums, opflag, blockSlots, outdists, outlabels,
+                           cmp, [negate](int64_t) { return negate; });
             }
             else if (negate)
             {
-                RunQueries(tcnt, tid, indists, vmdists, ids, size, blocknums, opflag, outdists, outlabels, cmp,
-                           [sorted, n](int64_t id) { return !std::binary_search(sorted, sorted + n, id); });
+                RunQueries(tcnt, tid, indists, vmdists, ids, size, blocknums, opflag, blockSlots, outdists, outlabels,
+                           cmp, [sorted, n](int64_t id) { return !std::binary_search(sorted, sorted + n, id); });
             }
             else
             {
-                RunQueries(tcnt, tid, indists, vmdists, ids, size, blocknums, opflag, outdists, outlabels, cmp,
-                           [sorted, n](int64_t id) { return std::binary_search(sorted, sorted + n, id); });
+                RunQueries(tcnt, tid, indists, vmdists, ids, size, blocknums, opflag, blockSlots, outdists, outlabels,
+                           cmp, [sorted, n](int64_t id) { return std::binary_search(sorted, sorted + n, id); });
             }
             break;
         }
@@ -432,12 +543,13 @@ void TopkIvfRabitqfP32CpuKernel::DoCompute(size_t tcnt, size_t tid, const Inputs
         {
             if (selBitmap_ == nullptr)
             {
-                RunQueries(tcnt, tid, indists, vmdists, ids, size, blocknums, opflag, outdists, outlabels, cmp,
-                           [negate](int64_t) { return negate; });
+                RunQueries(tcnt, tid, indists, vmdists, ids, size, blocknums, opflag, blockSlots, outdists, outlabels,
+                           cmp, [negate](int64_t) { return negate; });
             }
             else
             {
-                RunBitmapQueries(tcnt, tid, indists, vmdists, ids, size, blocknums, opflag, outdists, outlabels, cmp);
+                RunBitmapQueries(tcnt, tid, indists, vmdists, ids, size, blocknums, opflag, blockSlots, outdists,
+                                 outlabels, cmp);
             }
             break;
         }
@@ -446,12 +558,13 @@ void TopkIvfRabitqfP32CpuKernel::DoCompute(size_t tcnt, size_t tid, const Inputs
             const roaring_bitmap_t *roaringView = static_cast<const roaring_bitmap_t *>(selRoaringView_);
             if (roaringView == nullptr)
             {
-                RunQueries(tcnt, tid, indists, vmdists, ids, size, blocknums, opflag, outdists, outlabels, cmp,
-                           [negate](int64_t) { return negate; });
+                RunQueries(tcnt, tid, indists, vmdists, ids, size, blocknums, opflag, blockSlots, outdists, outlabels,
+                           cmp, [negate](int64_t) { return negate; });
             }
             else if (negate)
             {
-                RunQueries(tcnt, tid, indists, vmdists, ids, size, blocknums, opflag, outdists, outlabels, cmp,
+                RunQueries(tcnt, tid, indists, vmdists, ids, size, blocknums, opflag, blockSlots, outdists, outlabels,
+                           cmp,
                            [roaringView](int64_t id)
                            {
                                if (id < 0 || static_cast<uint64_t>(id) > std::numeric_limits<uint32_t>::max())
@@ -463,7 +576,8 @@ void TopkIvfRabitqfP32CpuKernel::DoCompute(size_t tcnt, size_t tid, const Inputs
             }
             else
             {
-                RunQueries(tcnt, tid, indists, vmdists, ids, size, blocknums, opflag, outdists, outlabels, cmp,
+                RunQueries(tcnt, tid, indists, vmdists, ids, size, blocknums, opflag, blockSlots, outdists, outlabels,
+                           cmp,
                            [roaringView](int64_t id)
                            {
                                if (id < 0 || static_cast<uint64_t>(id) > std::numeric_limits<uint32_t>::max())
@@ -476,7 +590,7 @@ void TopkIvfRabitqfP32CpuKernel::DoCompute(size_t tcnt, size_t tid, const Inputs
             break;
         }
         default:
-            RunQueries(tcnt, tid, indists, vmdists, ids, size, blocknums, opflag, outdists, outlabels, cmp,
+            RunQueries(tcnt, tid, indists, vmdists, ids, size, blocknums, opflag, blockSlots, outdists, outlabels, cmp,
                        [](int64_t) { return false; });
             break;
     }
@@ -486,8 +600,9 @@ template <typename C>
 void TopkIvfRabitqfP32CpuKernel::RunBitmapQueries(size_t tcnt, size_t tid, KernelTensor<float> &indists,
                                                   KernelTensor<float> &vmdists, KernelTensor<int64_t> &ids,
                                                   KernelTensor<uint32_t> &size, KernelTensor<int64_t> &blocknums,
-                                                  KernelTensor<uint16_t> &opflag, KernelTensor<float> &outdists,
-                                                  KernelTensor<int64_t> &outlabels, C &&cmp)
+                                                  KernelTensor<uint16_t> &opflag, KernelTensor<int64_t> &blockSlots,
+                                                  KernelTensor<float> &outdists, KernelTensor<int64_t> &outlabels,
+                                                  C &&cmp)
 {
     const bool negate = selNegate_ != 0;
     const uint8_t *bitmap = selBitmap_;
@@ -533,21 +648,25 @@ void TopkIvfRabitqfP32CpuKernel::RunBitmapQueries(size_t tcnt, size_t tid, Kerne
         nwin = 0;
         float *heapDists = outdists.GetSubTensorDim0(qidx);
         int64_t *heapLabels = outlabels.GetSubTensorDim0(qidx);
-        size_t offset = blockOffset_[qidx];
         int64_t thisBlockNum = *(blocknums.GetSubTensorDim0(qidx));
         for (int64_t blkidx = 0; blkidx < thisBlockNum; ++blkidx)
         {
-            if (*(size.GetSubTensorDim0(offset + blkidx)) == 0)
+            int64_t slot = SlotOf(qidx, blkidx, blockSlots);
+            if (slot < 0)
             {
                 continue;
             }
-            auto flagPtr = opflag.GetSubTensorDim0(offset + blkidx);
+            if (*(size.GetSubTensorDim0(slot)) == 0)
+            {
+                continue;
+            }
+            auto flagPtr = opflag.GetSubTensorDim0(slot);
             WAITING_FLAG_READY(*(flagPtr), TIMEOUT_CHECK_TICK, TIMEOUT_MS);
 
-            float *blockDists = indists.GetSubTensorDim0(offset + blkidx);
-            float *blockVm = vmdists.GetSubTensorDim0(offset + blkidx);
-            int64_t *idBase = reinterpret_cast<int64_t *>(*(ids.GetSubTensorDim0(offset + blkidx)));
-            int64_t ntotal = static_cast<int64_t>(*(size.GetSubTensorDim0(offset + blkidx)));
+            float *blockDists = indists.GetSubTensorDim0(slot);
+            float *blockVm = vmdists.GetSubTensorDim0(slot);
+            int64_t *idBase = reinterpret_cast<int64_t *>(*(ids.GetSubTensorDim0(slot)));
+            int64_t ntotal = static_cast<int64_t>(*(size.GetSubTensorDim0(slot)));
             int64_t idx = 0;
             int64_t burstSize = ntotal / burstLen_;
             for (int64_t i = 0; i < burstSize; ++i)
@@ -578,6 +697,26 @@ void TopkIvfRabitqfP32CpuKernel::RunBitmapQueries(size_t tcnt, size_t tid, Kerne
         drain(heapDists, heapLabels);
         Reorder(qidx, outdists, outlabels, cmp);
     }
+}
+
+int64_t TopkIvfRabitqfP32CpuKernel::SlotOf(int64_t qidx, int64_t blkidx, KernelTensor<int64_t> &blockSlots) const
+{
+    // Under LEGACY the host fills the grid query-major, so a query's blocks are contiguous and the prefix sum
+    // already names them -- the indirection table is not even staged. Any other layout scatters them, and the
+    // table is the only way back from (query, i-th block of that query) to a grid slot.
+    if (layoutMode_ == RABITQ_LAYOUT_LEGACY)
+    {
+        return static_cast<int64_t>(blockOffset_[qidx]) + blkidx;
+    }
+    if (blkidx >= maxBlocksPerQ_)
+    {
+        return -1;
+    }
+    // No bound test on the value read back: ValidateBlockSlots has already proved, for this call, that every
+    // slot a query will ask for is in [0, totalBlock) and that no two asks collide. Re-checking per block
+    // would put a compare and a member load in a loop that runs once per block of every query, to re-derive
+    // a fact that cannot have changed since the table was last written.
+    return *(blockSlots.GetSubTensorDim1(qidx, blkidx));
 }
 
 template <typename C, typename Pred>
