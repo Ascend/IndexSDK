@@ -161,33 +161,33 @@ union fp_conv
     FP_T fp;
 };
 template <class T>
-__forceinline__[aicore] T get_max_value();
+__forceinline__ __simt_callee__[aicore] T get_max_value();
 
 template <>
-__forceinline__[aicore] float get_max_value<float>()
+__forceinline__ __simt_callee__[aicore] float get_max_value<float>()
 {
     return kFloatMax;
 }
 
 template <>
-__forceinline__[aicore] half get_max_value<half>()
+__forceinline__ __simt_callee__[aicore] half get_max_value<half>()
 {
     return fp_conv<uint16_t, half>{.bs = 0x7bff}.fp;
 }
 
 template <>
-__forceinline__[aicore] uint32_t get_max_value<uint32_t>()
+__forceinline__ __simt_callee__[aicore] uint32_t get_max_value<uint32_t>()
 {
     return 0xffffffffu;
 }
 
 template <>
-__forceinline__[aicore] uint64_t get_max_value<uint64_t>()
+__forceinline__ __simt_callee__[aicore] uint64_t get_max_value<uint64_t>()
 {
     return 0xfffffffffffffffflu;
 }
 
-__forceinline__[aicore] uint64_t xorshift64(uint64_t u)
+__forceinline__ __simt_callee__[aicore] uint64_t xorshift64(uint64_t u)
 {
     u ^= u >> 12;
     u ^= u << 25;
@@ -196,7 +196,7 @@ __forceinline__[aicore] uint64_t xorshift64(uint64_t u)
 }
 
 template <typename T>
-__forceinline__[aicore] void swap(T &val1, T &val2)
+__forceinline__ __simt_callee__[aicore] void swap(T &val1, T &val2)
 {
     const T val0 = val1;
     val1 = val2;
@@ -204,7 +204,7 @@ __forceinline__[aicore] void swap(T &val1, T &val2)
 }
 
 template <typename K>
-__forceinline__[aicore] bool swap_if_needed(K &key1, K &key2)
+__forceinline__ __simt_callee__[aicore] bool swap_if_needed(K &key1, K &key2)
 {
     if (key1 > key2)
     {
@@ -215,7 +215,7 @@ __forceinline__[aicore] bool swap_if_needed(K &key1, K &key2)
 }
 
 template <typename K, typename V>
-__forceinline__[aicore] bool swap_if_needed(K &key1, K &key2, V &val1, V &val2)
+__forceinline__ __simt_callee__[aicore] bool swap_if_needed(K &key1, K &key2, V &val1, V &val2)
 {
     if (key1 > key2)
     {
@@ -227,7 +227,7 @@ __forceinline__[aicore] bool swap_if_needed(K &key1, K &key2, V &val1, V &val2)
 }
 
 template <typename K, typename V>
-__forceinline__[aicore] bool swap_if_needed(K &key1, K &key2, V &val1, V &val2, bool ascending)
+__forceinline__ __simt_callee__[aicore] bool swap_if_needed(K &key1, K &key2, V &val1, V &val2, bool ascending)
 {
     if (key1 == key2)
     {
@@ -243,7 +243,7 @@ __forceinline__[aicore] bool swap_if_needed(K &key1, K &key2, V &val1, V &val2, 
 }
 
 template <class K, class V>
-__forceinline__[aicore] void swap_if_needed(K &k0, V &v0, K &k1, V &v1, const bool asc)
+__forceinline__ __simt_callee__[aicore] void swap_if_needed(K &k0, V &v0, K &k1, V &v1, const bool asc)
 {
     if ((k0 != k1) && ((k0 < k1) != asc))
     {
@@ -257,7 +257,7 @@ __forceinline__[aicore] void swap_if_needed(K &k0, V &v0, K &k1, V &v1, const bo
 }
 
 template <class K, class V>
-__forceinline__[aicore] void swap_if_needed(K &k0, V &v0, const unsigned lane_offset, const bool asc)
+__forceinline__ __simt_callee__[aicore] void swap_if_needed(K &k0, V &v0, const unsigned lane_offset, const bool asc)
 {
     auto k1 = __shfl_xor(k0, lane_offset, 32);
     auto v1 = __shfl_xor(v0, lane_offset, 32);
@@ -271,7 +271,7 @@ __forceinline__[aicore] void swap_if_needed(K &k0, V &v0, const unsigned lane_of
 template <class K, class V, unsigned N, unsigned warp_size = 32>
 struct warp_merge_core
 {
-    __forceinline__[aicore] void operator()(K k[N], V v[N], const uint32_t range, const bool asc)
+    __forceinline__ __simt_callee__[aicore] void operator()(K k[N], V v[N], const uint32_t range, const bool asc)
     {
         const auto lane_id = threadIdx.x % warp_size;
 
@@ -322,7 +322,7 @@ struct warp_merge_core
 template <class K, class V, unsigned warp_size>
 struct warp_merge_core<K, V, 6, warp_size>
 {
-    __forceinline__[aicore] void operator()(K k[6], V v[6], const uint32_t range, const bool asc)
+    __forceinline__ __simt_callee__[aicore] void operator()(K k[6], V v[6], const uint32_t range, const bool asc)
     {
         constexpr unsigned N = 6;
         const auto lane_id = threadIdx.x % warp_size;
@@ -379,7 +379,7 @@ struct warp_merge_core<K, V, 6, warp_size>
 template <class K, class V, unsigned warp_size>
 struct warp_merge_core<K, V, 3, warp_size>
 {
-    __forceinline__[aicore] void operator()(K k[3], V v[3], const uint32_t range, const bool asc)
+    __forceinline__ __simt_callee__[aicore] void operator()(K k[3], V v[3], const uint32_t range, const bool asc)
     {
         constexpr unsigned N = 3;
         const auto lane_id = threadIdx.x % warp_size;
@@ -413,7 +413,7 @@ struct warp_merge_core<K, V, 3, warp_size>
 template <class K, class V, unsigned warp_size>
 struct warp_merge_core<K, V, 2, warp_size>
 {
-    __forceinline__[aicore] void operator()(K k[2], V v[2], const uint32_t range, const bool asc)
+    __forceinline__ __simt_callee__[aicore] void operator()(K k[2], V v[2], const uint32_t range, const bool asc)
     {
         constexpr unsigned N = 2;
         const auto lane_id = threadIdx.x % warp_size;
@@ -443,7 +443,7 @@ struct warp_merge_core<K, V, 2, warp_size>
 template <class K, class V, unsigned warp_size>
 struct warp_merge_core<K, V, 1, warp_size>
 {
-    __forceinline__[aicore] void operator()(K k[1], V v[1], const uint32_t range, const bool asc)
+    __forceinline__ __simt_callee__[aicore] void operator()(K k[1], V v[1], const uint32_t range, const bool asc)
     {
         const auto lane_id = threadIdx.x % warp_size;
         const uint32_t b = range;
@@ -456,13 +456,13 @@ struct warp_merge_core<K, V, 1, warp_size>
 };
 
 template <class K, class V, unsigned N, unsigned warp_size = 32>
-__forceinline__[aicore] void warp_merge(K k[N], V v[N], unsigned range, const bool asc = true)
+__forceinline__ __simt_callee__[aicore] void warp_merge(K k[N], V v[N], unsigned range, const bool asc = true)
 {
     warp_merge_core<K, V, N, warp_size>{}(k, v, range, asc);
 }
 
 template <class K, class V, unsigned N, unsigned warp_size = 32>
-__forceinline__[aicore] void warp_sort(K k[N], V v[N], const bool asc = true)
+__forceinline__ __simt_callee__[aicore] void warp_sort(K k[N], V v[N], const bool asc = true)
 {
     for (uint32_t range = 1; range <= warp_size; range <<= 1)
     {
@@ -470,11 +470,11 @@ __forceinline__[aicore] void warp_sort(K k[N], V v[N], const bool asc = true)
     }
 }
 
-constexpr __forceinline__[aicore] uint32_t get_size(const uint32_t bitlen) { return 1U << bitlen; }
+constexpr __forceinline__ __simt_callee__[aicore] uint32_t get_size(const uint32_t bitlen) { return 1U << bitlen; }
 
 template <class IdxT>
-__forceinline__[aicore] uint32_t hashmap_insert(__gm__ IdxT *const table, const uint32_t hash_table_size,
-                                                const IdxT key)
+__forceinline__ __simt_callee__[aicore] uint32_t hashmap_insert(__gm__ IdxT *const table,
+                                                                const uint32_t hash_table_size, const IdxT key)
 {
     uint32_t index = key / 32;
     uint32_t bits = key % 32;
@@ -488,7 +488,8 @@ __forceinline__[aicore] uint32_t hashmap_insert(__gm__ IdxT *const table, const 
 }
 
 template <class IdxT>
-__forceinline__[aicore] void init(__gm__ IdxT *const table, const uint32_t hash_table_size, unsigned FIRST_TID = 0)
+__forceinline__ __simt_callee__[aicore] void init(__gm__ IdxT *const table, const uint32_t hash_table_size,
+                                                  unsigned FIRST_TID = 0)
 {
     if (threadIdx.x < FIRST_TID) return;
     for (unsigned i = threadIdx.x - FIRST_TID; i < hash_table_size; i += blockDim.x - FIRST_TID)
@@ -497,8 +498,8 @@ __forceinline__[aicore] void init(__gm__ IdxT *const table, const uint32_t hash_
     }
 }
 
-#define DI __forceinline__[aicore]
-#define HDI __forceinline__[aicore]
+#define DI __forceinline__ __simt_callee__[aicore]
+#define HDI __forceinline__ __simt_callee__[aicore]
 
 /**
  * @brief Provide a ceiling division operation ie. ceil(a / b)
@@ -763,7 +764,7 @@ struct TxN_t
         math_t data[Ratio];
     } val;
 
-    __forceinline__[aicore] auto *vectorized_data() { return reinterpret_cast<io_t *>(val.data); }
+    __forceinline__ __simt_callee__[aicore] auto *vectorized_data() { return reinterpret_cast<io_t *>(val.data); }
 
     DI void fill(math_t _val)
     {
@@ -799,7 +800,7 @@ struct TxN_t
 using LOAD_64BIT_T = uint64_t;
 
 template <class T, unsigned X_MAX = 1024>
-__forceinline__[aicore] T swizzling(T x)
+__forceinline__ __simt_callee__[aicore] T swizzling(T x)
 {
     // return x;
     if constexpr (X_MAX <= 1024)
@@ -813,7 +814,7 @@ __forceinline__[aicore] T swizzling(T x)
 }
 
 template <class LOAD_T, class DATA_T>
-__forceinline__[aicore] constexpr unsigned get_vlen()
+__forceinline__ __simt_callee__[aicore] constexpr unsigned get_vlen()
 {
     return sizeof(LOAD_T) / sizeof(DATA_T);
 }
@@ -878,9 +879,10 @@ using QUERY_T = float;
 using INDEX_T = uint32_t;
 
 template <uint32_t DATASET_BLOCK_DIM>
-__forceinline__[aicore] void copy_query(__gm__ const float *const dmem_query_ptr, __ubuf__ float *const smem_query_ptr,
-                                        const uint32_t query_smem_buffer_length, const uint32_t dim,
-                                        const uint32_t first_tid = 0)
+__forceinline__ __simt_callee__[aicore] void copy_query(__gm__ const float *const dmem_query_ptr,
+                                                        __ubuf__ float *const smem_query_ptr,
+                                                        const uint32_t query_smem_buffer_length, const uint32_t dim,
+                                                        const uint32_t first_tid = 0)
 {
     if (threadIdx.x < first_tid) return;
     for (unsigned i = threadIdx.x - first_tid; i < query_smem_buffer_length; i += blockDim.x - first_tid)

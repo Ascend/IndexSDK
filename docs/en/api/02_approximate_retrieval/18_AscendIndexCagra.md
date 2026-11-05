@@ -38,7 +38,7 @@
 <tr><td width="210" align="center" valign="middle">Input</td><td valign="middle"><code>int dim</code>: Dimensionality of the feature vectors.<br><code>int graphDegree</code>: Degree of the neighbor graph, that is, the number of neighbors of each node.<br><code>int dataNum</code>: Number of feature vectors in the base library.<br><code>int topK</code>: Number of nearest neighbors returned by retrieval.<br><code>const std::vector&lt;int&gt;&amp; deviceList</code>: Device-side device ID list.</td></tr>
 <tr><td width="210" align="center" valign="middle">Output</td><td valign="middle">None</td></tr>
 <tr><td width="210" align="center" valign="middle">Returns</td><td valign="middle"><code>APP_ERROR</code>: 0 indicates success, and a non-zero value indicates failure.</td></tr>
-<tr><td width="210" align="center" valign="middle">Constraints</td><td valign="middle"><code>dim</code> ∈ {64, 128, 256, 512}.<br><code>graphDegree</code> ∈ {64, 128, 256, 512}.<br><code>dataNum</code> ∈ (0, 1e9].<br><code>topK</code> ∈ (0, 4096].<br><code>deviceList</code> currently supports only one device.<br>Before calling other APIs, you must call <code>Init</code> for initialization.</td></tr>
+<tr><td width="210" align="center" valign="middle">Constraints</td><td valign="middle"><code>dim</code> ∈ {64, 128, 256, 512, 1024, 1536, 3072}.<br><code>graphDegree</code> ∈ {64, 128, 256, 512}.<br><code>dataNum</code> ∈ (1, 1e9], subject to available host and device memory.<br><code>topK</code> ∈ [1, min(256, dataNum)].<br><code>deviceList</code> currently supports only one device.<br>Before calling other APIs, you must call <code>Init</code> for initialization.</td></tr>
 </tbody></table>
 
 ## Add<a name="en-us_TOPIC_0000002513317666"></a>
@@ -47,12 +47,18 @@
 
 <table><tbody>
 <tr><td width="210" align="center" valign="middle">API Definition</td><td valign="middle"><strong><code>APP_ERROR Add(const uint32_t* graph, const uint32_t* hash, const float* data);</code></strong></td></tr>
-<tr><td width="210" align="center" valign="middle">Description</td><td valign="middle">Adds the neighbor graph, hash table, and base library feature data to the <code>Index</code>.</td></tr>
-<tr><td width="210" align="center" valign="middle">Input</td><td valign="middle"><code>const uint32_t* graph</code>: Neighbor graph data. The size is <code>dataNum * graph_degree</code>.<br><code>const uint32_t* hash</code>: Hash table data, used to mark accesses during retrieval. The size is <code>dataNum * 2</code>.<br><code>const float* data</code>: Base library feature vector data. The size is <code>dataNum * dim</code>.</td></tr>
+<tr><td width="210" align="center" valign="middle">Description</td><td valign="middle">Adds the neighbor graph and base library feature data to the <code>Index</code>.</td></tr>
+<tr><td width="210" align="center" valign="middle">Input</td><td valign="middle"><code>const uint32_t* graph</code>: Neighbor graph data. The size is <code>dataNum * graph_degree</code>.<br><code>const uint32_t* hash</code>: Retained for compatibility and required to be non-null. Its contents are not read. The SDK allocates visited state internally, and the kernel clears it for each query. This parameter cannot supply previsited nodes or filtering conditions.<br><code>const float* data</code>: Base library feature vector data. The size is <code>dataNum * dim</code>.</td></tr>
 <tr><td width="210" align="center" valign="middle">Output</td><td valign="middle">None</td></tr>
 <tr><td width="210" align="center" valign="middle">Returns</td><td valign="middle"><code>APP_ERROR</code>: 0 indicates success, and a non-zero value indicates failure.</td></tr>
 <tr><td width="210" align="center" valign="middle">Constraints</td><td valign="middle">Before calling <code>Add</code>, you must call <code>Init</code>.</td></tr>
 </tbody></table>
+
+### Device memory requirements
+
+Let N=dataNum, D=dim and G=graphDegree. Major persistent device buffers require approximately `4ND` bytes for FP32 vectors, `4NG` bytes for the graph, `N*(6*ceil(D/8)+16)` bytes for base quantization codes, and `64*ceil(N/32)*4` bytes for visited state. QuantizeData creates the base codes.
+
+Visited state requires about 8 MB at N=1,000,000 and 8 GB (7.45 GiB) at N=1,000,000,000. The numeric Init limit does not guarantee that the dataset fits. Choose the dataset size using available memory, including query buffers, workspace and temporary peak allocations.
 
 ## QuantizeData<a name="en-us_TOPIC_0000002513317667"></a>
 
@@ -77,5 +83,7 @@
 <tr><td width="210" align="center" valign="middle">Input</td><td valign="middle"><code>int n</code>: Number of query vectors.<br><code>const float* queryData</code>: Query feature vector data. The size is <code>n * dim</code>.<br><code>int topK</code>: Number of nearest neighbors returned by retrieval.</td></tr>
 <tr><td width="210" align="center" valign="middle">Output</td><td valign="middle"><code>float* dists</code>: Retrieval result distances. The size is <code>n * topK</code>, arranged in query order.<br><code>uint32_t* labels</code>: Retrieval result labels. The size is <code>n * topK</code>, arranged in query order.</td></tr>
 <tr><td width="210" align="center" valign="middle">Returns</td><td valign="middle"><code>APP_ERROR</code>: 0 indicates success, and a non-zero value indicates failure.</td></tr>
-<tr><td width="210" align="center" valign="middle">Constraints</td><td valign="middle">Before calling <code>Search</code>, you must call <code>Init</code>, <code>Add</code>, and <code>QuantizeData</code>.<br><code>topK</code> must be the same as the <code>topK</code> set in <code>Init</code>.<br><code>n</code> ∈ (0, 4096].<br><code>topK</code> ∈ (0, 4096].</td></tr>
+<tr><td width="210" align="center" valign="middle">Constraints</td><td valign="middle">Before calling <code>Search</code>, you must call <code>Init</code>, <code>Add</code>, and <code>QuantizeData</code>.<br><code>topK</code> must be the same as the <code>topK</code> set in <code>Init</code>.<br><code>n</code> ∈ (0, 4096].<br><code>topK</code> ∈ [1, min(256, dataNum)].</td></tr>
 </tbody></table>
+
+TopK is configurable from 1 to min(256, dataNum), commonly 32, 64, 128 or 256. Search uses RaBitQ distances and bitonic sorting. Larger TopK values are rejected pending local-memory and sorting validation. The model top_k attribute, Init and Search must match. Rebuild the Host library, reinstall the operator package and regenerate search OM files after updating.

@@ -29,11 +29,11 @@ namespace ascend
 {
 namespace
 {
-const std::vector<int> VALID_DIM = {64, 128, 256, 512};
+const std::vector<int> VALID_DIM = {64, 128, 256, 512, 1024, 1536, 3072};
 const std::vector<int> VALID_GRAPH_DEGREE = {64, 128, 256, 512};
 constexpr int64_t MAX_DATA_NUM = 1000000000L;
 constexpr int MIN_TOPK = 0;
-constexpr int MAX_TOPK = 4096;
+constexpr int MAX_TOPK = 256;
 constexpr int MAX_BATCH_SIZE = 4096;
 }  // namespace
 
@@ -55,15 +55,16 @@ APP_ERROR AscendIndexCagra::Init(int dim, int graphDegree, int dataNum, int topK
     APPERR_RETURN_IF_NOT_LOG(pIndexCagraImpl == nullptr, APP_ERR_INVALID_PARAM, "pIndexCagraImpl is not nullptr");
     APPERR_RETURN_IF_NOT_LOG(!deviceList.empty(), APP_ERR_INVALID_PARAM, "deviceList cannot be empty");
     APPERR_RETURN_IF_NOT_FMT(std::find(VALID_DIM.begin(), VALID_DIM.end(), dim) != VALID_DIM.end(),
-                             APP_ERR_INVALID_PARAM, "Invalid dimension %d, should be in {64, 128, 256, 512}", dim);
+                             APP_ERR_INVALID_PARAM,
+                             "Invalid dimension %d, should be in {64, 128, 256, 512, 1024, 1536, 3072}", dim);
     APPERR_RETURN_IF_NOT_FMT(
         std::find(VALID_GRAPH_DEGREE.begin(), VALID_GRAPH_DEGREE.end(), graphDegree) != VALID_GRAPH_DEGREE.end(),
         APP_ERR_INVALID_PARAM, "Invalid graph degree %d, should be in {64, 128, 256, 512}", graphDegree);
     APPERR_RETURN_IF_NOT_FMT(topK > MIN_TOPK && topK <= MAX_TOPK, APP_ERR_INVALID_PARAM,
                              "topK %d, must be in range (%d, %d]", topK, MIN_TOPK, MAX_TOPK);
     APPERR_RETURN_IF_NOT_LOG(deviceList.size() == 1, APP_ERR_INVALID_PARAM, "Only 1 chip supported for Ascend CAGRA");
-    APPERR_RETURN_IF_NOT_FMT(dataNum >= 0 && dataNum <= MAX_DATA_NUM, APP_ERR_INVALID_PARAM,
-                             "Invalid dataNum %d, should be in range [0, %lld]", dataNum, MAX_DATA_NUM);
+    APPERR_RETURN_IF_NOT_FMT(dataNum > 1 && dataNum <= MAX_DATA_NUM && topK <= dataNum, APP_ERR_INVALID_PARAM,
+                             "Invalid dataNum %d, must be in (1, %lld] and at least topK", dataNum, MAX_DATA_NUM);
 
     try
     {
@@ -76,7 +77,12 @@ APP_ERROR AscendIndexCagra::Init(int dim, int graphDegree, int dataNum, int topK
 
     try
     {
-        this->pIndexCagraImpl->Init(graphDegree, dataNum);
+        const auto ret = this->pIndexCagraImpl->Init(graphDegree, dataNum);
+        if (ret != APP_ERR_OK)
+        {
+            this->pIndexCagraImpl.reset();
+            return ret;
+        }
     }
     catch (const std::bad_alloc& e)
     {
