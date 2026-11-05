@@ -2,7 +2,7 @@
 
 ## 功能介绍<a name="ZH-CN_TOPIC_0000002544797645"></a>
 
-AscendIndexCagra是基于Cagra的图检索算法，通过构建近邻图实现高效近似最近邻搜索。
+AscendIndexCagra使用已有近邻图执行RaBitQ近似最近邻检索。需要NPU构图时，先使用[AscendCagraGraphBuilder](./19_AscendCagraGraphBuilder.md)及[AscendCagraGraphBuildConfig](./20_AscendCagraGraphBuildConfig.md)，再将产出的图传入Add；Add本身不执行构图。
 
 ## AscendIndexCagra接口<a name="ZH-CN_TOPIC_0000002513317664"></a>
 

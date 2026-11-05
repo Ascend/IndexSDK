@@ -331,5 +331,7 @@ cuVS 的默认 `intermediate_graph_degree` 为 128，默认 `graph_degree` 为 6
 
 - [Index SDK 用户指南](../../zh/05_user_guide.md)
 - [AscendIndexCagra API](../../zh/api/02_approximate_retrieval/18_AscendIndexCagra.md#ascendindexcagra)
+- [AscendCagraGraphBuilder API](../../zh/api/02_approximate_retrieval/19_AscendCagraGraphBuilder.md)
+- [AscendCagraGraphBuildConfig](../../zh/api/02_approximate_retrieval/20_AscendCagraGraphBuildConfig.md)
 - [RAPIDS cuVS CAGRA 接口](https://github.com/rapidsai/cuvs/blob/main/cpp/include/cuvs/neighbors/cagra.hpp)
 - [RAPIDS cuVS CAGRA 搜索参数检查](https://github.com/rapidsai/cuvs/blob/main/cpp/src/neighbors/detail/cagra/search_plan.cuh)
