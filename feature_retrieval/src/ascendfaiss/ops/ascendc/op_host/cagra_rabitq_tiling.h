@@ -15,15 +15,19 @@
  * See the Mulan PSL v2 for more details.
  * -------------------------------------------------------------------------
  */
-#ifndef CAGRA_RABITQ_H
-#define CAGRA_RABITQ_H
+#ifndef CAGRA_RABITQ_TILING_H
+#define CAGRA_RABITQ_TILING_H
 #include "register/tilingdata_base.h"
 
 namespace optiling
 {
 BEGIN_TILING_DATA_DEF(CagraRabitqTilingData)
 TILING_DATA_FIELD_DEF(uint32_t, size);
+TILING_DATA_FIELD_DEF(uint32_t, dim);
+TILING_DATA_FIELD_DEF(uint32_t, graphDegree);
+TILING_DATA_FIELD_DEF(uint32_t, topK);
+TILING_DATA_FIELD_DEF(uint32_t, internalTopK);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(CagraRabitq, CagraRabitqTilingData)
 }  // namespace optiling
-#endif  // CAGRA_RABITQ_H
+#endif  // CAGRA_RABITQ_TILING_H

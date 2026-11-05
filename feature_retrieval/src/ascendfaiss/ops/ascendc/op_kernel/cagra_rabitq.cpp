@@ -17,9 +17,12 @@
  */
 
 #include "cagra_rabitq_topk.h"
+#include "utils/debug/asc_assert.h"
+
+__simt_vf__ __aicore__ LAUNCH_BOUND(32) inline void CagraRabitqUnsupportedTilingKey() { __trap(); }
 
 template <int TEAM_SIZE, int DATASET_BLOCK_DIM, int MAX_ITOPK, int MAX_CANDIDATES, bool TOPK_BY_BITONIC_SORT,
-          typename DATA_T, typename INDEX_T, typename DISTANCE_T, int CODE_SIZE>
+          typename DATA_T, typename INDEX_T, typename DISTANCE_T>
 __simt_vf__ __aicore__ LAUNCH_BOUND(256) inline void Simtsearch(
     __gm__ float *precompute_all, __gm__ uint8_t *code, __gm__ uint8_t *rotated_qq_ptr_all, const uint32_t qb,
     const uint32_t rotated_qq_size, __ubuf__ uint8_t *rotated_qq_buffer, __ubuf__ DISTANCE_T *distance_flag,
@@ -40,7 +43,7 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(256) inline void Simtsearch(
 
 {
     none_cagra_sample_filter sample_filter;
-    const auto query_id = block_idx;
+    const auto query_id = blockIdx.x;
     __gm__ const DATA_T *const query_ptr = queries_ptr + query_id * dim;
     __gm__ uint8_t *rotated_qq_ptr = rotated_qq_ptr_all + query_id * rotated_qq_size;
     __gm__ float *precompute = precompute_all + 4 * query_id;
@@ -71,10 +74,10 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(256) inline void Simtsearch(
     __sync_workitems();
 
     __gm__ const INDEX_T *const local_seed_ptr = seed_ptr ? seed_ptr + (num_seeds * query_id) : nullptr;
-    compute_distance_to_random_nodes_rabitq<CODE_SIZE, TEAM_SIZE, DATASET_BLOCK_DIM>(
+    compute_distance_to_random_nodes_rabitq<TEAM_SIZE, DATASET_BLOCK_DIM>(
         result_indices_buffer, result_distances_buffer, code, rotated_qq_buffer, result_buffer_size, num_distillation,
         rand_xor_mask, local_seed_ptr, num_seeds, local_visited_hashmap_ptr, hash_table_size, ld, size, dim,
-        qr_to_c_L2sqr, qb, sum_q_quant, scale_q, shift_query);
+        qr_to_c_L2sqr, qb, sum_q_quant, scale_q, shift_query, query_id * result_buffer_size, 1);
 
     for (int i = threadIdx.x; i < search_width * graph_degree; i += blockDim.x)
     {
@@ -112,20 +115,35 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(256) inline void Simtsearch(
             __sync_workitems();
             if (threadIdx.x == 0)
             {
-                if (result_distances_buffer[parent_offsets_buffer[0]] < candidate_distances_buffer[0])
+                const INDEX_T invalid_index = get_max_value<INDEX_T>();
+                const INDEX_T parent_offset = parent_offsets_buffer[0];
+                const bool topk_parent_valid = parent_offset != invalid_index;
+                const bool candidate_parent_valid = candidate_indices_buffer[0] != invalid_index;
+                const float topk_parent_distance =
+                    topk_parent_valid ? result_distances_buffer[parent_offset] : get_max_value<DISTANCE_T>();
+                if (candidate_parent_valid &&
+                    (!topk_parent_valid || candidate_distances_buffer[0] < topk_parent_distance))
                 {
                     parent_offsets_buffer[0] = candidate_indices_buffer[0];
                 }
+                else if (topk_parent_valid)
+                {
+                    parent_offsets_buffer[0] = result_indices_buffer[parent_offset];
+                }
                 else
                 {
-                    parent_offsets_buffer[0] = result_indices_buffer[parent_offsets_buffer[0]];
+                    parent_offsets_buffer[0] = invalid_index;
+                }
+                if (parent_offsets_buffer[0] != invalid_index)
+                {
+                    terminate_flag[0] = 0;
                 }
             }
 
             __sync_workitems();
 
             pickChildren(knn_graph, graph_degree, temp_indices_buffer, parent_offsets_buffer, search_width,
-                         local_visited_hashmap_ptr, hash_table_size);
+                         local_visited_hashmap_ptr, hash_table_size, size);
 
             __sync_workitems();
 
@@ -137,7 +155,15 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(256) inline void Simtsearch(
             }
             __sync_workitems();
 
-            if (is_same<decltype(sample_filter), none_cagra_sample_filter>::value || *filter_flag == 0)
+            if constexpr (is_same<decltype(sample_filter), none_cagra_sample_filter>::value)
+            {
+                topk_by_bitonic_sort<MAX_ITOPK, MAX_CANDIDATES>(result_distances_buffer, result_indices_buffer,
+                                                                internal_topk, result_distances_buffer + internal_topk,
+                                                                result_indices_buffer + internal_topk,
+                                                                search_width * graph_degree, topk_ws, (iter == 0),
+                                                                multi_warps_1, multi_warps_2, count_flag, adding_pref);
+            }
+            else if (*filter_flag == 0)
             {
                 topk_by_bitonic_sort<MAX_ITOPK, MAX_CANDIDATES>(result_distances_buffer, result_indices_buffer,
                                                                 internal_topk, result_distances_buffer + internal_topk,
@@ -289,18 +315,18 @@ extern "C" __global__ __aicore__ void cagra_rabitq(GM_ADDR queries_ptr_gm, GM_AD
     __gm__ uint8_t *rotated_qq_ptr_all = (__gm__ uint8_t *)rotated_qq_ptr_all_gm;
     __gm__ float *result_distances_ptr = (__gm__ float *)result_distances_ptr_gm;
     __gm__ uint32_t *result_indices_ptr = (__gm__ uint32_t *)result_indices_ptr_gm;
-    __gm__ uint32_t *tiling_ptr = (__gm__ uint32_t *)tiling;
-    uint32_t size = tiling_ptr[0];
+    GET_TILING_DATA(tiling_data, tiling);
+    const uint32_t size = tiling_data.size;
+    const uint32_t dim = tiling_data.dim;
+    const uint32_t graph_degree = tiling_data.graphDegree;
+    const uint32_t top_k = tiling_data.topK;
+    const uint32_t internal_topk = tiling_data.internalTopK;
 
-    constexpr uint64_t ld = 128;
+    const uint64_t ld = dim;
     constexpr uint64_t rand_xor_mask = 0x0000000000128394;
-    constexpr uint32_t top_k = 32;
-    constexpr uint32_t dim = 128;
-    constexpr uint32_t graph_degree = 64;
 
     constexpr uint32_t num_distillation = 1;
     constexpr uint32_t num_seeds = 0;
-    constexpr uint32_t internal_topk = 64;
     constexpr uint32_t search_width = 1;
     constexpr uint32_t min_iteration = 0;
     constexpr uint32_t max_iteration = 64;
@@ -309,13 +335,10 @@ extern "C" __global__ __aicore__ void cagra_rabitq(GM_ADDR queries_ptr_gm, GM_AD
     std::uint32_t adding_pref = 25;
     std::uint32_t patience = 16;
     const uint32_t qb = 6;
-    const uint32_t CODE_SIZE = 16 * (qb + 1);
     const uint32_t rotated_qq_size = (dim + 7) / 8 * qb;
 
     constexpr uint32_t TEAM_SIZE = 4;
     constexpr uint32_t DATASET_BLOCK_DIM = 128;
-    constexpr unsigned MAX_ITOPK = 64;
-    constexpr unsigned MAX_CANDIDATES = 64;
     constexpr unsigned TOPK_BY_BITONIC_SORT = 1;
 
     none_cagra_sample_filter sample_filter;
@@ -338,7 +361,7 @@ extern "C" __global__ __aicore__ void cagra_rabitq(GM_ADDR queries_ptr_gm, GM_AD
     }
 
     const uint32_t hash_table_size = (size + 31) / 32;
-    const auto query_smem_buffer_length = ceildiv<uint32_t>(dim, DATASET_BLOCK_DIM) * DATASET_BLOCK_DIM;
+    const auto query_smem_buffer_length = ((dim + DATASET_BLOCK_DIM - 1) / DATASET_BLOCK_DIM) * DATASET_BLOCK_DIM;
     __ubuf__ QUERY_T *query_buffer = reinterpret_cast<__ubuf__ QUERY_T *>(smem);
     __ubuf__ uint8_t *rotated_qq_buffer = reinterpret_cast<__ubuf__ uint8_t *>(query_buffer + query_smem_buffer_length);
     __ubuf__ INDEX_T *result_indices_buffer = reinterpret_cast<__ubuf__ INDEX_T *>(rotated_qq_buffer + rotated_qq_size);
@@ -368,43 +391,71 @@ extern "C" __global__ __aicore__ void cagra_rabitq(GM_ADDR queries_ptr_gm, GM_AD
     __ubuf__ DISTANCE_T *distance_flag = reinterpret_cast<__ubuf__ DISTANCE_T *>(count_flag + 1);
     __ubuf__ uint32_t *smem_work_ptr = reinterpret_cast<__ubuf__ uint32_t *>(distance_flag + 1);
 
-    set_smem_ptr(distance_work_buffer_ptr);
-
     __ubuf__ uint32_t *filter_flag = terminate_flag;
 
-    Simt::VF_CALL<Simtsearch<TEAM_SIZE, DATASET_BLOCK_DIM, MAX_ITOPK, MAX_CANDIDATES, TOPK_BY_BITONIC_SORT, float,
-                             uint32_t, float, CODE_SIZE>>(
-        dim3{256, 1, 1},
-        // 查询参数
-        precompute_all, code, rotated_qq_ptr_all, qb, rotated_qq_size, rotated_qq_buffer, distance_flag, queries_ptr,
-        dim,
+#define LAUNCH_CAGRA_RABITQ(MAX_TOPK, MAX_CANDIDATES)                                                                \
+    Simt::VF_CALL<Simtsearch<TEAM_SIZE, DATASET_BLOCK_DIM, MAX_TOPK, MAX_CANDIDATES, TOPK_BY_BITONIC_SORT, float,    \
+                             uint32_t, float>>(                                                                      \
+        dim3{256, 1, 1}, precompute_all, code, rotated_qq_ptr_all, qb, rotated_qq_size, rotated_qq_buffer,           \
+        distance_flag, queries_ptr, dim, query_buffer, query_smem_buffer_length, terminate_flag, topk_ws,            \
+        hash_table_size, seed_ptr, num_seeds, result_indices_buffer, result_distances_buffer, result_buffer_size,    \
+        num_distillation, rand_xor_mask, ptr, ld, size, knn_graph, graph_degree, count_flag,                         \
+        candidate_distances_buffer, candidate_indices_buffer, parent_offsets_buffer, temp_indices_buffer,            \
+        temp_distances_buffer, patience, internal_topk, search_width, max_iteration, min_iteration, top_k,           \
+        result_distances_ptr, result_indices_ptr, num_executed_iterations, smem_work_ptr, small_hash_reset_interval, \
+        adding_pref, filter_flag, visited_hashmap_ptr)
 
-        // 缓冲区
-        query_buffer, query_smem_buffer_length, terminate_flag, topk_ws, hash_table_size,
-
-        // 种子和距离计算
-        seed_ptr, num_seeds, result_indices_buffer, result_distances_buffer, result_buffer_size, num_distillation,
-        rand_xor_mask,
-
-        // 数据集
-        ptr, ld, size,
-
-        // 图
-        knn_graph, graph_degree,
-
-        // 临时缓冲区
-        count_flag, candidate_distances_buffer, candidate_indices_buffer, parent_offsets_buffer, temp_indices_buffer,
-        temp_distances_buffer,
-
-        // 配置参数
-        patience, internal_topk, search_width, max_iteration, min_iteration, top_k,
-
-        // 输出
-        result_distances_ptr, result_indices_ptr, num_executed_iterations,
-
-        // 其它
-        smem_work_ptr, small_hash_reset_interval,
-
-        // hash_bitlen,
-        adding_pref, filter_flag, visited_hashmap_ptr);
+    if (TILING_KEY_IS(640064))
+    {
+        LAUNCH_CAGRA_RABITQ(64, 64);
+    }
+    else if (TILING_KEY_IS(640128))
+    {
+        LAUNCH_CAGRA_RABITQ(128, 64);
+    }
+    else if (TILING_KEY_IS(640256))
+    {
+        LAUNCH_CAGRA_RABITQ(256, 64);
+    }
+    else if (TILING_KEY_IS(1280064))
+    {
+        LAUNCH_CAGRA_RABITQ(64, 128);
+    }
+    else if (TILING_KEY_IS(1280128))
+    {
+        LAUNCH_CAGRA_RABITQ(128, 128);
+    }
+    else if (TILING_KEY_IS(1280256))
+    {
+        LAUNCH_CAGRA_RABITQ(256, 128);
+    }
+    else if (TILING_KEY_IS(2560064))
+    {
+        LAUNCH_CAGRA_RABITQ(64, 256);
+    }
+    else if (TILING_KEY_IS(2560128))
+    {
+        LAUNCH_CAGRA_RABITQ(128, 256);
+    }
+    else if (TILING_KEY_IS(2560256))
+    {
+        LAUNCH_CAGRA_RABITQ(256, 256);
+    }
+    else if (TILING_KEY_IS(5120064))
+    {
+        LAUNCH_CAGRA_RABITQ(64, 512);
+    }
+    else if (TILING_KEY_IS(5120128))
+    {
+        LAUNCH_CAGRA_RABITQ(128, 512);
+    }
+    else if (TILING_KEY_IS(5120256))
+    {
+        LAUNCH_CAGRA_RABITQ(256, 512);
+    }
+    else
+    {
+        Simt::VF_CALL<CagraRabitqUnsupportedTilingKey>(dim3{32, 1, 1});
+    }
+#undef LAUNCH_CAGRA_RABITQ
 }

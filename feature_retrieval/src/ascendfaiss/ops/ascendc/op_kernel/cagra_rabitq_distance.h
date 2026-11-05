@@ -22,30 +22,26 @@
 
 using namespace AscendC;
 
-template <class T>
-__forceinline__[aicore] void set_smem_ptr(__ubuf__ T *const) {};
-
 template <uint32_t DATASET_BLOCK_DIM, uint32_t TEAM_SIZE, typename DISTANCE_T = float>
-__forceinline__[aicore] DISTANCE_T compute_similarity_rabitq(__gm__ uint8_t *code, uint32_t dataset_i, bool valid_i,
-                                                             int dim,
-                                                             __ubuf__ const uint8_t *const rearranged_rotated_qq,
-                                                             float qr_to_c_L2sqr, int qb, float sum_q_quant,
-                                                             float scale_q, float shift_query)
+__forceinline__ __simt_callee__[aicore] DISTANCE_T compute_similarity_rabitq(
+    __gm__ uint8_t *code, uint32_t dataset_i, bool valid_i, int dim,
+    __ubuf__ const uint8_t *const rearranged_rotated_qq, float qr_to_c_L2sqr, int qb, float sum_q_quant, float scale_q,
+    float shift_query)
 {
     if (!valid_i) return get_max_value<DISTANCE_T>();
     if (qb <= 0 || qb > 8) return get_max_value<DISTANCE_T>();
 
-    const uint32_t CODE_UINT32_LENGTH = 4;
+    const uint32_t code_uint32_length = (static_cast<uint32_t>(dim) + 31) / 32;
     const uint32_t NUM_PLANES = qb;
-    const uint32_t PLANE_BYTES = 16;
-    const uint32_t BLOCK_OFFSET = NUM_PLANES * PLANE_BYTES;
-    const uint32_t BLOCK_BYTES = BLOCK_OFFSET + 16;
+    const uint32_t plane_bytes = (static_cast<uint32_t>(dim) + 7) / 8;
+    const uint32_t block_offset = NUM_PLANES * plane_bytes;
+    const uint32_t block_bytes = block_offset + 16;
 
     const unsigned lane_id = threadIdx.x % TEAM_SIZE;
-    __gm__ uint8_t *vec_ptr = code + dataset_i * BLOCK_BYTES;
+    __gm__ uint8_t *vec_ptr = code + static_cast<int64_t>(dataset_i) * block_bytes;
     __ubuf__ const uint32_t *q_plane = reinterpret_cast<__ubuf__ const uint32_t *>(rearranged_rotated_qq);
 
-    __gm__ float *base_precompute = reinterpret_cast<__gm__ float *>(vec_ptr + BLOCK_OFFSET);
+    __gm__ float *base_precompute = reinterpret_cast<__gm__ float *>(vec_ptr + block_offset);
     float or_c_l2sqr = base_precompute[0];
     float shift_base = base_precompute[1];
     float scale_x = base_precompute[2];
@@ -53,18 +49,18 @@ __forceinline__[aicore] DISTANCE_T compute_similarity_rabitq(__gm__ uint8_t *cod
 
     uint64_t dot_qb = 0;  // 改为 64 位，消除溢出隐患
 
-    for (uint32_t k = lane_id; k < CODE_UINT32_LENGTH; k += TEAM_SIZE)
+    for (uint32_t k = lane_id; k < code_uint32_length; k += TEAM_SIZE)
     {
         uint32_t qv[8];
 #pragma unroll
         for (int j = 0; j < qb; ++j)
         {
-            qv[j] = q_plane[j * CODE_UINT32_LENGTH + k];
+            qv[j] = q_plane[j * code_uint32_length + k];
         }
 #pragma unroll
         for (int p = 0; p < NUM_PLANES; ++p)
         {
-            __gm__ uint32_t *base_plane = reinterpret_cast<__gm__ uint32_t *>(vec_ptr + p * PLANE_BYTES);
+            __gm__ uint32_t *base_plane = reinterpret_cast<__gm__ uint32_t *>(vec_ptr + p * plane_bytes);
             uint32_t base_word = base_plane[k];
 #pragma unroll
             for (int m = 0; m < qb; ++m)
@@ -96,15 +92,19 @@ __forceinline__[aicore] DISTANCE_T compute_similarity_rabitq(__gm__ uint8_t *cod
 
 struct none_cagra_sample_filter
 {
-    __forceinline__[aicore] bool operator()(const uint32_t query_ix, const uint32_t sample_ix) const { return true; }
+    __forceinline__ __simt_callee__[aicore] bool operator()(const uint32_t query_ix, const uint32_t sample_ix) const
+    {
+        return true;
+    }
 };
 
 template <unsigned TOPK_BY_BITONIC_SORT, class INDEX_T>
-__forceinline__[aicore] void pickup_next_parents(__ubuf__ uint32_t *const terminate_flag,
-                                                 __ubuf__ INDEX_T *const next_parent_offsets,
-                                                 __ubuf__ INDEX_T *const internal_topk_indices,
-                                                 const size_t internal_topk_size, const size_t dataset_size,
-                                                 const uint32_t search_width, const unsigned first_tid)
+__forceinline__ __simt_callee__[aicore] void pickup_next_parents(__ubuf__ uint32_t *const terminate_flag,
+                                                                 __ubuf__ INDEX_T *const next_parent_offsets,
+                                                                 __ubuf__ INDEX_T *const internal_topk_indices,
+                                                                 const size_t internal_topk_size,
+                                                                 const size_t dataset_size, const uint32_t search_width,
+                                                                 const unsigned first_tid)
 {
     if (threadIdx.x < first_tid || threadIdx.x >= first_tid + 32) return;
     constexpr INDEX_T index_msb_1_mask = gen_index_msb_1_mask<INDEX_T>::value;
@@ -121,11 +121,16 @@ __forceinline__[aicore] void pickup_next_parents(__ubuf__ uint32_t *const termin
     uint32_t num_new_parents = 0;
     for (uint32_t j = thread_id; j < itopk_max; j += 32)
     {
+        uint32_t position = j;
+        if constexpr (TOPK_BY_BITONIC_SORT)
+        {
+            position = swizzling(j);
+        }
         INDEX_T index;
         int new_parent = 0;
         if (j < internal_topk_size)
         {
-            index = internal_topk_indices[j];
+            index = internal_topk_indices[position];
             if ((index & index_msb_1_mask) == 0)
             {
                 new_parent = 1;
@@ -137,7 +142,7 @@ __forceinline__[aicore] void pickup_next_parents(__ubuf__ uint32_t *const termin
             const auto i = __popc(ballot_mask & ((1 << thread_id) - 1)) + num_new_parents;
             if (i < search_width)
             {
-                next_parent_offsets[i] = j;
+                next_parent_offsets[i] = position;
             }
         }
         num_new_parents += __popc(ballot_mask);
@@ -152,9 +157,8 @@ __forceinline__[aicore] void pickup_next_parents(__ubuf__ uint32_t *const termin
     }
 }
 
-template <unsigned CODE_SIZE, unsigned TEAM_SIZE, unsigned DATASET_BLOCK_DIM, class QUERY_T, class DISTANCE_T,
-          class INDEX_T, class DATA_T>
-__forceinline__[aicore] void compute_distance_to_random_nodes_rabitq(
+template <unsigned TEAM_SIZE, unsigned DATASET_BLOCK_DIM, class QUERY_T, class DISTANCE_T, class INDEX_T, class DATA_T>
+__forceinline__ __simt_callee__[aicore] void compute_distance_to_random_nodes_rabitq(
     __ubuf__ INDEX_T *const result_indices_ptr, __ubuf__ DISTANCE_T *const result_distances_ptr,
     __gm__ DATA_T *base_data_code, __ubuf__ const QUERY_T *const rearranged_rotated_qq, const size_t num_pickup,
     const unsigned num_distillation, const uint64_t rand_xor_mask, __gm__ const INDEX_T *const seed_ptr,
@@ -163,8 +167,11 @@ __forceinline__[aicore] void compute_distance_to_random_nodes_rabitq(
     float shift_query, const uint32_t block_id = 0, const uint32_t num_blocks = 1)
 {
     uint32_t max_i = num_pickup;
+    const uint32_t lane_id = threadIdx.x % TEAM_SIZE;
+    const uint32_t team_id = threadIdx.x / TEAM_SIZE;
+    const uint32_t team_count = blockDim.x / TEAM_SIZE;
 
-    for (uint32_t i = threadIdx.x; i < max_i; i += blockDim.x)
+    for (uint32_t i = team_id; i < max_i; i += team_count)
     {
         bool valid_i = (i < max_i);
 
@@ -199,7 +206,7 @@ __forceinline__[aicore] void compute_distance_to_random_nodes_rabitq(
             }
         }
 
-        if (valid_i)
+        if (valid_i && lane_id == 0)
         {
             if (hashmap_insert(visited_hash_ptr, hash_table_size, best_index_team_local))
             {
@@ -216,33 +223,30 @@ __forceinline__[aicore] void compute_distance_to_random_nodes_rabitq(
 }
 
 template <unsigned TEAM_SIZE, unsigned DATASET_BLOCK_DIM, class DISTANCE_T, class INDEX_T>
-__forceinline__[aicore] void compute_distance_to_child_nodes_rabitq(
+__forceinline__ __simt_callee__[aicore] void compute_distance_to_child_nodes_rabitq(
     __ubuf__ INDEX_T *const result_child_indices_ptr, __ubuf__ DISTANCE_T *const result_child_distances_ptr,
     __ubuf__ const uint8_t *const rearranged_rotated_qq, __gm__ uint8_t *base_data_code, const uint32_t dim,
     const uint32_t knn_k, const uint32_t search_width, float qr_to_c_L2sqr, int qb, float sum_q_quant, float scale_q,
     float shift_query)
 {
     const INDEX_T invalid_index = get_max_value<INDEX_T>();
-    uint32_t thread_id = threadIdx.x - 32;
-    uint32_t lane_id = thread_id % TEAM_SIZE;
-    uint32_t max_i = ceildiv(knn_k * (blockDim.x - 32), blockDim.x) * search_width;
+    const uint32_t thread_id = threadIdx.x - 32;
+    const uint32_t lane_id = thread_id % TEAM_SIZE;
+    const uint32_t team_id = thread_id / TEAM_SIZE;
+    const uint32_t team_count = (blockDim.x - 32) / TEAM_SIZE;
+    const uint32_t candidate_count = knn_k * search_width;
 
-    if (max_i % (32 / TEAM_SIZE))
+    // Threads [32, blockDim.x) form TEAM_SIZE-wide distance teams. There are 56 teams for the
+    // current 256-thread/TEAM_SIZE=4 kernel, so the last eight neighbors of a 64-degree graph
+    // must be handled by a second loop pass instead of being left at infinity.
+    for (uint32_t i = team_id; i < candidate_count; i += team_count)
     {
-        max_i += (32 / TEAM_SIZE) - (max_i % (32 / TEAM_SIZE));
-    }
-
-    for (uint32_t tid = thread_id; tid < max_i * TEAM_SIZE; tid += blockDim.x - 32)
-    {
-        const auto i = tid / TEAM_SIZE;
-        bool valid_i = (i < max_i);
-
-        INDEX_T child_id = result_child_indices_ptr[i];
+        const INDEX_T child_id = result_child_indices_ptr[i];
         const auto norm2 = compute_similarity_rabitq<DATASET_BLOCK_DIM, TEAM_SIZE>(
             base_data_code, child_id, child_id != invalid_index, dim, rearranged_rotated_qq, qr_to_c_L2sqr, qb,
             sum_q_quant, scale_q, shift_query);
 
-        if (valid_i && lane_id == 0)
+        if (lane_id == 0)
         {
             if (child_id != invalid_index)
             {
@@ -257,11 +261,11 @@ __forceinline__[aicore] void compute_distance_to_child_nodes_rabitq(
 }
 
 template <class INDEX_T>
-__forceinline__[aicore] void copy_buffer_distances(__ubuf__ INDEX_T *candidates_indices,
-                                                   __ubuf__ float *candidates_distances,
-                                                   __ubuf__ float *temp_candidates_distances,
-                                                   __ubuf__ INDEX_T *temp_candidates_indices,
-                                                   const uint32_t candidates_size)
+__forceinline__ __simt_callee__[aicore] void copy_buffer_distances(__ubuf__ INDEX_T *candidates_indices,
+                                                                   __ubuf__ float *candidates_distances,
+                                                                   __ubuf__ float *temp_candidates_distances,
+                                                                   __ubuf__ INDEX_T *temp_candidates_indices,
+                                                                   const uint32_t candidates_size)
 {
     const INDEX_T invalid_index = get_max_value<INDEX_T>();
 
@@ -279,8 +283,9 @@ __forceinline__[aicore] void copy_buffer_distances(__ubuf__ INDEX_T *candidates_
 }
 
 template <class INDEX_T>
-__forceinline__[aicore] void set_parents(__ubuf__ INDEX_T *itopk_indices, const unsigned itopk,
-                                         const __ubuf__ INDEX_T *parents_indices, const unsigned first_tid)
+__forceinline__ __simt_callee__[aicore] void set_parents(__ubuf__ INDEX_T *itopk_indices, const unsigned itopk,
+                                                         const __ubuf__ INDEX_T *parents_indices,
+                                                         const unsigned first_tid)
 {
     if (threadIdx.x < first_tid) return;
     for (int i = threadIdx.x - first_tid; i < itopk; i += blockDim.x - first_tid)
@@ -293,17 +298,19 @@ __forceinline__[aicore] void set_parents(__ubuf__ INDEX_T *itopk_indices, const 
 }
 
 template <class INDEX_T>
-__forceinline__[aicore] void pickChildren(__gm__ const INDEX_T *const knn_graph, const uint32_t knn_k,
-                                          __ubuf__ INDEX_T *const result_child_indices_ptr,
-                                          __ubuf__ const INDEX_T *const parent_indices, const uint32_t search_width,
-                                          __gm__ INDEX_T *const visited_hashmap_ptr, const uint32_t hash_table_size)
+__forceinline__ __simt_callee__[aicore] void pickChildren(__gm__ const INDEX_T *const knn_graph, const uint32_t knn_k,
+                                                          __ubuf__ INDEX_T *const result_child_indices_ptr,
+                                                          __ubuf__ const INDEX_T *const parent_indices,
+                                                          const uint32_t search_width,
+                                                          __gm__ INDEX_T *const visited_hashmap_ptr,
+                                                          const uint32_t hash_table_size, const uint32_t dataset_size)
 {
     const INDEX_T invalid_index = get_max_value<INDEX_T>();
     for (uint32_t i = threadIdx.x; i < knn_k * search_width; i += blockDim.x)
     {
         const INDEX_T smem_parent_id = parent_indices[i / knn_k];
         INDEX_T child_id = invalid_index;
-        if (smem_parent_id != invalid_index)
+        if (smem_parent_id != invalid_index && smem_parent_id < dataset_size)
         {
             child_id = knn_graph[(i % knn_k) + (static_cast<int64_t>(knn_k) * smem_parent_id)];
         }
@@ -320,9 +327,11 @@ __forceinline__[aicore] void pickChildren(__gm__ const INDEX_T *const knn_graph,
 }
 
 template <unsigned MAX_CANDIDATES, class IdxT = void>
-__forceinline__[aicore] void topk_by_bitonic_sort_1st(__ubuf__ float *candidate_distances,
-                                                      __ubuf__ IdxT *candidate_indices, const uint32_t num_candidates,
-                                                      const uint32_t num_itopk, unsigned MULTI_WARPS = 0)
+__forceinline__ __simt_callee__[aicore] void topk_by_bitonic_sort_1st(__ubuf__ float *candidate_distances,
+                                                                      __ubuf__ IdxT *candidate_indices,
+                                                                      const uint32_t num_candidates,
+                                                                      const uint32_t num_itopk,
+                                                                      unsigned MULTI_WARPS = 0)
 {
     const unsigned lane_id = threadIdx.x % 32;
     const unsigned warp_id = threadIdx.x / 32;
@@ -441,7 +450,7 @@ __forceinline__[aicore] void topk_by_bitonic_sort_1st(__ubuf__ float *candidate_
     }
 }
 
-__forceinline__[aicore] uint32_t convert(uint32_t x)
+__forceinline__ __simt_callee__[aicore] uint32_t convert(uint32_t x)
 {
     if (x & 0x80000000)
     {
@@ -453,7 +462,7 @@ __forceinline__[aicore] uint32_t convert(uint32_t x)
     }
 }
 
-__forceinline__[aicore] uint16_t convert(uint16_t x)
+__forceinline__ __simt_callee__[aicore] uint16_t convert(uint16_t x)
 {
     if (x & 0x8000)
     {
@@ -482,7 +491,7 @@ struct u16_vector
 };
 
 template <int vecLen>
-__forceinline__[aicore] void load_u32_vector(struct u32_vector &vec, __ubuf__ const uint32_t *x, int i)
+__forceinline__ __simt_callee__[aicore] void load_u32_vector(struct u32_vector &vec, __ubuf__ const uint32_t *x, int i)
 {
     if constexpr (vecLen == 1)
     {
@@ -503,7 +512,7 @@ __forceinline__[aicore] void load_u32_vector(struct u32_vector &vec, __ubuf__ co
 }
 
 template <int vecLen>
-__forceinline__[aicore] void load_u16_vector(struct u16_vector &vec, __ubuf__ const uint16_t *x, int i)
+__forceinline__ __simt_callee__[aicore] void load_u16_vector(struct u16_vector &vec, __ubuf__ const uint16_t *x, int i)
 {
     if constexpr (vecLen == 1)
     {
@@ -524,7 +533,7 @@ __forceinline__[aicore] void load_u16_vector(struct u16_vector &vec, __ubuf__ co
 }
 
 template <int vecLen>
-__forceinline__[aicore] uint32_t get_element_from_u32_vector(struct u32_vector &vec, int i)
+__forceinline__ __simt_callee__[aicore] uint32_t get_element_from_u32_vector(struct u32_vector &vec, int i)
 {
     uint32_t xi;
     if constexpr (vecLen == 1)
@@ -604,7 +613,7 @@ __forceinline__[aicore] uint32_t get_element_from_u32_vector(struct u32_vector &
 }
 
 template <int vecLen>
-__forceinline__[aicore] uint16_t get_element_from_u16_vector(struct u16_vector &vec, int i)
+__forceinline__ __simt_callee__[aicore] uint16_t get_element_from_u16_vector(struct u16_vector &vec, int i)
 {
     uint16_t xi;
     if constexpr (vecLen == 1)
@@ -684,11 +693,12 @@ __forceinline__[aicore] uint16_t get_element_from_u16_vector(struct u16_vector &
 }
 
 template <typename T, int stateBitLen, int vecLen>
-__forceinline__[aicore] void update_histogram(int itr, uint32_t thread_id, uint32_t num_threads, uint32_t hint,
-                                              uint32_t threshold, uint32_t &num_bins, uint32_t &shift,
-                                              __ubuf__ const T *x, uint32_t nx, __ubuf__ uint32_t *hist,
-                                              __ubuf__ uint8_t *state, __ubuf__ uint32_t *output,
-                                              __ubuf__ uint32_t *output_count)
+__forceinline__ __simt_callee__[aicore] void update_histogram(int itr, uint32_t thread_id, uint32_t num_threads,
+                                                              uint32_t hint, uint32_t threshold, uint32_t &num_bins,
+                                                              uint32_t &shift, __ubuf__ const T *x, uint32_t nx,
+                                                              __ubuf__ uint32_t *hist, __ubuf__ uint8_t *state,
+                                                              __ubuf__ uint32_t *output,
+                                                              __ubuf__ uint32_t *output_count)
 {
     if (sizeof(T) == 4)
     {
@@ -871,7 +881,7 @@ __forceinline__ __simt_callee__[aicore] void ScanBlockExclusive(T &val)
 }
 
 template <typename T, int ITEMS_PER_THREAD>
-__forceinline__[aicore] void inclusive_block_scan(T (&input)[ITEMS_PER_THREAD])
+__forceinline__ __simt_callee__[aicore] void inclusive_block_scan(T (&input)[ITEMS_PER_THREAD])
 {
     for (int i = 1; i < ITEMS_PER_THREAD; ++i)
     {

@@ -510,7 +510,7 @@ VSTAR检索当前只支持<term>Atlas推理系列产品</term>，涉及VSTAR业�
 <tr><td width="140" align="center" valign="middle">用法</td><td valign="middle"><strong><code>python3 cagra_generate_model.py -d &lt;dim&gt; -data_base &lt;data_base&gt; -degree &lt;degree&gt; -topK &lt;topK&gt; -p &lt;process_id&gt; -t &lt;npu_type&gt;</code></strong></td></tr>
 <tr><td width="140" align="center" valign="middle">参数名称</td><td valign="middle">&lt;dim&gt;：特征向量维度，默认值为&quot;128&quot;。<br>&lt;data_base&gt;：底库数据量，默认值为&quot;1000000&quot;。<br>&lt;degree&gt;：图度数，默认值为&quot;64&quot;。<br>&lt;topK&gt;：检索返回的最近邻个数，默认值为&quot;64&quot;。<br>&lt;process_id&gt;：批量生成算子多进程调度的进程ID，默认值为&quot;0&quot;，无需设置。<br>&lt;npu_type&gt;：硬件形态，默认值为&quot;Ascend950PR&quot;。<br>--help | -h：查询帮助信息。</td></tr>
 <tr><td width="140" align="center" valign="middle">说明</td><td valign="middle">执行此命令，用户可以得到一组算子模型文件，用户需要自行修改命令中的参数。例如对于Ascend 950PR系列产品 生成128维，底库100万，图度数64，topK 64的算子：python3 cagra_generate_model.py -d 128 -data_base 1000000 -degree 64 -topK 64 -t Ascend950PR</td></tr>
-<tr><td width="140" align="center" valign="middle">约束说明</td><td valign="middle">● 仅支持Ascend 950PR系列产品<br>● dim ∈ {64, 128, 256, 512}<br>● degree ∈ {64, 128, 256, 512}</td></tr>
+<tr><td width="140" align="center" valign="middle">约束说明</td><td valign="middle">● 仅支持Ascend 950PR系列产品<br>● dim ∈ {64, 128, 256, 512, 1024, 1536, 3072}<br>● degree ∈ {64, 128, 256, 512}<br>● 1 ≤ topK ≤ min(256, data_base)，Init、Search 和模型 top_k 属性须一致</td></tr>
 </tbody></table>
 
 ##### Cagra NPU 构图算子模型<a name="cagra-npu-build"></a>

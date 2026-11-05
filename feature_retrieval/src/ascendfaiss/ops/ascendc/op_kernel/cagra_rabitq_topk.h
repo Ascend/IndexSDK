@@ -20,11 +20,10 @@
 #include "cagra_rabitq_distance.h"
 
 template <unsigned MAX_ITOPK, class IdxT = void>
-__forceinline__[aicore] void topk_by_bitonic_sort_2nd(__ubuf__ float *itopk_distances, __ubuf__ IdxT *itopk_indices,
-                                                      const uint32_t num_itopk, __ubuf__ float *candidate_distances,
-                                                      __ubuf__ IdxT *candidate_indices, const uint32_t num_candidates,
-                                                      __ubuf__ uint32_t *work_buf, const bool first,
-                                                      unsigned MULTI_WARPS = 0)
+__forceinline__ __simt_callee__[aicore] void topk_by_bitonic_sort_2nd(
+    __ubuf__ float *itopk_distances, __ubuf__ IdxT *itopk_indices, const uint32_t num_itopk,
+    __ubuf__ float *candidate_distances, __ubuf__ IdxT *candidate_indices, const uint32_t num_candidates,
+    __ubuf__ uint32_t *work_buf, const bool first, unsigned MULTI_WARPS = 0)
 {
     const unsigned lane_id = threadIdx.x % 32;
     const unsigned warp_id = threadIdx.x / 32;
@@ -204,6 +203,11 @@ __forceinline__[aicore] void topk_by_bitonic_sort_2nd(__ubuf__ float *itopk_dist
                 atomicMin(work_buf + 0, j);
             }
         }
+        // All warps update work_buf above.  The consolidating thread must not
+        // consume those values until every update is visible; otherwise the
+        // multi-warp path (first used by internal_topk == 512) can leave the
+        // result list partially merged and later expose an invalid graph id.
+        __sync_workitems();
         if (threadIdx.x == blockDim.x - 1)
         {
             if (work_buf[2] < num_itopk_div2)
@@ -259,12 +263,11 @@ __forceinline__[aicore] void topk_by_bitonic_sort_2nd(__ubuf__ float *itopk_dist
 }
 
 template <unsigned MAX_ITOPK, unsigned MAX_CANDIDATES, class IdxT>
-__forceinline__[aicore] void topk_by_bitonic_sort(__ubuf__ float *itopk_distances, __ubuf__ IdxT *itopk_indices,
-                                                  const uint32_t num_itopk, __ubuf__ float *candidate_distances,
-                                                  __ubuf__ IdxT *candidate_indices, const uint32_t num_candidates,
-                                                  __ubuf__ uint32_t *work_buf, const bool first,
-                                                  const unsigned MULTI_WARPS_1, const unsigned MULTI_WARPS_2,
-                                                  __ubuf__ std::uint32_t *count_flag, std::uint32_t add_perf)
+__forceinline__ __simt_callee__[aicore] void topk_by_bitonic_sort(
+    __ubuf__ float *itopk_distances, __ubuf__ IdxT *itopk_indices, const uint32_t num_itopk,
+    __ubuf__ float *candidate_distances, __ubuf__ IdxT *candidate_indices, const uint32_t num_candidates,
+    __ubuf__ uint32_t *work_buf, const bool first, const unsigned MULTI_WARPS_1, const unsigned MULTI_WARPS_2,
+    __ubuf__ std::uint32_t *count_flag, std::uint32_t add_perf)
 {
     if (num_candidates == 0)
     {
@@ -285,56 +288,43 @@ __forceinline__[aicore] void topk_by_bitonic_sort(__ubuf__ float *itopk_distance
 }
 
 template <class IdxT>
-__forceinline__[aicore] void get_min_k(__ubuf__ float *candidate_distances, __ubuf__ IdxT *candidate_indices,
-                                       __ubuf__ float *min_k_distances, __ubuf__ IdxT *min_k_indices,
-                                       const uint32_t num_candidates, const uint32_t first_tid = 0)
+__forceinline__ __simt_callee__[aicore] void get_min_k(__ubuf__ float *candidate_distances,
+                                                       __ubuf__ IdxT *candidate_indices,
+                                                       __ubuf__ float *min_k_distances, __ubuf__ IdxT *min_k_indices,
+                                                       const uint32_t num_candidates, const uint32_t first_tid = 0)
 {
     if (threadIdx.x < first_tid || threadIdx.x >= first_tid + 32) return;
 
     const unsigned lane_id = threadIdx.x % 32;
-    constexpr unsigned N = 2;
-    float value[N];
-    for (unsigned i = 0; i < N; ++i)
+    float value = get_max_value<float>();
+    for (unsigned i = lane_id; i < num_candidates; i += 32)
     {
-        unsigned j = lane_id + (32 * i);
-        if (j < num_candidates)
+        if (candidate_distances[i] < value)
         {
-            value[i] = candidate_distances[j];
-        }
-        else
-        {
-            value[i] = get_max_value<float>();
+            value = candidate_distances[i];
         }
     }
-
-    if (value[0] > value[1])
-    {
-        value[0] = value[1];
-    }
-
-    value[0] = __reduce_min(value[0]);
+    value = __reduce_min(value);
 
     if (threadIdx.x == first_tid)
     {
         IdxT index = get_max_value<IdxT>();
         for (unsigned i = 0; i < num_candidates; ++i)
         {
-            if (candidate_distances[i] == value[0])
+            if (candidate_distances[i] == value)
             {
                 min_k_indices[0] = candidate_indices[i];
                 break;
             }
         }
-        min_k_distances[0] = value[0];
+        min_k_distances[0] = value;
     }
 }
 
 template <unsigned num_bins, unsigned blockDim_x>
-__forceinline__[aicore] void select_best_index_helper(uint32_t &my_index, uint32_t &my_csum,
-                                                      __ubuf__ const uint32_t *const hist,
-                                                      const uint32_t nx_below_threshold, const uint32_t max_threshold,
-                                                      const uint32_t threshold, const uint32_t shift,
-                                                      const uint32_t topk)
+__forceinline__ __simt_callee__[aicore] void select_best_index_helper(
+    uint32_t &my_index, uint32_t &my_csum, __ubuf__ const uint32_t *const hist, const uint32_t nx_below_threshold,
+    const uint32_t max_threshold, const uint32_t threshold, const uint32_t shift, const uint32_t topk)
 {
     if constexpr (blockDim_x <= num_bins)
     {
@@ -358,7 +348,7 @@ __forceinline__[aicore] void select_best_index_helper(uint32_t &my_index, uint32
 }
 
 template <unsigned blockDim_x>
-__forceinline__[aicore] void select_best_index_for_next_threshold_core(
+__forceinline__ __simt_callee__[aicore] void select_best_index_for_next_threshold_core(
     uint32_t &my_index, uint32_t &my_csum, const unsigned num_bins, __ubuf__ const uint32_t *const hist,
     const uint32_t nx_below_threshold, const uint32_t max_threshold, const uint32_t threshold, const uint32_t shift,
     const uint32_t topk)
@@ -380,13 +370,11 @@ __forceinline__[aicore] void select_best_index_for_next_threshold_core(
     }
 }
 
-__forceinline__[aicore] void select_best_index_for_next_threshold(const uint32_t topk, const uint32_t threshold,
-                                                                  const uint32_t max_threshold,
-                                                                  const uint32_t nx_below_threshold,
-                                                                  const uint32_t num_bins, const uint32_t shift,
-                                                                  __ubuf__ const uint32_t *const hist,  // [num_bins]
-                                                                  __ubuf__ uint32_t *const best_index,
-                                                                  __ubuf__ uint32_t *const best_csum)
+__forceinline__ __simt_callee__[aicore] void select_best_index_for_next_threshold(
+    const uint32_t topk, const uint32_t threshold, const uint32_t max_threshold, const uint32_t nx_below_threshold,
+    const uint32_t num_bins, const uint32_t shift,
+    __ubuf__ const uint32_t *const hist,  // [num_bins]
+    __ubuf__ uint32_t *const best_index, __ubuf__ uint32_t *const best_csum)
 {
     uint32_t my_index = 0xffffffff;
     uint32_t my_csum = 0;
@@ -457,14 +445,13 @@ __forceinline__[aicore] void select_best_index_for_next_threshold(const uint32_t
 }
 
 template <typename T, int stateBitLen, int vecLen>
-__forceinline__[aicore] void output_index_below_threshold(const uint32_t topk, const uint32_t thread_id,
-                                                          const uint32_t num_threads, const uint32_t threshold,
-                                                          const uint32_t nx_below_threshold,
-                                                          __ubuf__ const T *const x,  // [nx,]
-                                                          const uint32_t nx, __ubuf__ const uint8_t *state,
-                                                          __ubuf__ uint32_t *const output,  // [topk]
-                                                          __ubuf__ uint32_t *const output_count,
-                                                          __ubuf__ uint32_t *const output_count_eq)
+__forceinline__ __simt_callee__[aicore] void output_index_below_threshold(
+    const uint32_t topk, const uint32_t thread_id, const uint32_t num_threads, const uint32_t threshold,
+    const uint32_t nx_below_threshold,
+    __ubuf__ const T *const x,  // [nx,]
+    const uint32_t nx, __ubuf__ const uint8_t *state,
+    __ubuf__ uint32_t *const output,  // [topk]
+    __ubuf__ uint32_t *const output_count, __ubuf__ uint32_t *const output_count_eq)
 {
     int ii = 0;
     for (int i = thread_id * vecLen; i < nx; i += num_threads * max(vecLen, stateBitLen), ii++)
@@ -526,9 +513,11 @@ __forceinline__[aicore] void output_index_below_threshold(const uint32_t topk, c
 }
 
 template <int maxTopk, int numSortThreads, class ValT>
-__forceinline__[aicore] void sort_topk_results(uint32_t topk, __ubuf__ const uint32_t *x, __ubuf__ const ValT *in_vals,
-                                               __ubuf__ uint32_t *y, __ubuf__ ValT *out_vals,
-                                               __ubuf__ uint32_t *smem_out_vals, __ubuf__ uint32_t *_smem)
+__forceinline__ __simt_callee__[aicore] void sort_topk_results(uint32_t topk, __ubuf__ const uint32_t *x,
+                                                               __ubuf__ const ValT *in_vals, __ubuf__ uint32_t *y,
+                                                               __ubuf__ ValT *out_vals,
+                                                               __ubuf__ uint32_t *smem_out_vals,
+                                                               __ubuf__ uint32_t *_smem)
 {
     const uint32_t thread_id = threadIdx.x;
     constexpr int numTopkPerThread = maxTopk / numSortThreads;
@@ -686,10 +675,9 @@ __forceinline__[aicore] void sort_topk_results(uint32_t topk, __ubuf__ const uin
 }
 
 template <int stateBitLen, int vecLen, int maxTopk, int numSortThreads, class ValT>
-__forceinline__[aicore] void topk_cta_11_core(uint32_t topk, uint32_t len_x, __ubuf__ const uint32_t *_x,
-                                              __ubuf__ const ValT *_in_vals, __ubuf__ uint32_t *_y,
-                                              __ubuf__ ValT *_out_vals, __ubuf__ uint8_t *_state,
-                                              __ubuf__ uint32_t *_hint, bool sort, __ubuf__ uint32_t *_smem)
+__forceinline__ __simt_callee__[aicore] void topk_cta_11_core(
+    uint32_t topk, uint32_t len_x, __ubuf__ const uint32_t *_x, __ubuf__ const ValT *_in_vals, __ubuf__ uint32_t *_y,
+    __ubuf__ ValT *_out_vals, __ubuf__ uint8_t *_state, __ubuf__ uint32_t *_hint, bool sort, __ubuf__ uint32_t *_smem)
 {
     __ubuf__ uint32_t *const smem_out_vals = _smem;
     __ubuf__ uint32_t *const hist = &(_smem[2 * maxTopk]);
@@ -797,10 +785,11 @@ template <unsigned MAX_INTERNAL_TOPK, class IdxT>
 struct topk_by_radix_sort<MAX_INTERNAL_TOPK, IdxT, enable_if_t<((MAX_INTERNAL_TOPK <= 64))>>
     : topk_by_radix_sort_base<MAX_INTERNAL_TOPK>
 {
-    __forceinline__[aicore] void operator()(uint32_t topk, uint32_t batch_size, uint32_t len_x,
-                                            __ubuf__ const uint32_t *_x, __ubuf__ const IdxT *_in_vals,
-                                            __ubuf__ uint32_t *_y, __ubuf__ IdxT *_out_vals, __ubuf__ uint32_t *work,
-                                            __ubuf__ uint32_t *_hints, bool sort, __ubuf__ uint32_t *_smem)
+    __forceinline__ __simt_callee__[aicore] void operator()(uint32_t topk, uint32_t batch_size, uint32_t len_x,
+                                                            __ubuf__ const uint32_t *_x, __ubuf__ const IdxT *_in_vals,
+                                                            __ubuf__ uint32_t *_y, __ubuf__ IdxT *_out_vals,
+                                                            __ubuf__ uint32_t *work, __ubuf__ uint32_t *_hints,
+                                                            bool sort, __ubuf__ uint32_t *_smem)
     {
         __ubuf__ uint8_t *const state = reinterpret_cast<__ubuf__ uint8_t *>(work);
         topk_cta_11_core<topk_by_radix_sort_base<MAX_INTERNAL_TOPK>::state_bit_length,
@@ -809,23 +798,24 @@ struct topk_by_radix_sort<MAX_INTERNAL_TOPK, IdxT, enable_if_t<((MAX_INTERNAL_TO
     }
 };
 
-#define TOP_FUNC_PARTIAL_SPECIALIZATION(V)                                                                     \
-    template <unsigned MAX_INTERNAL_TOPK, class IdxT>                                                          \
-    struct topk_by_radix_sort<MAX_INTERNAL_TOPK, IdxT,                                                         \
-                              enable_if_t<((MAX_INTERNAL_TOPK <= V) && (2 * MAX_INTERNAL_TOPK > V))>>          \
-        : topk_by_radix_sort_base<MAX_INTERNAL_TOPK>                                                           \
-    {                                                                                                          \
-        __forceinline__[aicore] void operator()(uint32_t topk, uint32_t batch_size, uint32_t len_x,            \
-                                                __ubuf__ const uint32_t *_x, __ubuf__ const IdxT *_in_vals,    \
-                                                __ubuf__ uint32_t *_y, __ubuf__ IdxT *_out_vals,               \
-                                                __ubuf__ uint32_t *work, __ubuf__ uint32_t *_hints, bool sort, \
-                                                __ubuf__ uint32_t *_smem)                                      \
-        {                                                                                                      \
-            __ubuf__ uint8_t *state = (__ubuf__ uint8_t *)work;                                                \
-            topk_cta_11_core<topk_by_radix_sort_base<MAX_INTERNAL_TOPK>::state_bit_length,                     \
-                             topk_by_radix_sort_base<MAX_INTERNAL_TOPK>::vecLen, V, V / 4, IdxT>(              \
-                topk, len_x, _x, _in_vals, _y, _out_vals, state, _hints, sort, _smem);                         \
-        }                                                                                                      \
+#define TOP_FUNC_PARTIAL_SPECIALIZATION(V)                                                                            \
+    template <unsigned MAX_INTERNAL_TOPK, class IdxT>                                                                 \
+    struct topk_by_radix_sort<MAX_INTERNAL_TOPK, IdxT,                                                                \
+                              enable_if_t<((MAX_INTERNAL_TOPK <= V) && (2 * MAX_INTERNAL_TOPK > V))>>                 \
+        : topk_by_radix_sort_base<MAX_INTERNAL_TOPK>                                                                  \
+    {                                                                                                                 \
+        __forceinline__ __simt_callee__[aicore] void operator()(uint32_t topk, uint32_t batch_size, uint32_t len_x,   \
+                                                                __ubuf__ const uint32_t *_x,                          \
+                                                                __ubuf__ const IdxT *_in_vals, __ubuf__ uint32_t *_y, \
+                                                                __ubuf__ IdxT *_out_vals, __ubuf__ uint32_t *work,    \
+                                                                __ubuf__ uint32_t *_hints, bool sort,                 \
+                                                                __ubuf__ uint32_t *_smem)                             \
+        {                                                                                                             \
+            __ubuf__ uint8_t *state = (__ubuf__ uint8_t *)work;                                                       \
+            topk_cta_11_core<topk_by_radix_sort_base<MAX_INTERNAL_TOPK>::state_bit_length,                            \
+                             topk_by_radix_sort_base<MAX_INTERNAL_TOPK>::vecLen, V, V / 4, IdxT>(                     \
+                topk, len_x, _x, _in_vals, _y, _out_vals, state, _hints, sort, _smem);                                \
+        }                                                                                                             \
     }
 TOP_FUNC_PARTIAL_SPECIALIZATION(128);
 TOP_FUNC_PARTIAL_SPECIALIZATION(256);
@@ -833,9 +823,9 @@ TOP_FUNC_PARTIAL_SPECIALIZATION(512);
 TOP_FUNC_PARTIAL_SPECIALIZATION(1024);
 
 template <class INDEX_T>
-__forceinline__[aicore] void copy_buffer_indices(__ubuf__ INDEX_T *candidates_indices,
-                                                 __ubuf__ INDEX_T *temp_candidates_indices,
-                                                 const uint32_t candidates_size)
+__forceinline__ __simt_callee__[aicore] void copy_buffer_indices(__ubuf__ INDEX_T *candidates_indices,
+                                                                 __ubuf__ INDEX_T *temp_candidates_indices,
+                                                                 const uint32_t candidates_size)
 {
     for (uint32_t i = threadIdx.x; i < candidates_size; i += blockDim.x)
     {

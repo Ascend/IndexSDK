@@ -38,7 +38,7 @@ namespace
 
 const uint32_t RANDOM_SEED = 1234;
 const int LOG_INTERVAL = 10;
-const int HASH_SIZE = 2;
+const int MAX_SEARCH_BATCH = 64;
 const int PRE_COMPUTE_SIZE = 4;
 const int MAX_QUERY_BATCH_SIZE = 4096;
 std::vector<int> ASCEND_CAGRA_SEARCH_BATCHES = {64, 32, 16, 8, 4, 2, 1};
@@ -88,10 +88,11 @@ APP_ERROR AscendIndexCagraImpl::Add(const uint32_t *graph, const uint32_t *hash,
                            this->dataNum * this->degree * sizeof(uint32_t), ACL_MEMCPY_HOST_TO_DEVICE);
     APPERR_RETURN_IF_NOT_FMT((ret == ACL_SUCCESS), APP_ERR_INNER_ERROR, "copy graphDevice to device fail(%d)!", ret);
 
-    AscendTensor<uint32_t, DIMS_2> hashDevice({rowCount, HASH_SIZE});
-    ret = aclrtMemcpy(hashDevice.data(), hashDevice.getSizeInBytes(), hash,
-                      this->dataNum * HASH_SIZE * sizeof(uint32_t), ACL_MEMCPY_HOST_TO_DEVICE);
-    APPERR_RETURN_IF_NOT_FMT((ret == ACL_SUCCESS), APP_ERR_INNER_ERROR, "copy hashDevice to device fail(%d)!", ret);
+    // The public hash argument is retained for API compatibility; visited state is per query.
+    (void)hash;
+    const int hashWords = static_cast<int>((this->dataNum + 31) / 32);
+    AscendTensor<uint32_t, DIMS_2> hashDevice({MAX_SEARCH_BATCH, hashWords});
+    hashDevice.zero();
 
     AscendTensor<float, DIMS_2> dataDevice({rowCount, this->dim});
     ret = aclrtMemcpy(dataDevice.data(), dataDevice.getSizeInBytes(), data, this->dataNum * this->dim * sizeof(float),
@@ -465,13 +466,13 @@ void AscendIndexCagraImpl::ComputeBlockDist(AscendTensor<float, DIMS_2> &queryTe
 APP_ERROR AscendIndexCagraImpl::ResetCagraSearchOp()
 {
     APP_LOG_INFO("AscendIndexCagraImpl::ResetCagraSearchOp operation started.\n");
-    auto cagraSearchOpReset = [&](std::unique_ptr<AscendOperator> &op, int64_t batch)
+    auto cagraSearchOpReset = [&](std::unique_ptr<AscendOperator> &op, int64_t batch) -> APP_ERROR
     {
         const int64_t rowCount = static_cast<int64_t>(this->dataNum);
         AscendOpDesc desc("CagraRabitq");
         std::vector<int64_t> queryShape({batch, this->dim});
         std::vector<int64_t> knnShape({rowCount, this->degree});
-        std::vector<int64_t> hashShape({rowCount, HASH_SIZE});
+        std::vector<int64_t> hashShape({MAX_SEARCH_BATCH, static_cast<int64_t>((this->dataNum + 31) / 32)});
         std::vector<int64_t> ptrShape({rowCount, this->dim});
         std::vector<int64_t> preCompute({batch * PRE_COMPUTE_SIZE});
         std::vector<int64_t> preCode({rowCount * this->codeSize});
@@ -490,6 +491,9 @@ APP_ERROR AscendIndexCagraImpl::ResetCagraSearchOp()
 
         desc.addOutputTensorDesc(ACL_FLOAT, DistShape.size(), DistShape.data(), ACL_FORMAT_ND);
         desc.addOutputTensorDesc(ACL_UINT32, IndiceShape.size(), IndiceShape.data(), ACL_FORMAT_ND);
+        const auto attrRet = aclopSetAttrInt(desc.opAttr, "top_k", this->topK);
+        APPERR_RETURN_IF_NOT_FMT(attrRet == ACL_SUCCESS, APP_ERR_INVALID_PARAM, "Failed to set CagraRabitq top_k: %d",
+                                 attrRet);
 
         op.reset();
         op = CREATE_UNIQUE_PTR(AscendOperator, desc);

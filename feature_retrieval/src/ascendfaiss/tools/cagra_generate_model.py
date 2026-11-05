@@ -25,8 +25,11 @@ from common import OpJsonGenerator
 
 JSON_FILE = "{}.json"
 _BIT = 6
-_HASH_SIZE = 2
 _PRE_COMPUTE_SIZE = 4
+_VALID_DIMS = (64, 128, 256, 512, 1024, 1536, 3072)
+_VALID_DEGREES = (64, 128, 256, 512)
+_MIN_TOPK = 1
+_MAX_TOPK = 256
 
 
 def arg_parse():
@@ -52,7 +55,7 @@ def generate_search_distance_json(dim, data_base, code_size, batch, degree, rota
     generator = OpJsonGenerator("CagraRabitq")
     generator.add_input("ND", [batch, dim], "float32")
     generator.add_input("ND", [data_base, degree], "uint32")
-    generator.add_input("ND", [data_base, _HASH_SIZE], "uint32")
+    generator.add_input("ND", [64, (data_base + 31) // 32], "uint32")
     generator.add_input("ND", [data_base, dim], "float32")
     generator.add_input("ND", [batch * _PRE_COMPUTE_SIZE], "float32")
     generator.add_input("ND", [data_base * code_size], "uint8")
@@ -60,6 +63,7 @@ def generate_search_distance_json(dim, data_base, code_size, batch, degree, rota
 
     generator.add_output("ND", [batch, topK], "float32")
     generator.add_output("ND", [batch, topK], "uint32")
+    generator.add_attr("top_k", "required", "int", topK)
     search_distance_obj.append(generator.generate_obj())
     utils.generate_op_config(search_distance_obj, file_path)
 
@@ -72,6 +76,17 @@ def generate_search_distance_offline_model():
     data_base = args.data_base
     degree = args.degree
     topK = args.topK
+
+    if data_base <= 1:
+        raise ValueError("data_base must be greater than 1")
+    if dim not in _VALID_DIMS:
+        raise ValueError("dim must be one of {}".format(_VALID_DIMS))
+    if degree not in _VALID_DEGREES:
+        raise ValueError("degree must be one of {}".format(_VALID_DEGREES))
+    if topK < _MIN_TOPK or topK > _MAX_TOPK:
+        raise ValueError("topK must be in range [{}, {}]".format(_MIN_TOPK, _MAX_TOPK))
+    if topK > data_base:
+        raise ValueError("topK must not exceed data_base")
 
     offset = (dim + 7) // 8
     rotated_size = offset * _BIT
