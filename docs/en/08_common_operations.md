@@ -198,6 +198,53 @@ export IVFRABITQ_TOPK_LAYOUT=legacy
 
 # Restore the default (group layout, window width taken from the device AI CPU count)
 unset IVFRABITQ_TOPK_LAYOUT
+## IVFRaBitQ TopK Path Tuning<a name="ivfrabitq-topk-tuning"></a>
+
+The `AscendIndexIVFRaBitQ` L2 (refine) TopK stage offers two switchable implementation paths plus one capacity parameter. Unlike the diagnostic switches above, **these three environment variables are enabled by default**: leaving them unset selects the new path. Set a variable to `0` to fall back to the historical implementation, which serves as the control arm for A/B comparison. For a summary of the variables, see [Appendix](./09_appendix.md#ivfrabitq-topk-tuning-env).
+
+> [!NOTE]
+>
+>- The variables are read **on the host** and passed to the AICPU kernel as an operator attribute. AICPU kernels do not inherit the host process environment, so `getenv` inside the kernel always returns null. Export the variables **before** starting the application.
+>- The two paths produce an equivalent TopK result set, but **the ordering among tied distances is not guaranteed to match**. When candidates have equal distances, which one occupies k-th place is arbitrary in the first place. Compare the two paths by treating the distances as a multiset, and compare labels only for entries strictly better than the k-th.
+>- The two switches are independent, so both optimizations can be A/B'd **within a single deployment**. Comparing across redeployments has a noise floor of the same order as the effect being measured.
+
+### Environment Variables
+
+**Table 3** IVFRaBitQ TopK path tuning environment variables
+
+|Environment Variable|Values|Default|Conditions To Take Effect|Purpose|
+|--|--|--|--|--|
+|IVFRABITQ_TOPK_RESERVOIR|`0` disables; any other value enables|**Enabled**|`k >= 2048`, the largest id stored in the index does not exceed `UINT32_MAX`, and the burst length is 64; **never takes effect under bitmap ID filtering** (see below)|Appends candidates sequentially into a flat buffer and compacts it back down to the best k with `nth_element` once it fills, instead of sifting a k-heap for every accepted candidate|
+|IVFRABITQ_TOPK_PACKED_SORT|`0` disables; any other value enables|**Enabled**|`k >= 2048`|Orders the results with a packed introsort (distance and id packed into a single `uint64`) instead of draining the heap one element at a time|
+|IVFRABITQ_TOPK_REFILL_CHUNK|A **power of two** within `[256, 32768]`, given as the value itself (for example `4096`) rather than the exponent|`2048`|Reservoir path only|Reservoir buffer chunk size B: the buffer holds `k + B` entries, so a larger B means fewer compactions, each one more expensive|
+
+When the conditions above are not met the historical path runs instead; this is a silent fallback, not an error. The id bound is a hard requirement: the reservoir stores each candidate as `{float dist; uint32_t id}` (8 bytes with no padding, against 16 bytes for an int64 id), so if the index holds an id larger than `UINT32_MAX`, this path would truncate the label to its low 32 bits and return a wrong label that still looks legal. The host checks the **largest id actually stored**, not the vector count `ntotal`, because caller-supplied labels are unrelated to the count. Dense ordinals (for example `vid = indexed_count_ + i`) satisfy the bound naturally.
+
+An invalid `IVFRABITQ_TOPK_REFILL_CHUNK` value (not a power of two, out of range, or non-numeric) is **not** rounded to the nearest legal value. A WARNING is printed and the default `2048` is used, so that the B being measured is never silently different from the B that was set.
+
+**Bitmap ID filtering (IDSelectorBitmap) and the reservoir are mutually exclusive**: the bitmap path has its
+own inline scan built around a prefetch window inside the operator, with no accept hook for the reservoir to
+take over, so under that mode the historical k-heap runs regardless of how the variable is set. This is not a
+correctness gap -- the heap path returns the same results as the reservoir path -- just a combination that has
+not been optimised yet. **The packed introsort is unaffected and still applies under bitmap mode** (the sort
+exit is independent of the scan variant).
+
+The disable test for the first two switches is an **exact whole-string match** of `0`: `0` (plus `unset` or an
+empty value, which restore the default) disables; every other value -- including `00`, `0x1`, `0abc` -- is
+treated as enabled.
+
+To disable:
+
+```bash
+# Fall back to the historical k-heap + heap-drain path (the A/B control arm)
+export IVFRABITQ_TOPK_RESERVOIR=0
+export IVFRABITQ_TOPK_PACKED_SORT=0
+
+# Or disable only one of them, to separate the contribution of each optimization
+export IVFRABITQ_TOPK_RESERVOIR=0
+
+# Restore the default (enabled)
+unset IVFRABITQ_TOPK_RESERVOIR IVFRABITQ_TOPK_PACKED_SORT
 ```
 
 ### Examples
@@ -210,4 +257,16 @@ export IVFRABITQ_TOPK_LAYOUT=legacy
 # Experiment arm: default group layout, window width taken from the device AI CPU count
 unset IVFRABITQ_TOPK_LAYOUT
 ./your_benchmark 2>&1 | tee layout_group.log
+# Control arm: historical path
+export IVFRABITQ_TOPK_RESERVOIR=0
+export IVFRABITQ_TOPK_PACKED_SORT=0
+./your_benchmark 2>&1 | tee baseline.log
+
+# Experiment arm: default (both enabled)
+unset IVFRABITQ_TOPK_RESERVOIR IVFRABITQ_TOPK_PACKED_SORT
+./your_benchmark 2>&1 | tee reservoir.log
+
+# Vary the reservoir chunk size (must be a power of two)
+export IVFRABITQ_TOPK_REFILL_CHUNK=4096
+./your_benchmark 2>&1 | tee reservoir_b4096.log
 ```

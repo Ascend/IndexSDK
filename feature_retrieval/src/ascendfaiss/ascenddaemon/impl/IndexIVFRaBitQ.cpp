@@ -20,6 +20,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cerrno>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
@@ -241,6 +242,80 @@ int64_t GetLayoutModeEnv(const char *name, int64_t defVal)
     return defVal;
 }
 
+// Read a boolean env switch. Unset or empty keeps defaultOn; "0" is off and anything else is on. Shared by
+// the two top-k path toggles so their ON/off reporting cannot drift from what was passed to the kernel in
+// the attr slot.
+
+// Read a boolean env switch. Unset or empty keeps defaultOn; exactly "0" is off and anything else is on
+// ("00", "0x1", "0abc" are all ON -- leading zeros do not count). Shared by the two top-k path toggles so
+// their ON/off reporting cannot drift from what was passed to the kernel in the attr slot. The comparison
+// is exact rather than first-character because the docs say "0 = off, anything else = on", and a prefix
+// test would silently disable the switch for values the docs describe as ON.
+bool IsEnvSwitchOn(const char *name, bool defaultOn)
+{
+    const char *env = std::getenv(name);
+    if (env == nullptr || env[0] == '\0')
+    {
+        return defaultOn;
+    }
+    return std::strcmp(env, "0") != 0;
+}
+
+// Reservoir chunk size B from env IVFRABITQ_TOPK_REFILL_CHUNK, returned as the log2 the kernel attr
+// carries (0 = unset, use the kernel's default). Accepts the VALUE, not the exponent -- "4096", not "12" --
+// because the value is what the comments, the logs and the cost model all talk about; making the operator
+// convert in their head is how a run gets mislabelled.
+//
+// Rejects rather than clamps, in all three failure modes (unparseable, not a power of two, out of range).
+// This knob exists to answer "does raising B help?", and that question is only answerable if the B that
+// ran is the B that was asked for. Silently substituting a legal neighbour would produce a measurement
+// attributed to the wrong input, which is worse than no measurement: it is a wrong one that looks right.
+// On rejection we warn loudly and fall back to the default, so a typo costs a baseline run, not a crash.
+int64_t GetRefillChunkLog2()
+{
+    const char *env = std::getenv("IVFRABITQ_TOPK_REFILL_CHUNK");
+    if (env == nullptr || env[0] == '\0')
+    {
+        return 0;
+    }
+    char *end = nullptr;
+    errno = 0;
+    const long long value = std::strtoll(env, &end, 10);
+    const bool parsed = (errno == 0 && end != env && *end == '\0');
+    // Power of two, and strictly positive. value & (value - 1) is the standard test; it is only meaningful
+    // once value > 0, hence the ordering.
+    const bool isPow2 = parsed && value > 0 && (value & (value - 1)) == 0;
+    int64_t log2Value = 0;
+    if (isPow2)
+    {
+        while ((1LL << log2Value) < value)
+        {
+            ++log2Value;
+        }
+    }
+    if (!isPow2 || log2Value < aicpu::TOPK_IVF_RABITQ_REFILL_LOG2_MIN ||
+        log2Value > aicpu::TOPK_IVF_RABITQ_REFILL_LOG2_MAX)
+    {
+        APP_LOG_WARNING(
+            "Invalid IVFRABITQ_TOPK_REFILL_CHUNK=%s: expected a power of two in [%lld, %lld]. "
+            "Falling back to the default %lld.\n",
+            env, 1LL << aicpu::TOPK_IVF_RABITQ_REFILL_LOG2_MIN, 1LL << aicpu::TOPK_IVF_RABITQ_REFILL_LOG2_MAX,
+            static_cast<long long>(aicpu::TOPK_IVF_RABITQ_REFILL_DEFAULT));
+        return 0;
+    }
+    return log2Value;
+}
+
+// Largest id in `indices`, or 0 for an empty range. Used to track the index-wide id ceiling that licenses
+// the reservoir's uint32 candidate ids; see maxStoredId_.
+idx_t MaxId(const idx_t *indices, size_t numVecs)
+{
+    if (indices == nullptr || numVecs == 0)
+    {
+        return 0;
+    }
+    return *std::max_element(indices, indices + numVecs);
+}
 }  // namespace
 
 // Decides which absolute grid slot each block goes to: the i-th block emitted owns slot i, and the slot is
@@ -434,6 +509,7 @@ APP_ERROR IndexIVFRaBitQ::reset()
     listVecNum.assign(static_cast<size_t>(numLists), 0);
     maxListLength = 0;
     this->ntotal = 0;
+    maxStoredId_ = 0;
 
     pBaseFp32 = reinterpret_cast<uint8_t *>(0xffffffffffffffff);
     pIndexL2 = reinterpret_cast<float *>(0xffffffffffffffff);
@@ -954,6 +1030,7 @@ APP_ERROR IndexIVFRaBitQ::addVectors(int listId, size_t numVecs, const float *co
     maxListLength = utils::roundUp(maxListLength, CUBE_ALIGN);
     listVecNum[listId] += numVecs;
     IndexIVF::ntotal += numVecs;
+    maxStoredId_ = std::max(maxStoredId_, MaxId(indices, numVecs));
     // ExpandPolicy growth (reserveExact=false): avoid exact-append abandon and blockSize over-reserve.
     deviceListIndices[listId]->append(indices, numVecs, false);
     if (MemDebugEnabled() && listArena_ != nullptr)
@@ -1673,7 +1750,47 @@ APP_ERROR IndexIVFRaBitQ::fillL2TopkOpInputData(int k, size_t batch, size_t core
     attrsVec[aicpu::TOPK_IVF_RABITQ_ATTR_K_IDX] = k;
     attrsVec[aicpu::TOPK_IVF_RABITQ_ATTR_BURST_LEN_IDX] = IVF_RABITQ_BURST_LEN;
     attrsVec[aicpu::TOPK_IVF_RABITQ_ATTR_BLOCK_NUM_IDX] = 0;
-    attrsVec[aicpu::TOPK_IVF_RABITQ_ATTR_QUERY_NUM_IDX] = static_cast<int64_t>(batch);
+    // QUERY_NUM carries batch in its low bits plus the optional-path toggles in high bits. The kernel has
+    // never read this slot (nq comes from the tensor shapes), but keeping batch in the low bits means the
+    // slot still reads correctly as batch for anyone who starts using it. The envs are read HERE, on the
+    // host: AICPU kernels run in a separate device-side execution environment and do not inherit the host's
+    // environ, so std::getenv inside the kernel always returns null. Both toggles exist so the two top-k
+    // variants can be A/B'd WITHIN one deployment: measuring across redeploys has a noise floor (die
+    // asymmetry drift, warm-up) of the same order as the effect itself.
+    int64_t queryNumAttr = static_cast<int64_t>(batch);
+    // Reservoir: opt-OUT (default on). "=0" restores the historical k-heap, which is the control arm.
+    //
+    // Gated additionally on every stored id fitting in uint32. The kernel's reservoir stores each candidate
+    // as {float dist; uint32_t id} -- 8B with no padding, against 16B for an int64 id -- which halves the
+    // buffer and the cache lines a refill walks. The gate is on maxStoredId_, the running maximum of what
+    // the two ingest paths actually appended, and NOT on ntotal: ntotal is a count, the ids are caller
+    // labels, and nothing in addVectors/addEncodedVectors ties the two together. A caller passing sparse or
+    // otherwise non-ordinal labels keeps ntotal small while pushing ids past 2^32, and gating on ntotal
+    // would hand those to a path that truncates them to their low 32 bits -- returning a wrong label that
+    // still looks like a legal one, with no error anywhere.
+    // The check belongs on the host because the kernel cannot make it: each ComputeQuery call sees only its
+    // own block's baseSize, never the index-wide id range.
+    // Past the bound we fall back to the k-heap path, which keeps full-width ids -- the reservoir is a
+    // performance option, so declining it is always safe, whereas truncating would silently return wrong
+    // labels.
+    const bool idsFitUint32 = (maxStoredId_ <= static_cast<idx_t>(UINT32_MAX));
+    if (IsEnvSwitchOn("IVFRABITQ_TOPK_RESERVOIR", true) && idsFitUint32)
+    {
+        queryNumAttr |= aicpu::TOPK_IVF_RABITQ_RESERVOIR_FLAG;
+    }
+    // Packed introsort in Reorder: opt-OUT (default on). "=0" restores the in-place heap drain, which is
+    // the control arm rather than the treatment.
+    if (IsEnvSwitchOn("IVFRABITQ_TOPK_PACKED_SORT", true))
+    {
+        queryNumAttr |= aicpu::TOPK_IVF_RABITQ_PACKED_SORT_FLAG;
+    }
+    // Reservoir chunk size B, as log2 in bits 36-39. Only meaningful on the reservoir path, but it is set
+    // unconditionally: the kernel ignores it when the reservoir is off, and making the two envs interact
+    // here would mean IVFRABITQ_TOPK_REFILL_CHUNK silently did nothing depending on another variable's
+    // value. 0 (env unset or rejected) leaves the bits clear, which the kernel reads as "use the default".
+    queryNumAttr |= (GetRefillChunkLog2() & aicpu::TOPK_IVF_RABITQ_REFILL_LOG2_MASK)
+                    << aicpu::TOPK_IVF_RABITQ_REFILL_LOG2_SHIFT;
+    attrsVec[aicpu::TOPK_IVF_RABITQ_ATTR_QUERY_NUM_IDX] = queryNumAttr;
     attrsVec[aicpu::TOPK_IVF_RABITQ_ATTR_CORE_NUM_IDX] = static_cast<int64_t>(coreNum);
     attrsVec[aicpu::TOPK_IVF_RABITQ_ATTR_SEL_MODE_IDX] = static_cast<int64_t>(selMode);
     attrsVec[aicpu::TOPK_IVF_RABITQ_ATTR_SEL_PTR_IDX] = selPtr;
@@ -2379,6 +2496,7 @@ APP_ERROR IndexIVFRaBitQ::addEncodedVectors(int listId, size_t numVecs, const ui
     maxListLength = utils::roundUp(maxListLength, CUBE_ALIGN);
     listVecNum[listId] += numVecs;
     IndexIVF::ntotal += numVecs;
+    maxStoredId_ = std::max(maxStoredId_, MaxId(indices, numVecs));
 
     deviceListIndices[listId]->append(indices, numVecs, false);
 

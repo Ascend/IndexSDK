@@ -43,11 +43,23 @@
 |--|--|
 |IVFRABITQ\_TOPK\_LAYOUT|取 `legacy` 或 `group`（`grouped` 等价），默认 `group`。`group` 在窗口内对相邻 query 做 round-robin 编排 block；`legacy` 为历史的 query-major 连续编排，仅作 A/B 基线保留。其他取值静默按默认处理。窗口宽度取设备 AI CPU 个数（`aclrtGetDeviceCapability(ACL_DEV_ATTR_AICPU_CORE_NUM)`），查询失败时回退 `6` 并打印 WARNING；`legacy` 下强制为 `1`。|
 
+### IVFRaBitQ TopK 路径调优环境变量<a name="ivfrabitq-topk-tuning-env"></a>
+
+以下环境变量用于切换 AscendIndexIVFRaBitQ 精排（L2 TopK）的实现路径。**与上表不同，这三个默认开启**，不设置即为新路径；设为 `0` 回退历史实现，可作为 A/B 的对照组。详细用法与生效条件参见《[IVFRaBitQ TopK 路径调优](./08_common_operations.md#ivfrabitq-topk-tuning)》。
+
+**表 4** IVFRaBitQ TopK 路径调优环境变量
+
+|环境变量名|说明|
+|--|--|
+|IVFRABITQ\_TOPK\_RESERVOIR|默认**开启**。开启时 L2 TopK 以 reservoir 选择路径替代历史 k-heap。设为 `0` 回退 k-heap。仅在 `k >= 2048`、索引内已存最大 id 不超过 `UINT32_MAX` 且 burst 长度为 64 时实际生效（bitmap ID 过滤模式下始终不生效，见《常用操作》），否则自动回退。|
+|IVFRABITQ\_TOPK\_PACKED\_SORT|默认**开启**。开启时结果排序以 packed introsort 替代堆原地出栈。设为 `0` 回退堆出栈。仅在 `k >= 2048` 时实际生效。|
+|IVFRABITQ\_TOPK\_REFILL\_CHUNK|reservoir 缓冲区分块大小 B，须为 `[256, 32768]` 区间内的 **2 的幂**，填写数值本身（如 `4096`）而非指数。默认 `2048`。非法取值不会就近取整，而是打印 WARNING 后回退默认值。仅在 reservoir 路径生效。|
+
 ### Device 内存调试环境变量<a name="ascendfaiss-mem-debug-env"></a>
 
 以下环境变量用于排查 Device HBM 分配失败（如 `aclrtMalloc` OOM）、索引上传/扩容过程中的显存占用变化。**默认不设置**（关闭），对生产路径零开销。详细用法与日志解读参见《[Device 内存调试](./08_common_operations.md#ascendfaiss-mem-debug)》。
 
-**表 4** Device 内存调试环境变量
+**表 5** Device 内存调试环境变量
 
 |环境变量名|说明|
 |--|--|

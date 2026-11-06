@@ -253,6 +253,19 @@ class IndexIVFRaBitQ : public IndexIVF
     uint8_t *pBaseFp32;
     float *pIndexL2;
     float *pIndexL1;
+
+    // Running maximum of every id appended through addVectors / addEncodedVectors, and the gate on the
+    // reservoir top-k path, whose candidates carry uint32 ids (fillL2TopkOpInputData, idsFitUint32).
+    //
+    // Tracked separately from ntotal because the two are unrelated quantities: ntotal counts vectors, these
+    // are caller-supplied labels, and neither ingest path constrains a label by the count. Dense ordinals
+    // make them coincide, which is why ntotal looked like a usable proxy, but nothing enforces that.
+    //
+    // Monotonic non-decreasing within a reset cycle -- removeIds deliberately does not lower it. Recomputing
+    // the true maximum after a removal would mean rescanning every list, and the only cost of an overestimate
+    // is declining an optimisation. reset() clears it, since letting one oversized id disable the reservoir
+    // for the lifetime of the process would be an invisible performance regression.
+    idx_t maxStoredId_ = 0;
     std::unique_ptr<DeviceVector<float>> distResultOnDevice;
     size_t distResultSpace;
     int64_t topkLayoutMode_;

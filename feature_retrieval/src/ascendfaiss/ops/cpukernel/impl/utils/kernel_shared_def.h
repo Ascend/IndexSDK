@@ -138,6 +138,41 @@ enum TopkIvfRabitqLayoutMode : int32_t
 // explicit bijection the kernel reads back, so the window width never affects which block a query scans.
 constexpr int64_t TOPK_IVF_RABITQ_AICPU_NUM = 6;
 
+// Bits OR-ed into the QUERY_NUM attr slot by the host to toggle optional kernel paths. They sit in high
+// bits so the slot's low bits still read as the query count; bit 32 and up are far above any realistic
+// batch. The env vars behind them are read on the HOST — an AICPU kernel runs in a separate device-side
+// execution environment and does not inherit the host process's environ, so getenv there returns null.
+//
+// Why spare bits of an existing slot and not a new attr: the attr tensor's length is baked into the op desc
+// (resetL2TopkOp passes TOPK_IVF_RABITQ_ATTR_IDX_COUNT as the input shape) and the kernel hard-checks
+// attrCount against the same constant. Adding a slot therefore changes the op signature, and since the host
+// and the kernel .om are deployed as separate, independently-versioned artifacts, a version-skewed pair
+// would fail the attr-count check outright. Riding spare bits degrades safely in both skew directions: an
+// old kernel never reads this slot at all (nq comes from the tensor shapes, so the slot has always been
+// written by the host and ignored by the kernel), and a new kernel reads 0 from an old host — in both cases
+// the historical k-heap path runs.
+constexpr int64_t TOPK_IVF_RABITQ_RESERVOIR_FLAG = 1LL << 32;    // reservoir/nth_element select path
+constexpr int64_t TOPK_IVF_RABITQ_PACKED_SORT_FLAG = 1LL << 33;  // Reorder's packed introsort
+
+// Bits 36-39 carry the reservoir's REFILL_CHUNK (B) as a LOG2, so the whole knob costs 4 bits instead of
+// the 16 a literal B would need. 0 means "the host said nothing", and the kernel then uses its own default.
+// A log2 rather than the value because B is only ever interesting as a power of two (it is a buffer size
+// traded against a refill count, and the interesting experiment is doubling it).
+constexpr int64_t TOPK_IVF_RABITQ_REFILL_LOG2_SHIFT = 36;
+constexpr int64_t TOPK_IVF_RABITQ_REFILL_LOG2_BITS = 4;
+constexpr int64_t TOPK_IVF_RABITQ_REFILL_LOG2_MASK = (1LL << TOPK_IVF_RABITQ_REFILL_LOG2_BITS) - 1;
+// Legal log2 range when the field is non-zero. The floor is not arbitrary: below ~256 the per-refill O(k+B)
+// selection stops being amortised over enough accepts and the refill count explodes, so a smaller B is
+// never a question worth asking. The ceiling bounds the buffer at k=5000 to (5000+32768)*8B = ~295KB per
+// worker thread, which is already far past any plausible win and is where an experiment should be stopped
+// by the validator rather than by a device OOM.
+constexpr int64_t TOPK_IVF_RABITQ_REFILL_LOG2_MIN = 8;   // B = 256
+constexpr int64_t TOPK_IVF_RABITQ_REFILL_LOG2_MAX = 15;  // B = 32768
+// The B used when the field is 0 (host sent nothing / older host). Lives here rather than in the kernel
+// .cpp because both the kernel's fallback and the kernel member's initialiser need the same number. The
+// reasoning for the VALUE 2048 is in the REFILL_CHUNK_DEFAULT comment in the kernel .cpp.
+constexpr int64_t TOPK_IVF_RABITQ_REFILL_DEFAULT = 2048;
+
 enum TopkIvfpqL3AttrIdx : int32_t
 {
     TOPK_IVFPQ_L3_ATTR_ASC_IDX = 0,

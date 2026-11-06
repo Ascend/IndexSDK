@@ -43,6 +43,18 @@ The following environment variable selects how the L2 distance operator lays its
 |--|--|
 |IVFRABITQ_TOPK_LAYOUT|`legacy` or `group` (`grouped` is equivalent); defaults to `group`. `group` lays out blocks by round-robin over adjacent queries within a window; `legacy` is the historical query-major contiguous layout, kept only as the A/B baseline. Any other value is silently treated as the default. The window width is the device's AI CPU count (`aclrtGetDeviceCapability(ACL_DEV_ATTR_AICPU_CORE_NUM)`), falling back to `6` with a WARNING if the query fails, and forced to `1` under `legacy`.|
 
+### IVFRaBitQ TopK Path Tuning Environment Variables<a name="ivfrabitq-topk-tuning-env"></a>
+
+The following environment variables select the implementation path of the `AscendIndexIVFRaBitQ` L2 (refine) TopK stage. **Unlike the table above, these three are enabled by default** — leaving them unset selects the new path. Set a variable to `0` to fall back to the historical implementation, which serves as the control arm for A/B comparison. For details about their usage and the conditions under which they take effect, see [IVFRaBitQ TopK Path Tuning](./08_common_operations.md#ivfrabitq-topk-tuning).
+
+**Table 4** IVFRaBitQ TopK path tuning environment variables
+
+|Environment Variable|Description|
+|--|--|
+|IVFRABITQ_TOPK_RESERVOIR|**Enabled by default.** When enabled, the L2 TopK uses the reservoir selection path instead of the historical k-heap. Set to `0` to fall back to the k-heap. Only takes effect when `k >= 2048`, the largest id stored in the index does not exceed `UINT32_MAX`, and the burst length is 64; never takes effect under bitmap ID filtering; otherwise it falls back automatically.|
+|IVFRABITQ_TOPK_PACKED_SORT|**Enabled by default.** When enabled, the result ordering uses a packed introsort instead of draining the heap in place. Set to `0` to fall back to the heap drain. Only takes effect when `k >= 2048`.|
+|IVFRABITQ_TOPK_REFILL_CHUNK|Reservoir buffer chunk size B. Must be a **power of two** within `[256, 32768]`, given as the value itself (for example `4096`) rather than the exponent. Defaults to `2048`. An invalid value is **not** rounded to the nearest legal one: a WARNING is printed and the default is used. Only takes effect on the reservoir path.|
+
 ## Code Reference<a name="en-us_TOPIC_0000001456375372"></a>
 
 ### Introduction<a name="en-us_TOPIC_0000001456375408"></a>

@@ -198,6 +198,46 @@ export IVFRABITQ_TOPK_LAYOUT=legacy
 
 # 恢复默认（group 编排，窗口宽度自动取设备 AI CPU 个数）
 unset IVFRABITQ_TOPK_LAYOUT
+## IVFRaBitQ TopK 路径调优<a name="ivfrabitq-topk-tuning"></a>
+
+AscendIndexIVFRaBitQ 的 L2（精排）TopK 提供两条可切换的实现路径，以及一个容量参数。与上文的诊断开关不同，**这三个环境变量默认开启**，即不设置任何环境变量时走的就是新路径；设为 `0` 回退到历史实现，可作为 A/B 对比的对照组。环境变量一览见《[附录](./09_appendix.md#ivfrabitq-topk-tuning-env)》。
+
+> [!NOTE]
+>
+>- 环境变量在 **Host 侧**读取，通过算子 attr 传给 AICPU kernel（AICPU 不继承 Host 进程环境变量，kernel 内 `getenv` 恒为空），因此需在运行应用程序**之前** export。
+>- 两条路径的 TopK 结果集等价，但**并列距离的先后次序不保证一致**；存在距离相等的候选时，第 k 名由哪个候选占据本身是任意的。对比两条路径时应按距离多重集比较，标签仅对严格优于第 k 名的条目比较。
+>- 二者相互独立，可单独开关，便于在**同一次部署内**完成 A/B：跨部署对比的噪声量级与待测收益同阶。
+
+### 环境变量说明
+
+**表 3** IVFRaBitQ TopK 路径调优环境变量
+
+|环境变量名|取值|默认|实际生效条件|用途|
+|--|--|--|--|--|
+|IVFRABITQ\_TOPK\_RESERVOIR|`0` 关闭，其余开启|**开启**|`k >= 2048`，索引内已存最大 id 不超过 `UINT32_MAX`，且 burst 长度为 64；**bitmap ID 过滤模式下始终不生效**（见下）|候选先顺序写入扁平缓冲区，满了再用 `nth_element` 压回最优 k 个，替代每个候选都下沉一次 k-heap|
+|IVFRABITQ\_TOPK\_PACKED\_SORT|`0` 关闭，其余开启|**开启**|`k >= 2048`|输出排序改用 packed introsort（距离与 id 打包进单个 `uint64`），替代堆原地逐个出栈|
+|IVFRABITQ\_TOPK\_REFILL\_CHUNK|`[256, 32768]` 区间内的 **2 的幂**，填数值本身（如 `4096`）而非指数|`2048`|仅 reservoir 路径|reservoir 缓冲区分块大小 B：缓冲区容量为 `k + B`，B 越大则压缩次数越少、单次压缩越贵|
+
+不满足“实际生效条件”时会自动回退历史路径，不报错。其中 id 上界这一条是必要的：reservoir 的候选以 `{float dist; uint32_t id}` 存储（8 字节无填充，相对 int64 id 的 16 字节减半），若索引内存在超过 `UINT32_MAX` 的 id，走该路径会把标签截断为低 32 位，返回一个看起来合法的错误标签。Host 侧按**实际已存入的最大 id**（而非向量总数 `ntotal`）判断，因为调用方传入的 label 与向量计数无关；稠密序号（如 `vid = indexed_count_ + i`）天然满足该上界。
+
+**bitmap ID 过滤（IDSelectorBitmap）与 reservoir 是互斥的**：bitmap 路径在算子内自带围绕预取窗口的内联扫描，没有可供 reservoir 接管的 accept 钩子，因此该模式下无论环境变量如何设置都走历史 k-heap。这不是正确性缺口——堆路径的结果与 reservoir 路径一致，只是一个尚未优化的组合。**packed introsort 不受影响，在 bitmap 模式下照常生效**（排序出口与扫描方式无关）。
+
+`IVFRABITQ_TOPK_REFILL_CHUNK` 的非法取值（非 2 的幂、越界、非数字）**不会就近取整**，而是打印 WARNING 后回退默认值 `2048`，避免实测的 B 与设置的 B 不一致。
+
+前两个开关的关闭判定是**整串精确匹配** `0`：`0`（以及 `unset` / 空串回退默认）关闭，其余任何取值——包括 `00`、`0x1`、`0abc`——都视为开启。
+
+关闭方式：
+
+```bash
+# 回退到历史 k-heap + 堆出栈路径（A/B 的对照组）
+export IVFRABITQ_TOPK_RESERVOIR=0
+export IVFRABITQ_TOPK_PACKED_SORT=0
+
+# 或仅单独关闭其中一个，以区分两项优化各自的收益
+export IVFRABITQ_TOPK_RESERVOIR=0
+
+# 恢复默认（开启）
+unset IVFRABITQ_TOPK_RESERVOIR IVFRABITQ_TOPK_PACKED_SORT
 ```
 
 ### 使用示例
@@ -210,6 +250,18 @@ export IVFRABITQ_TOPK_LAYOUT=legacy
 # 实验组：默认 group 编排，窗口宽度自动取设备 AI CPU 个数
 unset IVFRABITQ_TOPK_LAYOUT
 ./your_benchmark 2>&1 | tee layout_group.log
+# 对照组：历史路径
+export IVFRABITQ_TOPK_RESERVOIR=0
+export IVFRABITQ_TOPK_PACKED_SORT=0
+./your_benchmark 2>&1 | tee baseline.log
+
+# 实验组：默认（两项均开启）
+unset IVFRABITQ_TOPK_RESERVOIR IVFRABITQ_TOPK_PACKED_SORT
+./your_benchmark 2>&1 | tee reservoir.log
+
+# 调整 reservoir 分块大小（必须是 2 的幂）
+export IVFRABITQ_TOPK_REFILL_CHUNK=4096
+./your_benchmark 2>&1 | tee reservoir_b4096.log
 ```
 
 ## Device 内存调试<a name="ascendfaiss-mem-debug"></a>
@@ -224,7 +276,7 @@ AscendFaiss 提供两组**可选**环境变量，用于排查 Device HBM 分配�
 
 ### 环境变量说明
 
-**表 3** Device 内存调试环境变量
+**表 4** Device 内存调试环境变量
 
 <table><tbody>
 <tr><td align="center" valign="middle"><strong>环境变量名</strong></td><td align="center" valign="middle"><strong>取值</strong></td><td width="70" align="center" valign="middle"><strong>默认</strong></td><td align="center" valign="middle"><strong>用途</strong></td></tr>
