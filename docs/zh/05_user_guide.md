@@ -532,6 +532,9 @@ VSTAR检索当前只支持<term>Atlas推理系列产品</term>，涉及VSTAR业�
 **距离算子 block 编排<a name="ivfrabitq-topk-layout-ref"></a>**
 
 L2 距离算子的 block 在核网格上默认采用 group 编排（窗口内对相邻 query 轮转），可通过环境变量回退历史的 query-major 连续编排以作 A/B 对照。与上面的诊断开关不同，**该环境变量默认启用新编排**，且在**索引构造时**读取一次；窗口宽度无需配置，同样在索引构造时从设备查询 AI CPU 个数得到。环境变量说明见《[附录](./09_appendix.md#ivfrabitq-topk-layout-env)》，注意事项与用法见《[常用操作 — IVFRaBitQ 距离算子 block 编排](./08_common_operations.md#ivfrabitq-topk-layout)》。
+**TopK 路径调优<a name="ivfrabitq-topk-tuning-ref"></a>**
+
+`k` 较大（≥ 2048）时，L2 精排 TopK 默认启用 reservoir 选择与 packed 排序路径，可通过环境变量回退历史实现以作 A/B 对照。与上面的诊断开关不同，**这组环境变量默认开启**。环境变量说明见《[附录](./09_appendix.md#ivfrabitq-topk-tuning-env)》，生效条件与用法见《[常用操作 — IVFRaBitQ TopK 路径调优](./08_common_operations.md#ivfrabitq-topk-tuning)》。
 
 #### Cagra<a name="ZH-CN_TOPIC_0000002513317245"></a>
 
