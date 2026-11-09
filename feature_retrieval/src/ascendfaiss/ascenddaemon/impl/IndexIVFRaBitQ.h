@@ -21,6 +21,7 @@
 #include "ascenddaemon/impl/IndexIVF.h"
 #include "ascenddaemon/utils/AscendOperator.h"
 #include "ascenddaemon/utils/DeviceMemArena.h"
+#include "ascenddaemon/utils/SegmentedDeviceVector.h"
 #include "common/RabitqIdFilter.h"
 #include "common/threadpool/AscendThreadPool.h"
 
@@ -37,6 +38,32 @@ constexpr uint8_t IVF_RABITQ_OPTIMIZE_BATCH_THRES = 48;
 
 class IndexIVFRaBitQ : public IndexIVF
 {
+   public:
+    template <typename T>
+    using SegmentedVector = SegmentedDeviceVector<T>;
+
+    // One inverted list's device storage. The four vectors share the same slot numbering, so slot s of
+    // codes/indexL1/indexL2/ids all describe the same vector; listLen is the number of slots in use.
+    struct ListStorage
+    {
+        // blockSize is the per-segment logical slot count; growthStep is the tail allocation granularity.
+        // Geometry is fixed here at construction (see SegmentedDeviceVector).
+        ListStorage(size_t blockSize, size_t growthStep, size_t codeElementsPerSlot,
+                    std::shared_ptr<DeviceMemArena> arena)
+            : codes(blockSize, growthStep, codeElementsPerSlot, arena),
+              indexL1(blockSize, growthStep, 1, arena),
+              indexL2(blockSize, growthStep, 1, arena),
+              ids(blockSize, growthStep, 1, arena)
+        {
+        }
+
+        SegmentedVector<uint8_t> codes;
+        SegmentedVector<float> indexL1;
+        SegmentedVector<float> indexL2;
+        SegmentedVector<idx_t> ids;
+        size_t listLen{0};
+    };
+
    public:
     IndexIVFRaBitQ(int numList, int dim, int nprobes, const std::string &metricType, int64_t resourceSize = -1,
                    int quantBits = 1);
@@ -63,8 +90,6 @@ class IndexIVFRaBitQ : public IndexIVF
 
     APP_ERROR searchPaged(size_t pageId, size_t pageNum, AscendTensor<float16_t, DIMS_2> &queries,
                           AscendTensor<float16_t, DIMS_2> &maxDistances, AscendTensor<int64_t, DIMS_2> &maxIndices);
-
-    APP_ERROR resize(int listId, size_t numVecs);
 
     size_t getListLength(int listId) const;
     std::unique_ptr<DeviceVector<float>> centroidsOnDevice;
@@ -98,8 +123,6 @@ class IndexIVFRaBitQ : public IndexIVF
 
    protected:
     void uploadLUTMatrix();
-    size_t addTiling(int listId, size_t numVecs, std::vector<uint64_t> &offsetHost,
-                     std::vector<uint64_t> &indexl2offsetHost, std::vector<uint32_t> &baseSizeHost);
     APP_ERROR addCodes(int listId, AscendTensor<uint8_t, DIMS_2> &codesData);
     APP_ERROR resetCenterRotateL2Op();
     void runCenterRotateL2Op(AscendTensor<float, DIMS_2> &centroid, AscendTensor<int32_t, DIMS_1> &vectorSize,
@@ -189,16 +212,18 @@ class IndexIVFRaBitQ : public IndexIVF
     APP_ERROR fillL1TopkOpInputData(AscendTensor<int64_t, DIMS_1> &attrsInput, int probeK);
     // Retries the AI CPU count query if the constructor ran before a device was set on this thread.
     void EnsureTopkGroupSizeResolved();
-    void fillDisOpInputDataByBlock(
-        size_t batch, size_t coreNum, size_t ivfRabitqBlockSize, AscendTensor<uint32_t, DIMS_2, size_t> &queryidHostVec,
-        AscendTensor<uint32_t, DIMS_2, size_t> &centroidsidHostVec,
-        AscendTensor<float, DIMS_2, size_t> &centroidsl2HostVec,
-        AscendTensor<uint32_t, DIMS_2, size_t> &baseSizeHostVec, AscendTensor<uint64_t, DIMS_2, size_t> &offsetHostVec,
-        AscendTensor<uint64_t, DIMS_2, size_t> &indexl2OffsetHostVec,
-        AscendTensor<uint64_t, DIMS_2, size_t> &indexl1OffsetHostVec, AscendTensor<int64_t, DIMS_2, size_t> &idsHostVec,
-        AscendTensor<int64_t, DIMS_1, size_t> &blockNumPerQHostVec,
-        AscendTensor<int64_t, DIMS_2> &l1TopNprobeIndicesHost, AscendTensor<float, DIMS_2> &l1TopNprobeDistsHost,
-        const int64_t *slotPlan, size_t maxBlocksPerQ);
+    void fillDisOpInputDataByBlock(size_t batch, size_t coreNum, AscendTensor<uint32_t, DIMS_2, size_t> &queryidHostVec,
+                                   AscendTensor<uint32_t, DIMS_2, size_t> &centroidsidHostVec,
+                                   AscendTensor<float, DIMS_2, size_t> &centroidsl2HostVec,
+                                   AscendTensor<uint32_t, DIMS_2, size_t> &baseSizeHostVec,
+                                   AscendTensor<uint64_t, DIMS_2, size_t> &offsetHostVec,
+                                   AscendTensor<uint64_t, DIMS_2, size_t> &indexl2OffsetHostVec,
+                                   AscendTensor<uint64_t, DIMS_2, size_t> &indexl1OffsetHostVec,
+                                   AscendTensor<int64_t, DIMS_2, size_t> &idsHostVec,
+                                   AscendTensor<int64_t, DIMS_1, size_t> &blockNumPerQHostVec,
+                                   AscendTensor<int64_t, DIMS_2> &l1TopNprobeIndicesHost,
+                                   AscendTensor<float, DIMS_2> &l1TopNprobeDistsHost, const int64_t *slotPlan,
+                                   size_t maxBlocksPerQ);
     void callL2DistanceOp(
         size_t batch, size_t totalBlockNum, size_t coreNum, size_t vcMaxLen, AscendTensor<float, DIMS_1> &queryL2Vec,
         AscendTensor<float, DIMS_2> &queryLutVec, AscendTensor<float, DIMS_2, size_t> &centroidsLutVec,
@@ -222,37 +247,36 @@ class IndexIVFRaBitQ : public IndexIVF
     APP_ERROR EnsurePrefixFilterPayloadOnDevice(const RabitqIdFilterHost *idFilter, int64_t &selPtr);
     void ClearCachedFilterPayload();
 
-    void moveVectorForward(int listId, idx_t srcIdx, idx_t dstIdx);
-    void releaseUnusageSpace(int listId, size_t oldTotal, size_t remove);
     size_t removeIds(const ascend::IDSelector &sel) override;
     void initListStorage();
 
+    // Grow all four vectors of `list` so slots [0, newLen) are addressable.
+    void ensureListCapacity(ListStorage &list, size_t newLen, aclrtStream stream);
+
+    // Drop the given slots from `listId` by moving the surviving tail slots into the holes they leave
+    // behind, then shrinking every vector to the new length. `deletedSlots` need not be sorted.
+    void compactList(int listId, std::vector<size_t> &deletedSlots);
+
    protected:
-    // Declared first so it is destroyed after list DeviceVectors that reference it.
+    // Declared first so it is destroyed after the list storage that carves segments out of it.
     std::shared_ptr<DeviceMemArena> listArena_;
-    MetricType metric;                                                  // metric type
-    std::unique_ptr<DeviceVector<float>> originCentroidsOnDevice;       // 原始聚类中心
-    std::unique_ptr<DeviceVector<float>> LUTMatrixOnDevice;             // LUT 计算常值矩阵
-    std::unique_ptr<DeviceVector<float>> CentroidLUTOnDevice;           // 聚类中心 LUT
-    std::unique_ptr<DeviceVector<float>> CentroidL2OnDevice;            // 聚类中心 L2
-    std::vector<std::unique_ptr<DeviceVector<float>>> IndexL2OnDevice;  // 索引 L2
-    std::vector<std::unique_ptr<DeviceVector<float>>> IndexL1OnDevice;  // 索引 L1
+    MetricType metric;                                             // metric type
+    std::unique_ptr<DeviceVector<float>> originCentroidsOnDevice;  // 原始聚类中心
+    std::unique_ptr<DeviceVector<float>> LUTMatrixOnDevice;        // LUT 计算常值矩阵
+    std::unique_ptr<DeviceVector<float>> CentroidLUTOnDevice;      // 聚类中心 LUT
+    std::unique_ptr<DeviceVector<float>> CentroidL2OnDevice;       // 聚类中心 L2
     std::unique_ptr<AscendOperator> ivfRaBitQRotateL2Ops;
     std::unique_ptr<AscendOperator> ivfCenterLUTOps;
     std::unique_ptr<AscendOperator> ivfRaBitQIndexRotateL2Ops;
     std::unique_ptr<AscendOperator> ivfRaBitQIndexCodeAndPreComputeOps;
     std::map<int, std::unique_ptr<AscendOperator>> ivfRaBitQL2DistOps;
-    std::vector<std::vector<std::unique_ptr<DeviceVector<uint8_t>>>> baseFp32;
-    std::vector<size_t> listVecNum;
+    std::vector<ListStorage> lists_;  // 每个倒排表的 codes/L1/L2/ids 存储，索引即 listId
     std::map<int, std::unique_ptr<::ascend::AscendOperator>> queryRotateL2Ops;
     std::map<int, std::unique_ptr<::ascend::AscendOperator>> queryLUTOps;
     std::map<int, std::unique_ptr<::ascend::AscendOperator>> topkFp32;
     std::map<int, std::unique_ptr<AscendOperator>> topkL2Fp32;
     std::map<int, std::unique_ptr<AscendOperator>> l1DistFp32Ops;
     int blockSize;
-    uint8_t *pBaseFp32;
-    float *pIndexL2;
-    float *pIndexL1;
 
     // Running maximum of every id appended through addVectors / addEncodedVectors, and the gate on the
     // reservoir top-k path, whose candidates carry uint32 ids (fillL2TopkOpInputData, idsFitUint32).

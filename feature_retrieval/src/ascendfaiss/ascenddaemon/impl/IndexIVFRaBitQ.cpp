@@ -161,31 +161,6 @@ void VerifyL1DistAndProbes(int numLists, int dims, int nprobe, const float *npuD
             overlap, static_cast<double>(overlap) / static_cast<double>(nprobe), cpuTile2);
 }
 
-size_t ExpandCapacity(size_t need, size_t hardCap)
-{
-    ExpandPolicy expand;
-    size_t cap = expand(need);
-    if (hardCap > 0 && cap > hardCap)
-    {
-        cap = hardCap;
-    }
-    if (cap < need)
-    {
-        cap = need;
-    }
-    return cap;
-}
-
-void ReserveExpanded(DeviceVector<uint8_t> &vec, size_t needBytes, size_t hardCapBytes)
-{
-    if (needBytes <= vec.capacity())
-    {
-        return;
-    }
-    const size_t capBytes = ExpandCapacity(needBytes, hardCapBytes);
-    vec.reserve(capBytes);
-}
-
 // The GROUPED window width, resolved from the device rather than configured. It has to match what the
 // TopK kernel can actually drain in parallel, which is min(GetCPUNum(ctx), nq): a window wider than that
 // just delays every query's finish, and a narrower one leaves threads idle. The min(nq) half is applied by
@@ -352,6 +327,9 @@ void BuildBlockSlotPlan(const std::vector<int64_t> &blockNumPerQ, size_t maxBloc
 }
 
 const int IVF_RABITQ_BLOCK_SIZE = 16384 * 2;
+// Tail allocation granularity, in vectors. A list grows its last segment in these steps instead of
+// reserving a whole IVF_RABITQ_BLOCK_SIZE segment up front, so a sparse index stays small.
+const size_t IVF_RABITQ_TAIL_GROWTH = IVF_RABITQ_BLOCK_SIZE / 8;
 const int SCAN_BIT = 8;
 const int LUT_NUM = std::pow(2, SCAN_BIT);
 IndexIVFRaBitQ::IndexIVFRaBitQ(int numList, int dim, int nprobes, const std::string &metricType, int64_t resourceSize,
@@ -380,12 +358,8 @@ IndexIVFRaBitQ::IndexIVFRaBitQ(int numList, int dim, int nprobes, const std::str
     }
     isTrained = false;
     searchBatchSizes = {64, 32, 16, 8, 4, 2, 1};  // supported batch size
-    listVecNum = std::vector<size_t>(numList, 0);
     listArena_ = std::make_shared<DeviceMemArena>();
     initListStorage();
-    pBaseFp32 = reinterpret_cast<uint8_t *>(0xffffffffffffffff);  // 基地址初始化为最大的无效值 0xffffffffffffffff
-    pIndexL2 = reinterpret_cast<float *>(0xffffffffffffffff);  // 基地址初始化为最大的无效值 0xffffffffffffffff
-    pIndexL1 = reinterpret_cast<float *>(0xffffffffffffffff);  // 基地址初始化为最大的无效值 0xffffffffffffffff
     originCentroidsOnDevice = CREATE_UNIQUE_PTR(DeviceVector<float>, MemorySpace::DEVICE_HUGEPAGE);
     originCentroidsOnDevice->resize(numList * dims);
     centroidsOnDevice = CREATE_UNIQUE_PTR(DeviceVector<float>, MemorySpace::DEVICE_HUGEPAGE);
@@ -440,62 +414,75 @@ IndexIVFRaBitQ::IndexIVFRaBitQ(int numList, int dim, int nprobes, const std::str
     ASCEND_THROW_IF_NOT_MSG(ret == APP_ERR_OK, "resetQueryLUTOp failed!");
 }
 
+namespace
+{
+// Rolls a list's segment geometry back to its committed length unless the write is explicitly marked
+// complete. ensureListCapacity grows segments_ up front, but every step after it -- three H2D copies, two
+// stream syncs, the id copy -- can return early, and none of them commit a new length. Without this the
+// list is left with segmentCount == ceil(newLen / blockSize) while listLen still holds the old value, so
+// sum(segmentLength) exceeds listLen: getListIds / getListRawCodes / CollectDeletedSlots then read slots
+// that were never written, and the host-side copies size their buffers from listLen and overflow them.
+//
+// Rolling back the segment count (rather than only fixing up lengths) also releases the segments the
+// aborted write had just allocated, so a failing add does not permanently inflate the list's footprint.
+class ListCapacityGuard
+{
+   public:
+    ListCapacityGuard(IndexIVFRaBitQ::ListStorage &list, size_t blockSize) : list_(list), blockSize_(blockSize) {}
+
+    ~ListCapacityGuard()
+    {
+        if (committed_)
+        {
+            return;
+        }
+        const size_t segments = utils::divUp(list_.listLen, blockSize_);
+        list_.codes.resizeSegments(segments);
+        list_.indexL1.resizeSegments(segments);
+        list_.indexL2.resizeSegments(segments);
+        list_.ids.resizeSegments(segments);
+    }
+
+    ListCapacityGuard(const ListCapacityGuard &) = delete;
+    ListCapacityGuard &operator=(const ListCapacityGuard &) = delete;
+
+    // Call once the four commitLength() calls and listLen have been updated consistently.
+    void commit() { committed_ = true; }
+
+   private:
+    IndexIVFRaBitQ::ListStorage &list_;
+    size_t blockSize_;
+    bool committed_{false};
+};
+}  // namespace
+
 void IndexIVFRaBitQ::initListStorage()
 {
     ASCEND_THROW_IF_NOT_MSG(listArena_ != nullptr, "listArena_ is null");
 
-    deviceListData.clear();
-    deviceListIndices.clear();
-    IndexL1OnDevice.clear();
-    IndexL2OnDevice.clear();
-    baseFp32.clear();
-    baseFp32.resize(static_cast<size_t>(numLists));
-
+    // Base IndexIVF's deviceListData/deviceListIndices stay unused: RaBitQ keeps codes, factors and ids
+    // in lists_ instead.
+    lists_.clear();
+    lists_.reserve(static_cast<size_t>(numLists));
+    // elementsPerSlot for codes is the quantised row width, so it has to follow quantBits_ -- a hardcoded
+    // (dims + 7) / 8 would size every slot for 1-bit and truncate 2/4-bit codes.
+    const size_t codePartBytes = getCodePartBytes();
     for (int i = 0; i < numLists; ++i)
     {
-        deviceListData.emplace_back(CREATE_UNIQUE_PTR(DeviceVector<unsigned char>, listArena_));
-        deviceListIndices.emplace_back(CREATE_UNIQUE_PTR(DeviceVector<idx_t>, listArena_));
-        IndexL1OnDevice.emplace_back(CREATE_UNIQUE_PTR(DeviceVector<float>, listArena_));
-        IndexL2OnDevice.emplace_back(CREATE_UNIQUE_PTR(DeviceVector<float>, listArena_));
-    }
-
-    pListBase = nullptr;
-    if (!deviceListData.empty())
-    {
-        pListBase = deviceListData[0]->data();
-        for (int i = 1; i < numLists; ++i)
-        {
-            uint8_t *ptr = deviceListData[i]->data();
-            if (ptr != nullptr && (pListBase == nullptr || ptr < pListBase))
-            {
-                pListBase = ptr;
-            }
-        }
+        lists_.emplace_back(static_cast<size_t>(blockSize), IVF_RABITQ_TAIL_GROWTH, codePartBytes, listArena_);
     }
 }
 
 IndexIVFRaBitQ::~IndexIVFRaBitQ()
 {
-    // Drop list vectors that reference listArena_ before the arena member is destroyed.
-    // Base IndexIVF would otherwise destroy deviceList* after listArena_.
-    deviceListData.clear();
-    deviceListIndices.clear();
-    IndexL1OnDevice.clear();
-    IndexL2OnDevice.clear();
-    baseFp32.clear();
+    // Segments hold raw pointers into listArena_, so drop them before the arena member is destroyed.
+    lists_.clear();
 }
 
 APP_ERROR IndexIVFRaBitQ::reset()
 {
-    for (size_t i = 0; i < baseFp32.size(); i++)
-    {
-        baseFp32[i].clear();
-    }
-    baseFp32.clear();
-    IndexL1OnDevice.clear();
-    IndexL2OnDevice.clear();
-    deviceListData.clear();
-    deviceListIndices.clear();
+    // Must precede the arena reset: the segments being dropped point into its slabs.
+    lists_.clear();
 
     if (listArena_ != nullptr)
     {
@@ -506,14 +493,9 @@ APP_ERROR IndexIVFRaBitQ::reset()
         listArena_ = std::make_shared<DeviceMemArena>();
     }
     initListStorage();
-    listVecNum.assign(static_cast<size_t>(numLists), 0);
     maxListLength = 0;
     this->ntotal = 0;
     maxStoredId_ = 0;
-
-    pBaseFp32 = reinterpret_cast<uint8_t *>(0xffffffffffffffff);
-    pIndexL2 = reinterpret_cast<float *>(0xffffffffffffffff);
-    pIndexL1 = reinterpret_cast<float *>(0xffffffffffffffff);
 
     // 聚类中心、正交矩阵、LUT 和质心 L2 是训练结果，reset 后 add 仍要使用，不能释放。
     if (distResultOnDevice != nullptr)
@@ -650,91 +632,22 @@ APP_ERROR IndexIVFRaBitQ::EnsurePrefixFilterPayloadOnDevice(const RabitqIdFilter
     return APP_ERR_OK;
 }
 
-APP_ERROR IndexIVFRaBitQ::resize(int listId, size_t numVecs)
+// Grows the four vectors of one list to newLen slots. Not transactional on its own: the caller must pair
+// it with a ListCapacityGuard so a failure between here and commitLength cannot leave segmentCount and
+// listLen disagreeing (see the guard's comment).
+void IndexIVFRaBitQ::ensureListCapacity(ListStorage &list, size_t newLen, aclrtStream stream)
 {
-    if (numVecs == 0)
-    {
-        return APP_ERR_OK;
-    }
-    size_t currentVecNum = listVecNum[listId];
-    const size_t chunk = static_cast<size_t>(blockSize);
-    const size_t newLen = currentVecNum + numVecs;
-    // Geometric ExpandPolicy growth: O(log N) reallocs / list (linear arena abandon),
-    // without reserving a full 32K block on the first small add to a sparse list.
-    IndexL2OnDevice[listId]->resize(newLen, false);
-    pIndexL2 = IndexL2OnDevice[listId]->data() < pIndexL2 ? IndexL2OnDevice[listId]->data() : pIndexL2;
-    IndexL1OnDevice[listId]->resize(newLen, false);
-    pIndexL1 = IndexL1OnDevice[listId]->data() < pIndexL1 ? IndexL1OnDevice[listId]->data() : pIndexL1;
-
-    auto &blockList = baseFp32[listId];
-    const size_t codePart = getCodePartBytes();
-    const size_t blockCapBytes = chunk * codePart;
-
-    size_t remainingVecs = numVecs;
-    while (remainingVecs > 0)
-    {
-        size_t tailBlkId = blockList.empty() ? 0 : blockList.size() - 1;
-        if (blockList.empty())
-        {
-            blockList.emplace_back(CREATE_UNIQUE_PTR(DeviceVector<uint8_t>, listArena_));
-            tailBlkId = 0;
-        }
-
-        size_t currentBlockUsed = currentVecNum % chunk;
-        size_t currentBlockRemaining;
-        if (currentVecNum > 0 && currentBlockUsed == 0)
-        {
-            currentBlockRemaining = 0;
-        }
-        else
-        {
-            currentBlockRemaining = chunk - currentBlockUsed;
-        }
-        if (currentBlockRemaining == 0)
-        {
-            blockList.emplace_back(CREATE_UNIQUE_PTR(DeviceVector<uint8_t>, listArena_));
-            tailBlkId = blockList.size() - 1;
-            currentBlockRemaining = chunk;
-        }
-        size_t vecsToAdd = std::min(remainingVecs, currentBlockRemaining);
-        size_t newSize = (currentVecNum % chunk) + vecsToAdd;
-        const size_t needBytes = newSize * codePart;
-        ReserveExpanded(*blockList[tailBlkId], needBytes, blockCapBytes);
-        blockList[tailBlkId]->resize(needBytes, true);
-        currentVecNum += vecsToAdd;
-        remainingVecs -= vecsToAdd;
-        pBaseFp32 = blockList.at(tailBlkId)->data() < pBaseFp32 ? blockList.at(tailBlkId)->data() : pBaseFp32;
-    }
-
-    if (MemDebugEnabled())
-    {
-        const size_t newTotal = listVecNum[listId] + numVecs;
-        const size_t codeBytes = newTotal * codePart;
-        const size_t factorBytes = newTotal * sizeof(float);  // per L1 or L2
-        const size_t idBytes = newTotal * sizeof(idx_t);
-        static std::atomic<uint64_t> resizeLogSeq{0};
-        uint64_t seq = resizeLogSeq.fetch_add(1, std::memory_order_relaxed) + 1;
-        size_t every = MemDebugEvery();
-        if (every > 0 && (seq % every == 0 || numVecs >= 100000))
-        {
-            MemDebugPrintf(
-                "[MemDebug] IndexIVFRaBitQ::resize listId=%d add=%zu newLen=%zu codeBlocks=%zu "
-                "codeBytes=%zu L1Bytes=%zu L2Bytes=%zu idBytes~=%zu arenaReserved=%zu slabs=%zu "
-                "L1cap=%zu L2cap=%zu\n",
-                listId, numVecs, newTotal, blockList.size(), codeBytes, factorBytes, factorBytes, idBytes,
-                listArena_ ? listArena_->TotalReservedBytes() : 0, listArena_ ? listArena_->SlabCount() : 0,
-                IndexL1OnDevice[listId]->capacity(), IndexL2OnDevice[listId]->capacity());
-            LogHbm("IndexIVFRaBitQ_resize", -1);
-        }
-    }
-    return APP_ERR_OK;
+    list.codes.ensureCapacity(newLen, stream);
+    list.indexL1.ensureCapacity(newLen, stream);
+    list.indexL2.ensureCapacity(newLen, stream);
+    list.ids.ensureCapacity(newLen, stream);
 }
 
 size_t IndexIVFRaBitQ::getListLength(int listId) const
 {
     ASCEND_THROW_IF_NOT((listId < numLists) && (listId >= 0));
 
-    return listVecNum[listId];
+    return lists_[listId].listLen;
 }
 
 void IndexIVFRaBitQ::uploadLUTMatrix()
@@ -919,56 +832,15 @@ void IndexIVFRaBitQ::runCenterLUTOp(AscendTensor<float, DIMS_2> &centroid, Ascen
     op->exec(*topkOpInput, *topkOpOutput, stream);
 }
 
-size_t IndexIVFRaBitQ::addTiling(int listId, size_t numVecs, std::vector<uint64_t> &offsetHost,
-                                 std::vector<uint64_t> &indexl2offsetHost, std::vector<uint32_t> &baseSizeHost)
-{
-    size_t ntotal = listVecNum[listId];
-    size_t blockIdx = ntotal / blockSize;
-    size_t offsetInBlock = ntotal % blockSize;
-    size_t leftInBlock = blockSize - offsetInBlock;
-    size_t tileNum = 1;
-    if (leftInBlock < numVecs)
-    {
-        tileNum += (numVecs - leftInBlock + blockSize - 1) / blockSize;
-    }
-    offsetHost.resize(tileNum);
-    indexl2offsetHost.resize(tileNum);
-    baseSizeHost.resize(tileNum);
-
-    baseSizeHost[0] = std::min(leftInBlock, numVecs);
-    indexl2offsetHost[0] = ntotal;
-    offsetHost[0] =
-        (reinterpret_cast<uint64_t>(baseFp32[listId].at(blockIdx)->data() + offsetInBlock * getCodePartBytes()) -
-         reinterpret_cast<uint64_t>(pBaseFp32));
-    for (size_t i = 1; i + 1 < tileNum; i++)
-    {
-        baseSizeHost[i] = blockSize;
-        indexl2offsetHost[i] = indexl2offsetHost[i - 1] + baseSizeHost[i - 1];
-        blockIdx++;
-        offsetHost[i] =
-            (reinterpret_cast<uint64_t>(baseFp32[listId].at(blockIdx)->data()) - reinterpret_cast<uint64_t>(pBaseFp32));
-    }
-    if (tileNum > 1)
-    {
-        baseSizeHost[tileNum - 1] = (numVecs - leftInBlock) % blockSize;
-        if (baseSizeHost[tileNum - 1] == 0)
-        {
-            baseSizeHost[tileNum - 1] = blockSize;
-        }
-        indexl2offsetHost[tileNum - 1] = indexl2offsetHost[tileNum - 2] + baseSizeHost[tileNum - 2];
-        blockIdx++;
-        offsetHost[tileNum - 1] =
-            (reinterpret_cast<uint64_t>(baseFp32[listId].at(blockIdx)->data()) - reinterpret_cast<uint64_t>(pBaseFp32));
-    }
-    return tileNum;
-}
-
 APP_ERROR IndexIVFRaBitQ::addVectors(int listId, size_t numVecs, const float *codes, const idx_t *indices)
 {
     APPERR_RETURN_IF_NOT_FMT(listId >= 0 && listId < numLists, APP_ERR_INVALID_PARAM,
                              "the listId is %d, out of numLists(%d)", listId, numLists);
     APPERR_RETURN_IF(numVecs == 0, APP_ERR_OK);
     ClearCachedFilterPayload();
+    auto &list = lists_[listId];
+    const size_t oldLen = list.listLen;
+    const size_t newLen = oldLen + numVecs;
     if (MemDebugEnabled())
     {
         static std::atomic<uint64_t> addLogSeq{0};
@@ -977,19 +849,17 @@ APP_ERROR IndexIVFRaBitQ::addVectors(int listId, size_t numVecs, const float *co
         if (every > 0 && (seq % every == 0 || numVecs >= 100000))
         {
             MemDebugPrintf("[MemDebug] IndexIVFRaBitQ::addVectors listId=%d numVecs=%zu prevLen=%zu\n", listId, numVecs,
-                           listVecNum[listId]);
+                           oldLen);
             LogHbm("IndexIVFRaBitQ_addVectors_before", -1);
         }
     }
-    APPERR_RETURN_IF_NOT_LOG(APP_ERR_OK == resize(listId, numVecs), APP_ERR_INNER_ERROR, "resize base failed!");
-    std::vector<uint64_t> offsetHost;
-    std::vector<uint64_t> indexl2offsetHost;
-    std::vector<uint32_t> baseSizeHost;
-    size_t tileNum = addTiling(listId, numVecs, offsetHost, indexl2offsetHost, baseSizeHost);
 
     auto &mem = resources.getMemoryManager();
     auto streamPtr = resources.getDefaultStream();
     auto stream = streamPtr->GetStream();
+    ensureListCapacity(list, newLen, stream);
+    // Any early return between here and the commitLength block below rolls the segment count back.
+    ListCapacityGuard capacityGuard(list, static_cast<size_t>(blockSize));
     AscendTensor<float, DIMS_2> rotatematrixDev(OrthogonalMatrixOnDevice->data(), {dims, dims});
     AscendTensor<float, DIMS_2> centroidDev(centroidsOnDevice->data() + listId * dims, {1, dims});
     AscendTensor<float, DIMS_1> centroidl2Dev(CentroidL2OnDevice->data() + listId, {1});
@@ -998,23 +868,28 @@ APP_ERROR IndexIVFRaBitQ::addVectors(int listId, size_t numVecs, const float *co
     AscendTensor<float, DIMS_2> indexRotateVec(mem, {blockSize, dims}, stream);
     AscendTensor<float, DIMS_1> indexL2Vec(mem, {blockSize}, stream);
     std::vector<int32_t> vectorSize(1, 0);
-    uint64_t codesOffset = 0;
-    for (size_t i = 0; i < tileNum; i++)
+    size_t inputOffset = 0;
+    // One iteration per segment the input spans: a tile never crosses a segment boundary, so every op
+    // writes into a single contiguous allocation.
+    while (inputOffset < numVecs)
     {
+        const size_t slot = oldLen + inputOffset;
+        const size_t count =
+            std::min(numVecs - inputOffset, static_cast<size_t>(blockSize) - slot % static_cast<size_t>(blockSize));
         // 原始索引向量传到npu
-        auto ret = aclrtMemcpy(indexOriginVec.data(), baseSizeHost[i] * dims * sizeof(float), codes + codesOffset,
-                               baseSizeHost[i] * dims * sizeof(float), ACL_MEMCPY_HOST_TO_DEVICE);
+        auto ret = aclrtMemcpy(indexOriginVec.data(), count * dims * sizeof(float), codes + inputOffset * dims,
+                               count * dims * sizeof(float), ACL_MEMCPY_HOST_TO_DEVICE);
         APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "copy index to device failed %d", ret);
-        codesOffset += baseSizeHost[i] * dims;
-        vectorSize[0] = baseSizeHost[i];
+        vectorSize[0] = static_cast<int32_t>(count);
         ret = aclrtMemcpy(vectorSizeVec.data(), sizeof(int32_t), vectorSize.data(), sizeof(int32_t),
                           ACL_MEMCPY_HOST_TO_DEVICE);
         APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "copy vectorSize to device failed %d", ret);
-        AscendTensor<float, DIMS_1> indexesl2(IndexL2OnDevice[listId]->data() + indexl2offsetHost[i], {blockSize});
-        AscendTensor<float, DIMS_1> indexesl1(IndexL1OnDevice[listId]->data() + indexl2offsetHost[i], {blockSize});
-        AscendTensor<uint8_t, DIMS_2> indexCodes(
-            reinterpret_cast<uint8_t *>(reinterpret_cast<uint64_t>(pBaseFp32) + offsetHost[i]),
-            {blockSize, static_cast<int>(getCodePartBytes())});
+        AscendTensor<float, DIMS_1> indexesl2(list.indexL2.slot(slot), {blockSize});
+        AscendTensor<float, DIMS_1> indexesl1(list.indexL1.slot(slot), {blockSize});
+        // Row width is getCodePartBytes(), not (dims + 7) / 8: multi-bit quantisation stores quantBits_
+        // planes per dimension, so the 1-bit formula would under-size every row by that factor.
+        AscendTensor<uint8_t, DIMS_2> indexCodes(list.codes.slot(slot),
+                                                 {blockSize, static_cast<int>(getCodePartBytes())});
         // o = Por, ||or||^2 预计算
         runIndexRotateL2Op(indexOriginVec, vectorSizeVec, rotatematrixDev, indexRotateVec, indexL2Vec, stream);
         ret = synchronizeStream(stream);
@@ -1025,14 +900,24 @@ APP_ERROR IndexIVFRaBitQ::addVectors(int listId, size_t numVecs, const float *co
         ret = synchronizeStream(stream);
         APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "synchronizeStream default stream: %i\n",
                                  ret);
+        ret = aclrtMemcpy(list.ids.slot(slot), count * sizeof(idx_t), indices + inputOffset, count * sizeof(idx_t),
+                          ACL_MEMCPY_HOST_TO_DEVICE);
+        APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "copy ids to device failed %d", ret);
+        inputOffset += count;
     }
-    maxListLength = std::max(maxListLength, static_cast<int>(getListLength(listId)));
+    list.codes.commitLength(newLen);
+    list.indexL1.commitLength(newLen);
+    list.indexL2.commitLength(newLen);
+    list.ids.commitLength(newLen);
+    list.listLen = newLen;
+    capacityGuard.commit();
+    // From newLen, and after the commit: getListLength() reads list.listLen, which only takes its new value
+    // on the line above, so computing this any earlier would fold in the pre-append length and leave
+    // maxListLength short of what this call just stored. Mirrors addEncodedVectors.
+    maxListLength = std::max(maxListLength, static_cast<int>(newLen));
     maxListLength = utils::roundUp(maxListLength, CUBE_ALIGN);
-    listVecNum[listId] += numVecs;
     IndexIVF::ntotal += numVecs;
     maxStoredId_ = std::max(maxStoredId_, MaxId(indices, numVecs));
-    // ExpandPolicy growth (reserveExact=false): avoid exact-append abandon and blockSize over-reserve.
-    deviceListIndices[listId]->append(indices, numVecs, false);
     if (MemDebugEnabled() && listArena_ != nullptr)
     {
         static std::atomic<uint64_t> afterAddLogSeq{0};
@@ -1042,8 +927,9 @@ APP_ERROR IndexIVFRaBitQ::addVectors(int listId, size_t numVecs, const float *co
         {
             MemDebugPrintf(
                 "[MemDebug] IndexIVFRaBitQ::addVectors done listId=%d numVecs=%zu listLen=%zu "
-                "arenaReserved=%zu slabs=%zu\n",
-                listId, numVecs, listVecNum[listId], listArena_->TotalReservedBytes(), listArena_->SlabCount());
+                "codeSegments=%zu codeBytes=%zu arenaReserved=%zu slabs=%zu\n",
+                listId, numVecs, newLen, list.codes.segmentCount(), list.codes.allocatedBytes(),
+                listArena_->TotalReservedBytes(), listArena_->SlabCount());
             LogHbm("IndexIVFRaBitQ_addVectors_after", -1);
         }
     }
@@ -1582,7 +1468,7 @@ void IndexIVFRaBitQ::runL2DistOp(
 }
 
 void IndexIVFRaBitQ::fillDisOpInputDataByBlock(
-    size_t batch, size_t coreNum, size_t ivfRabitqBlockSize, AscendTensor<uint32_t, DIMS_2, size_t> &queryidHostVec,
+    size_t batch, size_t coreNum, AscendTensor<uint32_t, DIMS_2, size_t> &queryidHostVec,
     AscendTensor<uint32_t, DIMS_2, size_t> &centroidsidHostVec, AscendTensor<float, DIMS_2, size_t> &centroidsl2HostVec,
     AscendTensor<uint32_t, DIMS_2, size_t> &baseSizeHostVec, AscendTensor<uint64_t, DIMS_2, size_t> &offsetHostVec,
     AscendTensor<uint64_t, DIMS_2, size_t> &indexl2OffsetHostVec,
@@ -1600,7 +1486,8 @@ void IndexIVFRaBitQ::fillDisOpInputDataByBlock(
         {
             int64_t listId = l1TopNprobeIndicesHost[qIdx][tIdx].value();
             float centerl2 = l1TopNprobeDistsHost[qIdx][tIdx].value();
-            size_t blockNum = baseFp32[listId].size();
+            const auto &list = lists_[listId];
+            size_t blockNum = list.codes.segmentCount();
             blockNumPerQ += blockNum;
             for (size_t segIdx = 0; segIdx < blockNum; segIdx++)
             {
@@ -1614,24 +1501,15 @@ void IndexIVFRaBitQ::fillDisOpInputDataByBlock(
                 queryidHostVec[iter][cIdx].value(qIdx);
                 centroidsidHostVec[iter][cIdx].value(listId);
                 centroidsl2HostVec[iter][cIdx].value(centerl2);
-                size_t listNum = deviceListIndices[listId]->size();
-                size_t proccessLen = std::min(listNum - segIdx * ivfRabitqBlockSize, ivfRabitqBlockSize);
-                baseSizeHostVec[iter][cIdx].value(proccessLen);
-                int64_t idAddr =
-                    reinterpret_cast<int64_t>(deviceListIndices[listId]->data() + segIdx * ivfRabitqBlockSize);
-                idsHostVec[iter][cIdx].value(idAddr);
+                baseSizeHostVec[iter][cIdx].value(list.codes.segmentLength(segIdx));
+                idsHostVec[iter][cIdx].value(reinterpret_cast<int64_t>(list.ids.segmentData(segIdx)));
 
-                uint64_t offsetSeg = reinterpret_cast<uint64_t>(baseFp32[listId].at(segIdx)->data()) -
-                                     reinterpret_cast<uint64_t>(pBaseFp32);
-                offsetHostVec[iter][cIdx].value(offsetSeg);
-                uint64_t indexl2OffsetSeg =
-                    reinterpret_cast<uint64_t>(IndexL2OnDevice[listId]->data() + segIdx * ivfRabitqBlockSize) -
-                    reinterpret_cast<uint64_t>(pIndexL2);
-                indexl2OffsetHostVec[iter][cIdx].value(indexl2OffsetSeg);
-                uint64_t indexl1OffsetSeg =
-                    reinterpret_cast<uint64_t>(IndexL1OnDevice[listId]->data() + segIdx * ivfRabitqBlockSize) -
-                    reinterpret_cast<uint64_t>(pIndexL1);
-                indexl1OffsetHostVec[iter][cIdx].value(indexl1OffsetSeg);
+                // The base pointers passed to the op are nullptr, so each offset is the segment's own
+                // absolute device address. Unlike IVFFlat's single contiguous blockList, RaBitQ segments
+                // are independent allocations, so a min base would buy nothing.
+                offsetHostVec[iter][cIdx].value(reinterpret_cast<uint64_t>(list.codes.segmentData(segIdx)));
+                indexl2OffsetHostVec[iter][cIdx].value(reinterpret_cast<uint64_t>(list.indexL2.segmentData(segIdx)));
+                indexl1OffsetHostVec[iter][cIdx].value(reinterpret_cast<uint64_t>(list.indexL1.segmentData(segIdx)));
             }
         }
         blockNumPerQHostVec[qIdx].value(blockNumPerQ);
@@ -1695,10 +1573,10 @@ APP_ERROR IndexIVFRaBitQ::fillDisOpInputData(
     EnsureTopkGroupSizeResolved();
     BuildBlockSlotPlan(blockNumPlan, maxBlocksPerQ, topkGroupSize_, blockSlotsHost.data());
 
-    fillDisOpInputDataByBlock(batch, coreNum, ivfRabitqBlockSize, queryidHostVec, centroidsidHostVec,
-                              centroidsl2HostVec, baseSizeHostVec, offsetHostVec, indexl2OffsetHostVec,
-                              indexl1OffsetHostVec, idsHostVec, blockNumPerQHostVec, l1TopNprobeIndicesHost,
-                              l1TopNprobeDistsHost, blockSlotsHost.data(), maxBlocksPerQ);
+    fillDisOpInputDataByBlock(batch, coreNum, queryidHostVec, centroidsidHostVec, centroidsl2HostVec, baseSizeHostVec,
+                              offsetHostVec, indexl2OffsetHostVec, indexl1OffsetHostVec, idsHostVec,
+                              blockNumPerQHostVec, l1TopNprobeIndicesHost, l1TopNprobeDistsHost, blockSlotsHost.data(),
+                              maxBlocksPerQ);
     auto ret = aclrtMemcpy(offset.data(), offset.getSizeInBytes(), offsetHostVec.data(), offsetHostVec.getSizeInBytes(),
                            ACL_MEMCPY_HOST_TO_DEVICE);
     APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "copy offset to device failed %d", ret);
@@ -1866,7 +1744,7 @@ size_t IndexIVFRaBitQ::getMaxListNum(size_t batch, AscendTensor<int64_t, DIMS_2>
         for (size_t probId = 0; probId < static_cast<size_t>(l1TopNprobeIndicesHost.getSize(1)); probId++)
         {
             int64_t listId = l1TopNprobeIndicesHost[qIdx][probId].value();
-            size_t listNum = deviceListIndices[listId]->size();
+            size_t listNum = lists_[listId].listLen;
             maxLen = maxLen > listNum ? maxLen : listNum;
         }
     }
@@ -1894,7 +1772,7 @@ size_t IndexIVFRaBitQ::getTotalBlockNum(size_t batch, AscendTensor<int64_t, DIMS
         for (size_t probId = 0; probId < static_cast<size_t>(l1TopNprobeIndicesHost.getSize(1)); probId++)
         {
             int64_t listId = l1TopNprobeIndicesHost[qIdx][probId].value();
-            size_t blockNum = baseFp32[listId].size();
+            size_t blockNum = lists_[listId].codes.segmentCount();
             totalBlockNum += blockNum;
         }
     }
@@ -1926,7 +1804,7 @@ size_t IndexIVFRaBitQ::getBlockNumPerQ(size_t batch, AscendTensor<int64_t, DIMS_
         for (size_t probId = 0; probId < static_cast<size_t>(l1TopNprobeIndicesHost.getSize(1)); probId++)
         {
             int64_t listId = l1TopNprobeIndicesHost[qIdx][probId].value();
-            blockNum += static_cast<int64_t>(baseFp32[listId].size());
+            blockNum += static_cast<int64_t>(lists_[listId].codes.segmentCount());
         }
         blockNumPerQ[qIdx] = blockNum;
         maxBlocksPerQ = std::max(maxBlocksPerQ, static_cast<size_t>(blockNum));
@@ -1975,9 +1853,11 @@ APP_ERROR IndexIVFRaBitQ::searchImplL2(AscendTensor<float, DIMS_2> &queries, Asc
     AscendTensor<float, DIMS_2, size_t> centroidsLutVec(
         CentroidLUTOnDevice->data(),
         {static_cast<size_t>(numLists) * getCodePartBytes(), static_cast<size_t>(LUT_NUM)});
-    AscendTensor<uint8_t, DIMS_2, size_t> codeVec(pBaseFp32, {ivfRabitqBlockSize, getCodePartBytes()});
-    AscendTensor<float, DIMS_1, size_t> Indexl2(pIndexL2, {ivfRabitqBlockSize});
-    AscendTensor<float, DIMS_1, size_t> Indexl1(pIndexL1, {ivfRabitqBlockSize});
+    // Base pointers are nullptr: the kernel only computes base + offset and never dereferences base, so
+    // each per-segment offset carries the segment's absolute device address (see fillDisOpInputDataByBlock).
+    AscendTensor<uint8_t, DIMS_2, size_t> codeVec(nullptr, {ivfRabitqBlockSize, getCodePartBytes()});
+    AscendTensor<float, DIMS_1, size_t> Indexl2(nullptr, {ivfRabitqBlockSize});
+    AscendTensor<float, DIMS_1, size_t> Indexl1(nullptr, {ivfRabitqBlockSize});
     size_t vcMaxLen = static_cast<size_t>((ivfRabitqBlockSize + IVF_RABITQ_BURST_LEN - 1) / IVF_RABITQ_BURST_LEN * 2);
     resizeDistResult(iterNum, coreNum, ivfRabitqBlockSize);
     AscendTensor<float, DIMS_2, size_t> disVec(distResultOnDevice->data(), {iterNum, coreNum * ivfRabitqBlockSize});
@@ -2328,28 +2208,33 @@ APP_ERROR IndexIVFRaBitQ::getListIds(int listId, std::vector<int64_t> &ids) cons
 {
     APPERR_RETURN_IF_NOT_FMT(listId >= 0 && listId < numLists, APP_ERR_INVALID_PARAM, "listId %d out of range [0, %d)",
                              listId, numLists);
-    size_t len = listVecNum[listId];
+    const auto &list = lists_[listId];
+    size_t len = list.listLen;
     ids.resize(len);
     if (len == 0)
     {
         return APP_ERR_OK;
     }
 
-    // deviceListIndices[listId] 是 DeviceVector<ascend_idx_t>*
-    auto &idVec = deviceListIndices[listId];
-    APPERR_RETURN_IF_NOT(idVec != nullptr, APP_ERR_INNER_ERROR);
-
-    std::vector<uint64_t> tmp(len);
-    auto ret = aclrtMemcpy(tmp.data(), len * sizeof(uint64_t), idVec->data(), len * sizeof(uint64_t),
-                           ACL_MEMCPY_DEVICE_TO_HOST);
-    APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "aclrtMemcpy failed for list %d IDs, ret=%d",
-                             listId, ret);
-
-    // 转换为 faiss::idx_t
-    for (size_t i = 0; i < len; ++i)
+    size_t copied = 0;
+    for (size_t segmentId = 0; segmentId < list.ids.segmentCount(); ++segmentId)
     {
-        ids[i] = static_cast<int64_t>(tmp[i]);
+        // Clamp to what the destination can still take. The buffer is sized from listLen, while the loop
+        // walks segmentLength(), and the two only agree once a write has committed its new length; bounding
+        // the copy here means a disagreement costs a short read rather than a heap overflow.
+        size_t count = std::min(list.ids.segmentLength(segmentId), len - copied);
+        if (count == 0)
+        {
+            break;
+        }
+        size_t bytes = count * sizeof(idx_t);
+        auto ret =
+            aclrtMemcpy(ids.data() + copied, bytes, list.ids.segmentData(segmentId), bytes, ACL_MEMCPY_DEVICE_TO_HOST);
+        APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "aclrtMemcpy failed for list %d IDs, ret=%d",
+                                 listId, ret);
+        copied += count;
     }
+    APPERR_RETURN_IF_NOT_FMT(copied == len, APP_ERR_INNER_ERROR, "copied %zu ids, expected %zu", copied, len);
     return APP_ERR_OK;
 }
 
@@ -2358,7 +2243,8 @@ APP_ERROR IndexIVFRaBitQ::getListRawCodes(int listId, std::vector<uint8_t> &rawC
     APPERR_RETURN_IF_NOT_FMT(listId >= 0 && listId < numLists, APP_ERR_INVALID_PARAM, "listId %d out of range [0, %d)",
                              listId, numLists);
 
-    size_t numVecs = listVecNum[listId];
+    const auto &list = lists_[listId];
+    size_t numVecs = list.listLen;
     size_t codeSizePerVec = getCodeSize();
     size_t totalBytes = numVecs * codeSizePerVec;
     rawCodes.resize(totalBytes);
@@ -2375,44 +2261,45 @@ APP_ERROR IndexIVFRaBitQ::getListRawCodes(int listId, std::vector<uint8_t> &rawC
     APPERR_RETURN_IF_NOT_LOG(retSync == ACL_SUCCESS, APP_ERR_INNER_ERROR,
                              "synchronizeStream failed before getListRawCodes");
 
-    // 拷贝压缩码部分（baseFp32）
-    const auto &blocks = baseFp32[listId];
+    // 布局：[所有压缩码][所有 L2 因子][所有 L1 因子]
     size_t codePartBytesPerVec = getCodePartBytes();
     size_t codePartTotal = numVecs * codePartBytesPerVec;
-    size_t copied = 0;
+    size_t l2Offset = codePartTotal;
+    size_t l1Offset = l2Offset + numVecs * sizeof(float);
 
-    for (const auto &block : blocks)
+    size_t copied = 0;
+    size_t vectorOffset = 0;
+    for (size_t segmentId = 0; segmentId < list.codes.segmentCount(); ++segmentId)
     {
-        size_t blockBytes = block->size();
-        if (copied + blockBytes > codePartTotal)
+        // Clamp to the vectors still expected. rawCodes is sized from listLen while the loop walks
+        // segmentLength(), and the three destination regions are packed back to back, so an unclamped
+        // count would not just overrun the buffer -- it would also write the L2/L1 regions past their
+        // own extents. Bounding it here turns any disagreement into a short read caught by the check
+        // below, instead of silent heap corruption.
+        size_t count = std::min(list.codes.segmentLength(segmentId), numVecs - vectorOffset);
+        if (count == 0)
         {
-            blockBytes = codePartTotal - copied;  // 安全保护
+            break;
         }
-        auto ret =
-            aclrtMemcpy(rawCodes.data() + copied, blockBytes, block->data(), blockBytes, ACL_MEMCPY_DEVICE_TO_HOST);
+        size_t codeBytes = count * codePartBytesPerVec;
+        size_t factorBytes = count * sizeof(float);
+        auto ret = aclrtMemcpy(rawCodes.data() + copied, codeBytes, list.codes.segmentData(segmentId), codeBytes,
+                               ACL_MEMCPY_DEVICE_TO_HOST);
         APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR,
-                                 "aclrtMemcpy failed for list %d block, ret=%d", listId, ret);
-        copied += blockBytes;
-        if (copied >= codePartTotal) break;
+                                 "aclrtMemcpy failed for list %d codes, ret=%d", listId, ret);
+        ret = aclrtMemcpy(rawCodes.data() + l2Offset + vectorOffset * sizeof(float), factorBytes,
+                          list.indexL2.segmentData(segmentId), factorBytes, ACL_MEMCPY_DEVICE_TO_HOST);
+        APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR,
+                                 "aclrtMemcpy failed for L2 factors of list %d, ret=%d", listId, ret);
+        ret = aclrtMemcpy(rawCodes.data() + l1Offset + vectorOffset * sizeof(float), factorBytes,
+                          list.indexL1.segmentData(segmentId), factorBytes, ACL_MEMCPY_DEVICE_TO_HOST);
+        APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR,
+                                 "aclrtMemcpy failed for L1 factors of list %d, ret=%d", listId, ret);
+        copied += codeBytes;
+        vectorOffset += count;
     }
     APPERR_RETURN_IF_NOT_FMT(copied == codePartTotal, APP_ERR_INNER_ERROR,
                              "Copied %zu bytes, expected %zu for code part", copied, codePartTotal);
-
-    // 拷贝 L2 因子（IndexL2OnDevice）
-    size_t l2Offset = codePartTotal;
-    size_t l2Bytes = numVecs * sizeof(float);
-    auto ret = aclrtMemcpy(rawCodes.data() + l2Offset, l2Bytes, IndexL2OnDevice[listId]->data(), l2Bytes,
-                           ACL_MEMCPY_DEVICE_TO_HOST);
-    APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR,
-                             "aclrtMemcpy failed for L2 factors of list %d, ret=%d", listId, ret);
-
-    // 拷贝 L1 因子（IndexL1OnDevice）
-    size_t l1Offset = l2Offset + l2Bytes;
-    size_t l1Bytes = numVecs * sizeof(float);
-    ret = aclrtMemcpy(rawCodes.data() + l1Offset, l1Bytes, IndexL1OnDevice[listId]->data(), l1Bytes,
-                      ACL_MEMCPY_DEVICE_TO_HOST);
-    APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR,
-                             "aclrtMemcpy failed for L1 factors of list %d, ret=%d", listId, ret);
 
     return APP_ERR_OK;
 }
@@ -2439,66 +2326,72 @@ APP_ERROR IndexIVFRaBitQ::addEncodedVectors(int listId, size_t numVecs, const ui
     APPERR_RETURN_IF_NOT_FMT(listId >= 0 && listId < numLists, APP_ERR_INVALID_PARAM,
                              "the listId is %d, out of numLists(%d)", listId, numLists);
     APPERR_RETURN_IF(numVecs == 0, APP_ERR_OK);
-    APPERR_RETURN_IF_NOT_LOG(APP_ERR_OK == resize(listId, numVecs), APP_ERR_INNER_ERROR, "resize base failed!");
-
-    std::vector<uint64_t> offsetHost;
-    std::vector<uint64_t> indexl2offsetHost;
-    std::vector<uint32_t> baseSizeHost;
-    size_t tileNum = addTiling(listId, numVecs, offsetHost, indexl2offsetHost, baseSizeHost);
+    auto &list = lists_[listId];
+    const size_t oldLen = list.listLen;
+    const size_t newLen = oldLen + numVecs;
 
     auto streamPtr = resources.getDefaultStream();
     auto stream = streamPtr->GetStream();
+    ensureListCapacity(list, newLen, stream);
+    // Any early return between here and the commitLength block below rolls the segment count back.
+    ListCapacityGuard capacityGuard(list, static_cast<size_t>(blockSize));
 
     size_t codePartBytes = getCodePartBytes();  // 压缩码部分字节数
     size_t factorBytes = sizeof(float);         // 每个因子字节数
 
+    // 输入布局：[所有压缩码][所有 L2 因子][所有 L1 因子]
     const uint8_t *allCodesPtr = encodedCodes;
     const uint8_t *allL2Ptr = encodedCodes + numVecs * codePartBytes;
     const uint8_t *allL1Ptr = allL2Ptr + numVecs * factorBytes;
 
-    size_t vecOffset = 0;
-
-    for (size_t i = 0; i < tileNum; i++)
+    size_t inputOffset = 0;
+    while (inputOffset < numVecs)
     {
-        size_t tileVecs = baseSizeHost[i];
-        size_t tileCodeBytes = tileVecs * codePartBytes;
-        size_t tileFactorBytes = tileVecs * factorBytes;
+        const size_t slot = oldLen + inputOffset;
+        const size_t count =
+            std::min(numVecs - inputOffset, static_cast<size_t>(blockSize) - slot % static_cast<size_t>(blockSize));
+        size_t tileCodeBytes = count * codePartBytes;
+        size_t tileFactorBytes = count * factorBytes;
 
-        // 拷贝压缩码到 baseFp32 对应块
-        uint8_t *codeBlockPtr = reinterpret_cast<uint8_t *>(reinterpret_cast<uint64_t>(pBaseFp32) + offsetHost[i]);
-        auto ret = aclrtMemcpy(codeBlockPtr, tileCodeBytes, allCodesPtr + vecOffset * codePartBytes, tileCodeBytes,
-                               ACL_MEMCPY_HOST_TO_DEVICE);
-        APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR,
-                                 "copy codes failed for list %d tile %zu, ret=%d", listId, i, ret);
+        auto ret = aclrtMemcpy(list.codes.slot(slot), tileCodeBytes, allCodesPtr + inputOffset * codePartBytes,
+                               tileCodeBytes, ACL_MEMCPY_HOST_TO_DEVICE);
+        APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "copy codes failed for list %d, ret=%d",
+                                 listId, ret);
 
-        // 拷贝 L2 因子到 IndexL2OnDevice
-        float *l2Ptr = IndexL2OnDevice[listId]->data() + indexl2offsetHost[i];
-        ret = aclrtMemcpy(l2Ptr, tileFactorBytes, allL2Ptr + vecOffset * factorBytes, tileFactorBytes,
+        ret = aclrtMemcpy(list.indexL2.slot(slot), tileFactorBytes, allL2Ptr + inputOffset * factorBytes,
+                          tileFactorBytes, ACL_MEMCPY_HOST_TO_DEVICE);
+        APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "copy L2 factors failed for list %d, ret=%d",
+                                 listId, ret);
+
+        ret = aclrtMemcpy(list.indexL1.slot(slot), tileFactorBytes, allL1Ptr + inputOffset * factorBytes,
+                          tileFactorBytes, ACL_MEMCPY_HOST_TO_DEVICE);
+        APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "copy L1 factors failed for list %d, ret=%d",
+                                 listId, ret);
+
+        ret = aclrtMemcpy(list.ids.slot(slot), count * sizeof(idx_t), indices + inputOffset, count * sizeof(idx_t),
                           ACL_MEMCPY_HOST_TO_DEVICE);
-        APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR,
-                                 "copy L2 factors failed for list %d tile %zu, ret=%d", listId, i, ret);
+        APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "copy ids failed for list %d, ret=%d", listId,
+                                 ret);
 
-        // 拷贝 L1 因子到 IndexL1OnDevice
-        float *l1Ptr = IndexL1OnDevice[listId]->data() + indexl2offsetHost[i];
-        ret = aclrtMemcpy(l1Ptr, tileFactorBytes, allL1Ptr + vecOffset * factorBytes, tileFactorBytes,
-                          ACL_MEMCPY_HOST_TO_DEVICE);
-        APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR,
-                                 "copy L1 factors failed for list %d tile %zu, ret=%d", listId, i, ret);
-
-        vecOffset += tileVecs;
+        inputOffset += count;
     }
 
     auto ret = synchronizeStream(stream);
     APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR,
                              "synchronizeStream failed after addEncodedVectors, ret=%d", ret);
 
-    maxListLength = std::max(maxListLength, static_cast<int>(getListLength(listId) + numVecs));
+    list.codes.commitLength(newLen);
+    list.indexL1.commitLength(newLen);
+    list.indexL2.commitLength(newLen);
+    list.ids.commitLength(newLen);
+    list.listLen = newLen;
+    capacityGuard.commit();
+    // Kept after the commit to match addVectors: on a failure before this point the guard rolls the segment
+    // count back, so maxListLength must not have been raised for a write that never landed.
+    maxListLength = std::max(maxListLength, static_cast<int>(newLen));
     maxListLength = utils::roundUp(maxListLength, CUBE_ALIGN);
-    listVecNum[listId] += numVecs;
     IndexIVF::ntotal += numVecs;
     maxStoredId_ = std::max(maxStoredId_, MaxId(indices, numVecs));
-
-    deviceListIndices[listId]->append(indices, numVecs, false);
 
     return APP_ERR_OK;
 }
@@ -2638,47 +2531,101 @@ APP_ERROR IndexIVFRaBitQ::searchImpl(int n, const float *x, int k, float *distan
     return APP_ERR_OK;
 }
 
-void IndexIVFRaBitQ::moveVectorForward(int listId, idx_t srcIdx, idx_t dstIdx)
+void IndexIVFRaBitQ::compactList(int listId, std::vector<size_t> &deletedSlots)
 {
-    ASCEND_THROW_IF_NOT(srcIdx >= dstIdx);
-    size_t blockSizeL = static_cast<size_t>(blockSize);
-    size_t srcIdx1 = srcIdx / blockSizeL;
-    size_t srcIdx2 = srcIdx % blockSizeL;
-
-    size_t dstIdx1 = dstIdx / blockSizeL;
-    size_t dstIdx2 = dstIdx % blockSizeL;
-
-    RemoveForwardParam param = {static_cast<size_t>(srcIdx1), static_cast<size_t>(srcIdx2),
-                                static_cast<size_t>(dstIdx1), static_cast<size_t>(dstIdx2)};
-
-    auto ret = RemoveForwardNDFormat(param, getCodePartBytes(), baseFp32[listId]);
-    ASCEND_THROW_IF_NOT_FMT(ret == ACL_SUCCESS, "RemoveForwardNDFormat error %d", ret);
-
-    RemoveForwardParam L1param = {static_cast<size_t>(listId), static_cast<size_t>(srcIdx), static_cast<size_t>(listId),
-                                  static_cast<size_t>(dstIdx)};
-
-    ret = RemoveForwardNDFormat(L1param, 1, IndexL1OnDevice);
-    ASCEND_THROW_IF_NOT_FMT(ret == ACL_SUCCESS, "RemoveForwardNDFormat error %d", ret);
-
-    ret = RemoveForwardNDFormat(L1param, 1, IndexL2OnDevice);
-    ASCEND_THROW_IF_NOT_FMT(ret == ACL_SUCCESS, "RemoveForwardNDFormat error %d", ret);
-
-    listVecNum[listId]--;
-}
-
-void IndexIVFRaBitQ::releaseUnusageSpace(int listId, size_t oldTotal, size_t remove)
-{
-    size_t oldVecSize = utils::divUp(oldTotal, static_cast<size_t>(blockSize));
-    size_t vecSize = utils::divUp(oldTotal - remove, static_cast<size_t>(blockSize));
-
-    if (vecSize >= oldVecSize)
+    auto &list = lists_[listId];
+    std::sort(deletedSlots.begin(), deletedSlots.end());
+    deletedSlots.erase(std::unique(deletedSlots.begin(), deletedSlots.end()), deletedSlots.end());
+    if (deletedSlots.empty())
     {
         return;
     }
-    for (size_t i = oldVecSize; i != vecSize;)
+    const size_t oldLen = list.listLen;
+    ASCEND_THROW_IF_NOT(deletedSlots.size() <= oldLen);
+    ASCEND_THROW_IF_NOT(deletedSlots.back() < oldLen);
+    const size_t newLen = oldLen - deletedSlots.size();
+
+    // Deleted slots below newLen are holes to fill; surviving slots at or above newLen are the sources
+    // that move into them. Both sets have the same size, so this is a pairwise move, not a shift.
+    std::unordered_set<size_t> deletedLookup(deletedSlots.begin(), deletedSlots.end());
+    std::vector<size_t> holes;
+    for (size_t slot : deletedSlots)
     {
-        --i;
-        baseFp32[listId].at(i)->clear();
+        if (slot < newLen)
+        {
+            holes.push_back(slot);
+        }
+    }
+    std::vector<size_t> sources;
+    for (size_t slot = newLen; slot < oldLen; ++slot)
+    {
+        if (deletedLookup.find(slot) == deletedLookup.end())
+        {
+            sources.push_back(slot);
+        }
+    }
+    ASCEND_THROW_IF_NOT(holes.size() == sources.size());
+
+    const size_t codeBytes = list.codes.elementsPerSlot() * sizeof(uint8_t);
+    for (size_t i = 0; i < holes.size(); ++i)
+    {
+        auto ret = aclrtMemcpy(list.codes.slot(holes[i]), codeBytes, list.codes.slot(sources[i]), codeBytes,
+                               ACL_MEMCPY_DEVICE_TO_DEVICE);
+        ASCEND_THROW_IF_NOT_FMT(ret == ACL_SUCCESS, "Memcpy error %d", ret);
+        ret = aclrtMemcpy(list.indexL1.slot(holes[i]), sizeof(float), list.indexL1.slot(sources[i]), sizeof(float),
+                          ACL_MEMCPY_DEVICE_TO_DEVICE);
+        ASCEND_THROW_IF_NOT_FMT(ret == ACL_SUCCESS, "Memcpy error %d", ret);
+        ret = aclrtMemcpy(list.indexL2.slot(holes[i]), sizeof(float), list.indexL2.slot(sources[i]), sizeof(float),
+                          ACL_MEMCPY_DEVICE_TO_DEVICE);
+        ASCEND_THROW_IF_NOT_FMT(ret == ACL_SUCCESS, "Memcpy error %d", ret);
+        ret = aclrtMemcpy(list.ids.slot(holes[i]), sizeof(idx_t), list.ids.slot(sources[i]), sizeof(idx_t),
+                          ACL_MEMCPY_DEVICE_TO_DEVICE);
+        ASCEND_THROW_IF_NOT_FMT(ret == ACL_SUCCESS, "Memcpy error %d", ret);
+    }
+
+    const size_t segmentCount = utils::divUp(newLen, static_cast<size_t>(blockSize));
+    list.codes.resizeSegments(segmentCount);
+    list.indexL1.resizeSegments(segmentCount);
+    list.indexL2.resizeSegments(segmentCount);
+    list.ids.resizeSegments(segmentCount);
+    list.codes.commitLength(newLen);
+    list.indexL1.commitLength(newLen);
+    list.indexL2.commitLength(newLen);
+    list.ids.commitLength(newLen);
+    list.listLen = newLen;
+}
+
+// Collect the slots of `listId` whose id satisfies `isDeleted`, scanning one segment at a time.
+template <typename Pred>
+static void CollectDeletedSlots(const IndexIVFRaBitQ::ListStorage &list, size_t blockSize, Pred &&isDeleted,
+                                std::vector<size_t> &deletedSlots)
+{
+    std::vector<idx_t> segIds;
+    size_t scanned = 0;
+    for (size_t segId = 0; segId < list.ids.segmentCount(); ++segId)
+    {
+        // Clamped to listLen: the buffer below is sized from `count` so it cannot overflow, but an
+        // uncommitted growth leaves sum(segmentLength) above listLen, and scanning those slots would feed
+        // never-written memory to the predicate and queue bogus slots for deletion.
+        const size_t count = std::min(list.ids.segmentLength(segId), list.listLen - scanned);
+        if (count == 0)
+        {
+            // Either an empty segment or listLen is already fully accounted for; nothing follows either way
+            // because segments are walked in slot order.
+            break;
+        }
+        scanned += count;
+        segIds.resize(count);
+        auto ret = aclrtMemcpy(segIds.data(), count * sizeof(idx_t), list.ids.segmentData(segId), count * sizeof(idx_t),
+                               ACL_MEMCPY_DEVICE_TO_HOST);
+        ASCEND_THROW_IF_NOT_FMT(ret == ACL_SUCCESS, "Memcpy error %d", ret);
+        for (size_t j = 0; j < count; ++j)
+        {
+            if (isDeleted(segIds[j]))
+            {
+                deletedSlots.push_back(segId * blockSize + j);
+            }
+        }
     }
 }
 
@@ -2689,125 +2636,41 @@ size_t IndexIVFRaBitQ::removeIds(const ascend::IDSelector &sel)
 #pragma omp parallel for reduction(+ : removeCntAll) num_threads(CommonUtils::GetThreadMaxNums())
     for (int id = 0; id < numLists; id++)
     {
-        size_t removeCnt = 0;
-        size_t oldCnt = deviceListIndices[id]->size();
-        auto &indicesList = deviceListIndices[id];
-        if (indicesList->size() == 0)
+        std::vector<size_t> deletedSlots;
+        CollectDeletedSlots(
+            lists_[id], static_cast<size_t>(blockSize), [&sel](idx_t vecId) { return sel.is_member(vecId); },
+            deletedSlots);
+        if (deletedSlots.empty())
         {
             continue;
         }
-        std::vector<idx_t> indicesVec(indicesList->size());
-        auto ret = aclrtMemcpy(indicesVec.data(), indicesList->size() * sizeof(idx_t), indicesList->data(),
-                               indicesList->size() * sizeof(idx_t), ACL_MEMCPY_DEVICE_TO_HOST);
-        ASCEND_THROW_IF_NOT_FMT(ret == ACL_SUCCESS, "Memcpy error %d", ret);
-        idx_t *indicesCheckerPtr = indicesVec.data();
-        idx_t *indicesPtr = indicesList->data();
-        bool hasMoved = false;
-        long long j = static_cast<long long>(indicesList->size()) - 1;
-        std::vector<size_t> delIndices;
-        for (size_t i = 0; j >= 0 && static_cast<long long>(i) <= j;)
-        {
-            if (!sel.is_member(indicesCheckerPtr[i]))
-            {
-                i++;
-                continue;
-            }
-            delIndices.push_back(i);
-            if (static_cast<long long>(i) < j)
-            {
-                auto err = aclrtMemcpy(indicesPtr + i, sizeof(idx_t), indicesPtr + static_cast<size_t>(j),
-                                       sizeof(idx_t), ACL_MEMCPY_DEVICE_TO_DEVICE);
-                ASCEND_THROW_IF_NOT_FMT(err == ACL_SUCCESS, "Memcpy error %d", err);
-                indicesCheckerPtr[i] = indicesCheckerPtr[static_cast<size_t>(j)];
-            }
-            j--;
-            hasMoved = true;
-        }
-        if (!delIndices.empty())
-        {
-            for (const auto index : delIndices)
-            {
-                moveVectorForward(id, listVecNum[id] - 1, index);
-                removeCnt++;
-                --this->ntotal;
-            }
-            releaseUnusageSpace(id, oldCnt, removeCnt);
-        }
-        if (hasMoved)
-        {
-            const size_t newSize = j < 0 ? 0 : static_cast<size_t>(j) + 1;
-            indicesList->resize(newSize);
-            indicesList->reclaim(false);
-        }
-        removeCntAll += removeCnt;
+        compactList(id, deletedSlots);
+        removeCntAll += deletedSlots.size();
     }
+    this->ntotal -= removeCntAll;
     return removeCntAll;
 }
 
 APP_ERROR IndexIVFRaBitQ::removeIds(size_t numVecs, const idx_t *indices)
 {
+    APPERR_RETURN_IF(numVecs == 0, APP_ERR_OK);
     ClearCachedFilterPayload();
+    std::unordered_set<idx_t> deleteSet(indices, indices + numVecs);
     size_t removeCntAll = 0;
-    std::unordered_set<idx_t> deleteSet;
-    for (size_t i = 0; i < numVecs; i++)
-    {
-        deleteSet.insert(indices[i]);
-    }
     for (int id = 0; id < numLists; id++)
     {
-        size_t removeCnt = 0;
-        size_t oldCnt = deviceListIndices[id]->size();
-        auto &indicesList = deviceListIndices[id];
-        if (indicesList->size() == 0)
+        std::vector<size_t> deletedSlots;
+        CollectDeletedSlots(
+            lists_[id], static_cast<size_t>(blockSize),
+            [&deleteSet](idx_t vecId) { return deleteSet.find(vecId) != deleteSet.end(); }, deletedSlots);
+        if (deletedSlots.empty())
         {
             continue;
         }
-        std::vector<idx_t> indicesVec(indicesList->size());
-        auto ret = aclrtMemcpy(indicesVec.data(), indicesList->size() * sizeof(idx_t), indicesList->data(),
-                               indicesList->size() * sizeof(idx_t), ACL_MEMCPY_DEVICE_TO_HOST);
-        ASCEND_THROW_IF_NOT_FMT(ret == ACL_SUCCESS, "Memcpy error %d", ret);
-        idx_t *indicesCheckerPtr = indicesVec.data();
-        idx_t *indicesPtr = indicesList->data();
-        bool hasMoved = false;
-        long long j = static_cast<long long>(indicesList->size()) - 1;
-        std::vector<size_t> delIndices;
-        for (size_t i = 0; j >= 0 && static_cast<long long>(i) <= j;)
-        {
-            if (deleteSet.find(indicesCheckerPtr[i]) == deleteSet.end())
-            {
-                i++;
-                continue;
-            }
-            delIndices.push_back(i);
-            if (static_cast<long long>(i) < j)
-            {
-                auto err = aclrtMemcpy(indicesPtr + i, sizeof(idx_t), indicesPtr + static_cast<size_t>(j),
-                                       sizeof(idx_t), ACL_MEMCPY_DEVICE_TO_DEVICE);
-                ASCEND_THROW_IF_NOT_FMT(err == ACL_SUCCESS, "Memcpy error %d", err);
-                indicesCheckerPtr[i] = indicesCheckerPtr[static_cast<size_t>(j)];
-            }
-            j--;
-            hasMoved = true;
-        }
-        if (!delIndices.empty())
-        {
-            for (const auto index : delIndices)
-            {
-                moveVectorForward(id, listVecNum[id] - 1, index);
-                removeCnt++;
-                --this->ntotal;
-            }
-            releaseUnusageSpace(id, oldCnt, removeCnt);
-        }
-        if (hasMoved)
-        {
-            const size_t newSize = j < 0 ? 0 : static_cast<size_t>(j) + 1;
-            indicesList->resize(newSize);
-            indicesList->reclaim(false);
-        }
-        removeCntAll += removeCnt;
+        compactList(id, deletedSlots);
+        removeCntAll += deletedSlots.size();
     }
-    VALUE_UNUSED(removeCntAll);
+    this->ntotal -= removeCntAll;
     return APP_ERR_OK;
 }
 
