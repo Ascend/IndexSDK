@@ -1342,13 +1342,20 @@ struct ProbePlan
     std::vector<float> centroidL2;
 };
 
-// Grows a list to `numVecs` vectors through the production resize path, so the block split, the arena
-// addresses and the pBaseFp32/pIndexL2/pIndexL1 minima are the real ones rather than a test's guess.
+// Grows and commits the four segmented vectors through the production capacity helper. The grid tests
+// inspect lengths and addresses, so no quantisation or payload upload is needed here.
 void SeedList(::ascend::IndexIVFRaBitQ* index, int listId, size_t numVecs)
 {
-    ASSERT_EQ(index->resize(listId, numVecs), ::ascend::APP_ERR_OK);
-    index->listVecNum[static_cast<size_t>(listId)] += numVecs;
-    index->deviceListIndices[static_cast<size_t>(listId)]->resize(numVecs, false);
+    auto& list = index->lists_.at(static_cast<size_t>(listId));
+    auto streamPtr = index->resources.getDefaultStream();
+    auto stream = streamPtr->GetStream();
+    index->ensureListCapacity(list, numVecs, stream);
+    ASSERT_EQ(::ascend::synchronizeStream(stream), ACL_SUCCESS);
+    list.codes.commitLength(numVecs);
+    list.indexL1.commitLength(numVecs);
+    list.indexL2.commitLength(numVecs);
+    list.ids.commitLength(numVecs);
+    list.listLen = numVecs;
 }
 
 // Lists holding 1, 2, 3 and 1 blocks, probed so the six queries own 2, 5, 5, 2, 5 and 4 blocks. Unequal
@@ -1385,7 +1392,7 @@ std::vector<std::vector<LogicalBlock>> WalkProbes(const ::ascend::IndexIVFRaBitQ
         {
             const size_t probe = q * plan.width + t;
             const int64_t listId = plan.listIds[probe];
-            const size_t blocks = index->baseFp32[static_cast<size_t>(listId)].size();
+            const size_t blocks = index->lists_.at(static_cast<size_t>(listId)).codes.segmentCount();
             for (size_t seg = 0; seg < blocks; ++seg)
             {
                 LogicalBlock blk;
@@ -1470,10 +1477,9 @@ BlockGrid FillGrid(::ascend::IndexIVFRaBitQ* index, const ProbePlan& plan, int64
     ::ascend::AscendTensor<int64_t, ::ascend::DIMS_2, size_t> idsVec(grid.ids.data(), {grid.iterNum, GRID_CORE_NUM});
     ::ascend::AscendTensor<int64_t, ::ascend::DIMS_1, size_t> blockNumPerQVec(grid.blockNumPerQ.data(), {plan.batch});
 
-    index->fillDisOpInputDataByBlock(plan.batch, GRID_CORE_NUM, static_cast<size_t>(index->blockSize), queryIdVec,
-                                     centroidsIdVec, centroidsL2Vec, baseSizeVec, offsetVec, indexL2OffsetVec,
-                                     indexL1OffsetVec, idsVec, blockNumPerQVec, probeIdsHost, probeDistsHost,
-                                     grid.slots.data(), maxBlocksPerQ);
+    index->fillDisOpInputDataByBlock(plan.batch, GRID_CORE_NUM, queryIdVec, centroidsIdVec, centroidsL2Vec, baseSizeVec,
+                                     offsetVec, indexL2OffsetVec, indexL1OffsetVec, idsVec, blockNumPerQVec,
+                                     probeIdsHost, probeDistsHost, grid.slots.data(), maxBlocksPerQ);
     return grid;
 }
 
@@ -1485,7 +1491,6 @@ TEST(TestIndexIVFRaBitQCore, BlockGridFillFollowsTheSlotPlan)
 
     const ProbePlan plan = SeedRaggedBatch(actual);
     const auto expected = WalkProbes(actual, plan);
-    const size_t chunk = static_cast<size_t>(actual->blockSize);
 
     // group=1 is the legacy order, 4 and 6 straddle the AI CPU count, 8 is wider than the batch so the
     // window clamps.
@@ -1515,29 +1520,24 @@ TEST(TestIndexIVFRaBitQCore, BlockGridFillFollowsTheSlotPlan)
                 timesWritten[cell]++;
 
                 const size_t listId = static_cast<size_t>(blk.listId);
-                const size_t listNum = actual->deviceListIndices[listId]->size();
+                const auto& list = actual->lists_.at(listId);
+                const size_t listNum = list.listLen;
                 // The values themselves are how a block is identified; what is under test is that this
                 // block's values landed in the slot the plan handed it and in no other.
                 EXPECT_EQ(grid.queryId[cell], static_cast<uint32_t>(q)) << "group=" << group << " slot=" << slot;
                 EXPECT_EQ(grid.centroidsId[cell], static_cast<uint32_t>(blk.listId))
                     << "group=" << group << " slot=" << slot;
                 EXPECT_FLOAT_EQ(grid.centroidsL2[cell], blk.centroidL2) << "group=" << group << " slot=" << slot;
-                EXPECT_EQ(grid.baseSize[cell], static_cast<uint32_t>(std::min(listNum - blk.segIdx * chunk, chunk)))
+                EXPECT_EQ(grid.baseSize[cell], static_cast<uint32_t>(std::min(listNum - blk.segIdx * actual->blockSize,
+                                                                              static_cast<size_t>(actual->blockSize))))
                     << "group=" << group << " slot=" << slot;
-                EXPECT_EQ(grid.ids[cell],
-                          reinterpret_cast<int64_t>(actual->deviceListIndices[listId]->data() + blk.segIdx * chunk))
+                EXPECT_EQ(grid.ids[cell], reinterpret_cast<int64_t>(list.ids.segmentData(blk.segIdx)))
                     << "group=" << group << " slot=" << slot;
-                EXPECT_EQ(grid.offset[cell],
-                          reinterpret_cast<uint64_t>(actual->baseFp32[listId].at(blk.segIdx)->data()) -
-                              reinterpret_cast<uint64_t>(actual->pBaseFp32))
+                EXPECT_EQ(grid.offset[cell], reinterpret_cast<uint64_t>(list.codes.segmentData(blk.segIdx)))
                     << "group=" << group << " slot=" << slot;
-                EXPECT_EQ(grid.indexL2Offset[cell],
-                          reinterpret_cast<uint64_t>(actual->IndexL2OnDevice[listId]->data() + blk.segIdx * chunk) -
-                              reinterpret_cast<uint64_t>(actual->pIndexL2))
+                EXPECT_EQ(grid.indexL2Offset[cell], reinterpret_cast<uint64_t>(list.indexL2.segmentData(blk.segIdx)))
                     << "group=" << group << " slot=" << slot;
-                EXPECT_EQ(grid.indexL1Offset[cell],
-                          reinterpret_cast<uint64_t>(actual->IndexL1OnDevice[listId]->data() + blk.segIdx * chunk) -
-                              reinterpret_cast<uint64_t>(actual->pIndexL1))
+                EXPECT_EQ(grid.indexL1Offset[cell], reinterpret_cast<uint64_t>(list.indexL1.segmentData(blk.segIdx)))
                     << "group=" << group << " slot=" << slot;
             }
 
