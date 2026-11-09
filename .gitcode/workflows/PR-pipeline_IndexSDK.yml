@@ -173,16 +173,11 @@ stages:
         name: PR-SAST-check
         runs-on: [ self-hosted, x86, cpu=8 ]
         container:
-          image: swr.cn-north-4.myhuaweicloud.com/ascend-mindx/mindx_x86:mindxdl_go1207_20251203
+          image: swr.cn-north-4.myhuaweicloud.com/atlas-ci/common:latest
           options: --user root
         steps:
-          - name: git upgrade
+          - name: git version
             run: |
-              apt-get update
-              apt-get install -y software-properties-common
-              add-apt-repository ppa:git-core/ppa -y
-              apt-get update
-              apt-get install -y git
               git --version
           - name: checkout
             uses: checkout
@@ -206,7 +201,7 @@ stages:
         if: ${{ jobs.Detect_file_changes.outputs.need_build == 'yes' }}
         uses: .gitcode/workflows/.build_job.yml
         with:
-          IMAGE_FLAG: "swr.cn-north-4.myhuaweicloud.com/ascend-mindx/mindx_arm:indexSDK_20260518"
+          IMAGE_FLAG: "swr.cn-north-4.myhuaweicloud.com/ascend-mindx/mindx_image:indexsdk-aarch64-202611050632"
           runs_on_arch: "arm"
 
       Build_X86:
@@ -214,7 +209,7 @@ stages:
         if: ${{ jobs.Detect_file_changes.outputs.need_build == 'yes' }}
         uses: .gitcode/workflows/.build_job.yml
         with:
-          IMAGE_FLAG: "swr.cn-north-4.myhuaweicloud.com/ascend-mindx/mindx_x86:indexSDK_20260518"
+          IMAGE_FLAG: "swr.cn-north-4.myhuaweicloud.com/ascend-mindx/mindx_image:indexsdk-x86_64-202611050634"
           runs_on_arch: "x86"
 
 
@@ -223,7 +218,7 @@ stages:
         if: ${{ jobs.Detect_file_changes.outputs.need_build == 'yes' }}
         uses: .gitcode/workflows/.ut_cpp.yml
         with:
-          IMAGE_FLAG: "swr.cn-north-4.myhuaweicloud.com/ascend-mindx/mindx_x86:SDK_20251231_1"
+          IMAGE_FLAG: "swr.cn-north-4.myhuaweicloud.com/ascend-mindx/mindx_image:indexsdk-ut_cpp-x86_64-202611050634"
           runs_on_arch: "x86"
 
   stage_2:
