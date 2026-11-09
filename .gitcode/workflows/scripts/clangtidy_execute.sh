@@ -29,36 +29,49 @@ if [[ ${#CHECK_ARRAY[@]} -eq 0 ]]; then
 fi
 
 echo "===== 开始安装clang与pre-commit并执行静态检测 ====="
-ARCH=$(uname -m)
-echo "检测到架构: ${ARCH}"
+# 门禁固定使用 LLVM-22.1.8 的 clang-tidy；只有环境中 clang-tidy 主版本不低于 22 时才复用，
+# 否则回退到下载安装固定版本，避免镜像内旧版本导致 check name 非法或结果漂移。
+REQUIRED_MAJOR=22
+CLANG_TIDY_MAJOR=$(clang-tidy --version 2>/dev/null | sed -nE 's/^.*version ([0-9]+)\..*/\1/p')
 
-# 根据架构选择包名
-if [[ "${ARCH}" == "x86_64" ]]; then
-    PKG_NAME="LLVM-22.1.8-Linux-X64.tar.xz"
-elif [[ "${ARCH}" == "aarch64" ]]; then
-    PKG_NAME="LLVM-22.1.8-Linux-ARM64.tar.xz"
+if command -v clang-tidy >/dev/null 2>&1 \
+    && [ -n "${CLANG_TIDY_MAJOR}" ] \
+    && [ "${CLANG_TIDY_MAJOR}" -ge "${REQUIRED_MAJOR}" ]; then
+    echo "INFO: 环境中已有 clang-tidy ${CLANG_TIDY_MAJOR}.x（>=${REQUIRED_MAJOR}），跳过 LLVM 工具链下载"
+    clang-tidy --version
 else
-    echo "ERROR: 不支持的架构 ${ARCH}"
-    exit 1
+    echo "INFO: clang-tidy 不可用，开始下载安装 LLVM 工具链"
+    ARCH=$(uname -m)
+    echo "检测到架构: ${ARCH}"
+
+    # 根据架构选择包名
+    if [[ "${ARCH}" == "x86_64" ]]; then
+        PKG_NAME="LLVM-22.1.8-Linux-X64.tar.xz"
+    elif [[ "${ARCH}" == "aarch64" ]]; then
+        PKG_NAME="LLVM-22.1.8-Linux-ARM64.tar.xz"
+    else
+        echo "ERROR: 不支持的架构 ${ARCH}"
+        exit 1
+    fi
+
+    # 下载地址
+    RAW_URL="https://mindcluster.obs.cn-north-4.myhuaweicloud.com/blueImageDependency/clang-tidy/22.1.8/${PKG_NAME}"
+    DOWNLOAD_URL="${RAW_URL}"
+
+    echo "准备下载包: ${PKG_NAME}"
+    echo "下载链接: ${DOWNLOAD_URL}"
+    wget -c --no-check-certificate --no-host-directories "${DOWNLOAD_URL}"
+
+    mkdir -p clang-tools
+    # 解压
+    tar -Jxf "${PKG_NAME}" -C ./clang-tools --strip-components=1
+
+    # PATH：前置新下载的 clang-tools/bin，确保版本校验不达标（<22）时回退下载的 22.1.8 优先于环境旧版被使用
+    export PATH=${ATOMGIT_WORKSPACE}/clang-tools/bin:$PATH
+
+    # 验证
+    clang-tidy --version
 fi
-
-# 下载地址
-RAW_URL="https://mindcluster.obs.cn-north-4.myhuaweicloud.com/blueImageDependency/clang-tidy/22.1.8/${PKG_NAME}"
-DOWNLOAD_URL="${RAW_URL}"
-
-echo "准备下载包: ${PKG_NAME}"
-echo "下载链接: ${DOWNLOAD_URL}"
-wget -c --no-check-certificate --no-host-directories "${DOWNLOAD_URL}"
-
-mkdir -p clang-tools
-# 解压
-tar -Jxf "${PKG_NAME}" -C ./clang-tools --strip-components=1
-
-# PATH
-export PATH=$PATH:${ATOMGIT_WORKSPACE}/clang-tools/bin
-
-# 验证
-clang-tidy --version
 
 
 python3 -m pip install --upgrade pre-commit
