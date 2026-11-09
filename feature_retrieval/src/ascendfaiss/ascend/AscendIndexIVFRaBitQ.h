@@ -36,7 +36,8 @@ struct AscendIndexIVFRaBitQConfig : public AscendIndexIVFConfig
           useRandomOrthogonalMatrix(true),
           needRefine(false),
           matrixSeed(12345),
-          refineAlpha(2)
+          refineAlpha(2),
+          retiredMemoryHighWatermark(0)
     {
     }
 
@@ -45,7 +46,8 @@ struct AscendIndexIVFRaBitQConfig : public AscendIndexIVFConfig
           useRandomOrthogonalMatrix(true),
           needRefine(false),
           matrixSeed(12345),
-          refineAlpha(2)
+          refineAlpha(2),
+          retiredMemoryHighWatermark(0)
     {
     }
 
@@ -54,7 +56,8 @@ struct AscendIndexIVFRaBitQConfig : public AscendIndexIVFConfig
           useRandomOrthogonalMatrix(true),
           needRefine(false),
           matrixSeed(12345),
-          refineAlpha(2)
+          refineAlpha(2),
+          retiredMemoryHighWatermark(0)
     {
     }
 
@@ -65,7 +68,8 @@ struct AscendIndexIVFRaBitQConfig : public AscendIndexIVFConfig
           useRandomOrthogonalMatrix(useRandomOrthogonalMatrix_),
           needRefine(needRefine_),
           matrixSeed(matrixSeed_),
-          refineAlpha(alpha_)
+          refineAlpha(alpha_),
+          retiredMemoryHighWatermark(0)
     {
     }
     bool useRandomOrthogonalMatrix;
@@ -89,6 +93,9 @@ struct AscendIndexIVFRaBitQConfig : public AscendIndexIVFConfig
         Slice = 1
     };
     TrainMode trainMode = TrainMode::Replica;
+    // Device bytes that superseded list data may occupy before writes are rejected. 0 means the
+    // daemon's default.
+    size_t retiredMemoryHighWatermark;
 };
 
 class AscendIndexIVFRaBitQImpl;
@@ -106,6 +113,13 @@ class AscendIndexIVFRaBitQ : public AscendIndexIVF
     AscendIndexIVFRaBitQ& operator=(AscendIndexIVFRaBitQ&&) = delete;
 
     void train(idx_t n, const float* x) override;
+
+    // Overridden to take a read lock instead of the base class' write lock, so an add can run
+    // alongside a search. The using-declarations keep the inherited uint16_t overloads visible.
+    using AscendIndexIVF::add;
+    using AscendIndexIVF::add_with_ids;
+    void add(idx_t n, const float* x) override;
+    void add_with_ids(idx_t n, const float* x, const idx_t* ids) override;
 
     // Copy all IVFRaBitQ state from a CPU carrier. For quantBits=2/4 the CPU
     // object stores the extended codes for persistence; CPU search is not supported.

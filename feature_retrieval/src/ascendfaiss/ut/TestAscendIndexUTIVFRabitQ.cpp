@@ -30,9 +30,13 @@
 #include <iostream>
 #include <limits>
 #include <memory>
+#include <new>
 #include <numeric>
 #include <random>
+#include <stdexcept>
 #include <string>
+#include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "acl.h"
@@ -40,7 +44,9 @@
 #include "ascend/AscendIndexIVFRaBitQ.h"
 #include "ascend/impl/AscendIndexIVFRaBitQImpl.h"
 #include "ascenddaemon/impl/IndexIVFRaBitQ.h"
+#include "ascenddaemon/utils/AscendUtils.h"
 #include "common/ErrorCode.h"
+#include "common/utils/AscendException.h"
 #include "mockcpp/mockcpp.hpp"
 #include "roaring.h"
 
@@ -631,13 +637,15 @@ TEST(TestAscendIndexIVFRaBitQ, RefineSourceLoadingRejectsSparseAndDuplicateIds)
 TEST(TestAscendIndexIVFRaBitQ, AttachedRefineSourcesValidateRowCountBeforeSearch)
 {
     auto source = MakePretrainedCpuIndex(false);
+    const faiss::idx_t id = 0;
+    std::vector<uint8_t> code(source.index->code_size, 0);
+    source.index->invlists->add_entries(source.listId, 1, &id, code.data());
+    source.index->ntotal = 1;
     auto config = MakeConfig();
     config.needRefine = true;
     faiss::ascend::AscendIndexIVFRaBitQ index(DIM, faiss::METRIC_L2, NLIST, config);
     ASSERT_NO_THROW(index.copyFrom(source.index.get()));
     auto originals = MakePatternData(1, DIM);
-    ASSERT_NO_THROW(index.add(1, originals.data()));
-    index.impl_->srcIndexes.clear();
     ASSERT_NO_THROW(index.attachRefineSources(originals.data(), 1));
     float distance = 0;
     faiss::idx_t label = -1;
@@ -1207,6 +1215,54 @@ TEST(TestAscendIndexIVFRaBitQ, SearchWithIdSelectorSharedPayload)
     EXPECT_EQ(msg, "");
 }
 
+TEST(TestAscendIndexIVFRaBitQ, SparseHighIdSelectorCacheHitAndMissPreserveOutput)
+{
+    auto source = MakePretrainedCpuIndex();
+    faiss::ascend::AscendIndexIVFRaBitQ index(DIM, faiss::METRIC_L2, NLIST, MakeConfig());
+    ASSERT_NO_THROW(index.copyFrom(source.index.get()));
+    const faiss::idx_t high = static_cast<faiss::idx_t>(std::numeric_limits<uint32_t>::max()) + 17;
+    const std::vector<faiss::idx_t> allowed = {source.ids[0], source.ids[2], high};
+    faiss::IDSelectorArray array(allowed.size(), allowed.data());
+    faiss::IDSelectorBatch batch(allowed.size(), allowed.data());
+    faiss::IDSelectorNot notArray(&array);
+    faiss::IDSelectorNot notBatch(&batch);
+    const auto query = MakePatternData(1, DIM);
+    FilteredSearchMockGuard mock;
+    for (faiss::IDSelector* selector : std::vector<faiss::IDSelector*>{&array, &batch, &notArray, &notBatch})
+    {
+        SCOPED_TRACE(selector == &array      ? "array"
+                     : selector == &batch    ? "batch"
+                     : selector == &notArray ? "not-array"
+                                             : "not-batch");
+        faiss::SearchParameters params;
+        params.sel = selector;
+        std::vector<float> missDistances(2), hitDistances(2), rebuiltDistances(2);
+        std::vector<faiss::idx_t> missLabels(2), hitLabels(2), rebuiltLabels(2);
+        index.impl_->invalidateFilterCache();
+        const auto key = index.impl_->MakeFilterCacheKey(selector);
+        EXPECT_EQ(index.impl_->FindFilterCacheHit(key), -1);
+        ASSERT_NO_THROW(index.search(1, query.data(), 2, missDistances.data(), missLabels.data(), &params));
+        ASSERT_GE(index.impl_->FindFilterCacheHit(key), 0);
+        const auto generation = index.impl_->cachedFilterGeneration;
+        const auto* filter = index.impl_->getCachedFilter(selector);
+        const bool negated = selector == &notArray || selector == &notBatch;
+        EXPECT_EQ(filter->negate, negated ? 1 : 0);
+        EXPECT_EQ(IdPassesFilter(*filter, high, nullptr), !negated);
+        EXPECT_EQ(IdPassesFilter(*filter, high + 1, nullptr), negated);
+        EXPECT_EQ(index.impl_->cachedFilterGeneration, generation);
+        ASSERT_NO_THROW(index.search(1, query.data(), 2, hitDistances.data(), hitLabels.data(), &params));
+        EXPECT_EQ(index.impl_->cachedFilterGeneration, generation);
+        EXPECT_EQ(hitDistances, missDistances);
+        EXPECT_EQ(hitLabels, missLabels);
+        EXPECT_THAT(missLabels, negated ? ElementsAre(0, 1) : ElementsAre(101, 303));
+        index.impl_->invalidateFilterCache();
+        EXPECT_EQ(index.impl_->FindFilterCacheHit(key), -1);
+        ASSERT_NO_THROW(index.search(1, query.data(), 2, rebuiltDistances.data(), rebuiltLabels.data(), &params));
+        EXPECT_EQ(rebuiltDistances, missDistances);
+        EXPECT_EQ(rebuiltLabels, missLabels);
+    }
+}
+
 TEST(TestAscendIndexIVFRaBitQ, SearchWithIdSelectorMultiDevice)
 {
     uint32_t deviceCount = 0;
@@ -1342,20 +1398,41 @@ struct ProbePlan
     std::vector<float> centroidL2;
 };
 
-// Grows and commits the four segmented vectors through the production capacity helper. The grid tests
-// inspect lengths and addresses, so no quantisation or payload upload is needed here.
+// Sets the same thread-local view the public search entry establishes. Grid helpers below call internal
+// planning/filling functions directly, so they still need a pinned snapshot for the whole call.
+class ScopedGridSnapshot
+{
+   public:
+    explicit ScopedGridSnapshot(const ::ascend::IndexIVFRaBitQ& index)
+        : guard_(index), previous_(::ascend::IndexIVFRaBitQ::searchSnapshot)
+    {
+        ::ascend::IndexIVFRaBitQ::searchSnapshot = &guard_.get();
+    }
+    ~ScopedGridSnapshot() { ::ascend::IndexIVFRaBitQ::searchSnapshot = previous_; }
+
+   private:
+    ::ascend::IndexIVFRaBitQ::SnapshotGuard guard_;
+    const ::ascend::IndexIVFRaBitQ::GlobalSnapshot* previous_;
+};
+
+// Builds and publishes fixture storage without quantisation. No payload upload is needed: these tests
+// inspect block lengths and addresses rather than distances.
 void SeedList(::ascend::IndexIVFRaBitQ* index, int listId, size_t numVecs)
 {
-    auto& list = index->lists_.at(static_cast<size_t>(listId));
-    auto streamPtr = index->resources.getDefaultStream();
-    auto stream = streamPtr->GetStream();
-    index->ensureListCapacity(list, numVecs, stream);
+    std::lock_guard<std::mutex> writerLock(index->writerLock);
+    auto next = index->cloneSnapshot(*index->activeSnapshot);
+    auto listCopy = std::make_shared<::ascend::IndexIVFRaBitQ::ListStorage>(*next->lists.at(listId));
+    auto stream = index->writerContext->computeStream;
+    index->ensureListCapacity(*listCopy, numVecs, stream);
     ASSERT_EQ(::ascend::synchronizeStream(stream), ACL_SUCCESS);
-    list.codes.commitLength(numVecs);
-    list.indexL1.commitLength(numVecs);
-    list.indexL2.commitLength(numVecs);
-    list.ids.commitLength(numVecs);
-    list.listLen = numVecs;
+    listCopy->codes.commitLength(numVecs);
+    listCopy->indexL1.commitLength(numVecs);
+    listCopy->indexL2.commitLength(numVecs);
+    listCopy->ids.commitLength(numVecs);
+    next->total += numVecs - listCopy->listLen;
+    listCopy->listLen = numVecs;
+    next->lists.at(listId) = std::move(listCopy);
+    index->publishSnapshot(std::move(next));
 }
 
 // Lists holding 1, 2, 3 and 1 blocks, probed so the six queries own 2, 5, 5, 2, 5 and 4 blocks. Unequal
@@ -1392,7 +1469,7 @@ std::vector<std::vector<LogicalBlock>> WalkProbes(const ::ascend::IndexIVFRaBitQ
         {
             const size_t probe = q * plan.width + t;
             const int64_t listId = plan.listIds[probe];
-            const size_t blocks = index->lists_.at(static_cast<size_t>(listId)).codes.segmentCount();
+            const size_t blocks = index->activeSnapshot->lists.at(static_cast<size_t>(listId))->codes.segmentCount();
             for (size_t seg = 0; seg < blocks; ++seg)
             {
                 LogicalBlock blk;
@@ -1427,6 +1504,7 @@ struct BlockGrid
 // query-major legacy order, larger values interleave that many queries.
 BlockGrid FillGrid(::ascend::IndexIVFRaBitQ* index, const ProbePlan& plan, int64_t group)
 {
+    ScopedGridSnapshot snapshot(*index);
     std::vector<int64_t> blockNumPlan;
     std::vector<int64_t> probeIds = plan.listIds;
     std::vector<float> probeDists = plan.centroidL2;
@@ -1520,7 +1598,7 @@ TEST(TestIndexIVFRaBitQCore, BlockGridFillFollowsTheSlotPlan)
                 timesWritten[cell]++;
 
                 const size_t listId = static_cast<size_t>(blk.listId);
-                const auto& list = actual->lists_.at(listId);
+                const auto& list = *actual->activeSnapshot->lists.at(listId);
                 const size_t listNum = list.listLen;
                 // The values themselves are how a block is identified; what is under test is that this
                 // block's values landed in the slot the plan handed it and in no other.
@@ -1627,7 +1705,11 @@ TEST(TestIndexIVFRaBitQCore, BlockNumPlanMatchesTheProbeWalkWidth)
     ::ascend::AscendTensor<int64_t, ::ascend::DIMS_2> probeIdsHost(
         probeIds.data(), {static_cast<int>(plan.batch), static_cast<int>(plan.width)});
     std::vector<int64_t> blockNumPlan;
-    const size_t maxBlocksPerQ = actual->getBlockNumPerQ(plan.batch, probeIdsHost, blockNumPlan);
+    size_t maxBlocksPerQ = 0;
+    {
+        ScopedGridSnapshot snapshot(*actual);
+        maxBlocksPerQ = actual->getBlockNumPerQ(plan.batch, probeIdsHost, blockNumPlan);
+    }
 
     // getBlockNumPerQ sizes the slot table; the fill walks the probes again to decide how many blocks it
     // actually emits. If the two ever disagreed on the probe width the rows would be the wrong size and the
@@ -1643,6 +1725,1097 @@ TEST(TestIndexIVFRaBitQCore, BlockNumPlanMatchesTheProbeWalkWidth)
 
     const BlockGrid grid = FillGrid(actual, plan, 6);
     EXPECT_EQ(grid.blockNumPerQ, blockNumPlan);
+}
+
+// Public mutation boundaries must reject invalid counts before invoking their narrowed implementation.
+
+int rejectedCountImplCalls = 0;
+
+void StubRejectedCountAdd(faiss::ascend::AscendIndexIVFRaBitQImpl*, int, const float*, const faiss::idx_t*)
+{
+    ++rejectedCountImplCalls;
+}
+
+void StubRejectedCountDelete(faiss::ascend::AscendIndexIVFRaBitQImpl*, int, const faiss::idx_t*)
+{
+    ++rejectedCountImplCalls;
+}
+
+std::vector<faiss::idx_t> StubRejectedCountUpdate(faiss::ascend::AscendIndexIVFRaBitQImpl*, faiss::idx_t, const float*,
+                                                  const faiss::idx_t*)
+{
+    ++rejectedCountImplCalls;
+    return {};
+}
+
+struct RejectedCountMockGuard
+{
+    RejectedCountMockGuard()
+    {
+        rejectedCountImplCalls = 0;
+        MOCKER_CPP(&faiss::ascend::AscendIndexIVFRaBitQImpl::addConcurrent).stubs().will(invoke(StubRejectedCountAdd));
+        MOCKER_CPP(&faiss::ascend::AscendIndexIVFRaBitQImpl::deleteConcurrent)
+            .stubs()
+            .will(invoke(StubRejectedCountDelete));
+        MOCKER_CPP(&faiss::ascend::AscendIndexIVFRaBitQImpl::update).stubs().will(invoke(StubRejectedCountUpdate));
+    }
+
+    ~RejectedCountMockGuard() { GlobalMockObject::verify(); }
+
+    RejectedCountMockGuard(const RejectedCountMockGuard&) = delete;
+    RejectedCountMockGuard& operator=(const RejectedCountMockGuard&) = delete;
+};
+
+TEST(TestAscendIndexIVFRaBitQ, PublicMutationCountsRejectBeforeNarrowingOrPointerAccess)
+{
+    faiss::ascend::AscendIndexIVFRaBitQ index(DIM, faiss::METRIC_L2, NLIST, MakeConfig());
+    const auto vector = MakePatternData(1, DIM);
+    const faiss::idx_t id = 0;
+    const faiss::idx_t intMax = std::numeric_limits<int>::max();
+    const faiss::idx_t wrapsToOne = (faiss::idx_t{1} << 32) + 1;
+    RejectedCountMockGuard mock;
+
+    for (faiss::idx_t n : {faiss::idx_t{-1}, faiss::idx_t{0}, faiss::ascend::MAX_N, intMax + 1, wrapsToOne})
+    {
+        SCOPED_TRACE(n);
+        ExpectExceptionContains([&] { index.add(n, vector.data()); }, "n must be > 0 and <");
+        ExpectExceptionContains([&] { index.add_with_ids(n, vector.data(), &id); }, "n must be > 0 and <");
+        ExpectExceptionContains([&] { index.update(n, vector.data(), &id); },
+                                n <= 0 ? "greater than 0" : "n must be <");
+    }
+    for (size_t n : {static_cast<size_t>(intMax) + 1, static_cast<size_t>(wrapsToOne)})
+    {
+        SCOPED_TRACE(n);
+        ExpectExceptionContains([&] { index.remove_ids(n, &id); }, "n exceeds int range");
+    }
+    ExpectExceptionContains([&] { index.remove_ids(1, nullptr); }, "vector ID list is nullptr");
+    ASSERT_NO_THROW(index.remove_ids(0, nullptr));
+    EXPECT_EQ(rejectedCountImplCalls, 0);
+    EXPECT_EQ(index.ntotal, 0);
+
+    ASSERT_NO_THROW(index.remove_ids(static_cast<size_t>(intMax), &id));
+    EXPECT_EQ(rejectedCountImplCalls, 1);
+}
+
+TEST(TestAscendIndexIVFRaBitQ, AutomaticAddSkipsOccupiedIdsAfterRemovingLowId)
+{
+    auto source = MakePretrainedCpuIndex(false);
+    faiss::ascend::AscendIndexIVFRaBitQ index(DIM, faiss::METRIC_L2, NLIST, MakeConfig());
+    ASSERT_NO_THROW(index.copyFrom(source.index.get()));
+    const auto vectors = MakePatternData(3, DIM);
+    ASSERT_NO_THROW(index.add(3, vectors.data()));
+    const faiss::idx_t lowId = 0;
+    ASSERT_NO_THROW(index.remove_ids(1, &lowId));
+    ASSERT_EQ(index.ntotal, 2);
+    ASSERT_EQ(index.impl_->idToDeviceMap.count(2), 1U);
+
+    ASSERT_NO_THROW(index.add(2, vectors.data()));
+    EXPECT_EQ(index.ntotal, 4);
+    EXPECT_EQ(index.impl_->idToDeviceMap.size(), 4U);
+    EXPECT_EQ(index.impl_->idToDeviceMap.count(0), 0U);
+    for (faiss::idx_t id : {1, 2, 3, 4})
+    {
+        EXPECT_EQ(index.impl_->idToDeviceMap.count(id), 1U);
+        EXPECT_EQ(index.impl_->findDeviceId(id), 0);
+    }
+}
+
+TEST(TestAscendIndexIVFRaBitQ, AutomaticAddProbesLocallyWithoutPersistentHighWatermark)
+{
+    auto source = MakePretrainedCpuIndex(false);
+    faiss::ascend::AscendIndexIVFRaBitQ index(DIM, faiss::METRIC_L2, NLIST, MakeConfig());
+    ASSERT_NO_THROW(index.copyFrom(source.index.get()));
+    const auto vectors = MakePatternData(2, DIM);
+    const faiss::idx_t occupied = 1;
+    ASSERT_NO_THROW(index.add_with_ids(1, vectors.data(), &occupied));
+    ASSERT_NO_THROW(index.add(2, vectors.data()));
+    EXPECT_EQ(index.ntotal, 3);
+    EXPECT_EQ(index.impl_->idToDeviceMap.count(2), 1U);
+    EXPECT_EQ(index.impl_->idToDeviceMap.count(3), 1U);
+
+    const faiss::idx_t removed[] = {2, 3};
+    ASSERT_NO_THROW(index.remove_ids(2, removed));
+    ASSERT_EQ(index.ntotal, 1);
+    ASSERT_NO_THROW(index.add(1, vectors.data()));
+    EXPECT_EQ(index.ntotal, 2);
+    EXPECT_EQ(index.impl_->idToDeviceMap.count(2), 1U);
+    EXPECT_EQ(index.impl_->idToDeviceMap.count(3), 0U);
+    EXPECT_EQ(index.impl_->idToDeviceMap.count(4), 0U);
+}
+
+TEST(TestAscendIndexIVFRaBitQ, ExplicitAddStillRejectsBatchAndExistingDuplicateIds)
+{
+    auto source = MakePretrainedCpuIndex(false);
+    faiss::ascend::AscendIndexIVFRaBitQ index(DIM, faiss::METRIC_L2, NLIST, MakeConfig());
+    ASSERT_NO_THROW(index.copyFrom(source.index.get()));
+    const auto vectors = MakePatternData(2, DIM);
+    const faiss::idx_t duplicates[] = {42, 42};
+    ExpectExceptionContains([&] { index.add_with_ids(2, vectors.data(), duplicates); }, "duplicate id");
+    EXPECT_EQ(index.ntotal, 0);
+    EXPECT_TRUE(index.impl_->idToDeviceMap.empty());
+
+    ASSERT_NO_THROW(index.add_with_ids(1, vectors.data(), duplicates));
+    const faiss::idx_t mixed[] = {43, 42};
+    ExpectExceptionContains([&] { index.add_with_ids(2, vectors.data(), mixed); }, "already exists");
+    EXPECT_EQ(index.ntotal, 1);
+    EXPECT_EQ(index.impl_->idToDeviceMap.size(), 1U);
+    EXPECT_EQ(index.impl_->idToDeviceMap.count(42), 1U);
+    EXPECT_EQ(index.impl_->idToDeviceMap.count(43), 0U);
+}
+
+// Host mutation faults are injected at the publication boundary; successful calls still reach the daemon.
+bool failHostAssignment = false;
+int hostUploadCalls = 0;
+int failHostUploadCall = 0;
+std::vector<faiss::idx_t> hostPublishedIds;
+
+void StubHostAssignment(faiss::ascend::AscendIndexIVFRaBitQImpl*, int n, const float* x,
+                        std::unique_ptr<faiss::idx_t[]>& assign)
+{
+    for (int i = 0; i < n; ++i)
+    {
+        assign[i] = x[static_cast<size_t>(i) * DIM] < 0.5f ? 7 : 8;
+    }
+    if (failHostAssignment)
+    {
+        assign[n - 1] = -1;  // Fail after earlier rows have already been staged.
+    }
+}
+
+void StubHostUpload(faiss::ascend::AscendIndexIVFRaBitQImpl* impl,
+                    faiss::ascend::IndexParam<float, float, faiss::ascend::ascend_idx_t>& param)
+{
+    if (++hostUploadCalls == failHostUploadCall)
+    {
+        throw std::runtime_error("injected host upload failure");
+    }
+    const auto ret = impl->getActualIndex(param.deviceId)->addVectors(param.listId, param.n, param.query, param.label);
+    FAISS_THROW_IF_NOT(ret == ::ascend::APP_ERR_OK);
+    for (int i = 0; i < param.n; ++i)
+    {
+        hostPublishedIds.push_back(static_cast<faiss::idx_t>(param.label[i]));
+    }
+}
+
+struct HostAddFaultGuard
+{
+    HostAddFaultGuard()
+    {
+        failHostAssignment = false;
+        hostUploadCalls = failHostUploadCall = 0;
+        hostPublishedIds.clear();
+        hostPublishedIds.reserve(16);
+        MOCKER_CPP(&faiss::ascend::AscendIndexIVFRaBitQImpl::addL1).stubs().will(invoke(StubHostAssignment));
+        MOCKER_CPP(&faiss::ascend::AscendIndexIVFRaBitQImpl::indexIVFRaBitQAdd).stubs().will(invoke(StubHostUpload));
+    }
+    ~HostAddFaultGuard() { GlobalMockObject::verify(); }
+};
+
+TEST(TestAscendIndexIVFRaBitQ, FailedStagingAndUploadDoNotLeakIntoRetry)
+{
+    auto source = MakePretrainedCpuIndex(false);
+    faiss::ascend::AscendIndexIVFRaBitQ index(DIM, faiss::METRIC_L2, NLIST, MakeConfig());
+    ASSERT_NO_THROW(index.copyFrom(source.index.get()));
+    auto vectors = MakePatternData(2, DIM);
+    vectors[0] = vectors[DIM] = 0.0f;
+    const faiss::idx_t ids[] = {41, 42};
+    HostAddFaultGuard mock;
+
+    failHostAssignment = true;
+    EXPECT_THROW(index.add_with_ids(2, vectors.data(), ids), std::exception);
+    EXPECT_EQ(hostUploadCalls, 0);
+    EXPECT_EQ(index.ntotal, 0);
+    EXPECT_EQ(index.impl_->deviceAddNumMap[7][0], 0);
+    EXPECT_TRUE(index.impl_->idToDeviceMap.empty());
+
+    failHostAssignment = false;
+    failHostUploadCall = 1;
+    ExpectExceptionContains([&] { index.add_with_ids(2, vectors.data(), ids); }, "injected host upload failure");
+    EXPECT_EQ(index.ntotal, 0);
+    EXPECT_TRUE(index.impl_->idToDeviceMap.empty());
+    EXPECT_EQ(index.impl_->deviceAddNumMap[7][0], 0);
+    EXPECT_EQ(index.impl_->getActualIndex(0)->getListLength(7), 0U);
+
+    failHostUploadCall = 0;
+    ASSERT_NO_THROW(index.add_with_ids(2, vectors.data(), ids));
+    EXPECT_EQ(index.ntotal, 2);
+    EXPECT_EQ(index.impl_->deviceAddNumMap[7][0], 2);
+    std::vector<int64_t> stored;
+    ASSERT_EQ(index.impl_->getActualIndex(0)->getListIds(7, stored), ::ascend::APP_ERR_OK);
+    EXPECT_THAT(stored, ElementsAre(41, 42));
+    EXPECT_EQ(index.impl_->deviceInfos[0].idSet.size(), 2U);
+}
+
+TEST(TestAscendIndexIVFRaBitQ, StagingUsesTouchedListDeviceOccupancyAndOrdinals)
+{
+    auto source = MakePretrainedCpuIndex(false);
+    source.listId = 7;
+    source.ids = {71, 72};
+    source.codes.resize(source.ids.size() * source.index->code_size, 0);
+    source.index->invlists->add_entries(7, 2, source.ids.data(), source.codes.data());
+    source.index->ntotal = 2;
+    // Physical device IDs deliberately differ from the ordinal used in host maps.
+    faiss::ascend::AscendIndexIVFRaBitQ index(DIM, faiss::METRIC_L2, NLIST, MakeConfig({1, 0}));
+    ASSERT_NO_THROW(index.copyFrom(source.index.get()));
+    EXPECT_EQ(index.impl_->findDeviceId(71), 0);
+    EXPECT_EQ(index.impl_->findDeviceId(72), 1);
+    const faiss::idx_t remove = 72;
+    ASSERT_NO_THROW(index.remove_ids(1, &remove));
+    auto vectors = MakePatternData(2, DIM);
+    vectors[0] = vectors[DIM] = 0.0f;
+    const faiss::idx_t ids[] = {73, 74};
+    // Stale host occupancy must not influence staging; the touched daemon list is authoritative.
+    index.impl_->deviceAddNumMap[7] = {100, 100};
+    MOCKER_CPP(&faiss::ascend::AscendIndexIVFRaBitQImpl::addL1).stubs().will(invoke(StubHostAssignment));
+    failHostAssignment = false;
+    ASSERT_NO_THROW(index.add_with_ids(2, vectors.data(), ids));
+    EXPECT_EQ(index.impl_->findDeviceId(73), 1);
+    EXPECT_EQ(index.impl_->findDeviceId(74), 0);
+    EXPECT_EQ(index.impl_->deviceAddNumMap[7][0], 2);
+    EXPECT_EQ(index.impl_->deviceAddNumMap[7][1], 1);
+    EXPECT_EQ(index.impl_->getActualIndex(1)->getListLength(7), 2U);
+    EXPECT_EQ(index.impl_->getActualIndex(0)->getListLength(7), 1U);
+    GlobalMockObject::verify();
+}
+
+TEST(TestAscendIndexIVFRaBitQ, PartialListPublicationReconcilesCountMappingFilterAndRetry)
+{
+    auto source = MakePretrainedCpuIndex(false);
+    faiss::ascend::AscendIndexIVFRaBitQ index(DIM, faiss::METRIC_L2, NLIST, MakeConfig());
+    ASSERT_NO_THROW(index.copyFrom(source.index.get()));
+    auto vectors = MakePatternData(2, DIM);
+    vectors[0] = 0.0f;
+    vectors[DIM] = 1.0f;
+    const faiss::idx_t ids[] = {51, 52};
+    faiss::IDSelectorRange sel(0, 100);
+    index.impl_->getCachedFilter(&sel);
+    const auto generation = index.impl_->cachedFilterGeneration;
+    HostAddFaultGuard mock;
+    failHostUploadCall = 2;
+    ExpectExceptionContains([&] { index.add_with_ids(2, vectors.data(), ids); }, "injected host upload failure");
+    ASSERT_EQ(hostPublishedIds.size(), 1U);
+    const auto committedId = hostPublishedIds[0];
+    const int committedRow = committedId == ids[0] ? 0 : 1;
+    const int committedList = committedRow == 0 ? 7 : 8;
+    const int failedRow = 1 - committedRow;
+    EXPECT_EQ(index.ntotal, 1);
+    EXPECT_EQ(index.impl_->idToDeviceMap.size(), 1U);
+    EXPECT_EQ(index.impl_->idToDeviceMap.count(committedId), 1U);
+    EXPECT_EQ(index.impl_->idToDeviceMap.count(ids[failedRow]), 0U);
+    EXPECT_EQ(index.impl_->deviceAddNumMap[committedList][0], 1);
+    EXPECT_EQ(index.impl_->deviceAddNumMap[committedList == 7 ? 8 : 7][0], 0);
+    EXPECT_GT(index.impl_->cachedFilterGeneration, generation);
+    EXPECT_EQ(index.impl_->FindFilterCacheHit(index.impl_->MakeFilterCacheKey(&sel)), -1);
+    failHostUploadCall = 0;
+    ASSERT_NO_THROW(index.add_with_ids(1, vectors.data() + static_cast<size_t>(failedRow) * DIM, ids + failedRow));
+    EXPECT_EQ(index.ntotal, 2);
+    EXPECT_EQ(index.impl_->getActualIndex(0)->getListLength(7), 1U);
+    EXPECT_EQ(index.impl_->getActualIndex(0)->getListLength(8), 1U);
+}
+
+TEST(TestAscendIndexIVFRaBitQ, PartialRefinePublicationStaysNotReadyUntilResetOrValidLoad)
+{
+    auto source = MakePretrainedCpuIndex(false);
+    auto config = MakeConfig();
+    config.needRefine = true;
+    faiss::ascend::AscendIndexIVFRaBitQ index(DIM, faiss::METRIC_L2, NLIST, config);
+    ASSERT_NO_THROW(index.copyFrom(source.index.get()));
+    auto vectors = MakePatternData(2, DIM);
+    vectors[0] = 0.0f;
+    vectors[DIM] = 1.0f;
+    const faiss::idx_t ids[] = {0, 1};
+    HostAddFaultGuard mock;
+    failHostUploadCall = 2;
+    EXPECT_THROW(index.add_with_ids(2, vectors.data(), ids), std::exception);
+    ASSERT_EQ(index.ntotal, 1);
+    EXPECT_TRUE(index.impl_->srcIndexes.empty());
+    EXPECT_TRUE(index.impl_->copiedSources_);
+    EXPECT_FALSE(index.impl_->refineSourcesReady_);
+    EXPECT_THROW(index.remove_ids(1, ids), std::exception);
+    const faiss::idx_t next = 2;
+    ExpectExceptionContains([&] { index.add_with_ids(1, vectors.data(), &next); }, "not ready");
+    // A matching row count cannot conceal a partial-publication hole.
+    index.impl_->srcIndexes.resize(DIM);
+    ExpectExceptionContains([&] { index.impl_->getRefineSources(); }, "not ready");
+    if (hostPublishedIds[0] == 0)
+    {
+        ASSERT_NO_THROW(index.loadRefineSources(vectors.data(), 1));
+        EXPECT_TRUE(index.impl_->refineSourcesReady_);
+        EXPECT_NO_THROW(index.impl_->getRefineSources());
+    }
+    else
+    {
+        ExpectExceptionContains([&] { index.loadRefineSources(vectors.data() + DIM, 1); }, "unique IDs");
+        EXPECT_FALSE(index.impl_->refineSourcesReady_);
+    }
+    ASSERT_NO_THROW(index.reset());
+    EXPECT_FALSE(index.impl_->copiedSources_);
+    EXPECT_TRUE(index.impl_->refineSourcesReady_);
+    failHostUploadCall = 0;
+    ASSERT_NO_THROW(index.add(2, vectors.data()));
+    EXPECT_EQ(index.ntotal, 2);
+    EXPECT_EQ(index.impl_->srcIndexes, vectors);
+}
+
+TEST(TestAscendIndexIVFRaBitQ, EmptyCopiedSourcesKeepSequentialModeUntilReset)
+{
+    auto source = MakePretrainedCpuIndex(false);
+    faiss::ascend::AscendIndexIVFRaBitQ index(DIM, faiss::METRIC_L2, NLIST, MakeConfig());
+    ASSERT_NO_THROW(index.copyFrom(source.index.get()));
+    const auto vector = MakePatternData(1, DIM);
+    ASSERT_NO_THROW(index.loadRefineSources(vector.data(), 0));
+    const faiss::idx_t id = 9;
+    ExpectExceptionContains([&] { index.add_with_ids(1, vector.data(), &id); }, "sequential IDs");
+    ExpectExceptionContains([&] { index.remove_ids(1, &id); }, "copied refine sources");
+    ExpectExceptionContains([&] { index.update(1, vector.data(), &id); }, "copied refine sources");
+    ExpectExceptionContains([&] { index.attachRefineSources(vector.data(), 0); }, "copied refine sources");
+    ASSERT_NO_THROW(index.reset());
+    ASSERT_NO_THROW(index.add_with_ids(1, vector.data(), &id));
+    EXPECT_TRUE(index.impl_->srcIndexes.empty());
+}
+
+TEST(TestAscendIndexIVFRaBitQ, DuplicateAndMissingDeletesOnlyCountStoredIds)
+{
+    auto source = MakePretrainedCpuIndex(false);
+    faiss::ascend::AscendIndexIVFRaBitQ index(DIM, faiss::METRIC_L2, NLIST, MakeConfig());
+    ASSERT_NO_THROW(index.copyFrom(source.index.get()));
+    const auto vectors = MakePatternData(2, DIM);
+    const faiss::idx_t ids[] = {61, 62};
+    ASSERT_NO_THROW(index.add_with_ids(2, vectors.data(), ids));
+    const faiss::idx_t deletes[] = {61, 61, 999, 999};
+    ASSERT_NO_THROW(index.remove_ids(4, deletes));
+    EXPECT_EQ(index.ntotal, 1);
+    EXPECT_EQ(index.impl_->idToDeviceMap.size(), 1U);
+    EXPECT_EQ(index.impl_->idToDeviceMap.count(62), 1U);
+    EXPECT_EQ(index.impl_->deviceInfos[0].idSet.size(), 1U);
+    ASSERT_NO_THROW(index.remove_ids(4, deletes));
+    EXPECT_EQ(index.ntotal, 1);
+    size_t stored = 0;
+    int counted = 0;
+    for (int list = 0; list < NLIST; ++list)
+    {
+        stored += index.impl_->getActualIndex(0)->getListLength(list);
+        counted += index.impl_->deviceAddNumMap[list][0];
+    }
+    EXPECT_EQ(stored, 1U);
+    EXPECT_EQ(counted, 1);
+}
+
+int hostDeleteCalls = 0;
+int failHostDeleteCall = 0;
+void StubHostDelete(faiss::ascend::AscendIndexIVFRaBitQImpl* impl,
+                    faiss::ascend::IndexParam<void, void, faiss::ascend::ascend_idx_t>& param)
+{
+    if (++hostDeleteCalls == failHostDeleteCall)
+    {
+        throw std::runtime_error("injected host delete failure");
+    }
+    FAISS_THROW_IF_NOT(impl->getActualIndex(param.deviceId)->removeIds(param.n, param.label) == ::ascend::APP_ERR_OK);
+}
+
+TEST(TestAscendIndexIVFRaBitQ, FailedSecondDeviceDeletePreservesSuccessfulDeviceCount)
+{
+    auto source = MakePretrainedCpuIndex();
+    faiss::ascend::AscendIndexIVFRaBitQ index(DIM, faiss::METRIC_L2, NLIST, MakeConfig({0, 1}));
+    ASSERT_NO_THROW(index.copyFrom(source.index.get()));
+    const auto oldMappings = index.impl_->idToDeviceMap;
+    const auto oldCounts = index.impl_->deviceAddNumMap;
+    const auto oldSecondIds = index.impl_->deviceInfos[1].idSet;
+    hostDeleteCalls = 0;
+    failHostDeleteCall = 2;
+    MOCKER_CPP(&faiss::ascend::AscendIndexIVFRaBitQImpl::deleteFromIVFRaBitQ).stubs().will(invoke(StubHostDelete));
+    ExpectExceptionContains([&] { index.remove_ids(source.ids.size(), source.ids.data()); },
+                            "injected host delete failure");
+    EXPECT_EQ(hostDeleteCalls, 2);
+    size_t stored = 0;
+    for (int dev : {0, 1})
+    {
+        const auto count = index.impl_->getActualIndex(dev)->getListLength(source.listId);
+        stored += count;
+        EXPECT_EQ(index.impl_->deviceAddNumMap[source.listId][dev], static_cast<int>(count));
+        EXPECT_EQ(index.impl_->deviceInfos[dev].idSet.size(), count);
+    }
+    EXPECT_GT(stored, 0U);
+    EXPECT_EQ(index.impl_->deviceAddNumMap[source.listId][1], oldCounts[source.listId][1]);
+    EXPECT_EQ(index.impl_->deviceInfos[1].idSet, oldSecondIds);
+    for (const auto id : oldSecondIds)
+    {
+        EXPECT_EQ(index.impl_->idToDeviceMap.at(id), oldMappings.at(id));
+    }
+    EXPECT_LT(stored, source.ids.size());
+    EXPECT_EQ(index.ntotal, static_cast<faiss::idx_t>(stored));
+    EXPECT_EQ(index.impl_->idToDeviceMap.size(), stored);
+    GlobalMockObject::verify();
+    ASSERT_NO_THROW(index.remove_ids(source.ids.size(), source.ids.data()));
+    EXPECT_EQ(index.ntotal, 0);
+}
+
+TEST(TestAscendIndexIVFRaBitQ, CopyFromReplacesListsMappingsAndSourceState)
+{
+    auto source = MakePretrainedCpuIndex();
+    faiss::ascend::AscendIndexIVFRaBitQ index(DIM, faiss::METRIC_L2, NLIST, MakeConfig());
+    ASSERT_NO_THROW(index.copyFrom(source.index.get()));
+    ASSERT_NO_THROW(index.copyFrom(source.index.get()));
+    EXPECT_EQ(index.ntotal, 3);
+    EXPECT_EQ(index.impl_->getActualIndex(0)->getListLength(source.listId), 3U);
+    EXPECT_EQ(index.impl_->deviceAddNumMap[source.listId][0], 3);
+    EXPECT_EQ(index.impl_->idToDeviceMap.size(), 3U);
+    auto empty = MakePretrainedCpuIndex(false);
+    ASSERT_NO_THROW(index.copyFrom(empty.index.get()));
+    EXPECT_EQ(index.ntotal, 0);
+    EXPECT_TRUE(index.impl_->idToDeviceMap.empty());
+    EXPECT_EQ(index.impl_->getActualIndex(0)->getListLength(source.listId), 0U);
+    EXPECT_FALSE(index.impl_->copiedSources_);
+    EXPECT_TRUE(index.impl_->refineSourcesReady_);
+}
+
+int encodedImportCalls = 0;
+int failEncodedImportCall = 0;
+
+::ascend::APP_ERROR StubEncodedImport(::ascend::IndexIVFRaBitQ* index, int listId, size_t numVecs, const uint8_t*,
+                                      const ::ascend::Index::idx_t*)
+{
+    if (++encodedImportCalls == failEncodedImportCall) return ::ascend::APP_ERR_INVALID_PARAM;
+    SeedList(index, listId, numVecs);  // Publish fixture storage so reset sees the committed daemon count.
+    return ::ascend::APP_ERR_OK;
+}
+
+void StubOrthogonalSetupFailure(faiss::ascend::AscendIndexIVFRaBitQImpl*, std::vector<float>&)
+{
+    throw std::runtime_error("injected orthogonal setup failure");
+}
+
+struct ImportFaultMockGuard
+{
+    ImportFaultMockGuard()
+    {
+        encodedImportCalls = failEncodedImportCall = 0;
+        MOCKER_CPP(&::ascend::IndexIVFRaBitQ::addEncodedVectors).stubs().will(invoke(StubEncodedImport));
+    }
+    ~ImportFaultMockGuard() { GlobalMockObject::verify(); }
+};
+
+TEST(TestAscendIndexIVFRaBitQ, CopyFromSetupFailuresLeaveUntrainedEmptyStateAndAllowRetry)
+{
+    for (bool withVectors : {false, true})
+    {
+        for (int phase : {0, 1, 2})
+        {
+            SCOPED_TRACE(withVectors);
+            SCOPED_TRACE(phase);
+            auto source = MakePretrainedCpuIndex(withVectors);
+            auto old = MakePretrainedCpuIndex();
+            faiss::ascend::AscendIndexIVFRaBitQ index(DIM, faiss::METRIC_L2, NLIST, MakeConfig());
+            ASSERT_NO_THROW(index.copyFrom(old.index.get()));
+            ASSERT_TRUE(index.is_trained);
+            {
+                ImportFaultMockGuard mock;
+                if (phase == 0)
+                {
+                    MOCKER_CPP(&faiss::ascend::AscendIndexIVFRaBitQImpl::uploadorthogonalMatrix)
+                        .stubs()
+                        .will(invoke(StubOrthogonalSetupFailure));
+                }
+                else if (phase == 1)
+                {
+                    MOCKER_CPP(&::ascend::IndexIVFRaBitQ::updateCoarseCenterImpl)
+                        .stubs()
+                        .will(returnValue(::ascend::APP_ERR_INVALID_PARAM));
+                }
+                else
+                {
+                    MOCKER_CPP(&::ascend::IndexIVFFlat::addVectorsAsCentroid)
+                        .stubs()
+                        .will(returnValue(::ascend::APP_ERR_INVALID_PARAM));
+                }
+                ExpectExceptionContains([&] { index.copyFrom(source.index.get()); },
+                                        phase == 0   ? "injected orthogonal setup failure"
+                                        : phase == 1 ? "Failed to update coarsecenter"
+                                                     : "Failed to add assignment centroids, ret=");
+                EXPECT_EQ(encodedImportCalls, 0);
+                EXPECT_EQ(index.ntotal, 0);
+                EXPECT_FALSE(index.is_trained);
+                EXPECT_TRUE(index.impl_->idToDeviceMap.empty());
+                EXPECT_TRUE(index.impl_->deviceInfos[0].idSet.empty());
+                EXPECT_EQ(index.impl_->getActualIndex(0)->getListLength(old.listId), 0U);
+            }
+            ASSERT_NO_THROW(index.copyFrom(source.index.get()));
+            EXPECT_TRUE(index.is_trained);
+            EXPECT_EQ(index.ntotal, source.index->ntotal);
+            EXPECT_EQ(index.impl_->getActualIndex(0)->getListLength(source.listId), source.ids.size());
+        }
+    }
+}
+
+TEST(TestAscendIndexIVFRaBitQ, PartialEncodedImportKeepsCompletedSetupTrained)
+{
+    auto source = MakePretrainedCpuIndex();
+    const faiss::idx_t extra = 404;
+    source.index->invlists->add_entries(source.listId + 1, 1, &extra, source.codes.data());
+    ++source.index->ntotal;
+    faiss::ascend::AscendIndexIVFRaBitQ index(DIM, faiss::METRIC_L2, NLIST, MakeConfig());
+    {
+        ImportFaultMockGuard mock;
+        failEncodedImportCall = 2;  // Model one committed list followed by a rejected publication.
+        ExpectExceptionContains([&] { index.copyFrom(source.index.get()); }, "Failed to add encoded vectors");
+        EXPECT_EQ(encodedImportCalls, 2);
+        EXPECT_TRUE(index.is_trained);
+        EXPECT_EQ(index.ntotal, static_cast<faiss::idx_t>(source.ids.size()));
+        EXPECT_EQ(index.impl_->idToDeviceMap.size(), source.ids.size());
+        EXPECT_EQ(index.impl_->idToDeviceMap.count(extra), 0U);
+        EXPECT_EQ(index.impl_->deviceAddNumMap[source.listId][0], 3);
+        EXPECT_EQ(index.impl_->deviceAddNumMap[source.listId + 1][0], 0);
+        EXPECT_FALSE(index.impl_->refineSourcesReady_);
+    }
+    ASSERT_NO_THROW(index.copyFrom(source.index.get()));
+    EXPECT_TRUE(index.is_trained);
+    EXPECT_EQ(index.ntotal, source.index->ntotal);
+    EXPECT_EQ(index.impl_->getActualIndex(0)->getListLength(source.listId), source.ids.size());
+    EXPECT_EQ(index.impl_->getActualIndex(0)->getListLength(source.listId + 1), 1U);
+}
+
+// Candidates are prepared before installing the mock: the unique_ptr callback never recurses into
+// makeEmptySnapshot, and only the selected daemon reports an allocation failure.
+using EmptySnapshot = std::unique_ptr<::ascend::IndexIVFRaBitQ::GlobalSnapshot>;
+std::vector<std::pair<const ::ascend::IndexIVFRaBitQ*, EmptySnapshot>> resetEmptyCandidates;
+const ::ascend::IndexIVFRaBitQ* resetEmptyFaultIndex = nullptr;
+bool failResetEmpty = false;
+int resetEmptyCalls = 0;
+
+EmptySnapshot StubResetEmptySnapshot(const ::ascend::IndexIVFRaBitQ* index)
+{
+    ++resetEmptyCalls;
+    if (index == resetEmptyFaultIndex && failResetEmpty)
+    {
+        throw std::bad_alloc();
+    }
+    for (auto& candidate : resetEmptyCandidates)
+    {
+        if (candidate.first == index && candidate.second != nullptr)
+        {
+            return std::move(candidate.second);
+        }
+    }
+    throw std::runtime_error("missing prepared reset snapshot");
+}
+
+struct ResetEmptyMockGuard
+{
+    ResetEmptyMockGuard(const std::vector<::ascend::IndexIVFRaBitQ*>& indexes,
+                        const ::ascend::IndexIVFRaBitQ* faultIndex)
+    {
+        resetEmptyCandidates.clear();
+        for (const auto* index : indexes)
+        {
+            resetEmptyCandidates.emplace_back(index, index->makeEmptySnapshot());
+        }
+        resetEmptyFaultIndex = faultIndex;
+        failResetEmpty = true;
+        resetEmptyCalls = 0;
+        MOCKER_CPP(&::ascend::IndexIVFRaBitQ::makeEmptySnapshot).stubs().will(invoke(StubResetEmptySnapshot));
+    }
+    ~ResetEmptyMockGuard()
+    {
+        GlobalMockObject::verify();
+        resetEmptyCandidates.clear();
+        resetEmptyFaultIndex = nullptr;
+        failResetEmpty = false;
+    }
+};
+
+TEST(TestIndexIVFRaBitQCore, ResetPreparationBadAllocPreservesStateAndRetryUsesOneCandidate)
+{
+    faiss::ascend::AscendIndexIVFRaBitQ hostIndex(DIM, faiss::METRIC_L2, NLIST, MakeConfig());
+    auto* actual = hostIndex.impl_->getActualIndex(0);
+    SeedList(actual, 0, 2);
+    const auto* pinned = actual->activeSnapshot.get();
+    actual->readerHazard.store(pinned);
+    SeedList(actual, 1, 1);  // Keep a retired snapshot pinned as well as live arena segments.
+    actual->readerDrainError.store(ACL_ERROR_FAILURE);
+    actual->maxListLength = 2;
+    uint8_t filterSource = 7;
+    actual->cachedFilterPayload =
+        std::make_unique<::ascend::DeviceVector<uint8_t>>(::ascend::MemorySpace::DEVICE_HUGEPAGE);
+    actual->cachedFilterPayload->resize(8);
+    actual->cachedFilterSrc = &filterSource;
+    actual->cachedFilterBytes = 8;
+    actual->cachedFilterGeneration = 17;
+    actual->cachedPrefixFilterSrc = &filterSource;
+    actual->cachedPrefixFilterBytes = 1;
+    actual->cachedPrefixFilterGeneration = 19;
+    const auto* active = actual->activeSnapshot.get();
+    const auto* codes = active->lists[0]->codes.segmentData(0);
+    const auto* arena = actual->listArena_.get();
+    const auto slabs = arena->SlabCount();
+    const auto bytes = arena->TotalReservedBytes();
+    const auto retiredCount = actual->retiredSnapshots.size();
+    const auto retiredBytes = actual->retiredBytes;
+    const auto* filterData = actual->cachedFilterPayload->data();
+    const auto cacheEpoch = actual->filterCacheEpoch.load();
+    const auto* distData = actual->distResultOnDevice->data();
+    const auto distSize = actual->distResultOnDevice->size();
+    const auto distSpace = actual->distResultSpace;
+    ASSERT_GT(retiredCount, 0U);
+    ASSERT_GT(bytes, 0U);
+    ResetEmptyMockGuard mock({actual}, actual);
+    EXPECT_THROW(actual->reset(), std::bad_alloc);
+    EXPECT_EQ(resetEmptyCalls, 1);
+    EXPECT_EQ(actual->activeSnapshot.get(), active);
+    EXPECT_EQ(actual->currentSnapshot.load(), active);
+    EXPECT_EQ(active->total, 3U);
+    EXPECT_EQ(actual->ntotal, 3);
+    EXPECT_EQ(actual->maxListLength, 2);
+    EXPECT_EQ(active->lists[0]->codes.segmentData(0), codes);
+    EXPECT_EQ(actual->readerHazard.load(), pinned);
+    EXPECT_EQ(actual->readerDrainError.load(), ACL_ERROR_FAILURE);
+    EXPECT_EQ(actual->retiredSnapshots.size(), retiredCount);
+    EXPECT_EQ(actual->retiredSnapshots[0].snapshot.get(), pinned);
+    EXPECT_EQ(actual->retiredBytes, retiredBytes);
+    EXPECT_EQ(actual->listArena_.get(), arena);
+    EXPECT_EQ(arena->SlabCount(), slabs);
+    EXPECT_EQ(arena->TotalReservedBytes(), bytes);
+    EXPECT_EQ(actual->cachedFilterPayload->data(), filterData);
+    EXPECT_EQ(actual->cachedFilterPayload->size(), 8U);
+    EXPECT_EQ(actual->cachedFilterSrc, &filterSource);
+    EXPECT_EQ(actual->cachedFilterBytes, 8U);
+    EXPECT_EQ(actual->cachedFilterGeneration, 17U);
+    EXPECT_EQ(actual->cachedPrefixFilterSrc, &filterSource);
+    EXPECT_EQ(actual->cachedPrefixFilterBytes, 1U);
+    EXPECT_EQ(actual->cachedPrefixFilterGeneration, 19U);
+    EXPECT_EQ(actual->filterCacheEpoch.load(), cacheEpoch);
+    EXPECT_EQ(actual->distResultOnDevice->data(), distData);
+    EXPECT_EQ(actual->distResultOnDevice->size(), distSize);
+    EXPECT_EQ(actual->distResultSpace, distSpace);
+    failResetEmpty = false;
+    ASSERT_EQ(actual->reset(), ::ascend::APP_ERR_OK);
+    EXPECT_EQ(resetEmptyCalls, 2);  // Exactly one preparation per attempt; no post-destruction allocation.
+    EXPECT_EQ(actual->currentSnapshot.load(), actual->activeSnapshot.get());
+    EXPECT_EQ(actual->activeSnapshot->publishVer, 0U);
+    EXPECT_EQ(actual->activeSnapshot->total, 0U);
+    EXPECT_EQ(actual->ntotal, 0);
+    EXPECT_EQ(actual->maxListLength, 0);
+    EXPECT_EQ(actual->readerHazard.load(), nullptr);
+    EXPECT_EQ(actual->readerDrainError.load(), ACL_SUCCESS);
+    EXPECT_TRUE(actual->retiredSnapshots.empty());
+    EXPECT_EQ(actual->retiredBytes, 0U);
+    EXPECT_EQ(actual->listArena_.get(), arena);
+    EXPECT_EQ(arena->SlabCount(), 0U);
+    EXPECT_EQ(arena->TotalReservedBytes(), 0U);
+    EXPECT_EQ(actual->distResultSpace, 0U);
+    EXPECT_EQ(actual->cachedFilterSrc, nullptr);
+    EXPECT_EQ(actual->cachedFilterBytes, 0U);
+    EXPECT_EQ(actual->cachedPrefixFilterSrc, nullptr);
+    EXPECT_EQ(actual->cachedPrefixFilterBytes, 0U);
+}
+
+TEST(TestAscendIndexIVFRaBitQ, LaterDeviceResetPreparationBadAllocReconcilesSuccessfulDevice)
+{
+    auto source = MakePretrainedCpuIndex();
+    const faiss::idx_t ids[] = {0, 1, 2};
+    source.index->invlists->update_entries(source.listId, 0, 3, ids, source.codes.data());
+    auto replacement = MakePretrainedCpuIndex(false);
+    replacement.index->nprobe = NPROBE + 1;
+    faiss::ascend::AscendIndexIVFRaBitQ index(DIM, faiss::METRIC_L2, NLIST, MakeConfig({0, 1}));
+    ASSERT_NO_THROW(index.copyFrom(source.index.get()));
+    const auto originals = MakePatternData(3, DIM);
+    ASSERT_NO_THROW(index.attachRefineSources(originals.data(), 3));
+    auto* first = index.impl_->getActualIndex(0);
+    auto* second = index.impl_->getActualIndex(1);
+    const auto* oldSecond = second->activeSnapshot.get();
+    const auto oldMappings = index.impl_->idToDeviceMap;
+    const auto oldCounts = index.impl_->deviceAddNumMap;
+    const auto* oldArena = second->listArena_.get();
+    const auto oldArenaBytes = oldArena->TotalReservedBytes();
+    ASSERT_EQ(oldMappings.size(), 3U);
+    ASSERT_EQ(oldCounts[source.listId][0], 2);
+    ASSERT_EQ(oldCounts[source.listId][1], 1);
+    {
+        ResetEmptyMockGuard mock({first, second}, second);
+        EXPECT_THROW(index.copyFrom(replacement.index.get()), std::bad_alloc);
+        EXPECT_EQ(resetEmptyCalls, 2);
+        EXPECT_EQ(first->activeSnapshot->total, 0U);
+        EXPECT_EQ(second->activeSnapshot.get(), oldSecond);
+        EXPECT_EQ(second->currentSnapshot.load(), oldSecond);
+        EXPECT_EQ(oldSecond->total, 1U);
+        EXPECT_EQ(second->ntotal, 1);
+        EXPECT_EQ(second->listArena_.get(), oldArena);
+        EXPECT_EQ(oldArena->TotalReservedBytes(), oldArenaBytes);
+        EXPECT_EQ(index.ntotal, 1);
+        EXPECT_TRUE(index.is_trained);
+        EXPECT_EQ(index.getNumProbes(), NPROBE);
+        EXPECT_EQ(index.impl_->idToDeviceMap.size(), 1U);
+        EXPECT_EQ(index.impl_->idToDeviceMap.at(1), oldMappings.at(1));
+        EXPECT_EQ(index.impl_->idToDeviceMap.count(0), 0U);
+        EXPECT_EQ(index.impl_->idToDeviceMap.count(2), 0U);
+        EXPECT_TRUE(index.impl_->deviceInfos[0].idSet.empty());
+        EXPECT_EQ(index.impl_->deviceInfos[1].idSet.size(), 1U);
+        EXPECT_EQ(index.impl_->deviceAddNumMap[source.listId][0], 0);
+        EXPECT_EQ(index.impl_->deviceAddNumMap[source.listId][1], oldCounts[source.listId][1]);
+        EXPECT_FALSE(index.impl_->refineSourcesReady_);
+        ExpectExceptionContains([&] { index.impl_->getRefineSources(); }, "not ready");
+    }
+    ASSERT_NO_THROW(index.copyFrom(replacement.index.get()));
+    EXPECT_EQ(index.ntotal, 0);
+    EXPECT_EQ(index.getNumProbes(), NPROBE + 1);
+    EXPECT_TRUE(index.impl_->idToDeviceMap.empty());
+    EXPECT_FALSE(index.impl_->refineSourcesAttached());
+    EXPECT_TRUE(index.impl_->refineSourcesReady_);
+}
+
+// Reader-drain faults are injected after index construction, so allocation/operator setup stays real.
+aclrtStream drainFaultCompute = nullptr;
+aclrtStream drainFaultAicpu = nullptr;
+int computeDrainCalls = 0;
+int aicpuDrainCalls = 0;
+bool failComputeDrain = false;
+bool failAicpuDrain = false;
+int transientComputeFailures = 0;
+aclrtStream resetFaultWriter = nullptr;
+
+aclError StubReaderStreamDrain(aclrtStream stream)
+{
+    if (stream == resetFaultWriter && resetFaultWriter != nullptr)
+    {
+        return ACL_ERROR_FAILURE;
+    }
+    if (stream == drainFaultCompute)
+    {
+        ++computeDrainCalls;
+        if (transientComputeFailures > 0)
+        {
+            --transientComputeFailures;
+            return ACL_ERROR_FAILURE;
+        }
+        return failComputeDrain ? ACL_ERROR_FAILURE : ACL_SUCCESS;
+    }
+    if (stream == drainFaultAicpu)
+    {
+        ++aicpuDrainCalls;
+        return failAicpuDrain ? ACL_ERROR_FAILURE : ACL_SUCCESS;
+    }
+    return ACL_SUCCESS;
+}
+
+struct ReaderDrainMockGuard
+{
+    explicit ReaderDrainMockGuard(const ::ascend::IndexIVFRaBitQ& index)
+    {
+        drainFaultCompute = index.readerContext->computeStream;
+        drainFaultAicpu = index.readerContext->aicpuStream;
+        computeDrainCalls = aicpuDrainCalls = transientComputeFailures = 0;
+        failComputeDrain = failAicpuDrain = false;
+        resetFaultWriter = nullptr;
+        MOCKER(::ascend::synchronizeStream).stubs().will(invoke(StubReaderStreamDrain));
+    }
+    ~ReaderDrainMockGuard()
+    {
+        resetFaultWriter = nullptr;
+        GlobalMockObject::verify();
+    }
+};
+
+TEST(TestAscendIndexIVFRaBitQ, FailedCopyFromReaderDrainPreservesOldMetadataAndSources)
+{
+    auto source = MakePretrainedCpuIndex();
+    const faiss::idx_t ids[] = {0, 1, 2};
+    source.index->invlists->update_entries(source.listId, 0, 3, ids, source.codes.data());
+    auto replacement = MakePretrainedCpuIndex(false);
+    replacement.index->nprobe = NPROBE + 1;
+    auto config = MakeConfig({0, 1});
+    config.needRefine = true;
+    faiss::ascend::AscendIndexIVFRaBitQ index(DIM, faiss::METRIC_L2, NLIST, config);
+    ASSERT_NO_THROW(index.copyFrom(source.index.get()));
+    const auto originals = MakePatternData(3, DIM);
+    ASSERT_NO_THROW(index.loadRefineSources(originals.data(), 3));
+    const auto mapping = index.impl_->idToDeviceMap;
+    const auto counts = index.impl_->deviceAddNumMap;
+    const auto generation = index.impl_->cachedFilterGeneration;
+    const auto* first = index.impl_->getActualIndex(0)->activeSnapshot.get();
+    auto* second = index.impl_->getActualIndex(1);
+    const auto* secondSnapshot = second->activeSnapshot.get();
+    ReaderDrainMockGuard mock(*second);
+    failComputeDrain = true;
+    EXPECT_THROW(index.copyFrom(replacement.index.get()), std::exception);
+    EXPECT_EQ(index.ntotal, 3);
+    EXPECT_EQ(index.getNumProbes(), NPROBE);
+    EXPECT_TRUE(index.is_trained);
+    EXPECT_EQ(index.impl_->idToDeviceMap, mapping);
+    EXPECT_EQ(index.impl_->deviceAddNumMap, counts);
+    EXPECT_EQ(index.impl_->srcIndexes, originals);
+    EXPECT_TRUE(index.impl_->copiedSources_);
+    EXPECT_TRUE(index.impl_->refineSourcesReady_);
+    EXPECT_EQ(index.impl_->cachedFilterGeneration, generation);
+    EXPECT_EQ(index.impl_->getActualIndex(0)->activeSnapshot.get(), first);
+    EXPECT_EQ(second->activeSnapshot.get(), secondSnapshot);
+    failComputeDrain = false;
+    ASSERT_NO_THROW(index.copyFrom(replacement.index.get()));
+    EXPECT_EQ(index.ntotal, 0);
+    EXPECT_EQ(index.getNumProbes(), NPROBE + 1);
+    EXPECT_TRUE(index.impl_->idToDeviceMap.empty());
+    EXPECT_TRUE(index.impl_->srcIndexes.empty());
+}
+
+TEST(TestAscendIndexIVFRaBitQ, LateCopyFromResetFailureReconcilesSuccessfulDevices)
+{
+    auto source = MakePretrainedCpuIndex();
+    const faiss::idx_t ids[] = {0, 1, 2};
+    source.index->invlists->update_entries(source.listId, 0, 3, ids, source.codes.data());
+    auto replacement = MakePretrainedCpuIndex(false);
+    replacement.index->nprobe = NPROBE + 1;
+    faiss::ascend::AscendIndexIVFRaBitQ index(DIM, faiss::METRIC_L2, NLIST, MakeConfig({0, 1}));
+    ASSERT_NO_THROW(index.copyFrom(source.index.get()));
+    const auto originals = MakePatternData(3, DIM);
+    ASSERT_NO_THROW(index.attachRefineSources(originals.data(), 3));
+    auto* first = index.impl_->getActualIndex(0);
+    auto* second = index.impl_->getActualIndex(1);
+    const auto* secondSnapshot = second->activeSnapshot.get();
+    ReaderDrainMockGuard mock(*second);
+    resetFaultWriter = second->writerContext->computeStream;  // Both reader preflights still succeed.
+    EXPECT_THROW(index.copyFrom(replacement.index.get()), std::exception);
+    EXPECT_EQ(first->activeSnapshot->total, 0U);
+    EXPECT_EQ(second->activeSnapshot.get(), secondSnapshot);
+    EXPECT_EQ(second->activeSnapshot->total, 1U);
+    EXPECT_EQ(index.ntotal, 1);
+    EXPECT_TRUE(index.is_trained);
+    EXPECT_EQ(index.getNumProbes(), NPROBE);  // Replacement metadata was never installed.
+    EXPECT_EQ(index.impl_->idToDeviceMap.size(), 1U);
+    EXPECT_EQ(index.impl_->idToDeviceMap.count(1), 1U);
+    EXPECT_TRUE(index.impl_->deviceInfos[0].idSet.empty());
+    EXPECT_EQ(index.impl_->deviceInfos[1].idSet.size(), 1U);
+    EXPECT_EQ(index.impl_->deviceAddNumMap[source.listId][0], 0);
+    EXPECT_EQ(index.impl_->deviceAddNumMap[source.listId][1], 1);
+    EXPECT_FALSE(index.impl_->refineSourcesReady_);
+    ExpectExceptionContains([&] { index.impl_->getRefineSources(); }, "not ready");
+    resetFaultWriter = nullptr;
+    ASSERT_NO_THROW(index.copyFrom(replacement.index.get()));
+    EXPECT_EQ(index.ntotal, 0);
+    EXPECT_FALSE(index.impl_->refineSourcesAttached());
+    EXPECT_TRUE(index.impl_->refineSourcesReady_);
+}
+
+TEST(TestIndexIVFRaBitQCore, ReaderDrainRetriesOnceBeforeReleasingHazard)
+{
+    faiss::ascend::AscendIndexIVFRaBitQ hostIndex(DIM, faiss::METRIC_L2, NLIST, MakeConfig());
+    auto actual = hostIndex.impl_->getActualIndex(0);
+    ReaderDrainMockGuard mock(*actual);
+    transientComputeFailures = 1;
+    {
+        ::ascend::IndexIVFRaBitQ::SnapshotGuard guard(*actual);
+        EXPECT_EQ(guard.finish(), ACL_SUCCESS);
+        EXPECT_EQ(actual->readerHazard.load(), nullptr);
+        EXPECT_EQ(actual->readerDrainError.load(), ACL_SUCCESS);
+        EXPECT_EQ(computeDrainCalls, 2);
+        EXPECT_EQ(aicpuDrainCalls, 2);
+    }
+    EXPECT_EQ(computeDrainCalls, 2);  // explicit finish is not repeated by the destructor
+}
+
+TEST(TestIndexIVFRaBitQCore, FailedDrainCannotLoseProtectionToTheNextReader)
+{
+    faiss::ascend::AscendIndexIVFRaBitQ hostIndex(DIM, faiss::METRIC_L2, NLIST, MakeConfig());
+    auto actual = hostIndex.impl_->getActualIndex(0);
+    ReaderDrainMockGuard mock(*actual);
+    for (bool failCompute : {true, false})
+    {
+        failComputeDrain = failCompute;
+        failAicpuDrain = !failCompute;
+        const auto* pinned = actual->activeSnapshot.get();
+        {
+            ::ascend::IndexIVFRaBitQ::SnapshotGuard guard(*actual);
+            EXPECT_EQ(guard.finish(), ACL_ERROR_FAILURE);
+        }
+        // Models a writer already past its entry check when the reader reported its drain failure.
+        {
+            std::lock_guard<std::mutex> writerLock(actual->writerLock);
+            actual->publishSnapshot(actual->makeEmptySnapshot());
+            EXPECT_EQ(actual->checkRetiredMemory(), ::ascend::APP_ERR_INNER_ERROR);
+        }
+        EXPECT_EQ(actual->readerHazard.load(), pinned);
+        EXPECT_EQ(actual->readerDrainError.load(), ACL_ERROR_FAILURE);
+        EXPECT_THROW((::ascend::IndexIVFRaBitQ::SnapshotGuard(*actual)), ::ascend::AscendException);
+        EXPECT_EQ(actual->readerHazard.load(), pinned);  // failed recovery must not overwrite it
+        failComputeDrain = failAicpuDrain = false;
+        EXPECT_EQ(actual->getListLength(0), 0U);  // retries recovery before taking a new hazard
+        EXPECT_EQ(actual->readerHazard.load(), nullptr);
+        EXPECT_EQ(actual->readerDrainError.load(), ACL_SUCCESS);
+        {
+            std::lock_guard<std::mutex> writerLock(actual->writerLock);
+            actual->reclaimRetiredSnapshots();
+        }
+        EXPECT_TRUE(actual->retiredSnapshots.empty());
+    }
+}
+
+TEST(TestIndexIVFRaBitQCore, ResetClearsFailedHazardOnlyAfterSuccessfulDrain)
+{
+    faiss::ascend::AscendIndexIVFRaBitQ hostIndex(DIM, faiss::METRIC_L2, NLIST, MakeConfig());
+    auto actual = hostIndex.impl_->getActualIndex(0);
+    ReaderDrainMockGuard mock(*actual);
+    failComputeDrain = true;
+    const auto* pinned = actual->activeSnapshot.get();
+    {
+        ::ascend::IndexIVFRaBitQ::SnapshotGuard guard(*actual);
+        EXPECT_EQ(guard.finish(), ACL_ERROR_FAILURE);
+    }
+    EXPECT_EQ(actual->reset(), ::ascend::APP_ERR_INNER_ERROR);
+    EXPECT_EQ(actual->activeSnapshot.get(), pinned);
+    EXPECT_EQ(actual->readerHazard.load(), pinned);
+    failComputeDrain = false;
+    EXPECT_EQ(actual->reset(), ::ascend::APP_ERR_OK);
+    EXPECT_EQ(actual->readerHazard.load(), nullptr);
+    EXPECT_EQ(actual->readerDrainError.load(), ACL_SUCCESS);
+}
+
+::ascend::APP_ERROR StubSuccessfulPinnedSearch(::ascend::IndexIVFRaBitQ*, int, const float*, int, float*,
+                                               ::ascend::idx_t*, const float*, const ::ascend::RabitqIdFilterHost*, int)
+{
+    return ::ascend::APP_ERR_OK;
+}
+
+TEST(TestIndexIVFRaBitQCore, SearchPropagatesDrainFailureInsteadOfReturningSuccess)
+{
+    faiss::ascend::AscendIndexIVFRaBitQ hostIndex(DIM, faiss::METRIC_L2, NLIST, MakeConfig());
+    auto actual = hostIndex.impl_->getActualIndex(0);
+    ReaderDrainMockGuard mock(*actual);
+    MOCKER_CPP(&::ascend::IndexIVFRaBitQ::searchWithBatch).stubs().will(invoke(StubSuccessfulPinnedSearch));
+    failComputeDrain = true;
+    auto query = MakePatternData(1, DIM);
+    float distance = 0;
+    ::ascend::idx_t label = 0;
+    EXPECT_EQ(actual->searchImpl(1, query.data(), 1, &distance, &label, nullptr), ::ascend::APP_ERR_INNER_ERROR);
+    EXPECT_EQ(actual->readerHazard.load(), actual->activeSnapshot.get());
+    EXPECT_EQ(::ascend::IndexIVFRaBitQ::searchSnapshot, nullptr);
+    failComputeDrain = false;
+    EXPECT_EQ(actual->getListLength(0), 0U);
+}
+
+TEST(TestIndexIVFRaBitQCore, ReclamationRecountsSegmentsThatBecomeExclusiveToPinnedSnapshot)
+{
+    faiss::ascend::AscendIndexIVFRaBitQ hostIndex(DIM, faiss::METRIC_L2, NLIST, MakeConfig());
+    auto actual = hostIndex.impl_->getActualIndex(0);
+    SeedList(actual, 0, 2);
+    const auto* pinned = actual->activeSnapshot.get();
+    ::ascend::IndexIVFRaBitQ::SnapshotGuard guard(*actual);
+    {
+        std::lock_guard<std::mutex> writerLock(actual->writerLock);
+        auto first = actual->cloneSnapshot(*actual->activeSnapshot);
+        first->lists[1] = std::make_shared<const ::ascend::IndexIVFRaBitQ::ListStorage>(
+            actual->blockSize, actual->blockSize / 8, actual->getCodePartBytes(), actual->listArena_);
+        actual->publishSnapshot(std::move(first));
+        EXPECT_EQ(actual->retiredBytes, 0U);  // list 0 is still shared with active
+        auto second = actual->cloneSnapshot(*actual->activeSnapshot);
+        second->lists[0] = std::make_shared<const ::ascend::IndexIVFRaBitQ::ListStorage>(
+            actual->blockSize, actual->blockSize / 8, actual->getCodePartBytes(), actual->listArena_);
+        second->total = 0;
+        actual->publishSnapshot(std::move(second));
+        const auto& oldList = *pinned->lists[0];
+        const size_t expected = oldList.codes.allocatedBytes() + oldList.indexL1.allocatedBytes() +
+                                oldList.indexL2.allocatedBytes() + oldList.ids.allocatedBytes();
+        EXPECT_GT(expected, 0U);
+        EXPECT_EQ(actual->retiredBytes, expected);
+        actual->retiredMemoryHighWatermark = expected - 1;
+        EXPECT_EQ(actual->checkRetiredMemory(), ::ascend::APP_ERR_ACL_BAD_ALLOC);
+    }
+    EXPECT_EQ(guard.finish(), ACL_SUCCESS);
+    {
+        std::lock_guard<std::mutex> writerLock(actual->writerLock);
+        actual->reclaimRetiredSnapshots();
+        EXPECT_EQ(actual->retiredBytes, 0U);
+    }
+}
+
+TEST(TestIndexIVFRaBitQCore, CompactionCopiesAllPayloadAndLeavesOldSnapshotUnchanged)
+{
+    faiss::ascend::AscendIndexIVFRaBitQ hostIndex(DIM, faiss::METRIC_L2, NLIST, MakeConfig());
+    auto actual = hostIndex.impl_->getActualIndex(0);
+    constexpr size_t block = 8;
+    constexpr size_t growth = 4;
+    constexpr size_t count = 11;
+    actual->blockSize = static_cast<int>(block);  // fixture geometry for the internal compact helper
+    using List = ::ascend::IndexIVFRaBitQ::ListStorage;
+    List oldList(block, growth, actual->getCodePartBytes(), actual->listArena_);
+    auto stream = actual->writerContext->computeStream;
+    auto upload = [&](auto& storage, const auto& values)
+    {
+        using T = typename std::decay_t<decltype(values)>::value_type;
+        storage.ensureCapacity(count, stream);
+        storage.commitLength(count);
+        for (size_t s = 0; s < storage.segmentCount(); ++s)
+        {
+            const size_t offset = s * block * storage.elementsPerSlot();
+            const size_t bytes = storage.segmentLength(s) * storage.elementsPerSlot() * sizeof(T);
+            ASSERT_EQ(aclrtMemcpy(storage.segmentData(s), storage.segmentBytes(s), values.data() + offset, bytes,
+                                  ACL_MEMCPY_HOST_TO_DEVICE),
+                      ACL_SUCCESS);
+        }
+    };
+    auto readback = [&](const auto& storage, auto& values)
+    {
+        using T = typename std::decay_t<decltype(values)>::value_type;
+        size_t copied = 0;
+        for (size_t s = 0; s < storage.segmentCount(); ++s)
+        {
+            const size_t elements = storage.segmentLength(s) * storage.elementsPerSlot();
+            ASSERT_EQ(aclrtMemcpy(values.data() + copied, (values.size() - copied) * sizeof(T), storage.segmentData(s),
+                                  elements * sizeof(T), ACL_MEMCPY_DEVICE_TO_HOST),
+                      ACL_SUCCESS);
+            copied += elements;
+        }
+        EXPECT_EQ(copied, values.size());
+    };
+    std::vector<uint8_t> codes(count * actual->getCodePartBytes());
+    std::vector<float> l1(count), l2(count);
+    std::vector<::ascend::idx_t> ids(count);
+    for (size_t i = 0; i < codes.size(); ++i) codes[i] = static_cast<uint8_t>(i % 251);
+    for (size_t i = 0; i < count; ++i)
+    {
+        l1[i] = static_cast<float>(i) + 0.25f;
+        l2[i] = static_cast<float>(i) + 0.75f;
+        ids[i] = 100 + i;
+    }
+    upload(oldList.codes, codes);
+    upload(oldList.indexL1, l1);
+    upload(oldList.indexL2, l2);
+    upload(oldList.ids, ids);
+    oldList.listLen = count;
+    for (const auto& deletes : {std::vector<size_t>{1, 5}, std::vector<size_t>{9, 10}})
+    {
+        SCOPED_TRACE(deletes.front());
+        List next = oldList;
+        auto slots = deletes;
+        EXPECT_EQ(actual->compactList(oldList, next, slots, stream), ::ascend::APP_ERR_OK);
+        ASSERT_EQ(::ascend::synchronizeStream(stream), ACL_SUCCESS);
+        EXPECT_EQ(next.listLen, 9U);
+        EXPECT_NE(next.codes.segmentData(1), oldList.codes.segmentData(1));
+        std::vector<uint8_t> newCodes(9 * actual->getCodePartBytes());
+        std::vector<float> newL1(9), newL2(9);
+        std::vector<::ascend::idx_t> newIds(9);
+        readback(next.codes, newCodes);
+        readback(next.indexL1, newL1);
+        readback(next.indexL2, newL2);
+        readback(next.ids, newIds);
+        for (size_t i = 0; i < 9; ++i)
+        {
+            const size_t original = deletes.front() == 1 && (i == 1 || i == 5) ? (i == 1 ? 9 : 10) : i;
+            EXPECT_EQ(newL1[i], l1[original]);
+            EXPECT_EQ(newL2[i], l2[original]);
+            EXPECT_EQ(newIds[i], ids[original]);
+            for (size_t e = 0; e < actual->getCodePartBytes(); ++e)
+                EXPECT_EQ(newCodes[i * actual->getCodePartBytes() + e],
+                          codes[original * actual->getCodePartBytes() + e]);
+        }
+        std::vector<uint8_t> oldCodes(codes.size());
+        std::vector<float> oldL1(count), oldL2(count);
+        std::vector<::ascend::idx_t> oldIds(count);
+        readback(oldList.codes, oldCodes);
+        readback(oldList.indexL1, oldL1);
+        readback(oldList.indexL2, oldL2);
+        readback(oldList.ids, oldIds);
+        EXPECT_EQ(oldCodes, codes);
+        EXPECT_EQ(oldL1, l1);
+        EXPECT_EQ(oldL2, l2);
+        EXPECT_EQ(oldIds, ids);
+    }
 }
 
 }  // namespace

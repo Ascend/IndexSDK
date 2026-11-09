@@ -282,7 +282,7 @@ int64_t GetRefillChunkLog2()
 }
 
 // Largest id in `indices`, or 0 for an empty range. Used to track the index-wide id ceiling that licenses
-// the reservoir's uint32 candidate ids; see maxStoredId_.
+// the reservoir's uint32 candidate ids; see GlobalSnapshot::maxStoredId.
 idx_t MaxId(const idx_t *indices, size_t numVecs)
 {
     if (indices == nullptr || numVecs == 0)
@@ -291,6 +291,34 @@ idx_t MaxId(const idx_t *indices, size_t numVecs)
     }
     return *std::max_element(indices, indices + numVecs);
 }
+
+// Drains a writer's streams on every exit path. A write that bails out mid-tile must not leave work
+// queued on the stream, because the device buffers that work targets belong to a list the writer is
+// about to drop instead of publishing.
+class StreamDrainGuard
+{
+   public:
+    StreamDrainGuard(aclrtStream compute, aclrtStream aicpu) : compute_(compute), aicpu_(aicpu) {}
+
+    ~StreamDrainGuard()
+    {
+        if (compute_ != nullptr)
+        {
+            (void)synchronizeStream(compute_);
+        }
+        if (aicpu_ != nullptr)
+        {
+            (void)synchronizeStream(aicpu_);
+        }
+    }
+
+    StreamDrainGuard(const StreamDrainGuard &) = delete;
+    StreamDrainGuard &operator=(const StreamDrainGuard &) = delete;
+
+   private:
+    aclrtStream compute_{nullptr};
+    aclrtStream aicpu_{nullptr};
+};
 }  // namespace
 
 // Decides which absolute grid slot each block goes to: the i-th block emitted owns slot i, and the slot is
@@ -330,11 +358,119 @@ const int IVF_RABITQ_BLOCK_SIZE = 16384 * 2;
 // Tail allocation granularity, in vectors. A list grows its last segment in these steps instead of
 // reserving a whole IVF_RABITQ_BLOCK_SIZE segment up front, so a sparse index stays small.
 const size_t IVF_RABITQ_TAIL_GROWTH = IVF_RABITQ_BLOCK_SIZE / 8;
+// How much device memory retired snapshots may pin before writes are rejected. A retired snapshot is
+// only freed once the reader parked on it finishes, so a long-running search bounds how much a write
+// burst can accumulate.
+const size_t DEFAULT_RETIRED_MEMORY_HIGH_WATERMARK = 1024UL * 1024UL * 1024UL;
 const int SCAN_BIT = 8;
 const int LUT_NUM = std::pow(2, SCAN_BIT);
+
+thread_local const IndexIVFRaBitQ::GlobalSnapshot *IndexIVFRaBitQ::searchSnapshot = nullptr;
+
+IndexIVFRaBitQ::ExecutionContext::ExecutionContext(size_t memorySize) : memory(memorySize)
+{
+    ACL_REQUIRE_OK(aclrtCreateStream(&computeStream));
+    auto ret = aclrtCreateStream(&aicpuStream);
+    if (ret != ACL_ERROR_NONE)
+    {
+        (void)aclrtDestroyStream(computeStream);
+        computeStream = nullptr;
+        ASCEND_THROW_FMT("create aicpu stream failed, acl error %d", static_cast<int>(ret));
+    }
+}
+
+IndexIVFRaBitQ::ExecutionContext::~ExecutionContext()
+{
+    if (computeStream != nullptr)
+    {
+        (void)synchronizeStream(computeStream);
+        (void)aclrtDestroyStream(computeStream);
+    }
+    if (aicpuStream != nullptr)
+    {
+        (void)synchronizeStream(aicpuStream);
+        (void)aclrtDestroyStream(aicpuStream);
+    }
+}
+
+aclError IndexIVFRaBitQ::drainReaderStreams() const
+{
+    if (readerContext == nullptr)
+    {
+        return ACL_SUCCESS;
+    }
+    aclError ret = ACL_SUCCESS;
+    for (int attempt = 0; attempt < 2; ++attempt)
+    {
+        auto computeRet = synchronizeStream(readerContext->computeStream);
+        auto aicpuRet = synchronizeStream(readerContext->aicpuStream);
+        ret = computeRet != ACL_SUCCESS ? computeRet : aicpuRet;
+        if (ret == ACL_SUCCESS)
+        {
+            return ACL_SUCCESS;
+        }
+    }
+    return ret;
+}
+
+IndexIVFRaBitQ::SnapshotGuard::SnapshotGuard(const IndexIVFRaBitQ &index) : index_(index), readerLock_(index.readerLock)
+{
+    // A previous failed drain may still have work using its snapshot. Recover before overwriting its
+    // hazard or reusing reader scratch/filter buffers; a failed recovery leaves the old protection intact.
+    if (index_.readerDrainError.load(std::memory_order_acquire) != ACL_SUCCESS ||
+        index_.readerHazard.load(std::memory_order_acquire) != nullptr)
+    {
+        const auto ret = index_.drainReaderStreams();
+        index_.readerDrainError.store(ret, std::memory_order_release);
+        ASCEND_THROW_IF_NOT_FMT(ret == ACL_SUCCESS, "reader stream recovery failed %d; snapshot remains pinned", ret);
+        index_.readerHazard.store(nullptr, std::memory_order_seq_cst);
+    }
+    // Re-read after publishing to the hazard slot: if the writer swapped currentSnapshot in between,
+    // it may not have seen our store and could retire the snapshot we just claimed, so try again.
+    do
+    {
+        snapshot_ = index_.currentSnapshot.load(std::memory_order_acquire);
+        index_.readerHazard.store(snapshot_, std::memory_order_seq_cst);
+    } while (snapshot_ != index_.currentSnapshot.load(std::memory_order_seq_cst));
+}
+
+aclError IndexIVFRaBitQ::SnapshotGuard::finish()
+{
+    if (finished_)
+    {
+        return index_.readerDrainError.load(std::memory_order_acquire);
+    }
+    finished_ = true;
+    const auto ret = index_.drainReaderStreams();
+    index_.readerDrainError.store(ret, std::memory_order_release);
+    if (ret != ACL_SUCCESS)
+    {
+        APP_LOG_ERROR("Failed to drain reader streams: %d; snapshot stays pinned until recovery", ret);
+        return ret;
+    }
+    index_.readerHazard.store(nullptr, std::memory_order_release);
+    return ACL_SUCCESS;
+}
+
+IndexIVFRaBitQ::SnapshotGuard::~SnapshotGuard()
+{
+    // Explicit finish lets status-returning APIs propagate drain errors. Exception exits still retain
+    // the hazard on failure; the next guard must recover the streams before it can take over the slot.
+    (void)finish();
+}
+
+const IndexIVFRaBitQ::GlobalSnapshot &IndexIVFRaBitQ::SnapshotGuard::get() const
+{
+    ASCEND_THROW_IF_NOT(snapshot_ != nullptr);
+    return *snapshot_;
+}
 IndexIVFRaBitQ::IndexIVFRaBitQ(int numList, int dim, int nprobes, const std::string &metricType, int64_t resourceSize,
-                               int quantBits)
-    : IndexIVF(numList, dim * 4, dim, nprobes, resourceSize), blockSize(IVF_RABITQ_BLOCK_SIZE), quantBits_(quantBits)
+                               int quantBits, size_t retiredMemoryHighWatermark)
+    : IndexIVF(numList, dim * 4, dim, nprobes, resourceSize),
+      retiredMemoryHighWatermark(retiredMemoryHighWatermark == 0 ? DEFAULT_RETIRED_MEMORY_HIGH_WATERMARK
+                                                                 : retiredMemoryHighWatermark),
+      blockSize(IVF_RABITQ_BLOCK_SIZE),
+      quantBits_(quantBits)
 {
     ASCEND_THROW_IF_NOT(dim % CUBE_ALIGN == 0);
     ASCEND_THROW_IF_NOT_MSG(quantBits_ == 1 || quantBits_ == 2 || quantBits_ == 4,
@@ -359,6 +495,11 @@ IndexIVFRaBitQ::IndexIVFRaBitQ(int numList, int dim, int nprobes, const std::str
     isTrained = false;
     searchBatchSizes = {64, 32, 16, 8, 4, 2, 1};  // supported batch size
     listArena_ = std::make_shared<DeviceMemArena>();
+    // The base ctor has already applied resourceSize, so this is the temp memory size actually in
+    // effect (the configured default when resourceSize < 0).
+    const size_t executionMemorySize = resources.getResourceSize();
+    readerContext = std::make_unique<ExecutionContext>(executionMemorySize);
+    writerContext = std::make_unique<ExecutionContext>(executionMemorySize);
     initListStorage();
     originCentroidsOnDevice = CREATE_UNIQUE_PTR(DeviceVector<float>, MemorySpace::DEVICE_HUGEPAGE);
     originCentroidsOnDevice->resize(numList * dims);
@@ -414,88 +555,166 @@ IndexIVFRaBitQ::IndexIVFRaBitQ(int numList, int dim, int nprobes, const std::str
     ASCEND_THROW_IF_NOT_MSG(ret == APP_ERR_OK, "resetQueryLUTOp failed!");
 }
 
-namespace
-{
-// Rolls a list's segment geometry back to its committed length unless the write is explicitly marked
-// complete. ensureListCapacity grows segments_ up front, but every step after it -- three H2D copies, two
-// stream syncs, the id copy -- can return early, and none of them commit a new length. Without this the
-// list is left with segmentCount == ceil(newLen / blockSize) while listLen still holds the old value, so
-// sum(segmentLength) exceeds listLen: getListIds / getListRawCodes / CollectDeletedSlots then read slots
-// that were never written, and the host-side copies size their buffers from listLen and overflow them.
-//
-// Rolling back the segment count (rather than only fixing up lengths) also releases the segments the
-// aborted write had just allocated, so a failing add does not permanently inflate the list's footprint.
-class ListCapacityGuard
-{
-   public:
-    ListCapacityGuard(IndexIVFRaBitQ::ListStorage &list, size_t blockSize) : list_(list), blockSize_(blockSize) {}
-
-    ~ListCapacityGuard()
-    {
-        if (committed_)
-        {
-            return;
-        }
-        const size_t segments = utils::divUp(list_.listLen, blockSize_);
-        list_.codes.resizeSegments(segments);
-        list_.indexL1.resizeSegments(segments);
-        list_.indexL2.resizeSegments(segments);
-        list_.ids.resizeSegments(segments);
-    }
-
-    ListCapacityGuard(const ListCapacityGuard &) = delete;
-    ListCapacityGuard &operator=(const ListCapacityGuard &) = delete;
-
-    // Call once the four commitLength() calls and listLen have been updated consistently.
-    void commit() { committed_ = true; }
-
-   private:
-    IndexIVFRaBitQ::ListStorage &list_;
-    size_t blockSize_;
-    bool committed_{false};
-};
-}  // namespace
-
-void IndexIVFRaBitQ::initListStorage()
+std::unique_ptr<IndexIVFRaBitQ::GlobalSnapshot> IndexIVFRaBitQ::makeEmptySnapshot() const
 {
     ASCEND_THROW_IF_NOT_MSG(listArena_ != nullptr, "listArena_ is null");
 
     // Base IndexIVF's deviceListData/deviceListIndices stay unused: RaBitQ keeps codes, factors and ids
-    // in lists_ instead.
-    lists_.clear();
-    lists_.reserve(static_cast<size_t>(numLists));
-    // elementsPerSlot for codes is the quantised row width, so it has to follow quantBits_ -- a hardcoded
-    // (dims + 7) / 8 would size every slot for 1-bit and truncate 2/4-bit codes.
+    // in the snapshot's lists instead.
+    auto snapshot = std::make_unique<GlobalSnapshot>();
+    snapshot->lists.reserve(static_cast<size_t>(numLists));
     const size_t codePartBytes = getCodePartBytes();
     for (int i = 0; i < numLists; ++i)
     {
-        lists_.emplace_back(static_cast<size_t>(blockSize), IVF_RABITQ_TAIL_GROWTH, codePartBytes, listArena_);
+        snapshot->lists.push_back(std::make_shared<const ListStorage>(
+            static_cast<size_t>(blockSize), IVF_RABITQ_TAIL_GROWTH, codePartBytes, listArena_));
     }
+    return snapshot;
+}
+
+void IndexIVFRaBitQ::initListStorage()
+{
+    activeSnapshot = makeEmptySnapshot();
+    currentSnapshot.store(activeSnapshot.get(), std::memory_order_release);
+}
+
+std::unique_ptr<IndexIVFRaBitQ::GlobalSnapshot> IndexIVFRaBitQ::cloneSnapshot(const GlobalSnapshot &base) const
+{
+    return std::make_unique<GlobalSnapshot>(base);
+}
+
+size_t IndexIVFRaBitQ::retainedBytes(const GlobalSnapshot &snapshot) const
+{
+    size_t bytes = 0;
+    for (const auto &list : snapshot.lists)
+    {
+        // Shared with the snapshot that replaced it, so dropping this one frees nothing.
+        if (list.use_count() != 1)
+        {
+            continue;
+        }
+        bytes += list->codes.uniquelyOwnedBytes() + list->indexL1.uniquelyOwnedBytes() +
+                 list->indexL2.uniquelyOwnedBytes() + list->ids.uniquelyOwnedBytes();
+    }
+    return bytes;
+}
+
+void IndexIVFRaBitQ::reclaimRetiredSnapshots()
+{
+    const GlobalSnapshot *protectedSnapshot = readerHazard.load(std::memory_order_seq_cst);
+    for (auto it = retiredSnapshots.begin(); it != retiredSnapshots.end();)
+    {
+        if (it->snapshot.get() == protectedSnapshot)
+        {
+            ++it;
+            continue;
+        }
+        it = retiredSnapshots.erase(it);
+    }
+    // Erasing another version can make previously shared lists/segments exclusive to the pinned version.
+    // Measure after all erases, not when first encountering the hazard, or the watermark undercounts it.
+    retiredBytes = 0;
+    for (auto &retired : retiredSnapshots)
+    {
+        retired.bytes = retainedBytes(*retired.snapshot);
+        retiredBytes += retired.bytes;
+    }
+}
+
+void IndexIVFRaBitQ::publishSnapshot(std::unique_ptr<GlobalSnapshot> snapshot)
+{
+    ASCEND_THROW_IF_NOT(activeSnapshot != nullptr);
+    ASCEND_THROW_IF_NOT(snapshot != nullptr);
+    ASCEND_THROW_IF_NOT(activeSnapshot->publishVer != std::numeric_limits<uint64_t>::max());
+    snapshot->publishVer = activeSnapshot->publishVer + 1;
+
+    // Reserve before the swap so a bad_alloc cannot strand the snapshot readers are already on.
+    retiredSnapshots.reserve(retiredSnapshots.size() + 1);
+    std::unique_ptr<GlobalSnapshot> old = std::move(activeSnapshot);
+    activeSnapshot = std::move(snapshot);
+    // Join the hazard store, reader validation and reclamation scan in the same SC order: either
+    // validation sees the replacement, or the scan sees the reader's hazard before reclaiming `old`.
+    currentSnapshot.store(activeSnapshot.get(), std::memory_order_seq_cst);
+
+    // retainedBytes must be measured after the swap: a list is only uniquely owned by `old` once the
+    // new snapshot no longer references it.
+    const size_t bytes = retainedBytes(*old);
+    retiredSnapshots.push_back({std::move(old), bytes});
+    retiredBytes += bytes;
+    this->ntotal = activeSnapshot->total;
+    reclaimRetiredSnapshots();
+}
+
+APP_ERROR IndexIVFRaBitQ::checkRetiredMemory()
+{
+    const auto drainError = readerDrainError.load(std::memory_order_acquire);
+    APPERR_RETURN_IF_NOT_FMT(drainError == ACL_SUCCESS, APP_ERR_INNER_ERROR,
+                             "reader stream drain failed %d; retry a read or reset to recover before writing",
+                             drainError);
+    reclaimRetiredSnapshots();
+    APPERR_RETURN_IF_NOT_FMT(retiredBytes <= retiredMemoryHighWatermark, APP_ERR_ACL_BAD_ALLOC,
+                             "retired snapshots hold %zu bytes, above the %zu watermark; a long-running search is "
+                             "pinning superseded list segments",
+                             retiredBytes, retiredMemoryHighWatermark);
+    return APP_ERR_OK;
 }
 
 IndexIVFRaBitQ::~IndexIVFRaBitQ()
 {
-    // Segments hold raw pointers into listArena_, so drop them before the arena member is destroyed.
-    lists_.clear();
+    std::unique_lock<std::shared_mutex> lock(indexLock);
+    std::lock_guard<std::mutex> writeLock(writerLock);
+    if (readerContext != nullptr)
+    {
+        (void)synchronizeStream(readerContext->computeStream);
+        (void)synchronizeStream(readerContext->aicpuStream);
+    }
+    if (writerContext != nullptr)
+    {
+        (void)synchronizeStream(writerContext->computeStream);
+        (void)synchronizeStream(writerContext->aicpuStream);
+    }
+    readerHazard.store(nullptr, std::memory_order_release);
+    currentSnapshot.store(nullptr, std::memory_order_release);
+    // Segments hold raw pointers into listArena_, so drop every snapshot before the arena member is
+    // destroyed.
+    retiredSnapshots.clear();
+    activeSnapshot.reset();
 }
 
 APP_ERROR IndexIVFRaBitQ::reset()
 {
-    // Must precede the arena reset: the segments being dropped point into its slabs.
-    lists_.clear();
+    std::unique_lock<std::shared_mutex> lock(indexLock);
+    std::lock_guard<std::mutex> writeLock(writerLock);
 
-    if (listArena_ != nullptr)
+    // Prepare all host allocations before draining or changing recovery/publication state. Empty lists
+    // have no segments, so they can share the arena across Reset() without retaining slab pointers.
+    auto empty = makeEmptySnapshot();
+
+    // No device work may still reference the segments about to be freed. A failed reset keeps the old
+    // snapshots and hazard alive; only a confirmed drain can clear the recovery state.
+    const auto readerRet = drainReaderStreams();
+    readerDrainError.store(readerRet, std::memory_order_release);
+    APPERR_RETURN_IF_NOT_FMT(readerRet == ACL_SUCCESS, APP_ERR_INNER_ERROR, "reader stream recovery failed %d",
+                             readerRet);
+    if (writerContext != nullptr)
     {
-        listArena_->Reset();
+        APPERR_RETURN_IF(synchronizeStream(writerContext->computeStream) != ACL_SUCCESS, APP_ERR_INNER_ERROR);
+        APPERR_RETURN_IF(synchronizeStream(writerContext->aicpuStream) != ACL_SUCCESS, APP_ERR_INNER_ERROR);
     }
-    else
-    {
-        listArena_ = std::make_shared<DeviceMemArena>();
-    }
-    initListStorage();
+
+    // Must precede the arena reset: the segments being dropped point into its slabs. indexLock is held
+    // exclusively, so no reader can be parked on a retired snapshot here.
+    readerHazard.store(nullptr, std::memory_order_seq_cst);
+    currentSnapshot.store(nullptr, std::memory_order_release);
+    retiredSnapshots.clear();
+    retiredBytes = 0;
+    activeSnapshot.reset();
+
+    listArena_->Reset();
+    activeSnapshot = std::move(empty);
+    currentSnapshot.store(activeSnapshot.get(), std::memory_order_release);
     maxListLength = 0;
     this->ntotal = 0;
-    maxStoredId_ = 0;
 
     // 聚类中心、正交矩阵、LUT 和质心 L2 是训练结果，reset 后 add 仍要使用，不能释放。
     if (distResultOnDevice != nullptr)
@@ -507,8 +726,11 @@ APP_ERROR IndexIVFRaBitQ::reset()
     return APP_ERR_OK;
 }
 
+void IndexIVFRaBitQ::InvalidateCachedFilterPayload() { filterCacheEpoch.fetch_add(1, std::memory_order_release); }
+
 void IndexIVFRaBitQ::ClearCachedFilterPayload()
 {
+    InvalidateCachedFilterPayload();
     if (cachedFilterPayload != nullptr)
     {
         cachedFilterPayload->clear();
@@ -543,11 +765,12 @@ APP_ERROR IndexIVFRaBitQ::EnsureFilterPayloadOnDevice(const RabitqIdFilterHost *
     const bool needAlign = (idFilter->mode == aicpu::RABITQ_ID_FILTER_ROARING);
     const size_t allocBytes = needAlign ? (payloadBytes + kRoaringAlign) : payloadBytes;
 
+    const uint64_t epoch = filterCacheEpoch.load(std::memory_order_acquire);
     const bool cacheHit = (cachedFilterPayload != nullptr) && (cachedFilterPayload->size() >= allocBytes) &&
                           (cachedFilterSrc == src) && (cachedFilterBytes == payloadBytes) &&
                           (cachedFilterMode == idFilter->mode) && (cachedFilterNegate == idFilter->negate) &&
                           (cachedFilterAux0 == idFilter->aux0) && (cachedFilterAux1 == idFilter->aux1) &&
-                          (cachedFilterGeneration == idFilter->generation);
+                          (cachedFilterGeneration == idFilter->generation) && (cachedFilterEpoch == epoch);
     auto alignedSelPtr = [&]() -> int64_t
     {
         uint8_t *base = cachedFilterPayload->data();
@@ -591,6 +814,7 @@ APP_ERROR IndexIVFRaBitQ::EnsureFilterPayloadOnDevice(const RabitqIdFilterHost *
     cachedFilterAux0 = idFilter->aux0;
     cachedFilterAux1 = idFilter->aux1;
     cachedFilterGeneration = idFilter->generation;
+    cachedFilterEpoch = epoch;
     selPtr = alignedSelPtr();
     return APP_ERR_OK;
 }
@@ -602,10 +826,11 @@ APP_ERROR IndexIVFRaBitQ::EnsurePrefixFilterPayloadOnDevice(const RabitqIdFilter
 
     const void *src = idFilter->sortedPrefixPayload.data();
     const size_t payloadBytes = idFilter->sortedPrefixPayload.size();
+    const uint64_t epoch = filterCacheEpoch.load(std::memory_order_acquire);
     const bool cacheHit = (cachedPrefixFilterPayload != nullptr) &&
                           (cachedPrefixFilterPayload->size() >= payloadBytes) && (cachedPrefixFilterSrc == src) &&
                           (cachedPrefixFilterBytes == payloadBytes) &&
-                          (cachedPrefixFilterGeneration == idFilter->generation);
+                          (cachedPrefixFilterGeneration == idFilter->generation) && (cachedPrefixFilterEpoch == epoch);
     if (cacheHit)
     {
         selPtr = static_cast<int64_t>(reinterpret_cast<uintptr_t>(cachedPrefixFilterPayload->data()));
@@ -628,13 +853,13 @@ APP_ERROR IndexIVFRaBitQ::EnsurePrefixFilterPayloadOnDevice(const RabitqIdFilter
     cachedPrefixFilterSrc = src;
     cachedPrefixFilterBytes = payloadBytes;
     cachedPrefixFilterGeneration = idFilter->generation;
+    cachedPrefixFilterEpoch = epoch;
     selPtr = static_cast<int64_t>(reinterpret_cast<uintptr_t>(cachedPrefixFilterPayload->data()));
     return APP_ERR_OK;
 }
 
-// Grows the four vectors of one list to newLen slots. Not transactional on its own: the caller must pair
-// it with a ListCapacityGuard so a failure between here and commitLength cannot leave segmentCount and
-// listLen disagreeing (see the guard's comment).
+// Grows the writer's private list clone. An unsuccessful write discards the unpublished snapshot,
+// after StreamDrainGuard has drained work that targets its segments.
 void IndexIVFRaBitQ::ensureListCapacity(ListStorage &list, size_t newLen, aclrtStream stream)
 {
     list.codes.ensureCapacity(newLen, stream);
@@ -647,7 +872,13 @@ size_t IndexIVFRaBitQ::getListLength(int listId) const
 {
     ASCEND_THROW_IF_NOT((listId < numLists) && (listId >= 0));
 
-    return lists_[listId].listLen;
+    // Shared with searchImpl: without it reset() could free the arena while the snapshot is read.
+    std::shared_lock<std::shared_mutex> lock(indexLock);
+    SnapshotGuard guard(*this);
+    const auto len = guard.get().lists[listId]->listLen;
+    const auto ret = guard.finish();
+    ASCEND_THROW_IF_NOT_FMT(ret == ACL_SUCCESS, "reader stream drain failed %d; snapshot remains protected", ret);
+    return len;
 }
 
 void IndexIVFRaBitQ::uploadLUTMatrix()
@@ -700,9 +931,12 @@ APP_ERROR IndexIVFRaBitQ::updateCoarseCenterImpl(std::vector<float> &centerData)
         LogHostSampleRows("enter", centerData, numLists, dims);
     }
 
-    auto &mem = resources.getMemoryManager();
-    auto streamPtr = resources.getDefaultStream();
-    auto stream = streamPtr->GetStream();
+    // Exclusive: this replaces the centroids every list is encoded against, which no snapshot covers.
+    std::unique_lock<std::shared_mutex> lock(indexLock);
+    std::lock_guard<std::mutex> writeLock(writerLock);
+    auto &mem = writerContext->memory;
+    auto stream = writerContext->computeStream;
+    StreamDrainGuard drainGuard(stream, writerContext->aicpuStream);
 
     AscendTensor<float, DIMS_2> originCentroids(mem, {numLists, dims}, stream);
     // 聚类中心传到npu
@@ -837,8 +1071,17 @@ APP_ERROR IndexIVFRaBitQ::addVectors(int listId, size_t numVecs, const float *co
     APPERR_RETURN_IF_NOT_FMT(listId >= 0 && listId < numLists, APP_ERR_INVALID_PARAM,
                              "the listId is %d, out of numLists(%d)", listId, numLists);
     APPERR_RETURN_IF(numVecs == 0, APP_ERR_OK);
-    ClearCachedFilterPayload();
-    auto &list = lists_[listId];
+
+    std::shared_lock<std::shared_mutex> lock(indexLock);
+    std::lock_guard<std::mutex> writeLock(writerLock);
+    APPERR_RETURN_IF_NOT(activeSnapshot != nullptr, APP_ERR_INNER_ERROR);
+    auto memRet = checkRetiredMemory();
+    APPERR_RETURN_IF(memRet != APP_ERR_OK, memRet);
+
+    InvalidateCachedFilterPayload();
+    auto nextSnapshot = cloneSnapshot(*activeSnapshot);
+    auto listCopy = std::make_shared<ListStorage>(*nextSnapshot->lists[listId]);
+    auto &list = *listCopy;
     const size_t oldLen = list.listLen;
     const size_t newLen = oldLen + numVecs;
     if (MemDebugEnabled())
@@ -854,12 +1097,10 @@ APP_ERROR IndexIVFRaBitQ::addVectors(int listId, size_t numVecs, const float *co
         }
     }
 
-    auto &mem = resources.getMemoryManager();
-    auto streamPtr = resources.getDefaultStream();
-    auto stream = streamPtr->GetStream();
+    auto &mem = writerContext->memory;
+    auto stream = writerContext->computeStream;
+    StreamDrainGuard drainGuard(stream, writerContext->aicpuStream);
     ensureListCapacity(list, newLen, stream);
-    // Any early return between here and the commitLength block below rolls the segment count back.
-    ListCapacityGuard capacityGuard(list, static_cast<size_t>(blockSize));
     AscendTensor<float, DIMS_2> rotatematrixDev(OrthogonalMatrixOnDevice->data(), {dims, dims});
     AscendTensor<float, DIMS_2> centroidDev(centroidsOnDevice->data() + listId * dims, {1, dims});
     AscendTensor<float, DIMS_1> centroidl2Dev(CentroidL2OnDevice->data() + listId, {1});
@@ -893,13 +1134,11 @@ APP_ERROR IndexIVFRaBitQ::addVectors(int listId, size_t numVecs, const float *co
         // o = Por, ||or||^2 预计算
         runIndexRotateL2Op(indexOriginVec, vectorSizeVec, rotatematrixDev, indexRotateVec, indexL2Vec, stream);
         ret = synchronizeStream(stream);
-        APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "synchronizeStream default stream: %i\n",
-                                 ret);
+        APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "synchronizeStream writer stream: %i\n", ret);
         runIndexCodeAndPreComputeOp(vectorSizeVec, indexRotateVec, indexL2Vec, centroidDev, centroidl2Dev, indexCodes,
                                     indexesl2, indexesl1, stream);
         ret = synchronizeStream(stream);
-        APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "synchronizeStream default stream: %i\n",
-                                 ret);
+        APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "synchronizeStream writer stream: %i\n", ret);
         ret = aclrtMemcpy(list.ids.slot(slot), count * sizeof(idx_t), indices + inputOffset, count * sizeof(idx_t),
                           ACL_MEMCPY_HOST_TO_DEVICE);
         APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "copy ids to device failed %d", ret);
@@ -910,14 +1149,12 @@ APP_ERROR IndexIVFRaBitQ::addVectors(int listId, size_t numVecs, const float *co
     list.indexL2.commitLength(newLen);
     list.ids.commitLength(newLen);
     list.listLen = newLen;
-    capacityGuard.commit();
-    // From newLen, and after the commit: getListLength() reads list.listLen, which only takes its new value
-    // on the line above, so computing this any earlier would fold in the pre-append length and leave
-    // maxListLength short of what this call just stored. Mirrors addEncodedVectors.
+    nextSnapshot->lists[listId] = std::move(listCopy);
+    nextSnapshot->total += numVecs;
+    nextSnapshot->maxStoredId = std::max(nextSnapshot->maxStoredId, MaxId(indices, numVecs));
+    publishSnapshot(std::move(nextSnapshot));
     maxListLength = std::max(maxListLength, static_cast<int>(newLen));
     maxListLength = utils::roundUp(maxListLength, CUBE_ALIGN);
-    IndexIVF::ntotal += numVecs;
-    maxStoredId_ = std::max(maxStoredId_, MaxId(indices, numVecs));
     if (MemDebugEnabled() && listArena_ != nullptr)
     {
         static std::atomic<uint64_t> afterAddLogSeq{0};
@@ -927,9 +1164,9 @@ APP_ERROR IndexIVFRaBitQ::addVectors(int listId, size_t numVecs, const float *co
         {
             MemDebugPrintf(
                 "[MemDebug] IndexIVFRaBitQ::addVectors done listId=%d numVecs=%zu listLen=%zu "
-                "codeSegments=%zu codeBytes=%zu arenaReserved=%zu slabs=%zu\n",
+                "codeSegments=%zu codeBytes=%zu arenaReserved=%zu slabs=%zu retiredBytes=%zu\n",
                 listId, numVecs, newLen, list.codes.segmentCount(), list.codes.allocatedBytes(),
-                listArena_->TotalReservedBytes(), listArena_->SlabCount());
+                listArena_->TotalReservedBytes(), listArena_->SlabCount(), retiredBytes);
             LogHbm("IndexIVFRaBitQ_addVectors_after", -1);
         }
     }
@@ -1476,6 +1713,7 @@ void IndexIVFRaBitQ::fillDisOpInputDataByBlock(
     AscendTensor<int64_t, DIMS_1, size_t> &blockNumPerQHostVec, AscendTensor<int64_t, DIMS_2> &l1TopNprobeIndicesHost,
     AscendTensor<float, DIMS_2> &l1TopNprobeDistsHost, const int64_t *slotPlan, size_t maxBlocksPerQ)
 {
+    ASCEND_THROW_IF_NOT_MSG(searchSnapshot != nullptr, "fillDisOpInputDataByBlock called outside a search");
     for (size_t qIdx = 0; qIdx < batch; qIdx++)
     {
         int64_t blockNumPerQ = 0;
@@ -1486,7 +1724,7 @@ void IndexIVFRaBitQ::fillDisOpInputDataByBlock(
         {
             int64_t listId = l1TopNprobeIndicesHost[qIdx][tIdx].value();
             float centerl2 = l1TopNprobeDistsHost[qIdx][tIdx].value();
-            const auto &list = lists_[listId];
+            const auto &list = *searchSnapshot->lists[listId];
             size_t blockNum = list.codes.segmentCount();
             blockNumPerQ += blockNum;
             for (size_t segIdx = 0; segIdx < blockNum; segIdx++)
@@ -1640,8 +1878,8 @@ APP_ERROR IndexIVFRaBitQ::fillL2TopkOpInputData(int k, size_t batch, size_t core
     //
     // Gated additionally on every stored id fitting in uint32. The kernel's reservoir stores each candidate
     // as {float dist; uint32_t id} -- 8B with no padding, against 16B for an int64 id -- which halves the
-    // buffer and the cache lines a refill walks. The gate is on maxStoredId_, the running maximum of what
-    // the two ingest paths actually appended, and NOT on ntotal: ntotal is a count, the ids are caller
+    // buffer and the cache lines a refill walks. The gate is on this snapshot's maxStoredId, the maximum of
+    // the ids committed through both ingest paths, and NOT on ntotal: ntotal is a count, the ids are caller
     // labels, and nothing in addVectors/addEncodedVectors ties the two together. A caller passing sparse or
     // otherwise non-ordinal labels keeps ntotal small while pushing ids past 2^32, and gating on ntotal
     // would hand those to a path that truncates them to their low 32 bits -- returning a wrong label that
@@ -1651,7 +1889,8 @@ APP_ERROR IndexIVFRaBitQ::fillL2TopkOpInputData(int k, size_t batch, size_t core
     // Past the bound we fall back to the k-heap path, which keeps full-width ids -- the reservoir is a
     // performance option, so declining it is always safe, whereas truncating would silently return wrong
     // labels.
-    const bool idsFitUint32 = (maxStoredId_ <= static_cast<idx_t>(UINT32_MAX));
+    ASCEND_THROW_IF_NOT_MSG(searchSnapshot != nullptr, "fillL2TopkOpInputData called outside a search");
+    const bool idsFitUint32 = (searchSnapshot->maxStoredId <= static_cast<idx_t>(UINT32_MAX));
     if (IsEnvSwitchOn("IVFRABITQ_TOPK_RESERVOIR", true) && idsFitUint32)
     {
         queryNumAttr |= aicpu::TOPK_IVF_RABITQ_RESERVOIR_FLAG;
@@ -1739,12 +1978,13 @@ size_t IndexIVFRaBitQ::getMaxListNum(size_t batch, AscendTensor<int64_t, DIMS_2>
                                      float *distances, idx_t *labels) const
 {
     size_t maxLen = 0;
+    ASCEND_THROW_IF_NOT_MSG(searchSnapshot != nullptr, "getMaxListNum called outside a search");
     for (size_t qIdx = 0; qIdx < batch; qIdx++)
     {
         for (size_t probId = 0; probId < static_cast<size_t>(l1TopNprobeIndicesHost.getSize(1)); probId++)
         {
             int64_t listId = l1TopNprobeIndicesHost[qIdx][probId].value();
-            size_t listNum = lists_[listId].listLen;
+            size_t listNum = searchSnapshot->lists[listId]->listLen;
             maxLen = maxLen > listNum ? maxLen : listNum;
         }
     }
@@ -1767,12 +2007,13 @@ size_t IndexIVFRaBitQ::getTotalBlockNum(size_t batch, AscendTensor<int64_t, DIMS
                                         float *distances, idx_t *labels) const
 {
     size_t totalBlockNum = 0;
+    ASCEND_THROW_IF_NOT_MSG(searchSnapshot != nullptr, "getTotalBlockNum called outside a search");
     for (size_t qIdx = 0; qIdx < batch; qIdx++)
     {
         for (size_t probId = 0; probId < static_cast<size_t>(l1TopNprobeIndicesHost.getSize(1)); probId++)
         {
             int64_t listId = l1TopNprobeIndicesHost[qIdx][probId].value();
-            size_t blockNum = lists_[listId].codes.segmentCount();
+            size_t blockNum = searchSnapshot->lists[listId]->codes.segmentCount();
             totalBlockNum += blockNum;
         }
     }
@@ -1804,7 +2045,8 @@ size_t IndexIVFRaBitQ::getBlockNumPerQ(size_t batch, AscendTensor<int64_t, DIMS_
         for (size_t probId = 0; probId < static_cast<size_t>(l1TopNprobeIndicesHost.getSize(1)); probId++)
         {
             int64_t listId = l1TopNprobeIndicesHost[qIdx][probId].value();
-            blockNum += static_cast<int64_t>(lists_[listId].codes.segmentCount());
+            ASCEND_THROW_IF_NOT(searchSnapshot != nullptr);
+            blockNum += static_cast<int64_t>(searchSnapshot->lists.at(listId)->codes.segmentCount());
         }
         blockNumPerQ[qIdx] = blockNum;
         maxBlocksPerQ = std::max(maxBlocksPerQ, static_cast<size_t>(blockNum));
@@ -1830,11 +2072,9 @@ APP_ERROR IndexIVFRaBitQ::searchImplL2(AscendTensor<float, DIMS_2> &queries, Asc
                                        AscendTensor<float, DIMS_2> &l1TopNprobeDistsHost, int k, float *distances,
                                        idx_t *labels, const RabitqIdFilterHost *idFilter)
 {
-    auto &mem = resources.getMemoryManager();
-    auto streamPtr = resources.getDefaultStream();
-    auto stream = streamPtr->GetStream();
-    auto streamAicpuPtr = resources.getAlternateStreams()[0];
-    auto streamAicpu = streamAicpuPtr->GetStream();
+    auto &mem = readerContext->memory;
+    auto stream = readerContext->computeStream;
+    auto streamAicpu = readerContext->aicpuStream;
     size_t batch = static_cast<size_t>(queries.getSize(0));
     size_t coreNum = static_cast<size_t>(CORE_NUM);
     size_t ivfRabitqBlockSize = static_cast<size_t>(IVF_RABITQ_BLOCK_SIZE);
@@ -2023,9 +2263,8 @@ APP_ERROR IndexIVFRaBitQ::searchImplL1(AscendTensor<float, DIMS_2> &queries, Asc
                                        AscendTensor<int64_t, DIMS_2> &l1TopNprobeIndicesHost,
                                        AscendTensor<float, DIMS_2> &l1TopNprobeDistsHost, int probeK)
 {
-    auto &mem = resources.getMemoryManager();
-    auto streamPtr = resources.getDefaultStream();
-    auto stream = streamPtr->GetStream();
+    auto &mem = readerContext->memory;
+    auto stream = readerContext->computeStream;
     int n = queries.getSize(0);
     AscendTensor<float, DIMS_2> rotatematrixDev(OrthogonalMatrixOnDevice->data(), {dims, dims});
     AscendTensor<int32_t, DIMS_1> vectorSizeVec(mem, {1}, stream);
@@ -2036,8 +2275,7 @@ APP_ERROR IndexIVFRaBitQ::searchImplL1(AscendTensor<float, DIMS_2> &queries, Asc
     APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "copy vectorSize to device failed %d", ret);
     runQueryRotateL2Op(n, queries, vectorSizeVec, rotatematrixDev, rotateQueries, queryL2, stream);
 
-    auto streamAicpuPtr = resources.getAlternateStreams()[0];
-    auto streamAicpu = streamAicpuPtr->GetStream();
+    auto streamAicpu = readerContext->aicpuStream;
     // L1 dist op output: dists / vmdists / opFlag
     AscendTensor<float, DIMS_2> dists(mem, {n, numLists}, stream);
     int minDistSize = numLists / IVF_RABITQ_BURST_LEN * 2;
@@ -2161,9 +2399,8 @@ APP_ERROR IndexIVFRaBitQ::searchImplL1(AscendTensor<float, DIMS_2> &queries, Asc
 APP_ERROR IndexIVFRaBitQ::searchWithBatch(int n, const float *x, int k, float *distances, idx_t *labels,
                                           const float *srcIndexes, const RabitqIdFilterHost *idFilter, int searchNprobe)
 {
-    auto &mem = resources.getMemoryManager();
-    auto streamPtr = resources.getDefaultStream();
-    auto stream = streamPtr->GetStream();
+    auto &mem = readerContext->memory;
+    auto stream = readerContext->computeStream;
     const int probeK = searchNprobe > 0 ? searchNprobe : nprobe;
     AscendTensor<float, DIMS_2> queries(mem, {n, dims}, stream);
     AscendTensor<float, DIMS_2> rotateQueries(mem, {n, dims}, stream);
@@ -2208,11 +2445,16 @@ APP_ERROR IndexIVFRaBitQ::getListIds(int listId, std::vector<int64_t> &ids) cons
 {
     APPERR_RETURN_IF_NOT_FMT(listId >= 0 && listId < numLists, APP_ERR_INVALID_PARAM, "listId %d out of range [0, %d)",
                              listId, numLists);
-    const auto &list = lists_[listId];
+    // Shared with searchImpl: without it reset() could free the arena while the snapshot is read.
+    std::shared_lock<std::shared_mutex> lock(indexLock);
+    SnapshotGuard guard(*this);
+    const auto &list = *guard.get().lists[listId];
     size_t len = list.listLen;
     ids.resize(len);
     if (len == 0)
     {
+        const auto ret = guard.finish();
+        APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "reader stream drain failed %d", ret);
         return APP_ERR_OK;
     }
 
@@ -2235,6 +2477,8 @@ APP_ERROR IndexIVFRaBitQ::getListIds(int listId, std::vector<int64_t> &ids) cons
         copied += count;
     }
     APPERR_RETURN_IF_NOT_FMT(copied == len, APP_ERR_INNER_ERROR, "copied %zu ids, expected %zu", copied, len);
+    const auto drainRet = guard.finish();
+    APPERR_RETURN_IF_NOT_FMT(drainRet == ACL_SUCCESS, APP_ERR_INNER_ERROR, "reader stream drain failed %d", drainRet);
     return APP_ERR_OK;
 }
 
@@ -2243,7 +2487,10 @@ APP_ERROR IndexIVFRaBitQ::getListRawCodes(int listId, std::vector<uint8_t> &rawC
     APPERR_RETURN_IF_NOT_FMT(listId >= 0 && listId < numLists, APP_ERR_INVALID_PARAM, "listId %d out of range [0, %d)",
                              listId, numLists);
 
-    const auto &list = lists_[listId];
+    // Shared with searchImpl: without it reset() could free the arena while the snapshot is read.
+    std::shared_lock<std::shared_mutex> lock(indexLock);
+    SnapshotGuard guard(*this);
+    const auto &list = *guard.get().lists[listId];
     size_t numVecs = list.listLen;
     size_t codeSizePerVec = getCodeSize();
     size_t totalBytes = numVecs * codeSizePerVec;
@@ -2251,15 +2498,13 @@ APP_ERROR IndexIVFRaBitQ::getListRawCodes(int listId, std::vector<uint8_t> &rawC
 
     if (numVecs == 0)
     {
+        const auto ret = guard.finish();
+        APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "reader stream drain failed %d", ret);
         return APP_ERR_OK;
     }
 
-    // 同步默认流，确保之前的所有设备操作已完成
-    auto streamPtr = resources.getDefaultStream();
-    auto stream = streamPtr->GetStream();
-    auto retSync = synchronizeStream(stream);
-    APPERR_RETURN_IF_NOT_LOG(retSync == ACL_SUCCESS, APP_ERR_INNER_ERROR,
-                             "synchronizeStream failed before getListRawCodes");
+    // No stream sync needed: a writer drains its stream before publishing, so every segment reachable
+    // through this snapshot is already fully written.
 
     // 布局：[所有压缩码][所有 L2 因子][所有 L1 因子]
     size_t codePartBytesPerVec = getCodePartBytes();
@@ -2301,6 +2546,8 @@ APP_ERROR IndexIVFRaBitQ::getListRawCodes(int listId, std::vector<uint8_t> &rawC
     APPERR_RETURN_IF_NOT_FMT(copied == codePartTotal, APP_ERR_INNER_ERROR,
                              "Copied %zu bytes, expected %zu for code part", copied, codePartTotal);
 
+    const auto drainRet = guard.finish();
+    APPERR_RETURN_IF_NOT_FMT(drainRet == ACL_SUCCESS, APP_ERR_INNER_ERROR, "reader stream drain failed %d", drainRet);
     return APP_ERR_OK;
 }
 
@@ -2326,15 +2573,23 @@ APP_ERROR IndexIVFRaBitQ::addEncodedVectors(int listId, size_t numVecs, const ui
     APPERR_RETURN_IF_NOT_FMT(listId >= 0 && listId < numLists, APP_ERR_INVALID_PARAM,
                              "the listId is %d, out of numLists(%d)", listId, numLists);
     APPERR_RETURN_IF(numVecs == 0, APP_ERR_OK);
-    auto &list = lists_[listId];
+
+    std::shared_lock<std::shared_mutex> lock(indexLock);
+    std::lock_guard<std::mutex> writeLock(writerLock);
+    APPERR_RETURN_IF_NOT(activeSnapshot != nullptr, APP_ERR_INNER_ERROR);
+    auto memRet = checkRetiredMemory();
+    APPERR_RETURN_IF(memRet != APP_ERR_OK, memRet);
+
+    InvalidateCachedFilterPayload();
+    auto nextSnapshot = cloneSnapshot(*activeSnapshot);
+    auto listCopy = std::make_shared<ListStorage>(*nextSnapshot->lists[listId]);
+    auto &list = *listCopy;
     const size_t oldLen = list.listLen;
     const size_t newLen = oldLen + numVecs;
 
-    auto streamPtr = resources.getDefaultStream();
-    auto stream = streamPtr->GetStream();
+    auto stream = writerContext->computeStream;
+    StreamDrainGuard drainGuard(stream, writerContext->aicpuStream);
     ensureListCapacity(list, newLen, stream);
-    // Any early return between here and the commitLength block below rolls the segment count back.
-    ListCapacityGuard capacityGuard(list, static_cast<size_t>(blockSize));
 
     size_t codePartBytes = getCodePartBytes();  // 压缩码部分字节数
     size_t factorBytes = sizeof(float);         // 每个因子字节数
@@ -2385,13 +2640,12 @@ APP_ERROR IndexIVFRaBitQ::addEncodedVectors(int listId, size_t numVecs, const ui
     list.indexL2.commitLength(newLen);
     list.ids.commitLength(newLen);
     list.listLen = newLen;
-    capacityGuard.commit();
-    // Kept after the commit to match addVectors: on a failure before this point the guard rolls the segment
-    // count back, so maxListLength must not have been raised for a write that never landed.
+    nextSnapshot->lists[listId] = std::move(listCopy);
+    nextSnapshot->total += numVecs;
+    nextSnapshot->maxStoredId = std::max(nextSnapshot->maxStoredId, MaxId(indices, numVecs));
+    publishSnapshot(std::move(nextSnapshot));
     maxListLength = std::max(maxListLength, static_cast<int>(newLen));
     maxListLength = utils::roundUp(maxListLength, CUBE_ALIGN);
-    IndexIVF::ntotal += numVecs;
-    maxStoredId_ = std::max(maxStoredId_, MaxId(indices, numVecs));
 
     return APP_ERR_OK;
 }
@@ -2500,49 +2754,69 @@ void IndexIVFRaBitQ::refine(int n, const float *x, int k, float *distances, idx_
 APP_ERROR IndexIVFRaBitQ::searchImpl(int n, const float *x, int k, float *distances, idx_t *labels,
                                      const float *srcIndexes, const RabitqIdFilterHost *idFilter, int searchNprobe)
 {
-    APP_ERROR ret = APP_ERR_OK;
-    if (n == 1 || searchBatchSizes.empty())
+    // One snapshot for the whole request, including every batch below, so results cannot mix list
+    // contents from before and after a concurrent write.
+    std::shared_lock<std::shared_mutex> lock(indexLock);
+    SnapshotGuard guard(*this);
+    searchSnapshot = &guard.get();
+    // The thread_local must not outlive the guard: the next search on this thread would otherwise see
+    // a snapshot it is not holding a hazard on.
+    struct SearchSnapshotReset
     {
-        return searchWithBatch(n, x, k, distances, labels, srcIndexes, idFilter, searchNprobe);
-    }
-    size_t size = searchBatchSizes.size();
-    int64_t searched = 0;
-    for (size_t i = 0; i < size; i++)
+        ~SearchSnapshotReset() { searchSnapshot = nullptr; }
+    } snapshotReset;
+
+    auto searchPinnedSnapshot = [&]() -> APP_ERROR
     {
-        int64_t batchSize = searchBatchSizes[i];
-        if ((n - searched) >= batchSize)
+        APP_ERROR ret = APP_ERR_OK;
+        if (n == 1 || searchBatchSizes.empty())
         {
-            int64_t page = (n - searched) / batchSize;
-            for (int64_t j = 0; j < page; j++)
+            return searchWithBatch(n, x, k, distances, labels, srcIndexes, idFilter, searchNprobe);
+        }
+        size_t size = searchBatchSizes.size();
+        int64_t searched = 0;
+        for (size_t i = 0; i < size; i++)
+        {
+            int64_t batchSize = searchBatchSizes[i];
+            if ((n - searched) >= batchSize)
             {
-                ret = searchWithBatch(batchSize, x + searched * dims, k, distances + searched * k,
-                                      labels + searched * k, srcIndexes, idFilter, searchNprobe);
-                APPERR_RETURN_IF(ret, ret);
-                searched += batchSize;
+                int64_t page = (n - searched) / batchSize;
+                for (int64_t j = 0; j < page; j++)
+                {
+                    ret = searchWithBatch(batchSize, x + searched * dims, k, distances + searched * k,
+                                          labels + searched * k, srcIndexes, idFilter, searchNprobe);
+                    APPERR_RETURN_IF(ret, ret);
+                    searched += batchSize;
+                }
             }
         }
-    }
-    for (int64_t i = searched; i < n; i++)
-    {
-        ret =
-            searchWithBatch(1, x + i * dims, k, distances + i * k, labels + i * k, srcIndexes, idFilter, searchNprobe);
-        APPERR_RETURN_IF(ret, ret);
-    }
-    return APP_ERR_OK;
+        for (int64_t i = searched; i < n; i++)
+        {
+            ret = searchWithBatch(1, x + i * dims, k, distances + i * k, labels + i * k, srcIndexes, idFilter,
+                                  searchNprobe);
+            APPERR_RETURN_IF(ret, ret);
+        }
+        return APP_ERR_OK;
+    };
+    const auto ret = searchPinnedSnapshot();
+    const auto drainRet = guard.finish();
+    APPERR_RETURN_IF_NOT_FMT(drainRet == ACL_SUCCESS, APP_ERR_INNER_ERROR,
+                             "reader stream drain failed %d; snapshot remains protected", drainRet);
+    return ret;
 }
 
-void IndexIVFRaBitQ::compactList(int listId, std::vector<size_t> &deletedSlots)
+APP_ERROR IndexIVFRaBitQ::compactList(const ListStorage &oldList, ListStorage &newList,
+                                      std::vector<size_t> &deletedSlots, aclrtStream stream)
 {
-    auto &list = lists_[listId];
     std::sort(deletedSlots.begin(), deletedSlots.end());
     deletedSlots.erase(std::unique(deletedSlots.begin(), deletedSlots.end()), deletedSlots.end());
     if (deletedSlots.empty())
     {
-        return;
+        return APP_ERR_OK;
     }
-    const size_t oldLen = list.listLen;
-    ASCEND_THROW_IF_NOT(deletedSlots.size() <= oldLen);
-    ASCEND_THROW_IF_NOT(deletedSlots.back() < oldLen);
+    const size_t oldLen = oldList.listLen;
+    APPERR_RETURN_IF_NOT(deletedSlots.size() <= oldLen, APP_ERR_INNER_ERROR);
+    APPERR_RETURN_IF_NOT(deletedSlots.back() < oldLen, APP_ERR_INNER_ERROR);
     const size_t newLen = oldLen - deletedSlots.size();
 
     // Deleted slots below newLen are holes to fill; surviving slots at or above newLen are the sources
@@ -2564,38 +2838,61 @@ void IndexIVFRaBitQ::compactList(int listId, std::vector<size_t> &deletedSlots)
             sources.push_back(slot);
         }
     }
-    ASCEND_THROW_IF_NOT(holes.size() == sources.size());
+    APPERR_RETURN_IF_NOT(holes.size() == sources.size(), APP_ERR_INNER_ERROR);
 
-    const size_t codeBytes = list.codes.elementsPerSlot() * sizeof(uint8_t);
+    // Unlike an append, compaction overwrites slots below the old length, which a reader on the
+    // previous snapshot is still scanning. Every segment that receives a move must therefore be cloned
+    // before it is touched, and the tail segment too because it is the one that gets truncated.
+    std::unordered_set<size_t> targetSegments;
+    for (size_t slot : holes)
+    {
+        targetSegments.insert(slot / static_cast<size_t>(blockSize));
+    }
+    if (newLen != 0)
+    {
+        targetSegments.insert((newLen - 1) / static_cast<size_t>(blockSize));
+    }
+    // Clone each segment at its existing allocated size. Rounding up to blockSize here would undo the
+    // tail-growth saving that keeps a sparse list from reserving a whole segment.
+    const size_t oldSegments = oldList.codes.segmentCount();
+    const size_t tailCapacity = oldList.codes.capacity() - (oldSegments - 1) * static_cast<size_t>(blockSize);
+    for (size_t segmentId : targetSegments)
+    {
+        const size_t capacity = segmentId + 1 < oldSegments ? static_cast<size_t>(blockSize) : tailCapacity;
+        newList.codes.adoptClonedSegment(segmentId, oldList.codes, capacity, stream);
+        newList.indexL1.adoptClonedSegment(segmentId, oldList.indexL1, capacity, stream);
+        newList.indexL2.adoptClonedSegment(segmentId, oldList.indexL2, capacity, stream);
+        newList.ids.adoptClonedSegment(segmentId, oldList.ids, capacity, stream);
+    }
+
+    const size_t codeBytes = oldList.codes.elementsPerSlot() * sizeof(uint8_t);
     for (size_t i = 0; i < holes.size(); ++i)
     {
-        auto ret = aclrtMemcpy(list.codes.slot(holes[i]), codeBytes, list.codes.slot(sources[i]), codeBytes,
-                               ACL_MEMCPY_DEVICE_TO_DEVICE);
-        ASCEND_THROW_IF_NOT_FMT(ret == ACL_SUCCESS, "Memcpy error %d", ret);
-        ret = aclrtMemcpy(list.indexL1.slot(holes[i]), sizeof(float), list.indexL1.slot(sources[i]), sizeof(float),
-                          ACL_MEMCPY_DEVICE_TO_DEVICE);
-        ASCEND_THROW_IF_NOT_FMT(ret == ACL_SUCCESS, "Memcpy error %d", ret);
-        ret = aclrtMemcpy(list.indexL2.slot(holes[i]), sizeof(float), list.indexL2.slot(sources[i]), sizeof(float),
-                          ACL_MEMCPY_DEVICE_TO_DEVICE);
-        ASCEND_THROW_IF_NOT_FMT(ret == ACL_SUCCESS, "Memcpy error %d", ret);
-        ret = aclrtMemcpy(list.ids.slot(holes[i]), sizeof(idx_t), list.ids.slot(sources[i]), sizeof(idx_t),
-                          ACL_MEMCPY_DEVICE_TO_DEVICE);
-        ASCEND_THROW_IF_NOT_FMT(ret == ACL_SUCCESS, "Memcpy error %d", ret);
+        auto copy = [stream](void *dst, size_t dstBytes, const void *src, size_t bytes)
+        {
+            auto ret = aclrtMemcpyAsync(dst, dstBytes, src, bytes, ACL_MEMCPY_DEVICE_TO_DEVICE, stream);
+            ASCEND_THROW_IF_NOT_FMT(ret == ACL_SUCCESS, "compact copy failed %d", ret);
+        };
+        copy(newList.codes.slot(holes[i]), codeBytes, oldList.codes.slot(sources[i]), codeBytes);
+        copy(newList.indexL1.slot(holes[i]), sizeof(float), oldList.indexL1.slot(sources[i]), sizeof(float));
+        copy(newList.indexL2.slot(holes[i]), sizeof(float), oldList.indexL2.slot(sources[i]), sizeof(float));
+        copy(newList.ids.slot(holes[i]), sizeof(idx_t), oldList.ids.slot(sources[i]), sizeof(idx_t));
     }
 
     const size_t segmentCount = utils::divUp(newLen, static_cast<size_t>(blockSize));
-    list.codes.resizeSegments(segmentCount);
-    list.indexL1.resizeSegments(segmentCount);
-    list.indexL2.resizeSegments(segmentCount);
-    list.ids.resizeSegments(segmentCount);
-    list.codes.commitLength(newLen);
-    list.indexL1.commitLength(newLen);
-    list.indexL2.commitLength(newLen);
-    list.ids.commitLength(newLen);
-    list.listLen = newLen;
+    newList.codes.resizeSegments(segmentCount);
+    newList.indexL1.resizeSegments(segmentCount);
+    newList.indexL2.resizeSegments(segmentCount);
+    newList.ids.resizeSegments(segmentCount);
+    newList.codes.commitLength(newLen);
+    newList.indexL1.commitLength(newLen);
+    newList.indexL2.commitLength(newLen);
+    newList.ids.commitLength(newLen);
+    newList.listLen = newLen;
+    return APP_ERR_OK;
 }
 
-// Collect the slots of `listId` whose id satisfies `isDeleted`, scanning one segment at a time.
+// Collect the slots of `list` whose id satisfies `isDeleted`, scanning one segment at a time.
 template <typename Pred>
 static void CollectDeletedSlots(const IndexIVFRaBitQ::ListStorage &list, size_t blockSize, Pred &&isDeleted,
                                 std::vector<size_t> &deletedSlots)
@@ -2629,49 +2926,113 @@ static void CollectDeletedSlots(const IndexIVFRaBitQ::ListStorage &list, size_t 
     }
 }
 
-size_t IndexIVFRaBitQ::removeIds(const ascend::IDSelector &sel)
+APP_ERROR IndexIVFRaBitQ::removeIdsInternal(const std::unordered_set<idx_t> &ids, size_t *removed)
 {
-    ClearCachedFilterPayload();
-    size_t removeCntAll = 0;
-#pragma omp parallel for reduction(+ : removeCntAll) num_threads(CommonUtils::GetThreadMaxNums())
-    for (int id = 0; id < numLists; id++)
+    if (removed != nullptr)
     {
+        *removed = 0;
+    }
+    APPERR_RETURN_IF(ids.empty(), APP_ERR_OK);
+
+    std::shared_lock<std::shared_mutex> lock(indexLock);
+    std::lock_guard<std::mutex> writeLock(writerLock);
+    APPERR_RETURN_IF_NOT(activeSnapshot != nullptr, APP_ERR_INNER_ERROR);
+    auto memRet = checkRetiredMemory();
+    APPERR_RETURN_IF(memRet != APP_ERR_OK, memRet);
+
+    InvalidateCachedFilterPayload();
+    const GlobalSnapshot &base = *activeSnapshot;
+    auto nextSnapshot = cloneSnapshot(base);
+    auto stream = writerContext->computeStream;
+    StreamDrainGuard drainGuard(stream, writerContext->aicpuStream);
+
+    // Serial over lists: the previous parallel-for is gone because all writers now share one writer
+    // stream and one snapshot under construction.
+    size_t removeCntAll = 0;
+    for (int listId = 0; listId < numLists; ++listId)
+    {
+        const auto &oldList = *base.lists[listId];
         std::vector<size_t> deletedSlots;
         CollectDeletedSlots(
-            lists_[id], static_cast<size_t>(blockSize), [&sel](idx_t vecId) { return sel.is_member(vecId); },
+            oldList, static_cast<size_t>(blockSize), [&ids](idx_t vecId) { return ids.find(vecId) != ids.end(); },
             deletedSlots);
         if (deletedSlots.empty())
         {
             continue;
         }
-        compactList(id, deletedSlots);
-        removeCntAll += deletedSlots.size();
+        const size_t removedHere = deletedSlots.size();
+        auto listCopy = std::make_shared<ListStorage>(oldList);
+        auto ret = compactList(oldList, *listCopy, deletedSlots, stream);
+        APPERR_RETURN_IF(ret != APP_ERR_OK, ret);
+        nextSnapshot->lists[listId] = std::move(listCopy);
+        removeCntAll += removedHere;
     }
-    this->ntotal -= removeCntAll;
-    return removeCntAll;
+    if (removeCntAll == 0)
+    {
+        return APP_ERR_OK;
+    }
+
+    auto ret = synchronizeStream(stream);
+    APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "synchronizeStream after remove failed %d", ret);
+    nextSnapshot->total -= removeCntAll;
+    publishSnapshot(std::move(nextSnapshot));
+    if (removed != nullptr)
+    {
+        *removed = removeCntAll;
+    }
+    return APP_ERR_OK;
+}
+
+size_t IndexIVFRaBitQ::removeIds(const ascend::IDSelector &sel)
+{
+    // The selector can only be evaluated against ids actually stored, so gather the matching ids from
+    // the snapshot first and then go through the common remove path.
+    std::unordered_set<idx_t> ids;
+    {
+        // Released before removeIdsInternal, which acquires both locks itself. Holding either across
+        // the call would deadlock on writerLock and risk it on a writer-preferring shared_mutex.
+        std::shared_lock<std::shared_mutex> lock(indexLock);
+        SnapshotGuard guard(*this);
+        std::vector<idx_t> segIds;
+        for (const auto &list : guard.get().lists)
+        {
+            for (size_t segId = 0; segId < list->ids.segmentCount(); ++segId)
+            {
+                const size_t count = list->ids.segmentLength(segId);
+                if (count == 0)
+                {
+                    continue;
+                }
+                segIds.resize(count);
+                auto ret = aclrtMemcpy(segIds.data(), count * sizeof(idx_t), list->ids.segmentData(segId),
+                                       count * sizeof(idx_t), ACL_MEMCPY_DEVICE_TO_HOST);
+                ASCEND_THROW_IF_NOT_FMT(ret == ACL_SUCCESS, "Memcpy error %d", ret);
+                for (size_t j = 0; j < count; ++j)
+                {
+                    if (sel.is_member(segIds[j]))
+                    {
+                        ids.insert(segIds[j]);
+                    }
+                }
+            }
+        }
+        const auto drainRet = guard.finish();
+        ASCEND_THROW_IF_NOT_FMT(drainRet == ACL_SUCCESS, "reader stream drain failed %d; snapshot remains protected",
+                                drainRet);
+    }
+
+    size_t removed = 0;
+    auto ret = removeIdsInternal(ids, &removed);
+    ASCEND_THROW_IF_NOT_FMT(ret == APP_ERR_OK, "removeIds failed %d", ret);
+    return removed;
 }
 
 APP_ERROR IndexIVFRaBitQ::removeIds(size_t numVecs, const idx_t *indices)
 {
     APPERR_RETURN_IF(numVecs == 0, APP_ERR_OK);
-    ClearCachedFilterPayload();
+    APPERR_RETURN_IF_NOT(indices != nullptr, APP_ERR_INVALID_PARAM);
     std::unordered_set<idx_t> deleteSet(indices, indices + numVecs);
-    size_t removeCntAll = 0;
-    for (int id = 0; id < numLists; id++)
-    {
-        std::vector<size_t> deletedSlots;
-        CollectDeletedSlots(
-            lists_[id], static_cast<size_t>(blockSize),
-            [&deleteSet](idx_t vecId) { return deleteSet.find(vecId) != deleteSet.end(); }, deletedSlots);
-        if (deletedSlots.empty())
-        {
-            continue;
-        }
-        compactList(id, deletedSlots);
-        removeCntAll += deletedSlots.size();
-    }
-    this->ntotal -= removeCntAll;
-    return APP_ERR_OK;
+    return removeIdsInternal(deleteSet, nullptr);
 }
 
 APP_ERROR IndexIVFRaBitQ::searchImpl(int n, const float16_t *x, int k, float16_t *distances, idx_t *labels)

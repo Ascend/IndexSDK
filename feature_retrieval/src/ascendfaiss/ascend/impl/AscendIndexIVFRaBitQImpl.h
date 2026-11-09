@@ -24,10 +24,10 @@
 #include <random>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 #include "ascend/AscendIndexIVFRaBitQ.h"
 #include "ascend/impl/AscendIndexIVFImpl.h"
-#include "ascend/utils/AscendIVFAddInfo.h"
 #include "ascenddaemon/impl/IndexIVFFlat.h"
 #include "ascenddaemon/impl/IndexIVFRaBitQ.h"
 #include "common/RabitqIdFilter.h"
@@ -74,12 +74,17 @@ class AscendIndexIVFRaBitQImpl : public AscendIndexIVFImpl
     AscendIndexIVFRaBitQImpl &operator=(const AscendIndexIVFRaBitQImpl &) = delete;
     AscendIndexIVFRaBitQImpl(AscendIndexIVFRaBitQImpl &&) = delete;
     AscendIndexIVFRaBitQImpl &operator=(AscendIndexIVFRaBitQImpl &&) = delete;
+    // Takes a read lock instead of the base class' write lock: the daemon serialises writers against
+    // each other itself, so a delete no longer has to exclude in-flight searches.
+    void deleteConcurrent(int n, const idx_t *ids);
     void deleteImpl(int n, const idx_t *ids);
     void deleteFromIVFRaBitQ(IndexParam<void, void, ascend_idx_t> &param);
     idx_t findDeviceId(idx_t id);
     void updateIdMapping(const ascend_idx_t *ids, int deviceId, int num);
     void removeIdMapping(const std::vector<idx_t> &ids);
     std::vector<idx_t> update(idx_t n, const float *x, const idx_t *ids);
+    // Read-locked counterpart of the base class' add_with_ids, with local duplicate-ID checks.
+    void addConcurrent(int n, const float *x, const idx_t *ids);
     void addPaged(int n, const float *x, const idx_t *ids) override;
     size_t getAddPagedSize(int n) const override;
     void searchImpl(int n, const float *x, int k, float *distances, idx_t *labels) const override;
@@ -135,7 +140,21 @@ class AscendIndexIVFRaBitQImpl : public AscendIndexIVFImpl
         return pIndex;
     }
     void updateCoarseCenter(std::vector<float> &centerData);
-    void copyVectorToDevice(int n);
+    struct StagedDeviceAdd
+    {
+        std::vector<float> codes;
+        std::vector<ascend_idx_t> ids;
+        bool published = false;
+    };
+    struct StagedListAdd
+    {
+        explicit StagedListAdd(const std::vector<int> &counts) : devices(counts.size()), occupancy(counts) {}
+        std::vector<StagedDeviceAdd> devices;
+        std::vector<int> occupancy;
+    };
+    using AddStaging = std::unordered_map<int, StagedListAdd>;
+    void stageAdd(int n, const float *x, const idx_t *ids, AddStaging &staging);
+    void copyVectorToDevice(int n, AddStaging &staging);
     void initFlatAtFp32();
     void randomOrthogonalGivens(int n, std::vector<float> &orthogonalMatrix);
     void uploadorthogonalMatrix(std::vector<float> &orthogonalMatrix);
@@ -196,13 +215,23 @@ class AscendIndexIVFRaBitQImpl : public AscendIndexIVFImpl
 
     std::mutex mapMutex;
 
+    // Serialises writers against each other now that they only hold a read lock on mtx.
+    std::mutex writerMutex;
+
+    // Separate pools so a write fanning out over the devices cannot be starved by, or queue behind, a
+    // concurrent search fanning out over the same devices.
+    std::shared_ptr<AscendThreadPool> readPool;
+    std::shared_ptr<AscendThreadPool> writePool;
+
     struct DeviceInfo
     {
         std::unordered_set<idx_t> idSet;
     };
     std::vector<DeviceInfo> deviceInfos;
 
-    std::unordered_map<int, AscendIVFAddInfo> assignCounts;
+    // Source ownership is a mode, not a test of vector size: an empty copied source still forbids mutation.
+    bool copiedSources_ = false;
+    bool refineSourcesReady_ = true;
 };
 }  // namespace ascend
 }  // namespace faiss

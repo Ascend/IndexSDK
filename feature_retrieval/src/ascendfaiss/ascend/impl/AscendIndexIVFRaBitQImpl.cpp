@@ -27,9 +27,12 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <exception>
 #include <limits>
 #include <mutex>
+#include <optional>
 #include <random>
+#include <shared_mutex>
 #include <unordered_set>
 #include <vector>
 
@@ -224,6 +227,15 @@ AscendIndexIVFRaBitQImpl::AscendIndexIVFRaBitQImpl(AscendIndexIVFRaBitQ* intf, i
     {
         ivfConfig.cp.niter = config.niter;
     }
+    // Reads and writes now run concurrently and fan out over the same devices, so each role gets its
+    // own pool rather than queueing behind the other on the base class' single one. Like the base
+    // class, only worth a pool when there is more than one device to fan out to.
+    const size_t deviceCnt = indexConfig.deviceList.size();
+    if (deviceCnt > 1)
+    {
+        readPool = std::make_shared<AscendThreadPool>(deviceCnt);
+        writePool = std::make_shared<AscendThreadPool>(deviceCnt);
+    }
     initIndexes();
 
     initDeviceAddNumMap();
@@ -274,8 +286,11 @@ void AscendIndexIVFRaBitQImpl::checkParams() const
 
 std::vector<idx_t> AscendIndexIVFRaBitQImpl::update(idx_t n, const float* x, const idx_t* ids)
 {
+    auto lock = ::ascend::AscendMultiThreadManager::GetReadLock(mtx);
+    std::lock_guard<std::mutex> writerLock(writerMutex);
     FAISS_THROW_IF_NOT_MSG(attachedSrc_ == nullptr, "update conflicts with attached refine sources; reset first.");
-    FAISS_THROW_IF_NOT_MSG(srcIndexes.empty(), "update conflicts with copied refine sources; reset first.");
+    FAISS_THROW_IF_NOT_MSG(!copiedSources_ && srcIndexes.empty(),
+                           "update conflicts with copied refine sources; reset first.");
     if (ivfrabitqConfig.needRefine)
     {
         getRefineSources();  // Reject missing originals before update's delete/add sequence.
@@ -283,6 +298,8 @@ std::vector<idx_t> AscendIndexIVFRaBitQImpl::update(idx_t n, const float* x, con
     FAISS_THROW_IF_NOT_MSG(x != nullptr, "vector list is nullptr!");
     FAISS_THROW_IF_NOT_MSG(ids != nullptr, "vector ID list is nullptr!");
     FAISS_THROW_IF_NOT_MSG(n > 0, "vector number must be greater than 0!");
+    FAISS_THROW_IF_NOT_FMT(n < MAX_N, "n must be < %ld", MAX_N);
+    FAISS_THROW_IF_NOT_MSG(n <= std::numeric_limits<int>::max(), "n exceeds int range");
     FAISS_THROW_IF_NOT_MSG(
         static_cast<size_t>(n) * this->intf_->d == static_cast<size_t>(std::distance(x, x + n * this->intf_->d)),
         "vector list size is not match!");
@@ -297,11 +314,23 @@ std::vector<idx_t> AscendIndexIVFRaBitQImpl::update(idx_t n, const float* x, con
     idx_t noExistNum = 0;
     idx_t existNum = 0;
 
+    // An id repeated within one batch must collapse to its last vector, otherwise the single delete
+    // below would be followed by two adds of the same id.
+    std::unordered_map<idx_t, idx_t> lastOccurrence;
+    for (idx_t i = 0; i < n; ++i)
+    {
+        lastOccurrence[ids[i]] = i;
+    }
+
     {
         std::lock_guard<std::mutex> lock(mapMutex);
         for (idx_t i = 0; i < n; ++i)
         {
             idx_t id = ids[i];
+            if (lastOccurrence[id] != i)
+            {
+                continue;
+            }
             if (idToDeviceMap.find(id) == idToDeviceMap.end())
             {
                 noExistIds.push_back(id);
@@ -352,73 +381,90 @@ void AscendIndexIVFRaBitQImpl::addL1(int n, const float* x, std::unique_ptr<idx_
     FAISS_THROW_IF_NOT_FMT(ret == ::ascend::APP_ERR_OK, "assign failed %d", ret);
 }
 
-void AscendIndexIVFRaBitQImpl::addImpl(int n, const float* x, const idx_t* ids)
+void AscendIndexIVFRaBitQImpl::addImpl(int n, const float* x, const idx_t* ids) { addPaged(n, x, ids); }
+
+void AscendIndexIVFRaBitQImpl::stageAdd(int n, const float* x, const idx_t* ids, AddStaging& staging)
 {
-    APP_LOG_INFO("AscendIndexIVFRaBitQImpl addImpl operation started: n=%d.\n", n);
-    size_t deviceCnt = indexConfig.deviceList.size();
+    APP_LOG_INFO("AscendIndexIVFRaBitQImpl stageAdd operation started: n=%d.\n", n);
+    const size_t deviceCnt = indexConfig.deviceList.size();
     std::unique_ptr<idx_t[]> assign = std::make_unique<idx_t[]>(n);
     addL1(n, x, assign);
-    size_t dim = static_cast<size_t>(intf_->d);
-    for (size_t i = 0; i < static_cast<size_t>(n); i++)
+    const size_t dim = static_cast<size_t>(intf_->d);
+    for (size_t i = 0; i < static_cast<size_t>(n); ++i)
     {
-        idx_t listId = assign[i];
+        const idx_t listId = assign[i];
         FAISS_THROW_IF_NOT(listId >= 0 && listId < this->nlist);
-        auto it = assignCounts.find(listId);
-        if (it != assignCounts.end())
+        auto inserted = staging.try_emplace(static_cast<int>(listId), deviceAddNumMap[listId]);
+        auto& list = inserted.first->second;
+        if (inserted.second)
         {
-            deviceAddNumMap[listId][it->second.addDeviceIdx]++;
-            it->second.Add(const_cast<float*>(x) + i * dim, ids + i);
-            continue;
+            for (size_t j = 0; j < deviceCnt; ++j)
+            {
+                list.occupancy[j] = static_cast<int>(getActualIndex(indexConfig.deviceList[j])->getListLength(listId));
+            }
         }
         size_t devIdx = 0;
-        for (size_t j = 1; j < deviceCnt; j++)
+        for (size_t j = 1; j < deviceCnt; ++j)
         {
-            if (deviceAddNumMap[listId][j] < deviceAddNumMap[listId][devIdx])
+            if (list.occupancy[j] < list.occupancy[devIdx])
             {
                 devIdx = j;
             }
         }
-        deviceAddNumMap[listId][devIdx]++;
-        assignCounts.emplace(listId, AscendIVFAddInfo(devIdx, deviceCnt, dim));
-        assignCounts.at(listId).Add(const_cast<float*>(x) + i * dim, ids + i);
+        auto& device = list.devices[devIdx];
+        device.codes.insert(device.codes.end(), x + i * dim, x + (i + 1) * dim);
+        device.ids.push_back(static_cast<ascend_idx_t>(ids[i]));
+        ++list.occupancy[devIdx];  // Scratch only; authoritative counts change after publication.
     }
 }
 
-void AscendIndexIVFRaBitQImpl::copyVectorToDevice(int n)
+void AscendIndexIVFRaBitQImpl::copyVectorToDevice(int n, AddStaging& staging)
 {
-    size_t deviceCnt = indexConfig.deviceList.size();
+    const size_t deviceCnt = indexConfig.deviceList.size();
     const bool memDebug = ::ascend::MemDebugEnabled();
     const size_t every = memDebug ? ::ascend::MemDebugEvery() : 0;
 
-    if (memDebug)
+    // reserve() allocates buckets, not nodes. Build both kinds of nodes before any daemon publication,
+    // then transfer them under mapMutex without allocating after a successful upload.
+    std::unordered_map<idx_t, idx_t> pendingMappings;
+    std::vector<std::unordered_set<idx_t>> pendingIds(deviceCnt);
+    pendingMappings.reserve(static_cast<size_t>(n));
+    for (auto& centroid : staging)
     {
-        std::vector<size_t> hostPerDev(deviceCnt, 0);
-        size_t nonEmpty = 0;
-        for (auto& centroid : assignCounts)
-        {
-            bool any = false;
-            for (size_t d = 0; d < deviceCnt; ++d)
-            {
-                int num = centroid.second.GetAddNum(static_cast<int>(d));
-                hostPerDev[d] += static_cast<size_t>(num);
-                if (num > 0)
-                {
-                    any = true;
-                }
-            }
-            if (any)
-            {
-                ++nonEmpty;
-            }
-        }
-        ::ascend::MemDebugPrintf("[MemDebug] copyVectorToDevice start n=%d nlist=%d nonEmptyLists=%zu devices=%zu\n", n,
-                                 this->nlist, nonEmpty, deviceCnt);
         for (size_t d = 0; d < deviceCnt; ++d)
         {
-            int deviceId = indexConfig.deviceList[d];
+            for (ascend_idx_t id : centroid.second.devices[d].ids)
+            {
+                FAISS_THROW_IF_NOT_MSG(pendingMappings.emplace(static_cast<idx_t>(id), d).second,
+                                       "duplicate id within staged add");
+                pendingIds[d].insert(static_cast<idx_t>(id));
+            }
+        }
+    }
+    {
+        std::lock_guard<std::mutex> lock(mapMutex);
+        deviceInfos.resize(deviceCnt);
+        idToDeviceMap.reserve(idToDeviceMap.size() + pendingMappings.size());
+        for (const auto& entry : pendingMappings)
+        {
+            FAISS_THROW_IF_NOT_FMT(idToDeviceMap.find(entry.first) == idToDeviceMap.end(), "id %ld already exists",
+                                   entry.first);
+        }
+        for (size_t d = 0; d < deviceCnt; ++d)
+        {
+            deviceInfos[d].idSet.reserve(deviceInfos[d].idSet.size() + pendingIds[d].size());
+        }
+    }
+
+    if (memDebug)
+    {
+        ::ascend::MemDebugPrintf("[MemDebug] copyVectorToDevice start n=%d nlist=%d nonEmptyLists=%zu devices=%zu\n", n,
+                                 this->nlist, staging.size(), deviceCnt);
+        for (size_t d = 0; d < deviceCnt; ++d)
+        {
             ::ascend::MemDebugPrintf("[MemDebug] copyVectorToDevice hostVecs deviceIdx=%zu deviceId=%d count=%zu\n", d,
-                                     deviceId, hostPerDev[d]);
-            ::ascend::LogHbm("copyVectorToDevice_start", deviceId);
+                                     indexConfig.deviceList[d], pendingIds[d].size());
+            ::ascend::LogHbm("copyVectorToDevice_start", indexConfig.deviceList[d]);
         }
     }
 
@@ -427,7 +473,7 @@ void AscendIndexIVFRaBitQImpl::copyVectorToDevice(int n)
         int deviceId = indexConfig.deviceList[idx];
         size_t listsDone = 0;
         size_t vecsUploaded = 0;
-        size_t bytesEst = 0;  // codes(16) + L1(4) + L2(4) + id(8) at dim=128 scales with d
+        size_t bytesEst = 0;
         const size_t codeBytes = getAscendRaBitQCodePartSize(this->intf_->d, ivfrabitqConfig.quantBits);
         const size_t perVecBytes = codeBytes + 2 * sizeof(float) + sizeof(ascend_idx_t);
 
@@ -437,23 +483,30 @@ void AscendIndexIVFRaBitQImpl::copyVectorToDevice(int n)
             ::ascend::LogHbm("copyVectorToDevice_device_begin", deviceId);
         }
 
-        for (auto& centroid : assignCounts)
+        for (auto& centroid : staging)
         {
-            int listId = centroid.first;
-            int num = centroid.second.GetAddNum(idx);
+            const int listId = centroid.first;
+            auto& device = centroid.second.devices[idx];
+            const int num = static_cast<int>(device.ids.size());
             if (num == 0)
             {
                 continue;
             }
-            float* codePtr = nullptr;
-            ascend_idx_t* idPtr = nullptr;
-            centroid.second.GetCodeAndIdPtr(idx, &codePtr, &idPtr);
             IndexParam<float, float, ascend_idx_t> param(deviceId, num, 0, 0);
             param.listId = listId;
-            param.query = codePtr;
-            param.label = idPtr;
-            updateIdMapping(idPtr, idx, num);
+            param.query = device.codes.data();
+            param.label = device.ids.data();
             indexIVFRaBitQAdd(param);
+            device.published = true;
+            {
+                std::lock_guard<std::mutex> lock(mapMutex);
+                for (ascend_idx_t id : device.ids)
+                {
+                    idToDeviceMap.insert(pendingMappings.extract(static_cast<idx_t>(id)));
+                    deviceInfos[idx].idSet.insert(pendingIds[idx].extract(static_cast<idx_t>(id)));
+                }
+                deviceAddNumMap[listId][idx] = centroid.second.occupancy[idx];
+            }
 
             if (memDebug)
             {
@@ -479,9 +532,36 @@ void AscendIndexIVFRaBitQImpl::copyVectorToDevice(int n)
             ::ascend::LogHbm("copyVectorToDevice_device_end", deviceId);
         }
     };
-    CALL_PARALLEL_FUNCTOR(deviceCnt, pool, addFunctor);
-    this->intf_->ntotal += n;
-    InvalidateFilterCache();
+    std::exception_ptr failure;
+    try
+    {
+        // The shared helper must drain every enqueued future, including on failure, before locals die.
+        CALL_PARALLEL_FUNCTOR(deviceCnt, writePool, addFunctor);
+    }
+    catch (...)
+    {
+        failure = std::current_exception();
+    }
+    idx_t published = 0;
+    for (const auto& centroid : staging)
+    {
+        for (const auto& device : centroid.second.devices)
+        {
+            if (device.published)
+            {
+                published += static_cast<idx_t>(device.ids.size());
+            }
+        }
+    }
+    this->intf_->ntotal += published;
+    if (published > 0)
+    {
+        InvalidateFilterCache();
+    }
+    if (failure)
+    {
+        std::rethrow_exception(failure);  // Successful lists stay published; no global rollback.
+    }
 
     if (memDebug)
     {
@@ -490,7 +570,7 @@ void AscendIndexIVFRaBitQImpl::copyVectorToDevice(int n)
             ::ascend::LogHbm("copyVectorToDevice_end", indexConfig.deviceList[d]);
         }
     }
-    APP_LOG_INFO("AscendIndexIVFSQ addImpl operation finished.\n");
+    APP_LOG_INFO("AscendIndexIVFRaBitQImpl copyVectorToDevice operation finished.\n");
 }
 
 size_t AscendIndexIVFRaBitQImpl::getAddPagedSize(int n) const
@@ -504,22 +584,85 @@ size_t AscendIndexIVFRaBitQImpl::getAddPagedSize(int n) const
     return std::min(static_cast<size_t>(n), maxNumVecsForPageSize);
 }
 
+void AscendIndexIVFRaBitQImpl::addConcurrent(int n, const float* x, const idx_t* ids)
+{
+    // Refine searches borrow srcIndexes. Appending originals can reallocate it and temporarily make its
+    // row count disagree with ntotal, so this mode retains the exclusive host lock across the whole add.
+    // Ordinary searches use only device snapshots and can still overlap a writer.
+    std::optional<std::unique_lock<std::shared_mutex>> exclusiveLock;
+    std::optional<std::shared_lock<std::shared_mutex>> sharedLock;
+    sharedLock = ::ascend::AscendMultiThreadManager::GetReadLock(mtx);
+    if (ivfrabitqConfig.needRefine || copiedSources_ || !srcIndexes.empty())
+    {
+        sharedLock.reset();
+        exclusiveLock = ::ascend::AscendMultiThreadManager::GetWriteLock(mtx);
+    }
+    std::lock_guard<std::mutex> writerLock(writerMutex);
+    APP_LOG_INFO("AscendIndexIVFRaBitQImpl addConcurrent operation started.\n");
+    FAISS_THROW_IF_NOT_MSG(x != nullptr, "x can not be nullptr.");
+    FAISS_THROW_IF_NOT_MSG(this->intf_->is_trained, "Index not trained");
+    FAISS_THROW_IF_NOT_FMT((n > 0) && (n < MAX_N), "n must be > 0 and < %ld", MAX_N);
+    FAISS_THROW_IF_NOT_FMT(this->intf_->ntotal + n < MAX_N, "ntotal must be < %ld", MAX_N);
+
+    CheckFilterTime(n, ids);
+
+    std::vector<idx_t> generatedIds;
+    {
+        std::lock_guard<std::mutex> mapLock(mapMutex);
+        if (ids == nullptr)
+        {
+            const bool keepSources = ivfrabitqConfig.needRefine || copiedSources_ || !srcIndexes.empty();
+            generatedIds.resize(static_cast<size_t>(n));
+            idx_t nextId = this->intf_->ntotal;
+            for (int i = 0; i < n; ++i)
+            {
+                while (!keepSources && idToDeviceMap.find(nextId) != idToDeviceMap.end())
+                {
+                    FAISS_THROW_IF_NOT_MSG(nextId < std::numeric_limits<idx_t>::max(), "automatic ID overflow");
+                    ++nextId;
+                }
+                generatedIds[i] = nextId;
+                if (i + 1 < n)
+                {
+                    FAISS_THROW_IF_NOT_MSG(nextId < std::numeric_limits<idx_t>::max(), "automatic ID overflow");
+                    ++nextId;
+                }
+            }
+            ids = generatedIds.data();
+        }
+
+        // The base class does not check duplicate IDs; validate both batch and existing IDs here.
+        std::unordered_set<idx_t> batchIds;
+        for (int i = 0; i < n; ++i)
+        {
+            FAISS_THROW_IF_NOT_FMT(batchIds.insert(ids[i]).second, "duplicate id %ld within one add batch", ids[i]);
+            FAISS_THROW_IF_NOT_FMT(idToDeviceMap.find(ids[i]) == idToDeviceMap.end(), "id %ld already exists", ids[i]);
+        }
+    }
+
+    addPaged(n, x, ids);
+    APP_LOG_INFO("AscendIndexIVFRaBitQImpl addConcurrent operation finished.\n");
+}
+
 void AscendIndexIVFRaBitQImpl::addPaged(int n, const float* x, const idx_t* ids)
 {
     FAISS_THROW_IF_NOT_MSG(attachedSrc_ == nullptr, "add conflicts with attached refine sources; reset first.");
     APP_LOG_INFO("AscendIndexIVFRaBitQImpl addPaged operation started.\n");
     FAISS_THROW_IF_NOT_MSG(x != nullptr, "x cannot be nullptr");
-    const bool keepRefineSources = ivfrabitqConfig.needRefine || !srcIndexes.empty();
+    const bool keepRefineSources = ivfrabitqConfig.needRefine || copiedSources_ || !srcIndexes.empty();
     if (keepRefineSources)
     {
-        FAISS_THROW_IF_NOT_MSG(srcIndexes.size() == static_cast<size_t>(intf_->ntotal) * intf_->d,
-                               "refine sources are not ready: loadRefineSources before adding vectors.");
+        FAISS_THROW_IF_NOT_MSG(
+            refineSourcesReady_ && srcIndexes.size() == static_cast<size_t>(intf_->ntotal) * intf_->d,
+            "refine sources are not ready: loadRefineSources before adding vectors.");
         FAISS_THROW_IF_NOT_MSG(ids != nullptr, "refine requires explicit sequential IDs.");
         for (int i = 0; i < n; ++i)
         {
             FAISS_THROW_IF_NOT_MSG(ids[i] == intf_->ntotal + i, "refine requires sequential IDs starting at ntotal.");
         }
+        srcIndexes.reserve(srcIndexes.size() + static_cast<size_t>(n) * static_cast<size_t>(intf_->d));
     }
+    AddStaging staging;
     size_t totalSize = static_cast<size_t>(n) * getAddElementSize();
     size_t addPageSize = ADD_PAGE_SIZE;
     if (totalSize > addPageSize || static_cast<size_t>(n) > ADD_VEC_SIZE * 10)
@@ -532,7 +675,7 @@ void AscendIndexIVFRaBitQImpl::addPaged(int n, const float* x, const idx_t* ids)
             {
                 printf("AscendIndexIVFRaBitQImpl::add: adding %zu:%zu / %d\n", i, i + curNum, n);
             }
-            addImpl(curNum, x + i * static_cast<size_t>(this->intf_->d), ids ? (ids + i) : nullptr);
+            stageAdd(curNum, x + i * static_cast<size_t>(this->intf_->d), ids ? (ids + i) : nullptr, staging);
         }
     }
     else
@@ -541,15 +684,29 @@ void AscendIndexIVFRaBitQImpl::addPaged(int n, const float* x, const idx_t* ids)
         {
             printf("AscendIndexIVFRaBitQImpl::add: adding 0:%d / %d\n", n, n);
         }
-        addImpl(n, x, ids);
+        stageAdd(n, x, ids, staging);
     }
-    copyVectorToDevice(n);
+    const idx_t previousTotal = intf_->ntotal;
+    try
+    {
+        copyVectorToDevice(n, staging);
+    }
+    catch (...)
+    {
+        if (keepRefineSources && intf_->ntotal != previousTotal)
+        {
+            // Per-list publication need not be an ID prefix. Never expose partial originals as ready.
+            copiedSources_ = true;
+            refineSourcesReady_ = false;
+        }
+        throw;
+    }
     if (keepRefineSources)
     {
         this->srcIndexes.insert(this->srcIndexes.end(), x,
                                 x + static_cast<size_t>(n) * static_cast<size_t>(this->intf_->d));
+        copiedSources_ = true;
     }
-    std::unordered_map<int, AscendIVFAddInfo>().swap(assignCounts);  // 释放host侧占用的内存
     APP_LOG_INFO("AscendIndexIVFRaBitQImpl addPaged operation finished.\n");
 }
 
@@ -574,7 +731,8 @@ std::shared_ptr<::ascend::Index> AscendIndexIVFRaBitQImpl::createIndex(int devic
         metric = "IP";
     }
     std::shared_ptr<::ascend::IndexIVF> index = std::make_shared<::ascend::IndexIVFRaBitQ>(
-        nlist, this->intf_->d, nprobe, metric, indexConfig.resourceSize, ivfrabitqConfig.quantBits);
+        nlist, this->intf_->d, nprobe, metric, indexConfig.resourceSize, ivfrabitqConfig.quantBits,
+        ivfrabitqConfig.retiredMemoryHighWatermark);
     auto ret = index->init();
     FAISS_THROW_IF_NOT_FMT(ret == ::ascend::APP_ERR_OK, "Failed to create index ivf rabitq, result is %d", ret);
 
@@ -593,7 +751,7 @@ void AscendIndexIVFRaBitQImpl::updateCoarseCenter(std::vector<float>& centerData
         FAISS_THROW_IF_NOT_FMT(ret == ::ascend::APP_ERR_OK,
                                "Failed to update coarsecenter, deviceId is %d, result is: %d\n", deviceId, ret);
     };
-    CALL_PARALLEL_FUNCTOR(deviceCnt, pool, updateCoarseCenterFunctor);
+    CALL_PARALLEL_FUNCTOR(deviceCnt, writePool, updateCoarseCenterFunctor);
 }
 
 void AscendIndexIVFRaBitQImpl::randomOrthogonalGivens(int n, std::vector<float>& orthogonalMatrix)
@@ -1027,9 +1185,8 @@ void MaterializeFromIdSetTwoPass(const std::unordered_set<idx_t>& ids, ::ascend:
     SetSortedFromIds(out, tmp.data(), tmp.size());
 }
 
-void MaterializeFromIds(const idx_t* ids, size_t n, int64_t ntotal, ::ascend::RabitqIdFilterHost& out)
+void MaterializeFromIds(const idx_t* ids, size_t n, ::ascend::RabitqIdFilterHost& out)
 {
-    (void)ntotal;
     if (TryRangeFromIds(ids, n, out))
     {
         return;
@@ -1042,9 +1199,8 @@ void MaterializeFromIds(const idx_t* ids, size_t n, int64_t ntotal, ::ascend::Ra
     MaterializeFromIdsTwoPass(ids, n, out);
 }
 
-void MaterializeFromIdSet(const std::unordered_set<idx_t>& ids, int64_t ntotal, ::ascend::RabitqIdFilterHost& out)
+void MaterializeFromIdSet(const std::unordered_set<idx_t>& ids, ::ascend::RabitqIdFilterHost& out)
 {
-    (void)ntotal;
     if (ids.empty())
     {
         SetEmptyFilter(out);
@@ -1097,7 +1253,7 @@ void MaterializeFromRoaring(const IDSelectorRoaring* roar, ::ascend::RabitqIdFil
     out.sortedView = nullptr;
 }
 
-void MaterializeIdSelector(const IDSelector* sel, int64_t ntotal, ::ascend::RabitqIdFilterHost& out)
+void MaterializeIdSelector(const IDSelector* sel, ::ascend::RabitqIdFilterHost& out)
 {
     FAISS_THROW_IF_NOT_MSG(sel != nullptr, "IDSelector cannot be nullptr");
 
@@ -1120,13 +1276,13 @@ void MaterializeIdSelector(const IDSelector* sel, int64_t ntotal, ::ascend::Rabi
     }
     else if (const auto* batchSel = dynamic_cast<const IDSelectorBatch*>(inner))
     {
-        MaterializeFromIdSet(batchSel->set, ntotal, out);
+        MaterializeFromIdSet(batchSel->set, out);
     }
     else if (const auto* arraySel = dynamic_cast<const IDSelectorArray*>(inner))
     {
         FAISS_THROW_IF_NOT_MSG(arraySel->n == 0 || arraySel->ids != nullptr,
                                "IDSelectorArray.ids cannot be nullptr when n > 0");
-        MaterializeFromIds(arraySel->ids, arraySel->n, ntotal, out);
+        MaterializeFromIds(arraySel->ids, arraySel->n, out);
     }
     else if (const auto* bitmapSel = dynamic_cast<const IDSelectorBitmap*>(inner))
     {
@@ -1201,7 +1357,7 @@ void AscendIndexIVFRaBitQImpl::searchImplFiltered(int n, const float* x, int k, 
         param.label = label[idx].data();
         indexSearch(param, idFilter, searchNprobe);
     };
-    CALL_PARALLEL_FUNCTOR(deviceCnt, pool, searchFunctor);
+    CALL_PARALLEL_FUNCTOR(deviceCnt, readPool, searchFunctor);
     searchPostProcess(deviceCnt, dist, label, n, finalk, distances, labels);
 }
 
@@ -1220,7 +1376,7 @@ const ::ascend::RabitqIdFilterHost* AscendIndexIVFRaBitQImpl::getCachedFilter(co
         return &filterSlots[hit].filter;
     }
     const int victim = AllocFilterCacheSlot();
-    MaterializeIdSelector(sel, intf_->ntotal, filterSlots[victim].filter);
+    MaterializeIdSelector(sel, filterSlots[victim].filter);
     ++cachedFilterGeneration;
     filterSlots[victim].filter.generation = cachedFilterGeneration;
     filterSlots[victim].key = key;
@@ -1361,48 +1517,77 @@ void AscendIndexIVFRaBitQImpl::searchWithSelector(idx_t n, const float* x, idx_t
     APP_LOG_INFO("AscendIndexIVFRaBitQ searchWithSelector finished.\n");
 }
 
+void AscendIndexIVFRaBitQImpl::deleteConcurrent(int n, const idx_t* ids)
+{
+    auto lock = ::ascend::AscendMultiThreadManager::GetReadLock(mtx);
+    std::lock_guard<std::mutex> writerLock(writerMutex);
+    deleteImpl(n, ids);
+}
+
 void AscendIndexIVFRaBitQImpl::deleteImpl(int n, const idx_t* ids)
 {
     FAISS_THROW_IF_NOT_MSG(attachedSrc_ == nullptr, "delete conflicts with attached refine sources; reset first.");
-    FAISS_THROW_IF_NOT_MSG(srcIndexes.empty(), "delete conflicts with copied refine sources; reset first.");
+    FAISS_THROW_IF_NOT_MSG(!copiedSources_ && srcIndexes.empty(),
+                           "delete conflicts with copied refine sources; reset first.");
     APP_LOG_INFO("AscendIndexIVFRaBitQImpl deleteImpl operation started: n=%d.\n", n);
-    size_t deviceCnt = indexConfig.deviceList.size();
+    const size_t deviceCnt = indexConfig.deviceList.size();
     std::unordered_map<int, std::vector<idx_t>> idMap;
-
-    int deleteNum = 0;
-    for (int i = 0; i < n; i++)
+    std::unordered_set<idx_t> seen;
     {
-        idx_t id = ids[i];
-        idx_t devId = findDeviceId(id);
-        if (devId >= 0 && devId < static_cast<idx_t>(deviceCnt))
+        std::lock_guard<std::mutex> lock(mapMutex);
+        for (int i = 0; i < n; ++i)
         {
-            idMap[devId].push_back(id);
-            deleteNum++;
-        }
-        else
-        {
-            APP_LOG_WARNING("Could not find valid deviceId for ID %ld, skipping\n", id);
+            const idx_t id = ids[i];
+            if (!seen.insert(id).second)
+            {
+                continue;
+            }
+            auto it = idToDeviceMap.find(id);
+            if (it == idToDeviceMap.end())
+            {
+                continue;  // Missing IDs are not deletions; do not use findDeviceId's legacy fallback.
+            }
+            const idx_t devIdx = it->second;
+            if (devIdx >= 0 && devIdx < static_cast<idx_t>(deviceCnt))
+            {
+                idMap[static_cast<int>(devIdx)].push_back(id);
+            }
         }
     }
 
-    for (auto& centroid : idMap)
+    int deleted = 0;
+    std::exception_ptr failure;
+    try
     {
-        int devId = centroid.first;
-        auto& deleteIds = centroid.second;
-        if (deleteIds.empty())
+        for (auto& device : idMap)
         {
-            continue;
+            auto& deleteIds = device.second;
+            std::vector<ascend_idx_t> ascendIds(deleteIds.begin(), deleteIds.end());
+            IndexParam<void, void, ascend_idx_t> param(indexConfig.deviceList[device.first], deleteIds.size(), 0, 0);
+            param.label = ascendIds.data();
+            deleteFromIVFRaBitQ(param);
+            removeIdMapping(deleteIds);
+            this->intf_->ntotal -= static_cast<idx_t>(deleteIds.size());
+            deleted += static_cast<int>(deleteIds.size());
+            auto pIndex = getActualIndex(indexConfig.deviceList[device.first]);
+            for (int listId = 0; listId < nlist; ++listId)
+            {
+                deviceAddNumMap[listId][device.first] = static_cast<int>(pIndex->getListLength(listId));
+            }
         }
-        std::vector<ascend_idx_t> ascendIds(deleteIds.begin(), deleteIds.end());
-        IndexParam<void, void, ascend_idx_t> param(indexConfig.deviceList[devId], deleteIds.size(), 0, 0);
-        param.label = ascendIds.data();
-        deleteFromIVFRaBitQ(param);
-
-        removeIdMapping(deleteIds);
     }
-
-    this->intf_->ntotal -= deleteNum;
-    InvalidateFilterCache();
+    catch (...)
+    {
+        failure = std::current_exception();
+    }
+    if (deleted > 0)
+    {
+        InvalidateFilterCache();
+    }
+    if (failure)
+    {
+        std::rethrow_exception(failure);
+    }
     APP_LOG_INFO("AscendIndexIVFRaBitQImpl deleteImpl operation finished.\n");
 }
 
@@ -1477,41 +1662,95 @@ void AscendIndexIVFRaBitQImpl::removeIdMapping(const std::vector<idx_t>& ids)
 
 void AscendIndexIVFRaBitQImpl::threadUnsafeReset()
 {
-    AscendIndexIVFImpl::threadUnsafeReset();
+    const size_t deviceCnt = indexConfig.deviceList.size();
+    std::vector<::ascend::IndexIVFRaBitQ*> devices(deviceCnt);
+    std::vector<idx_t> deviceTotals(deviceCnt);
+    // Preflight every reader before resetting any device. SnapshotGuard is the public drain/recovery
+    // boundary; the host's exclusive lock prevents new searches or mutations between these steps.
+    for (size_t d = 0; d < deviceCnt; ++d)
+    {
+        devices[d] = getActualIndex(indexConfig.deviceList[d]);
+        ::ascend::IndexIVFRaBitQ::SnapshotGuard guard(*devices[d]);
+        deviceTotals[d] = static_cast<idx_t>(guard.get().total);
+        const auto ret = guard.finish();
+        FAISS_THROW_IF_NOT_FMT(ret == ACL_SUCCESS, "reader stream drain failed before reset, device=%d, ret=%d",
+                               indexConfig.deviceList[d], ret);
+    }
+    for (size_t d = 0; d < deviceCnt; ++d)
+    {
+        FAISS_THROW_IF_NOT(aclrtSetDevice(indexConfig.deviceList[d]) == ACL_ERROR_NONE);
+        const auto ret = devices[d]->reset();
+        FAISS_THROW_IF_NOT_FMT(ret == ::ascend::APP_ERR_OK, "Failed to reset index, device id: %d, result is %d",
+                               indexConfig.deviceList[d], ret);
+        // Writer drain/reset may still fail after another device succeeded. Commit each successful
+        // device immediately, so throwing never leaves host metadata claiming its deleted rows exist.
+        {
+            std::lock_guard<std::mutex> lock(mapMutex);
+            for (auto it = idToDeviceMap.begin(); it != idToDeviceMap.end();)
+            {
+                if (it->second == static_cast<idx_t>(d))
+                {
+                    it = idToDeviceMap.erase(it);
+                }
+                else
+                {
+                    ++it;
+                }
+            }
+            if (d < deviceInfos.size())
+            {
+                deviceInfos[d].idSet.clear();
+            }
+            for (auto& list : deviceAddNumMap)
+            {
+                list[d] = 0;
+            }
+        }
+        intf_->ntotal -= deviceTotals[d];
+        if (deviceTotals[d] != 0 &&
+            (ivfrabitqConfig.needRefine || copiedSources_ || attachedSrc_ != nullptr || !srcIndexes.empty()))
+        {
+            refineSourcesReady_ = false;
+        }
+        InvalidateFilterCache();
+    }
+    intf_->ntotal = 0;
     attachedSrc_ = nullptr;
     attachedSrcRows_ = 0;
     srcIndexes.clear();
-    std::lock_guard<std::mutex> lock(mapMutex);
-    idToDeviceMap.clear();
-    for (auto& info : deviceInfos)
-    {
-        info.idSet.clear();
-    }
+    copiedSources_ = false;
+    refineSourcesReady_ = true;
 }
 
 size_t AscendIndexIVFRaBitQImpl::getAddElementSize() const { return static_cast<size_t>(intf_->d) * sizeof(float); }
 
 void AscendIndexIVFRaBitQImpl::loadRefineSources(const float* x, idx_t n)
 {
+    auto lock = ::ascend::AscendMultiThreadManager::GetWriteLock(mtx);
     FAISS_THROW_IF_NOT_MSG(attachedSrc_ == nullptr, "loadRefineSources conflicts with attached refine sources.");
     FAISS_THROW_IF_NOT_MSG(x != nullptr, "refine source x can not be nullptr.");
     FAISS_THROW_IF_NOT_FMT(n == this->intf_->ntotal, "refine source n (%ld) must equal ntotal (%ld)", n,
                            this->intf_->ntotal);
     checkRefineIds();
-    srcIndexes.assign(x, x + static_cast<size_t>(n) * static_cast<size_t>(this->intf_->d));
+    std::vector<float> sources(x, x + static_cast<size_t>(n) * static_cast<size_t>(this->intf_->d));
+    srcIndexes.swap(sources);
+    copiedSources_ = true;
+    refineSourcesReady_ = true;
 }
 
 void AscendIndexIVFRaBitQImpl::attachRefineSources(const float* x, idx_t n)
 {
+    auto lock = ::ascend::AscendMultiThreadManager::GetWriteLock(mtx);
     FAISS_THROW_IF_NOT_MSG(x != nullptr, "refine source x can not be nullptr.");
     FAISS_THROW_IF_NOT_FMT(n == this->intf_->ntotal, "refine source n (%ld) must equal ntotal (%ld)", n,
                            this->intf_->ntotal);
-    FAISS_THROW_IF_NOT_MSG(srcIndexes.empty(),
+    FAISS_THROW_IF_NOT_MSG(!copiedSources_ && srcIndexes.empty(),
                            "attachRefineSources conflicts with copied refine sources; "
                            "use loadRefineSources or attachRefineSources, not both.");
     checkRefineIds();
     attachedSrc_ = x;  // 零拷贝：仅保存指针，生命周期由调用方保证
     attachedSrcRows_ = n;
+    refineSourcesReady_ = true;
 }
 
 void AscendIndexIVFRaBitQImpl::checkRefineIds()
@@ -1528,13 +1767,14 @@ void AscendIndexIVFRaBitQImpl::checkRefineIds()
 
 const float* AscendIndexIVFRaBitQImpl::getRefineSources() const
 {
+    FAISS_THROW_IF_NOT_MSG(refineSourcesReady_, "refine sources are not ready: reload sources or reset before search.");
     if (attachedSrc_ != nullptr)
     {
         FAISS_THROW_IF_NOT_MSG(attachedSrcRows_ == intf_->ntotal,
                                "attached refine source row count must match ntotal.");
         return attachedSrc_;
     }
-    FAISS_THROW_IF_NOT_MSG(srcIndexes.size() == static_cast<size_t>(intf_->ntotal) * intf_->d,
+    FAISS_THROW_IF_NOT_MSG(refineSourcesReady_ && srcIndexes.size() == static_cast<size_t>(intf_->ntotal) * intf_->d,
                            "refine sources are not ready: loadRefineSources or attachRefineSources before search.");
     return srcIndexes.data();
 }
@@ -1542,6 +1782,7 @@ const float* AscendIndexIVFRaBitQImpl::getRefineSources() const
 // copy from cpu index
 void AscendIndexIVFRaBitQImpl::copyFrom(const faiss::IndexIVFRaBitQ* index)
 {
+    auto lock = ::ascend::AscendMultiThreadManager::GetWriteLock(mtx);
     APP_LOG_INFO("AscendIndexIVFRaBitQImpl copyFrom operation started.");
 
     FAISS_THROW_IF_NOT_MSG(index != nullptr, "Input index is nullptr");
@@ -1585,10 +1826,31 @@ void AscendIndexIVFRaBitQImpl::copyFrom(const faiss::IndexIVFRaBitQ* index)
                                "Input is a native Faiss multi-bit RaBitQ index, not an Ascend carrier");
     }
 
-    AscendIndexIVFImpl::copyFrom(index);
-    attachedSrc_ = nullptr;
-    attachedSrcRows_ = 0;
-    srcIndexes.clear();
+    FAISS_THROW_IF_NOT_MSG(index->quantizer != nullptr && index->is_trained,
+                           "Index must be trained and have quantizer");
+    auto flat = dynamic_cast<faiss::IndexFlat*>(index->quantizer);
+    FAISS_THROW_IF_NOT_MSG(flat != nullptr, "Quantizer must be IndexFlat");
+    FAISS_THROW_IF_NOT_MSG(
+        flat->ntotal == nlist && flat->codes.size() / sizeof(float) == static_cast<size_t>(nlist) * intf_->d,
+        "Quantizer must contain nlist complete centroids");
+    FAISS_THROW_IF_NOT_MSG(index->metric_type == intf_->metric_type, "Invalid metric_type");
+    FAISS_THROW_IF_NOT_FMT(index->nprobe > 0 && index->nprobe <= index->nlist, "Invalid number of nprobe %zu",
+                           index->nprobe);
+    FAISS_THROW_IF_NOT_FMT(index->ntotal >= 0 && index->ntotal < MAX_N, "Ntotal must be >= 0 and < %ld", MAX_N);
+    threadUnsafeReset();  // Complete reset/reconciliation before installing any replacement metadata.
+    intf_->is_trained = false;
+    try
+    {
+        AscendIndexIVFImpl::copyFrom(index);
+    }
+    catch (...)
+    {
+        intf_->ntotal = 0;  // Base metadata import can fail after setting the incoming total.
+        intf_->is_trained = false;
+        throw;
+    }
+    intf_->ntotal = 0;          // Only committed encoded publications below contribute to the loaded count.
+    intf_->is_trained = false;  // Base import does not establish the RaBitQ device setup.
 
     // Orthogonal matrix: FAISS has no corresponding storage interface,
     // regenerate with the same seed configuration
@@ -1615,10 +1877,6 @@ void AscendIndexIVFRaBitQImpl::copyFrom(const faiss::IndexIVFRaBitQ* index)
     uploadorthogonalMatrix(orthogonalMatrix);
 
     // copy centroids
-    FAISS_THROW_IF_NOT_MSG(index->quantizer != nullptr && index->is_trained,
-                           "Index must be trained and have quantizer");
-    auto flat = dynamic_cast<faiss::IndexFlat*>(index->quantizer);
-    FAISS_THROW_IF_NOT_MSG(flat != nullptr, "Quantizer must be IndexFlat");
     const float* centroids = flat->get_xb();
     std::vector<float> hostCentroids(centroids, centroids + nlist * intf_->d);
 
@@ -1626,7 +1884,9 @@ void AscendIndexIVFRaBitQImpl::copyFrom(const faiss::IndexIVFRaBitQ* index)
     size_t dim = intf_->d;
     ::ascend::AscendTensor<float, ::ascend::DIMS_2> centroidsTrained(hostCentroids.data(),
                                                                      {nlist, static_cast<int>(dim)});
-    assignIndex->addVectorsAsCentroid(centroidsTrained);
+    const auto ret = assignIndex->addVectorsAsCentroid(centroidsTrained);
+    FAISS_THROW_IF_NOT_FMT(ret == ::ascend::APP_ERR_OK, "Failed to add assignment centroids, ret=%d", ret);
+    intf_->is_trained = true;  // Fully configured even if a later encoded publication fails.
 
     // copy inverted lists
     size_t deviceCnt = indexConfig.deviceList.size();
@@ -1648,6 +1908,7 @@ void AscendIndexIVFRaBitQImpl::copyFrom(const faiss::IndexIVFRaBitQ* index)
         std::vector<std::vector<faiss::idx_t>> perDeviceIds(deviceCnt);
         // Record vector indices assigned to each device
         std::vector<std::vector<size_t>> perDeviceVecIndices(deviceCnt);
+        auto occupancy = deviceAddNumMap[listId];
 
         for (size_t j = 0; j < listLen; ++j)
         {
@@ -1655,12 +1916,12 @@ void AscendIndexIVFRaBitQImpl::copyFrom(const faiss::IndexIVFRaBitQ* index)
             size_t devIdx = 0;
             for (size_t d = 1; d < deviceCnt; ++d)
             {
-                if (deviceAddNumMap[listId][d] < deviceAddNumMap[listId][devIdx])
+                if (occupancy[d] < occupancy[devIdx])
                 {
                     devIdx = d;
                 }
             }
-            deviceAddNumMap[listId][devIdx]++;
+            ++occupancy[devIdx];
             perDeviceVecIndices[devIdx].push_back(j);
             perDeviceIds[devIdx].push_back(ids[j]);
         }
@@ -1706,6 +1967,18 @@ void AscendIndexIVFRaBitQImpl::copyFrom(const faiss::IndexIVFRaBitQ* index)
             int deviceId = indexConfig.deviceList[devIdx];
             auto pIndex = getActualIndex(deviceId);
             size_t numVecs = perDeviceIds[devIdx].size();
+            std::unordered_map<idx_t, idx_t> pendingMappings;
+            std::unordered_set<idx_t> pendingIds(perDeviceIds[devIdx].begin(), perDeviceIds[devIdx].end());
+            for (idx_t id : pendingIds)
+            {
+                pendingMappings.emplace(id, devIdx);
+            }
+            {
+                std::lock_guard<std::mutex> lock(mapMutex);
+                deviceInfos.resize(deviceCnt);
+                idToDeviceMap.reserve(idToDeviceMap.size() + pendingMappings.size());
+                deviceInfos[devIdx].idSet.reserve(deviceInfos[devIdx].idSet.size() + pendingIds.size());
+            }
 
             auto ret = pIndex->addEncodedVectors(listId, numVecs, perDeviceCodes[devIdx].data(),
                                                  reinterpret_cast<const uint64_t*>(perDeviceIds[devIdx].data()));
@@ -1713,12 +1986,21 @@ void AscendIndexIVFRaBitQImpl::copyFrom(const faiss::IndexIVFRaBitQ* index)
             FAISS_THROW_IF_NOT_FMT(ret == ::ascend::APP_ERR_OK,
                                    "Failed to add encoded vectors to device %d, list %d, ret=%d", deviceId, listId,
                                    ret);
-
-            updateIdMapping(reinterpret_cast<const ascend_idx_t*>(perDeviceIds[devIdx].data()), deviceId, numVecs);
+            {
+                std::lock_guard<std::mutex> lock(mapMutex);
+                idToDeviceMap.merge(pendingMappings);
+                deviceInfos[devIdx].idSet.merge(pendingIds);
+                deviceAddNumMap[listId][devIdx] = occupancy[devIdx];
+            }
+            this->intf_->ntotal += static_cast<idx_t>(numVecs);
+            refineSourcesReady_ = false;  // Encoded imports have no originals, including partial loads.
+            InvalidateFilterCache();
         }
+        index->invlists->release_ids(listId, ids);
+        index->invlists->release_codes(listId, codes);
     }
 
-    this->intf_->ntotal = index->ntotal;
+    FAISS_THROW_IF_NOT_MSG(this->intf_->ntotal == index->ntotal, "Imported vector count does not match ntotal");
     this->intf_->is_trained = index->is_trained;
     APP_LOG_INFO("AscendIndexIVFRaBitQImpl copyFrom operation finished.");
 }

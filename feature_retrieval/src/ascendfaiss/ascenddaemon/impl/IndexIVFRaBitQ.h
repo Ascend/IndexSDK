@@ -18,8 +18,15 @@
 
 #ifndef ASCEND_INDEXIVFRABITQ_INCLUDED
 #define ASCEND_INDEXIVFRABITQ_INCLUDED
+#include <atomic>
+#include <memory>
+#include <mutex>
+#include <shared_mutex>
+#include <unordered_set>
+
 #include "ascenddaemon/impl/IndexIVF.h"
 #include "ascenddaemon/utils/AscendOperator.h"
+#include "ascenddaemon/utils/AscendStackMemory.h"
 #include "ascenddaemon/utils/DeviceMemArena.h"
 #include "ascenddaemon/utils/SegmentedDeviceVector.h"
 #include "common/RabitqIdFilter.h"
@@ -64,9 +71,61 @@ class IndexIVFRaBitQ : public IndexIVF
         size_t listLen{0};
     };
 
+    // An immutable view of every inverted list. Readers hold one of these for the whole duration of a
+    // search; the writer never mutates a published snapshot, it clones the one list it touches and
+    // publishes a new snapshot. Lists are held by shared_ptr so an unmodified list is shared between
+    // snapshots rather than copied, and ListStorage's defaulted copy shares the segments themselves,
+    // so cloning a list copies four small segment-pointer vectors, not device memory.
+    struct GlobalSnapshot
+    {
+        std::vector<std::shared_ptr<const ListStorage>> lists;
+        uint64_t publishVer{0};
+        size_t total{0};
+        // Label ceiling belongs to this immutable version, just like total.
+        idx_t maxStoredId{0};
+    };
+
+    // Keeps the snapshot it acquires alive for its lifetime by publishing it to the single reader
+    // hazard slot, which the writer consults before freeing a retired snapshot. There is one hazard
+    // slot and one readerContext, so the guard also serialises readers against each other: a second
+    // reader would otherwise overwrite the first one's hazard and let the writer free segments the
+    // first is still scanning, besides sharing the not-MT-safe AscendStackMemory.
+    class SnapshotGuard
+    {
+       public:
+        explicit SnapshotGuard(const IndexIVFRaBitQ &index);
+        ~SnapshotGuard();
+        SnapshotGuard(const SnapshotGuard &) = delete;
+        SnapshotGuard &operator=(const SnapshotGuard &) = delete;
+        const GlobalSnapshot &get() const;
+        // Finish before returning a status to the caller; the destructor is only an exception-path fallback.
+        aclError finish();
+
+       private:
+        const IndexIVFRaBitQ &index_;
+        std::lock_guard<std::mutex> readerLock_;
+        const GlobalSnapshot *snapshot_{nullptr};
+        bool finished_{false};
+    };
+
+    // Per-role streams and scratch memory. The resources held by Index are a process-wide singleton
+    // (see AscendResourcesProxy) and AscendStackMemory is documented as not MT safe, so the reader and
+    // the writer each need their own rather than sharing the default stream and memory manager.
+    struct ExecutionContext
+    {
+        explicit ExecutionContext(size_t memorySize);
+        ~ExecutionContext();
+        ExecutionContext(const ExecutionContext &) = delete;
+        ExecutionContext &operator=(const ExecutionContext &) = delete;
+
+        aclrtStream computeStream{nullptr};
+        aclrtStream aicpuStream{nullptr};
+        AscendStackMemory memory;
+    };
+
    public:
     IndexIVFRaBitQ(int numList, int dim, int nprobes, const std::string &metricType, int64_t resourceSize = -1,
-                   int quantBits = 1);
+                   int quantBits = 1, size_t retiredMemoryHighWatermark = 0);
 
     ~IndexIVFRaBitQ() override;
 
@@ -245,17 +304,53 @@ class IndexIVFRaBitQ : public IndexIVF
 
     APP_ERROR EnsureFilterPayloadOnDevice(const RabitqIdFilterHost *idFilter, int64_t &selPtr);
     APP_ERROR EnsurePrefixFilterPayloadOnDevice(const RabitqIdFilterHost *idFilter, int64_t &selPtr);
+
+    // Mark the cached filter payload stale without freeing it. Safe to call from a writer.
+    void InvalidateCachedFilterPayload();
+
+    // Free the cached payload outright. Only safe where no reader can be in flight, i.e. under
+    // exclusive indexLock.
     void ClearCachedFilterPayload();
 
     size_t removeIds(const ascend::IDSelector &sel) override;
     void initListStorage();
 
+    // Build the snapshot every list starts out empty in. Used by the constructor and by reset().
+    std::unique_ptr<GlobalSnapshot> makeEmptySnapshot() const;
+
+    // Structural copy: the new snapshot shares every list with `base` until a list is replaced.
+    std::unique_ptr<GlobalSnapshot> cloneSnapshot(const GlobalSnapshot &base) const;
+
+    // Install `snapshot` as the one readers will pick up from now on and retire the previous one.
+    // Must be called with writerLock held.
+    void publishSnapshot(std::unique_ptr<GlobalSnapshot> snapshot);
+
+    // Free every retired snapshot no reader is parked on. Must be called with writerLock held.
+    void reclaimRetiredSnapshots();
+
+    // Device bytes that would be freed by dropping `snapshot`, i.e. only the segments it is the last
+    // owner of.
+    size_t retainedBytes(const GlobalSnapshot &snapshot) const;
+
+    // Drain both reader streams with one retry. Called under readerLock, or exclusive indexLock in reset.
+    aclError drainReaderStreams() const;
+
+    // Refuse a write when readers have parked long enough on old snapshots that the segments they pin
+    // exceed the watermark. Must be called with writerLock held.
+    APP_ERROR checkRetiredMemory();
+
     // Grow all four vectors of `list` so slots [0, newLen) are addressable.
     void ensureListCapacity(ListStorage &list, size_t newLen, aclrtStream stream);
 
-    // Drop the given slots from `listId` by moving the surviving tail slots into the holes they leave
-    // behind, then shrinking every vector to the new length. `deletedSlots` need not be sorted.
-    void compactList(int listId, std::vector<size_t> &deletedSlots);
+    // Rebuild `newList` (a fresh copy of `oldList`) with `deletedSlots` removed, by moving the
+    // surviving tail slots into the holes they leave behind and shrinking to the new length.
+    // `deletedSlots` need not be sorted. Every segment written into is copy-on-write cloned first, so
+    // `oldList` and the snapshot holding it are left untouched.
+    APP_ERROR compactList(const ListStorage &oldList, ListStorage &newList, std::vector<size_t> &deletedSlots,
+                          aclrtStream stream);
+
+    // Remove every id in `ids`, rebuilding each affected list in a fresh snapshot.
+    APP_ERROR removeIdsInternal(const std::unordered_set<idx_t> &ids, size_t *removed);
 
    protected:
     // Declared first so it is destroyed after the list storage that carves segments out of it.
@@ -270,7 +365,39 @@ class IndexIVFRaBitQ : public IndexIVF
     std::unique_ptr<AscendOperator> ivfRaBitQIndexRotateL2Ops;
     std::unique_ptr<AscendOperator> ivfRaBitQIndexCodeAndPreComputeOps;
     std::map<int, std::unique_ptr<AscendOperator>> ivfRaBitQL2DistOps;
-    std::vector<ListStorage> lists_;  // 每个倒排表的 codes/L1/L2/ids 存储，索引即 listId
+
+    // The snapshot readers pick up. Owned by activeSnapshot; raw so readers can load it atomically.
+    std::atomic<const GlobalSnapshot *> currentSnapshot{nullptr};
+    // Single-reader hazard slot: the snapshot the in-flight search is using, or nullptr. Only the one
+    // reader thread stores here, and only the writer reads it, which is what lets reclamation be a
+    // plain pointer comparison instead of a refcount.
+    mutable std::atomic<const GlobalSnapshot *> readerHazard{nullptr};
+    // A failed drain leaves the hazard pinned. No new guard may overwrite it until recovery succeeds.
+    mutable std::atomic<aclError> readerDrainError{ACL_SUCCESS};
+    // Set by searchImpl so the helpers it calls can reach the snapshot without threading it through
+    // every signature.
+    static thread_local const GlobalSnapshot *searchSnapshot;
+
+    struct RetiredSnapshot
+    {
+        std::unique_ptr<GlobalSnapshot> snapshot;
+        size_t bytes{0};
+    };
+
+    std::unique_ptr<GlobalSnapshot> activeSnapshot;
+    std::vector<RetiredSnapshot> retiredSnapshots;
+    size_t retiredBytes{0};
+    size_t retiredMemoryHighWatermark{0};
+    // Excludes writers from reset()/updateCoarseCenterImpl, which rebuild state no snapshot covers.
+    mutable std::shared_mutex indexLock;
+    // Serialises writers against each other: clone-mutate-publish is not atomic.
+    std::mutex writerLock;
+    // Serialises readers against each other: there is one hazard slot and one readerContext, so two
+    // concurrent searches would clobber each other. Taken by SnapshotGuard.
+    mutable std::mutex readerLock;
+    std::unique_ptr<ExecutionContext> readerContext;
+    std::unique_ptr<ExecutionContext> writerContext;
+
     std::map<int, std::unique_ptr<::ascend::AscendOperator>> queryRotateL2Ops;
     std::map<int, std::unique_ptr<::ascend::AscendOperator>> queryLUTOps;
     std::map<int, std::unique_ptr<::ascend::AscendOperator>> topkFp32;
@@ -278,18 +405,6 @@ class IndexIVFRaBitQ : public IndexIVF
     std::map<int, std::unique_ptr<AscendOperator>> l1DistFp32Ops;
     int blockSize;
 
-    // Running maximum of every id appended through addVectors / addEncodedVectors, and the gate on the
-    // reservoir top-k path, whose candidates carry uint32 ids (fillL2TopkOpInputData, idsFitUint32).
-    //
-    // Tracked separately from ntotal because the two are unrelated quantities: ntotal counts vectors, these
-    // are caller-supplied labels, and neither ingest path constrains a label by the count. Dense ordinals
-    // make them coincide, which is why ntotal looked like a usable proxy, but nothing enforces that.
-    //
-    // Monotonic non-decreasing within a reset cycle -- removeIds deliberately does not lower it. Recomputing
-    // the true maximum after a removal would mean rescanning every list, and the only cost of an overestimate
-    // is declining an optimisation. reset() clears it, since letting one oversized id disable the reservoir
-    // for the lifetime of the process would be an invisible performance regression.
-    idx_t maxStoredId_ = 0;
     std::unique_ptr<DeviceVector<float>> distResultOnDevice;
     size_t distResultSpace;
     int64_t topkLayoutMode_;
@@ -298,6 +413,12 @@ class IndexIVFRaBitQ : public IndexIVF
     // queried at construction; the first search retries. See EnsureTopkGroupSizeResolved.
     bool topkGroupSizeResolved_ = false;
 
+    // Bumped by writers to invalidate the filter payload cache. Writers must not touch the cache
+    // itself: a reader may already have handed its device address to an async-dispatched operator,
+    // so freeing the buffer here would be a use-after-free on the device side.
+    std::atomic<uint64_t> filterCacheEpoch{0};
+
+    // Only ever touched by readers, which readerLock serializes.
     std::unique_ptr<DeviceVector<uint8_t>> cachedFilterPayload;
     const void *cachedFilterSrc = nullptr;
     size_t cachedFilterBytes = 0;
@@ -306,10 +427,12 @@ class IndexIVFRaBitQ : public IndexIVF
     int64_t cachedFilterAux0 = 0;
     int64_t cachedFilterAux1 = 0;
     uint64_t cachedFilterGeneration = 0;
+    uint64_t cachedFilterEpoch = 0;
     std::unique_ptr<DeviceVector<uint8_t>> cachedPrefixFilterPayload;
     const void *cachedPrefixFilterSrc = nullptr;
     size_t cachedPrefixFilterBytes = 0;
     uint64_t cachedPrefixFilterGeneration = 0;
+    uint64_t cachedPrefixFilterEpoch = 0;
 
     int quantBits_ = 1;
 };

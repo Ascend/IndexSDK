@@ -46,6 +46,22 @@ void AscendIndexIVFRaBitQ::train(idx_t n, const float* x)
     impl_->train(n, x);
 }
 
+void AscendIndexIVFRaBitQ::add(idx_t n, const float* x)
+{
+    FAISS_THROW_IF_NOT_MSG(impl_ != nullptr, "impl_ is nullptr!");
+    FAISS_THROW_IF_NOT_FMT(n > 0 && n < MAX_N, "n must be > 0 and < %ld", MAX_N);
+    FAISS_THROW_IF_NOT_MSG(n <= std::numeric_limits<int>::max(), "n exceeds int range");
+    impl_->addConcurrent(static_cast<int>(n), x, nullptr);
+}
+
+void AscendIndexIVFRaBitQ::add_with_ids(idx_t n, const float* x, const idx_t* ids)
+{
+    FAISS_THROW_IF_NOT_MSG(impl_ != nullptr, "impl_ is nullptr!");
+    FAISS_THROW_IF_NOT_FMT(n > 0 && n < MAX_N, "n must be > 0 and < %ld", MAX_N);
+    FAISS_THROW_IF_NOT_MSG(n <= std::numeric_limits<int>::max(), "n exceeds int range");
+    impl_->addConcurrent(static_cast<int>(n), x, ids);
+}
+
 // Copy what we need from a CPU IndexIVFRaBitQ
 void AscendIndexIVFRaBitQ::copyFrom(const faiss::IndexIVFRaBitQ* index)
 {
@@ -73,12 +89,21 @@ void AscendIndexIVFRaBitQ::copyTo(faiss::IndexIVFRaBitQ* index) const
 void AscendIndexIVFRaBitQ::remove_ids(size_t n, const idx_t* ids)
 {
     FAISS_THROW_IF_NOT_MSG(impl_ != nullptr, "impl_ is nullptr!");
-    impl_->deleteImpl(static_cast<int>(n), ids);
+    FAISS_THROW_IF_NOT_MSG(n <= static_cast<size_t>(std::numeric_limits<int>::max()), "n exceeds int range");
+    if (n == 0)
+    {
+        return;
+    }
+    FAISS_THROW_IF_NOT_MSG(ids != nullptr, "vector ID list is nullptr!");
+    impl_->deleteConcurrent(static_cast<int>(n), ids);
 }
 
 std::vector<idx_t> AscendIndexIVFRaBitQ::update(idx_t n, const float* x, const idx_t* ids)
 {
     FAISS_THROW_IF_NOT_MSG(impl_ != nullptr, "impl_ is nullptr!");
+    FAISS_THROW_IF_NOT_MSG(n > 0, "vector number must be greater than 0!");
+    FAISS_THROW_IF_NOT_FMT(n < MAX_N, "n must be < %ld", MAX_N);
+    FAISS_THROW_IF_NOT_MSG(n <= std::numeric_limits<int>::max(), "n exceeds int range");
     return impl_->update(n, x, ids);
 }
 

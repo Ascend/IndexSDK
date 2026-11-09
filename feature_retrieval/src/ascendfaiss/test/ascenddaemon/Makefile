@@ -17,8 +17,19 @@ $(TESTS_OBJ): %.o: %.cpp gtest
 $(TESTS_BIN): %: %.o ../../libascendfaissdaemon.a gtest/make/gtest_dev.a
 	$(ASCENDCXX) -o $@ $^ $(ASCENDLDFLAGS) $(ASCENDLIBS)
 
+HOSTCXX ?= g++
+HOSTCXXFLAGS ?= -std=c++17 -O2 -Wall -Wextra
+HOST_GTEST_FLAGS ?= -lgtest
+
+# Standalone host-only test: no ACL, Ascend libraries, or device initialization.
+TestParallelFutureUtils: TestParallelFutureUtils.cpp ../../ascenddaemon/utils/ParallelFutureUtils.h
+	$(HOSTCXX) $(HOSTCXXFLAGS) -I../../ -o $@ $< $(HOST_GTEST_FLAGS) -pthread
+
+host-parallel-future-test: TestParallelFutureUtils
+	./TestParallelFutureUtils
+
 clean:
-	rm -f *.o $(TESTS_BIN)
+	rm -f *.o $(TESTS_BIN) TestParallelFutureUtils
 
 
-.PHONY: clean run
+.PHONY: clean run host-parallel-future-test

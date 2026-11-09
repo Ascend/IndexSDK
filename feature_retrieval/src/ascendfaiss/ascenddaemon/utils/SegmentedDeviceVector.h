@@ -60,6 +60,7 @@ class DeviceSegment
             else
             {
                 AllocMemorySpace(space_, &data_, elements * sizeof(T));
+                ASCEND_THROW_IF_NOT_MSG(data_ != nullptr, "AllocMemorySpace returned null");
             }
         }
     }
@@ -219,27 +220,31 @@ class SegmentedDeviceVector
     }
 
     // Grow (or shrink) storage so logical slots [0, requiredLength) are addressable. Tail segment
-    // is copy-on-write cloned when it must grow, preserving already-written data.
+    // is copy-on-write cloned when it must grow, preserving already-written data. Stage all changes
+    // so allocation or copy failure leaves this vector's storage and metadata unchanged.
     void ensureCapacity(size_t requiredLength, aclrtStream stream)
     {
+        SegmentedDeviceVector staged(*this);
         size_t requiredSegments = (requiredLength + slotsPerSegment_ - 1) / slotsPerSegment_;
-        segments_.resize(requiredSegments);
+        staged.segments_.resize(requiredSegments);
         for (size_t segmentId = 0; segmentId < requiredSegments; ++segmentId)
         {
             size_t required =
                 segmentId + 1 < requiredSegments ? slotsPerSegment_ : requiredLength - segmentId * slotsPerSegment_;
             size_t capacity = segmentId + 1 < requiredSegments ? slotsPerSegment_ : nextTailCapacity(required);
-            auto& segment = segments_[segmentId];
+            auto& segment = staged.segments_[segmentId];
             if (segment == nullptr)
             {
                 segment = std::make_shared<Segment>(capacity, elementsPerSlot_, arena_);
             }
             else if (segment->slotCapacity() < capacity)
             {
-                segment = cloneSegment(segmentId, capacity, stream);
+                segment = staged.cloneSegment(segmentId, capacity, stream);
             }
         }
-        refreshCapacity();
+        staged.refreshCapacity();
+        segments_.swap(staged.segments_);
+        capacity_ = staged.capacity_;
     }
 
     // Drop trailing segments after a shrink; caller commits the new length separately.
