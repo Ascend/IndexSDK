@@ -151,20 +151,39 @@ TEST(TestCagraQueryQuantizationUT, SupportsMaximumQueryBatch)
     }
 }
 
+TEST(TestCagraSearchUT, AcceptsTopK256ForSupportedGraphDegrees)
+{
+    for (int degree : {64, 128})
+    {
+        AscendIndexCagra index;
+        EXPECT_EQ(index.Init(64, degree, 1024, 256, {0}), ::ascend::APP_ERR_OK);
+    }
+}
+
 TEST(TestCagraSearchUT, RejectsUnsupportedSearchSpecification)
 {
-    for (int topK : {-1, 0, 257, 512, 1024, 4096})
+    for (int topK : {-1, 0, 1, 10, 31, 33, 127, 129, 255, 257, 1023, 1025, 4096})
     {
         AscendIndexCagra index;
         EXPECT_EQ(index.Init(128, 64, 10000, topK, {0}), ::ascend::APP_ERR_INVALID_PARAM);
+    }
+    for (int degree : {0, 32, 96, 256, 512})
+    {
+        AscendIndexCagra index;
+        EXPECT_EQ(index.Init(128, degree, 10000, 32, {0}), ::ascend::APP_ERR_INVALID_PARAM);
     }
     for (int dim : {0, 100, 4096})
     {
         AscendIndexCagra index;
         EXPECT_EQ(index.Init(dim, 64, 10000, 32, {0}), ::ascend::APP_ERR_INVALID_PARAM);
     }
+    for (int degree : {64, 128})
+    {
+        AscendIndexCagra boundary;
+        EXPECT_EQ(boundary.Init(128, degree, degree, 32, {0}), ::ascend::APP_ERR_INVALID_PARAM);
+    }
     AscendIndexCagra index;
-    EXPECT_EQ(index.Init(128, 64, 128, 256, {0}), ::ascend::APP_ERR_INVALID_PARAM);
+    EXPECT_EQ(index.Init(128, 64, 128, 512, {0}), ::ascend::APP_ERR_INVALID_PARAM);
 }
 
 TEST(TestCagraSearchUT, Search)

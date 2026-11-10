@@ -51,6 +51,8 @@ def validate_args(args):
         raise ValueError(f"CAGRA graph builder requires dim in range [1, {MAX_BUILD_DIM}]")
     if args.data_size <= 1 or args.data_size > MAX_DATA_SIZE:
         raise ValueError(f"data_size must be in range [2, {MAX_DATA_SIZE}]")
+    if args.graph_degree not in (64, 128):
+        raise ValueError("CAGRA graph_degree must be 64 or 128")
     if not 0 < args.graph_degree <= args.intermediate_degree < args.data_size:
         raise ValueError("degrees must satisfy 0 < graph_degree <= intermediate_degree < data_size")
     if args.intermediate_degree > MAX_INTERMEDIATE_DEGREE:

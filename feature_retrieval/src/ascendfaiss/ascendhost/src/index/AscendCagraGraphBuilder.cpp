@@ -38,8 +38,8 @@ APP_ERROR AscendCagraGraphBuilder::Init(int dim, int graphDegree, int dataNum, c
     APPERR_RETURN_IF_NOT_LOG(impl == nullptr, APP_ERR_INVALID_PARAM, "CAGRA graph builder is already initialized");
     APPERR_RETURN_IF_NOT_LOG(dim > 0 && dim <= MAX_CAGRA_BUILD_DIM, APP_ERR_INVALID_PARAM,
                              "dim must be in range [1, 3072]");
-    APPERR_RETURN_IF_NOT_LOG(graphDegree > 0 && graphDegree < dataNum, APP_ERR_INVALID_PARAM,
-                             "graphDegree must be in range (0, dataNum)");
+    APPERR_RETURN_IF_NOT_LOG((graphDegree == 64 || graphDegree == 128) && graphDegree < dataNum, APP_ERR_INVALID_PARAM,
+                             "graphDegree must be 64 or 128 and less than dataNum");
     APPERR_RETURN_IF_NOT_LOG(dataNum > 1, APP_ERR_INVALID_PARAM, "dataNum must be greater than 1");
     APPERR_RETURN_IF_NOT_LOG(deviceList.size() == 1, APP_ERR_INVALID_PARAM,
                              "Only 1 chip is supported for CAGRA graph building");

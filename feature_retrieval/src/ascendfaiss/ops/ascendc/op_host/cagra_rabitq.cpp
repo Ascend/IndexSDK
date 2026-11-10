@@ -20,6 +20,7 @@
 #include <cstdint>
 #include <limits>
 
+#include "../op_kernel/cagra_rabitq_limits.h"
 #include "cagra_rabitq_tiling.h"
 #include "register/op_def_registry.h"
 #include "tiling/platform/platform_ascendc.h"
@@ -28,9 +29,7 @@ namespace optiling
 {
 namespace
 {
-constexpr uint32_t CAGRA_LOCAL_MEMORY_SIZE = 64 * 1024;
 constexpr uint32_t CAGRA_MIN_INTERNAL_TOPK = 64;
-constexpr uint32_t CAGRA_MAX_TOPK = 256;
 constexpr uint64_t CAGRA_TILING_KEY_SCALE = 10000;
 
 uint32_t RoundUpPowerOfTwo(uint32_t value)
@@ -49,8 +48,14 @@ bool IsSupportedDim(uint32_t value)
            value == 3072;
 }
 
-bool IsSupportedGraphDegree(uint32_t value) { return value == 64 || value == 128 || value == 256 || value == 512; }
+bool IsSupportedGraphDegree(uint32_t value) { return value == 64 || value == 128; }
+
 }  // namespace
+
+static bool IsSupportedTopK(uint32_t value)
+{
+    return value == 32 || value == 64 || value == 128 || value == 256 || value == 512 || value == 1024;
+}
 
 static ge::graphStatus TilingFunc(gert::TilingContext *context)
 {
@@ -61,6 +66,7 @@ static ge::graphStatus TilingFunc(gert::TilingContext *context)
     }
     auto ascendPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     size_t *currentWorkspace = context->GetWorkspaceSizes(1);
+    if (currentWorkspace == nullptr) return ge::GRAPH_FAILED;
     size_t systemWorkspacesSize = ascendPlatform.GetLibApiWorkSpaceSize();
     currentWorkspace[0] = systemWorkspacesSize;
 
@@ -69,9 +75,9 @@ static ge::graphStatus TilingFunc(gert::TilingContext *context)
     auto base_shape = context->GetInputShape(3)->GetOriginShape();
     if (query_shape.GetDimNum() != 2 || graph_shape.GetDimNum() != 2 || base_shape.GetDimNum() != 2 ||
         query_shape.GetDim(0) <= 0 || query_shape.GetDim(0) > 64 || base_shape.GetDim(0) <= 1 ||
-        base_shape.GetDim(0) > std::numeric_limits<uint32_t>::max() || graph_shape.GetDim(0) != base_shape.GetDim(0) ||
+        base_shape.GetDim(0) > 1000000000LL || graph_shape.GetDim(0) != base_shape.GetDim(0) ||
         query_shape.GetDim(1) != base_shape.GetDim(1) || query_shape.GetDim(1) <= 0 || query_shape.GetDim(1) > 3072 ||
-        graph_shape.GetDim(1) <= 0 || graph_shape.GetDim(1) > 512)
+        graph_shape.GetDim(1) <= 0 || graph_shape.GetDim(1) > 128)
     {
         return ge::GRAPH_FAILED;
     }
@@ -86,11 +92,39 @@ static ge::graphStatus TilingFunc(gert::TilingContext *context)
     uint32_t top_k = static_cast<uint32_t>(*top_k_attr);
     uint32_t number_of_base = base_shape.GetDim(0);
     if (block_number == 0 || !IsSupportedDim(dim) || !IsSupportedGraphDegree(graph_degree) || number_of_base <= 1 ||
-        top_k == 0 || top_k > CAGRA_MAX_TOPK || top_k > number_of_base)
+        !IsSupportedTopK(top_k) || top_k > number_of_base)
     {
         return ge::GRAPH_FAILED;
     }
     uint32_t internal_top_k = RoundUpPowerOfTwo(std::max(top_k, CAGRA_MIN_INTERNAL_TOPK));
+    for (uint32_t i : {2U, 4U, 5U, 6U})
+    {
+        if (context->GetInputShape(i) == nullptr) return ge::GRAPH_FAILED;
+    }
+    const auto visited = context->GetInputShape(2)->GetOriginShape();
+    const auto precompute = context->GetInputShape(4)->GetOriginShape();
+    const auto code = context->GetInputShape(5)->GetOriginShape();
+    const auto rotated = context->GetInputShape(6)->GetOriginShape();
+    const int64_t planeBytes = (dim + 7) / 8;
+    if (graph_degree >= number_of_base || visited.GetDimNum() != 2 || visited.GetDim(0) < block_number ||
+        visited.GetDim(1) != (static_cast<int64_t>(number_of_base) + 31) / 32 || precompute.GetDimNum() != 1 ||
+        precompute.GetDim(0) != static_cast<int64_t>(block_number) * 4 || code.GetDimNum() != 1 ||
+        code.GetDim(0) != static_cast<int64_t>(number_of_base) * (6 * planeBytes + 16) || rotated.GetDimNum() != 1 ||
+        rotated.GetDim(0) != static_cast<int64_t>(block_number) * 6 * planeBytes)
+    {
+        return ge::GRAPH_FAILED;
+    }
+    for (uint32_t i = 0; i < 2; ++i)
+    {
+        if (context->GetOutputShape(i) == nullptr) return ge::GRAPH_FAILED;
+        const auto output = context->GetOutputShape(i)->GetOriginShape();
+        if (output.GetDimNum() != 2 || output.GetDim(0) != block_number || output.GetDim(1) != top_k)
+            return ge::GRAPH_FAILED;
+    }
+    if (CagraRabitqLocalMemoryBytes(dim, graph_degree, internal_top_k) > CAGRA_LOCAL_MEMORY_SIZE)
+    {
+        return ge::GRAPH_FAILED;
+    }
     // One logical vector block per query; physical cores can execute multiple waves.
     // Keep all query blocks instead of truncating the batch to the physical core count.
     context->SetBlockDim(block_number);
@@ -140,7 +174,8 @@ static ge::graphStatus InferShape(gert::InferShapeContext *context)
         return GRAPH_FAILED;
     }
     const auto *topKAttr = context->GetAttrs()->GetAttrPointer<int64_t>(0);
-    if (topKAttr == nullptr || *topKAttr <= 0 || *topKAttr > 256)
+    if (topKAttr == nullptr || *topKAttr <= 0 || *topKAttr > CAGRA_MAX_TOPK ||
+        !optiling::IsSupportedTopK(static_cast<uint32_t>(*topKAttr)))
     {
         return GRAPH_FAILED;
     }

@@ -54,6 +54,8 @@ AscendIndexCagraImpl::~AscendIndexCagraImpl() {}
 APP_ERROR AscendIndexCagraImpl::Init(int graphDegree, int dataNum)
 {
     APP_LOG_INFO("AscendIndexCagraImpl::Init start");
+    APPERR_RETURN_IF_NOT_LOG(graphDegree == 64 || graphDegree == 128, APP_ERR_INVALID_PARAM,
+                             "CAGRA graph degree must be 64 or 128");
 
     deviceId = deviceList[0];
     ASCEND_THROW_IF_NOT(deviceId >= 0);
@@ -340,6 +342,9 @@ APP_ERROR AscendIndexCagraImpl::QuantizeQueries(int nq, const float *queryData)
 APP_ERROR AscendIndexCagraImpl::Search(int n, const float *queryData, int topK, float *dists, uint32_t *labels)
 {
     APP_LOG_INFO("AscendIndexCagraImpl::Search start");
+    APPERR_RETURN_IF_NOT_LOG((topK == 32 || topK == 64 || topK == 128 || topK == 256 || topK == 512 || topK == 1024) &&
+                                 static_cast<size_t>(topK) <= dataNum,
+                             APP_ERR_INVALID_PARAM, "CAGRA topK must be in {32,64,128,256,512,1024} and at most N");
     APPERR_RETURN_IF_NOT_LOG(n > 0 && static_cast<size_t>(n) * PRE_COMPUTE_SIZE <= g_precompute.size() &&
                                  static_cast<size_t>(n) * rotatedSize <= g_rotated.size(),
                              APP_ERR_INVALID_PARAM, "Search queries must be quantized before use");

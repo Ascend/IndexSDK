@@ -30,10 +30,9 @@ namespace ascend
 namespace
 {
 const std::vector<int> VALID_DIM = {64, 128, 256, 512, 1024, 1536, 3072};
-const std::vector<int> VALID_GRAPH_DEGREE = {64, 128, 256, 512};
+const std::vector<int> VALID_GRAPH_DEGREE = {64, 128};
 constexpr int64_t MAX_DATA_NUM = 1000000000L;
-constexpr int MIN_TOPK = 0;
-constexpr int MAX_TOPK = 256;
+const std::vector<int> VALID_TOPK = {32, 64, 128, 256, 512, 1024};
 constexpr int MAX_BATCH_SIZE = 4096;
 }  // namespace
 
@@ -59,12 +58,13 @@ APP_ERROR AscendIndexCagra::Init(int dim, int graphDegree, int dataNum, int topK
                              "Invalid dimension %d, should be in {64, 128, 256, 512, 1024, 1536, 3072}", dim);
     APPERR_RETURN_IF_NOT_FMT(
         std::find(VALID_GRAPH_DEGREE.begin(), VALID_GRAPH_DEGREE.end(), graphDegree) != VALID_GRAPH_DEGREE.end(),
-        APP_ERR_INVALID_PARAM, "Invalid graph degree %d, should be in {64, 128, 256, 512}", graphDegree);
-    APPERR_RETURN_IF_NOT_FMT(topK > MIN_TOPK && topK <= MAX_TOPK, APP_ERR_INVALID_PARAM,
-                             "topK %d, must be in range (%d, %d]", topK, MIN_TOPK, MAX_TOPK);
+        APP_ERR_INVALID_PARAM, "Invalid graph degree %d, should be in {64, 128}", graphDegree);
+    APPERR_RETURN_IF_NOT_FMT(std::find(VALID_TOPK.begin(), VALID_TOPK.end(), topK) != VALID_TOPK.end(),
+                             APP_ERR_INVALID_PARAM, "Unsupported topK %d; expected {32,64,128,256,512,1024}", topK);
     APPERR_RETURN_IF_NOT_LOG(deviceList.size() == 1, APP_ERR_INVALID_PARAM, "Only 1 chip supported for Ascend CAGRA");
-    APPERR_RETURN_IF_NOT_FMT(dataNum > 1 && dataNum <= MAX_DATA_NUM && topK <= dataNum, APP_ERR_INVALID_PARAM,
-                             "Invalid dataNum %d, must be in (1, %lld] and at least topK", dataNum, MAX_DATA_NUM);
+    APPERR_RETURN_IF_NOT_FMT(dataNum > graphDegree && dataNum <= MAX_DATA_NUM && topK <= dataNum, APP_ERR_INVALID_PARAM,
+                             "Invalid dataNum %d: require graphDegree (%d) < dataNum <= %lld and topK (%d) <= dataNum",
+                             dataNum, graphDegree, static_cast<long long>(MAX_DATA_NUM), topK);
 
     try
     {
@@ -129,8 +129,8 @@ APP_ERROR AscendIndexCagra::Search(int n, const float* queryData, int topK, floa
     APPERR_RETURN_IF_NOT_LOG(pIndexCagraImpl != nullptr, APP_ERR_INVALID_PARAM, "pIndexCagraImpl is nullptr");
     APPERR_RETURN_IF_NOT_FMT(n > 0 && n <= MAX_BATCH_SIZE, APP_ERR_INVALID_PARAM, "n %d, must be in range (0, %d]", n,
                              MAX_BATCH_SIZE);
-    APPERR_RETURN_IF_NOT_FMT(topK > MIN_TOPK && topK <= MAX_TOPK, APP_ERR_INVALID_PARAM,
-                             "topK %d, must be in range (%d, %d]", topK, MIN_TOPK, MAX_TOPK);
+    APPERR_RETURN_IF_NOT_FMT(std::find(VALID_TOPK.begin(), VALID_TOPK.end(), topK) != VALID_TOPK.end(),
+                             APP_ERR_INVALID_PARAM, "Unsupported topK %d; expected {32,64,128,256,512,1024}", topK);
     APPERR_RETURN_IF_NOT_LOG(queryData, APP_ERR_INVALID_PARAM, "queryData cannot be nullptr");
     APPERR_RETURN_IF_NOT_LOG(dists, APP_ERR_INVALID_PARAM, "dists cannot be nullptr");
     APPERR_RETURN_IF_NOT_LOG(labels, APP_ERR_INVALID_PARAM, "labels cannot be nullptr");
