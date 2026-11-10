@@ -152,8 +152,33 @@ class IndexIVFRaBitQ : public IndexIVF
 
     APP_ERROR updateCoarseCenterImpl(std::vector<float> &centerData);
 
+    // One list's share of an add request. A single request usually touches many lists, and publishing a
+    // snapshot per list costs one clone and one retire each, so the whole fan-out is applied to one
+    // clone and published once.
+    struct ListAddRequest
+    {
+        int listId;
+        size_t numVecs;
+        const float *codes;
+        const idx_t *indices;
+    };
+
+    struct ListEncodedAddRequest
+    {
+        int listId;
+        size_t numVecs;
+        // Packed [codes][l2][l1], the same layout addEncodedVectors takes.
+        const uint8_t *encodedCodes;
+        const idx_t *indices;
+    };
+
+    // baseSlotsOut, when non-null, must have room for count entries and receives each request's append
+    // start slot. The whole batch does exactly one cloneSnapshot and one publishSnapshot.
+    APP_ERROR addVectorsBatch(const ListAddRequest *reqs, size_t count, size_t *baseSlotsOut = nullptr);
+    APP_ERROR addEncodedVectorsBatch(const ListEncodedAddRequest *reqs, size_t count, size_t *baseSlotsOut = nullptr);
+
     // baseSlotOut receives the slot the first of these vectors landed in; an append is contiguous, so
-    // the host derives the rest as baseSlot + i.
+    // the host derives the rest as baseSlot + i. Single-list wrapper over addVectorsBatch.
     APP_ERROR addVectors(int listId, size_t numVecs, const float *codes, const idx_t *indices,
                          size_t *baseSlotOut = nullptr);
 
@@ -365,6 +390,18 @@ class IndexIVFRaBitQ : public IndexIVF
 
     // Grow all four vectors of `list` so slots [0, newLen) are addressable.
     void ensureListCapacity(ListStorage &list, size_t newLen, aclrtStream stream);
+
+    // Return the copy of `listId` that `next` exclusively owns, cloning it out of `base` on first
+    // touch. A batch may name the same list twice, so the second touch must append to the copy the
+    // first one made rather than clone `base` again and lose it.
+    ListStorage &listForWrite(GlobalSnapshot &next, const GlobalSnapshot &base, int listId);
+
+    // Append one list's share of a batch onto the already-cloned `next`. No locking, no clone, no
+    // stream sync and no publish: the batch does those once around the whole fan-out.
+    APP_ERROR applyListAdd(GlobalSnapshot &next, const GlobalSnapshot &base, const ListAddRequest &req,
+                           aclrtStream stream, size_t *baseSlotOut);
+    APP_ERROR applyListAddEncoded(GlobalSnapshot &next, const GlobalSnapshot &base, const ListEncodedAddRequest &req,
+                                  aclrtStream stream, size_t *baseSlotOut);
 
     // Rebuild `newList` (a fresh copy of `oldList`) with `deletedSlots` removed, by moving the
     // surviving tail slots into the holes they leave behind and shrinking to the new length.
