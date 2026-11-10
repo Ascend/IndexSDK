@@ -69,7 +69,7 @@ extern "C"
         ACL_CALLBACK_BLOCK,
     } aclrtCallbackBlockType;
 
-    // Device features queryable through aclrtGetDeviceCapability. Names and values mirror the CANN
+    // Device attributes queryable through aclrtGetDeviceInfo. Names and values mirror the CANN
     // definition (acl_rt.h) so the mock and the real runtime agree; only the members this project queries
     // are declared.
     typedef enum
@@ -78,7 +78,7 @@ extern "C"
         ACL_DEV_ATTR_AICORE_CORE_NUM = 101,  // number of AI Cores
         ACL_DEV_ATTR_CUBE_CORE_NUM = 102,    // number of Cube Cores
         ACL_DEV_ATTR_VECTOR_CORE_NUM = 201,  // number of Vector Cores
-    } aclrtDevFeatureType;
+    } aclrtDevAttr;
 
     typedef void (*aclrtCallback)(void *userData);
 
@@ -97,7 +97,7 @@ extern "C"
     aclError aclrtGetDevice(int32_t *deviceId);
     aclError aclrtResetDevice(int32_t deviceId);
     aclError aclrtGetDeviceCount(uint32_t *count);
-    aclError aclrtGetDeviceCapability(int32_t deviceId, aclrtDevFeatureType devFeatureType, int32_t *value);
+    aclError aclrtGetDeviceInfo(uint32_t deviceId, aclrtDevAttr attr, int64_t *value);
 
     aclError aclrtCreateStream(aclrtStream *stream);
     aclError aclrtDestroyStream(aclrtStream stream);

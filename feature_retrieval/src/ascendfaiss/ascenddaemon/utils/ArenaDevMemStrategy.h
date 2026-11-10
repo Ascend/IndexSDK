@@ -23,6 +23,7 @@
 
 #include "DevVecMemStrategyIntf.h"
 #include "DeviceMemArena.h"
+#include "common/utils/LogUtils.h"
 
 namespace ascend
 {
@@ -39,7 +40,20 @@ class ArenaDevMemStrategy : public DevVecMemStrategyIntf<T>
         ASCEND_THROW_IF_NOT_MSG(arena_ != nullptr, "DeviceMemArena is null");
     }
 
-    ~ArenaDevMemStrategy() override { Clear(); }
+    ~ArenaDevMemStrategy() override
+    {
+        // Clear() releases through DeviceMemArena, which throws if it is handed a
+        // pointer it does not own. Letting that escape a destructor would terminate the
+        // process, so report and leak instead.
+        try
+        {
+            Clear();
+        }
+        catch (...)
+        {
+            APP_LOG_ERROR("[ArenaDevMemStrategy] unexpected exception while clearing in destructor");
+        }
+    }
 
     ArenaDevMemStrategy(const ArenaDevMemStrategy &) = delete;
     ArenaDevMemStrategy &operator=(const ArenaDevMemStrategy &) = delete;
@@ -176,7 +190,6 @@ class ArenaDevMemStrategy : public DevVecMemStrategyIntf<T>
         }
 
         T *newData = static_cast<T *>(arena_->Allocate(newCapacity * sizeof(T)));
-        ASCEND_THROW_IF_NOT_MSG(newData != nullptr, "DeviceMemArena Allocate returned null");
 
         if ((dataPtr_ != nullptr) && (num_ > 0))
         {
@@ -196,6 +209,10 @@ class ArenaDevMemStrategy : public DevVecMemStrategyIntf<T>
                 ASCEND_THROW_FMT("memcpy_s operator error %d", static_cast<int>(ret));
             }
 #endif
+        }
+        // A reserved-but-empty vector still owns its old capacity.
+        if (dataPtr_ != nullptr)
+        {
             arena_->Deallocate(dataPtr_);
         }
 

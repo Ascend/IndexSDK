@@ -21,6 +21,7 @@
 #include "ThreadSafeStandardAscendResources.h"
 #include "ascenddaemon/utils/AscendStackMemory.h"
 #include "ascenddaemon/utils/AscendUtils.h"
+#include "ascenddaemon/utils/MemorySpace.h"
 #include "common/utils/CommonUtils.h"
 #include "common/utils/LogUtils.h"
 #include "common/utils/SocUtils.h"
@@ -128,6 +129,16 @@ void StandardAscendResources::uninitialize()
         }
     }
     alternateStreams.clear();
+
+    // Hand the pools' idle chunks back while this device is still current: after
+    // aclrtResetDevice they could only be released through a stale context. Chunks that
+    // still back live index data are kept, so this cannot invalidate anything in use.
+    const size_t releasedChunks = ReleaseMemoryPoolsOfDevice(deviceId);
+    if (releasedChunks > 0)
+    {
+        APP_LOG_INFO("released %zu idle memory pool chunks on device %d during uninitialize", releasedChunks, deviceId);
+    }
+
     (void)aclrtResetDevice(deviceId);
 
     if (opsMng != nullptr)
