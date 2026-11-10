@@ -30,6 +30,7 @@
 #include <vector>
 
 #include "acl/acl.h"
+#include "ascenddaemon/utils/MemorySpace.h"
 #include "common/utils/LogUtils.h"
 
 namespace faiss
@@ -376,6 +377,10 @@ class SocUtils
             else
             {
                 APP_LOG_DEBUG("exec aclFinalize ------------- \n");
+                // Hand the pooled device memory back while ACL is still up. The
+                // qualification matters: we are inside faiss::ascend, so an unqualified
+                // ascend:: would resolve to this namespace instead of the global one.
+                (void)::ascend::ShutdownMemoryPools();
                 (void)aclFinalize();
             }
             finalized = true;
@@ -389,6 +394,9 @@ class SocUtils
         else
         {
             APP_LOG_DEBUG("set env, exec aclFinalize ------------- \n");
+            // Same contract as above: only the branches that really finalize ACL may
+            // destroy pools that still back live pointers.
+            (void)::ascend::ShutdownMemoryPools();
             (void)aclFinalize();
         }
         finalized = true;

@@ -185,17 +185,17 @@ bool TryResolveTopkGroupSize(int64_t &width)
         return false;
     }
 
-    int32_t aicpuNum = 0;
-    aclError ret = aclrtGetDeviceCapability(deviceId, ACL_DEV_ATTR_AICPU_CORE_NUM, &aicpuNum);
+    int64_t aicpuNum = 0;
+    aclError ret = aclrtGetDeviceInfo(static_cast<uint32_t>(deviceId), ACL_DEV_ATTR_AICPU_CORE_NUM, &aicpuNum);
     if (ret != ACL_ERROR_NONE || aicpuNum <= 0)
     {
         APP_LOG_WARNING(
-            "aclrtGetDeviceCapability(ACL_DEV_ATTR_AICPU_CORE_NUM) returned %d (value %d) on device %d; "
+            "aclrtGetDeviceInfo(ACL_DEV_ATTR_AICPU_CORE_NUM) returned %d (value %ld) on device %d; "
             "keeping the TopK group window at %ld\n",
-            static_cast<int>(ret), aicpuNum, deviceId, static_cast<long>(width));
+            static_cast<int>(ret), static_cast<long>(aicpuNum), deviceId, static_cast<long>(width));
         return false;
     }
-    width = static_cast<int64_t>(aicpuNum);
+    width = aicpuNum;
     return true;
 }
 
@@ -1179,8 +1179,10 @@ APP_ERROR IndexIVFRaBitQ::applyListAdd(GlobalSnapshot &next, const GlobalSnapsho
         {
             MemDebugPrintf(
                 "[MemDebug] IndexIVFRaBitQ::addVectors done listId=%d numVecs=%zu listLen=%zu "
-                "codeSegments=%zu codeBytes=%zu arenaReserved=%zu slabs=%zu retiredBytes=%zu\n",
+                "codeSegments=%zu codeBytes=%zu pooled=%d arenaRequested=%zu arenaAllocs=%zu "
+                "arenaReserved=%zu slabs=%zu retiredBytes=%zu\n",
                 listId, numVecs, newLen, list.codes.segmentCount(), list.codes.allocatedBytes(),
+                static_cast<int>(listArena_->IsPooled()), listArena_->AllocatedBytes(), listArena_->AllocationCount(),
                 listArena_->TotalReservedBytes(), listArena_->SlabCount(), retiredBytes);
             LogHbm("IndexIVFRaBitQ_addVectors_after", -1);
         }

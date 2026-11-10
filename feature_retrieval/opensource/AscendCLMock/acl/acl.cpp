@@ -292,7 +292,7 @@ extern "C"
     // TOPK_IVF_RABITQ_AICPU_NUM's fallback). The literal is repeated rather than included: this mock stands
     // in for ACL and must not depend on operator headers. Keeping the answer deterministic matters for the
     // TopK slot-plan UTs, which size the GROUPED window from ACL_DEV_ATTR_AICPU_CORE_NUM.
-    aclError aclrtGetDeviceCapability(int32_t deviceId, aclrtDevFeatureType devFeatureType, int32_t *value)
+    aclError aclrtGetDeviceInfo(uint32_t deviceId, aclrtDevAttr attr, int64_t *value)
     {
         if (value == nullptr)
         {
@@ -303,7 +303,7 @@ extern "C"
             return ACL_ERROR_UNINITIALIZE;
         }
         (void)deviceId;
-        switch (devFeatureType)
+        switch (attr)
         {
             case ACL_DEV_ATTR_AICPU_CORE_NUM:
                 *value = 6;
