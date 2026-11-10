@@ -30,6 +30,7 @@
 #include "ascenddaemon/impl/IndexIVF.h"
 #include "ascenddaemon/utils/AscendOperator.h"
 #include "ascenddaemon/utils/AscendStackMemory.h"
+#include "ascenddaemon/utils/ChunkedCowVector.h"
 #include "ascenddaemon/utils/DeviceMemArena.h"
 #include "ascenddaemon/utils/SegmentedDeviceVector.h"
 #include "common/RabitqIdFilter.h"
@@ -85,6 +86,13 @@ class IndexIVFRaBitQ : public IndexIVF
         size_t listLen{0};
     };
 
+    // Number of inverted lists per snapshot chunk (copy-on-write granularity for the list array).
+    // Tuning: publishing a write copies the top chunk-pointer array (numLists / kListChunkSize entries)
+    // plus one full chunk per touched chunk. Larger -> smaller top array but more bytes copied per touched
+    // chunk; smaller -> finer COW granularity but a larger top array. Keep it a power of two so the hot-path
+    // index / % in ChunkedCowVector compile to shift/and.
+    static constexpr size_t kListChunkSize = 1024;
+
     // An immutable view of every inverted list. Readers hold one of these for the whole duration of a
     // search; the writer never mutates a published snapshot, it clones the one list it touches and
     // publishes a new snapshot. Lists are held by shared_ptr so an unmodified list is shared between
@@ -92,7 +100,8 @@ class IndexIVFRaBitQ : public IndexIVF
     // so cloning a list copies four small segment-pointer vectors, not device memory.
     struct GlobalSnapshot
     {
-        std::vector<std::shared_ptr<const ListStorage>> lists;
+        // Chunked so publishing a write clones only the chunks whose lists changed, not all numLists slots.
+        ChunkedCowVector<ListStorage, kListChunkSize> lists;
         uint64_t publishVer{0};
         size_t total{0};
         // Label ceiling belongs to this immutable version, just like total.
@@ -377,8 +386,8 @@ class IndexIVFRaBitQ : public IndexIVF
     // Free every retired snapshot no reader is parked on. Must be called with writerLock held.
     void reclaimRetiredSnapshots();
 
-    // Device bytes that would be freed by dropping `snapshot`, i.e. only the segments it is the last
-    // owner of.
+    // Reusable device segment bytes for which `snapshot` is the last owner, not arena slab reservation.
+    // Shared chunks are skipped before examining list/segment ownership. Must hold writerLock.
     size_t retainedBytes(const GlobalSnapshot &snapshot) const;
 
     // Drain both reader streams with one retry. Called under readerLock, or exclusive indexLock in reset.

@@ -1,7 +1,8 @@
 -include ../../makefile.inc
 
 TESTS_SRC = TestIndexIVFPQ.cpp TestAscendTensor.cpp TestAscendResources.cpp \
-	TestDeviceVector.cpp TestSegmentedDeviceVector.cpp TestIndexFlat.cpp TestIndexIVFSQL2.cpp \
+	TestDeviceVector.cpp TestSegmentedDeviceVector.cpp TestChunkedCowVector.cpp \
+	TestIndexFlat.cpp TestIndexIVFSQL2.cpp \
 	TestLinearTransform.cpp TestIndexSQL2.cpp \
 	TestIndexIVFFlat.cpp TestIndexFlatInt8CosTS.cpp
 
