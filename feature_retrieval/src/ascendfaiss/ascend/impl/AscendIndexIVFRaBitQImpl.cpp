@@ -1519,14 +1519,19 @@ void AscendIndexIVFRaBitQImpl::copyFrom(const faiss::IndexIVFRaBitQ* index)
                 auto ret =
                     memcpy_s(dstCodesPtr + k * codePartBytesPerVec, codePartBytesPerVec, vecPtr, codePartBytesPerVec);
                 FAISS_THROW_IF_NOT_FMT(ret == 0, "memcpy_s failed for codes, ret=%d", ret);
-                // Extract L2 factor
+                // Extract L2 factor (FAISS or_minus_c_l2sqr == NPU L2)
                 ret = memcpy_s(dstL2Ptr + k * factorBytesPerVec, factorBytesPerVec, vecPtr + codePartBytesPerVec,
                                factorBytesPerVec);
                 FAISS_THROW_IF_NOT_FMT(ret == 0, "memcpy_s failed for L2, ret=%d", ret);
-                // Extract L1 factor
-                ret = memcpy_s(dstL1Ptr + k * factorBytesPerVec, factorBytesPerVec,
-                               vecPtr + codePartBytesPerVec + factorBytesPerVec, factorBytesPerVec);
-                FAISS_THROW_IF_NOT_FMT(ret == 0, "memcpy_s failed for L1, ret=%d", ret);
+                // FAISS stores dp_multiplier; NPU L1 = 2 * dp_multiplier (native encoder
+                // bakes the 2 into L1; the distance kernel does not multiply by 2 again).
+                float dpMultiplier = 0.f;
+                ret = memcpy_s(&dpMultiplier, sizeof(dpMultiplier), vecPtr + codePartBytesPerVec + factorBytesPerVec,
+                               sizeof(float));
+                FAISS_THROW_IF_NOT_FMT(ret == 0, "memcpy_s failed for L1 read, ret=%d", ret);
+                dpMultiplier *= 2.f;
+                ret = memcpy_s(dstL1Ptr + k * factorBytesPerVec, factorBytesPerVec, &dpMultiplier, sizeof(float));
+                FAISS_THROW_IF_NOT_FMT(ret == 0, "memcpy_s failed for L1 write, ret=%d", ret);
             }
         }
 
@@ -1690,8 +1695,13 @@ void AscendIndexIVFRaBitQImpl::copyTo(faiss::IndexIVFRaBitQ* index) const
             FAISS_THROW_IF_NOT_FMT(memcpyRet == 0, "memcpy_s failed for L2 interleave, ret=%d", memcpyRet);
             allCodesOffset += factorBytesPerVec;
 
+            // NPU L1 = 2 * FAISS dp_multiplier; write FAISS-scale factor back.
+            float npuL1 = 0.f;
+            memcpyRet = memcpy_s(&npuL1, sizeof(npuL1), allL1Part.data() + i * factorBytesPerVec, sizeof(float));
+            FAISS_THROW_IF_NOT_FMT(memcpyRet == 0, "memcpy_s failed for L1 read, ret=%d", memcpyRet);
+            float dpMultiplier = npuL1 * 0.5f;
             memcpyRet = memcpy_s(allCodes.data() + allCodesOffset, totalLen * devCodeSize - allCodesOffset,
-                                 allL1Part.data() + i * factorBytesPerVec, factorBytesPerVec);
+                                 &dpMultiplier, sizeof(float));
             FAISS_THROW_IF_NOT_FMT(memcpyRet == 0, "memcpy_s failed for L1 interleave, ret=%d", memcpyRet);
             allCodesOffset += factorBytesPerVec;
         }

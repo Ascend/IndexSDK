@@ -485,9 +485,33 @@ TEST(TestAscendIndexIVFRaBitQ, MergeSearchResultsHonorsMetricOrdering)
     EXPECT_THAT(mergedLabels, ElementsAre(90, 80, 70, 50));
 }
 
+// FAISS 1-bit layout is [sign bits | or_minus_c_l2sqr | dp_multiplier]. NPU L1 is
+// 2*dp_multiplier. Pack known factors, assert NPU L1 after copyFrom (identity
+// memcpy would fail here), then assert FAISS-scale factors after copyTo.
 TEST(TestAscendIndexIVFRaBitQ, CopyFromAndCopyToRoundTripPreencodedData)
 {
-    auto source = MakePretrainedCpuIndex();
+    auto source = MakePretrainedCpuIndex(false);
+    const size_t codeSize = source.index->code_size;
+    const size_t codePartBytes = (static_cast<size_t>(DIM) + 7) / 8;
+    ASSERT_EQ(codeSize, codePartBytes + 2 * sizeof(float));
+
+    source.ids = {101, 202, 303};
+    const std::vector<float> l2Factors = {0.25f, 1.5f, 4.0f};
+    const std::vector<float> dpMultipliers = {0.125f, 0.75f, 2.5f};
+    ASSERT_EQ(l2Factors.size(), source.ids.size());
+    ASSERT_EQ(dpMultipliers.size(), source.ids.size());
+
+    source.codes.assign(source.ids.size() * codeSize, 0);
+    for (size_t i = 0; i < source.ids.size(); ++i)
+    {
+        uint8_t* vecPtr = source.codes.data() + i * codeSize;
+        std::memset(vecPtr, static_cast<int>(0xA0 + i), codePartBytes);
+        std::memcpy(vecPtr + codePartBytes, &l2Factors[i], sizeof(float));
+        std::memcpy(vecPtr + codePartBytes + sizeof(float), &dpMultipliers[i], sizeof(float));
+    }
+    source.index->invlists->add_entries(source.listId, source.ids.size(), source.ids.data(), source.codes.data());
+    source.index->ntotal = static_cast<faiss::idx_t>(source.ids.size());
+
     faiss::ascend::AscendIndexIVFRaBitQ deviceIndex(DIM, faiss::METRIC_L2, NLIST, MakeConfig());
 
     ASSERT_NO_THROW(deviceIndex.copyFrom(source.index.get()));
@@ -498,6 +522,26 @@ TEST(TestAscendIndexIVFRaBitQ, CopyFromAndCopyToRoundTripPreencodedData)
     EXPECT_FLOAT_EQ(deviceIndex.impl_->orthogonalMatrix.front(), 1.0f);
     EXPECT_FLOAT_EQ(deviceIndex.impl_->orthogonalMatrix[DIM + 1], 1.0f);
     EXPECT_FLOAT_EQ(deviceIndex.impl_->orthogonalMatrix[1], 0.0f);
+
+    // Device raw layout is [all codes][all L2][all L1]; L1 must be 2*dp_multiplier.
+    auto* actual = deviceIndex.impl_->getActualIndex(0);
+    ASSERT_NE(actual, nullptr);
+    ASSERT_EQ(actual->getListLength(source.listId), source.ids.size());
+    std::vector<uint8_t> deviceRawCodes;
+    ASSERT_EQ(actual->getListRawCodes(source.listId, deviceRawCodes), ::ascend::APP_ERR_OK);
+    ASSERT_EQ(deviceRawCodes.size(), source.ids.size() * codeSize);
+    const size_t codePartTotal = source.ids.size() * codePartBytes;
+    const uint8_t* deviceL2 = deviceRawCodes.data() + codePartTotal;
+    const uint8_t* deviceL1 = deviceL2 + source.ids.size() * sizeof(float);
+    for (size_t i = 0; i < source.ids.size(); ++i)
+    {
+        float npuL2 = 0.f;
+        float npuL1 = 0.f;
+        std::memcpy(&npuL2, deviceL2 + i * sizeof(float), sizeof(float));
+        std::memcpy(&npuL1, deviceL1 + i * sizeof(float), sizeof(float));
+        EXPECT_FLOAT_EQ(npuL2, l2Factors[i]) << "NPU L2 mismatch at vec " << i;
+        EXPECT_FLOAT_EQ(npuL1, 2.f * dpMultipliers[i]) << "NPU L1 != 2*dp_multiplier at vec " << i;
+    }
 
     // copyTo installs and owns both the quantizer and inverted lists.
     faiss::IndexIVFRaBitQ output;
@@ -514,7 +558,19 @@ TEST(TestAscendIndexIVFRaBitQ, CopyFromAndCopyToRoundTripPreencodedData)
     const faiss::idx_t* outputIds = output.invlists->get_ids(source.listId);
     const uint8_t* outputCodes = output.invlists->get_codes(source.listId);
     EXPECT_TRUE(std::equal(source.ids.begin(), source.ids.end(), outputIds));
-    EXPECT_TRUE(std::equal(source.codes.begin(), source.codes.end(), outputCodes));
+    for (size_t i = 0; i < source.ids.size(); ++i)
+    {
+        const uint8_t* srcPtr = source.codes.data() + i * codeSize;
+        const uint8_t* dstPtr = outputCodes + i * codeSize;
+        EXPECT_TRUE(std::equal(srcPtr, srcPtr + codePartBytes, dstPtr)) << "sign bits mismatch at vec " << i;
+
+        float outL2 = 0.f;
+        float outDp = 0.f;
+        std::memcpy(&outL2, dstPtr + codePartBytes, sizeof(float));
+        std::memcpy(&outDp, dstPtr + codePartBytes + sizeof(float), sizeof(float));
+        EXPECT_FLOAT_EQ(outL2, l2Factors[i]) << "or_minus_c_l2sqr mismatch at vec " << i;
+        EXPECT_FLOAT_EQ(outDp, dpMultipliers[i]) << "dp_multiplier mismatch at vec " << i;
+    }
 
     std::vector<float> vector(DIM, 0.0f);
     ASSERT_NO_THROW(deviceIndex.train(1, vector.data()));
