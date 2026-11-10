@@ -24,9 +24,12 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <atomic>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <future>
 #include <iostream>
 #include <limits>
 #include <memory>
@@ -35,6 +38,7 @@
 #include <random>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -454,13 +458,19 @@ TEST(TestAscendIndexIVFRaBitQ, IdentityMatrixMappingAndUpdateValidationNeedNoDev
     impl->randomOrthogonalGivens(4, identity);
     EXPECT_THAT(identity, ElementsAre(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1));
 
-    const faiss::ascend::ascend_idx_t mappedIds[] = {10, 20, 30};
-    impl->updateIdMapping(mappedIds, 1, 3);
-    EXPECT_EQ(impl->findDeviceId(20), 1);
-    EXPECT_EQ(impl->findDeviceId(5), 1);
-    impl->removeIdMapping({20, 999});
-    EXPECT_FALSE(impl->idToDeviceMap.count(20));
-    EXPECT_FALSE(impl->deviceInfos[1].idSet.count(20));
+    // deviceIndex is the logical deviceList index. An id that was never written simply misses: the old
+    // findDeviceId guessed one with id % deviceCnt, LocationTable does not guess.
+    for (faiss::idx_t mappedId : {10, 20, 30})
+    {
+        impl->locationTable->setLocation(mappedId, 1, 0, 0);
+    }
+    const auto loc = impl->locationTable->lookupLocation(20);
+    ASSERT_TRUE(loc.has_value());
+    EXPECT_EQ(loc->deviceIndex(), 1U);
+    EXPECT_FALSE(impl->locationTable->contains(5));
+    impl->locationTable->clearValid(20);
+    impl->locationTable->clearValid(999);
+    EXPECT_FALSE(impl->locationTable->contains(20));
 
     std::vector<float> vector(DIM, 0.25f);
     faiss::idx_t id = 404;
@@ -506,7 +516,9 @@ TEST(TestAscendIndexIVFRaBitQ, CopyFromAndCopyToRoundTripPreencodedData)
     ASSERT_NO_THROW(deviceIndex.copyFrom(source.index.get()));
     EXPECT_TRUE(deviceIndex.is_trained);
     EXPECT_EQ(deviceIndex.ntotal, static_cast<faiss::idx_t>(source.ids.size()));
-    EXPECT_EQ(deviceIndex.impl_->findDeviceId(source.ids[0]), 0);
+    const auto loc = deviceIndex.impl_->locationTable->lookupLocation(source.ids[0]);
+    ASSERT_TRUE(loc.has_value());
+    EXPECT_EQ(loc->deviceIndex(), 0U);
     ASSERT_EQ(deviceIndex.impl_->orthogonalMatrix.size(), static_cast<size_t>(DIM * DIM));
     EXPECT_FLOAT_EQ(deviceIndex.impl_->orthogonalMatrix.front(), 1.0f);
     EXPECT_FLOAT_EQ(deviceIndex.impl_->orthogonalMatrix[DIM + 1], 1.0f);
@@ -540,7 +552,7 @@ TEST(TestAscendIndexIVFRaBitQ, AttachedRefineSourcesRejectMutationAndResetReleas
     faiss::ascend::AscendIndexIVFRaBitQ index(DIM, faiss::METRIC_L2, NLIST, config);
     std::vector<float> data(DIM, 1.0f);
     index.ntotal = 1;
-    index.impl_->idToDeviceMap[0] = 0;
+    index.impl_->locationTable->setLocation(0, 0, 0, 0);
     index.attachRefineSources(data.data(), 1);
     EXPECT_TRUE(index.impl_->refineSourcesAttached());
     ExpectExceptionContains([&] { index.loadRefineSources(data.data(), 1); }, "conflicts");
@@ -554,7 +566,7 @@ TEST(TestAscendIndexIVFRaBitQ, AttachedRefineSourcesRejectMutationAndResetReleas
     EXPECT_TRUE(index.impl_->srcIndexes.empty());
     EXPECT_EQ(index.impl_->attachedSrcRows_, 0);
     index.ntotal = 1;
-    index.impl_->idToDeviceMap[0] = 0;
+    index.impl_->locationTable->setLocation(0, 0, 0, 0);
     ASSERT_NO_THROW(index.loadRefineSources(data.data(), 1));
     data[0] = 2.0f;
     EXPECT_FLOAT_EQ(index.impl_->srcIndexes[0], 1.0f);
@@ -562,7 +574,7 @@ TEST(TestAscendIndexIVFRaBitQ, AttachedRefineSourcesRejectMutationAndResetReleas
     index.reset();
     EXPECT_TRUE(index.impl_->srcIndexes.empty());
     index.ntotal = 1;
-    index.impl_->idToDeviceMap[0] = 0;
+    index.impl_->locationTable->setLocation(0, 0, 0, 0);
     EXPECT_NO_THROW(index.attachRefineSources(data.data(), 1));
 }
 
@@ -624,6 +636,12 @@ TEST(TestAscendIndexIVFRaBitQ, RefineSourceLoadingRejectsSparseAndDuplicateIds)
         auto source = MakePretrainedCpuIndex();
         source.index->invlists->update_entries(source.listId, 0, ids.size(), ids.data(), source.codes.data());
         faiss::ascend::AscendIndexIVFRaBitQ index(DIM, faiss::METRIC_L2, NLIST, MakeConfig());
+        if (ids[0] == ids[1])
+        {
+            ExpectExceptionContains([&] { index.copyFrom(source.index.get()); }, "duplicate id");
+            EXPECT_EQ(index.ntotal, 0);
+            continue;
+        }
         ASSERT_NO_THROW(index.copyFrom(source.index.get()));
         auto originals = MakePatternData(3, DIM);
         ExpectExceptionContains([&] { index.loadRefineSources(originals.data(), 3); }, "unique IDs");
@@ -741,7 +759,9 @@ TEST(TestAscendIndexIVFRaBitQ, PretrainedAddUpdateAndRemoveRunEndToEndWithoutNpu
     EXPECT_EQ(index.ntotal, static_cast<faiss::idx_t>(ids.size()));
     for (faiss::idx_t id : ids)
     {
-        EXPECT_EQ(index.impl_->findDeviceId(id), 0);
+        const auto loc = index.impl_->locationTable->lookupLocation(id);
+        ASSERT_TRUE(loc.has_value());
+        EXPECT_EQ(loc->deviceIndex(), 0U);
     }
 
     std::vector<float> distances(2, std::numeric_limits<float>::infinity());
@@ -757,7 +777,68 @@ TEST(TestAscendIndexIVFRaBitQ, PretrainedAddUpdateAndRemoveRunEndToEndWithoutNpu
 
     ASSERT_NO_THROW(index.remove_ids(1, &ids[2]));
     EXPECT_EQ(index.ntotal, static_cast<faiss::idx_t>(ids.size() - 1));
-    EXPECT_EQ(index.impl_->idToDeviceMap.count(ids[2]), 0U);
+    EXPECT_FALSE(index.impl_->locationTable->contains(ids[2]));
+}
+
+// The host's LocationTable is the only id -> slot mapping, so a delete has to pass the exact slot
+// down and fold the daemon's tail-backfill report back in. copyFrom lands the ids contiguously from
+// slot 0, so the expected slots here are known rather than probed.
+TEST(TestAscendIndexIVFRaBitQ, DeleteKeepsHostSlotsInStepWithTailBackfill)
+{
+    auto source = MakePretrainedCpuIndex();
+    faiss::ascend::AscendIndexIVFRaBitQ index(DIM, faiss::METRIC_L2, NLIST, MakeConfig());
+    ASSERT_NO_THROW(index.copyFrom(source.index.get()));
+    ASSERT_EQ(source.ids.size(), 3U);
+
+    for (size_t i = 0; i < source.ids.size(); ++i)
+    {
+        const auto loc = index.impl_->locationTable->lookupLocation(source.ids[i]);
+        ASSERT_TRUE(loc.has_value());
+        EXPECT_EQ(loc->listId(), static_cast<uint16_t>(source.listId));
+        EXPECT_EQ(loc->slot(), static_cast<uint32_t>(i));
+    }
+
+    // Deleting the middle id leaves a hole at slot 1, which the tail id is backfilled into.
+    ASSERT_NO_THROW(index.remove_ids(1, &source.ids[1]));
+    EXPECT_FALSE(index.impl_->locationTable->contains(source.ids[1]));
+    const auto firstLoc = index.impl_->locationTable->lookupLocation(source.ids[0]);
+    ASSERT_TRUE(firstLoc.has_value());
+    EXPECT_EQ(firstLoc->slot(), 0U);
+    const auto movedLoc = index.impl_->locationTable->lookupLocation(source.ids[2]);
+    ASSERT_TRUE(movedLoc.has_value());
+    EXPECT_EQ(movedLoc->listId(), static_cast<uint16_t>(source.listId));
+    EXPECT_EQ(movedLoc->slot(), 1U);
+
+    // The daemon's own storage agrees, so a follow-up delete by that slot hits the right vector.
+    std::vector<int64_t> listIds;
+    ASSERT_EQ(index.impl_->getActualIndex(0)->getListIds(source.listId, listIds), ::ascend::APP_ERR_OK);
+    EXPECT_THAT(listIds, ElementsAre(source.ids[0], source.ids[2]));
+
+    ASSERT_NO_THROW(index.remove_ids(1, &source.ids[2]));
+    EXPECT_FALSE(index.impl_->locationTable->contains(source.ids[2]));
+    ASSERT_EQ(index.impl_->getActualIndex(0)->getListIds(source.listId, listIds), ::ascend::APP_ERR_OK);
+    EXPECT_THAT(listIds, ElementsAre(source.ids[0]));
+}
+
+// remove_ids(IDSelector) reaches the index through the faiss::Index base, so it must land on the same
+// slot-precise path; otherwise the daemon would compact without reporting its tail backfill.
+TEST(TestAscendIndexIVFRaBitQ, SelectorDeleteKeepsHostSlotsInStep)
+{
+    auto source = MakePretrainedCpuIndex();
+    faiss::ascend::AscendIndexIVFRaBitQ index(DIM, faiss::METRIC_L2, NLIST, MakeConfig());
+    ASSERT_NO_THROW(index.copyFrom(source.index.get()));
+
+    faiss::IDSelectorBatch sel(1, &source.ids[1]);
+    EXPECT_EQ(static_cast<faiss::Index&>(index).remove_ids(sel), 1U);
+
+    EXPECT_FALSE(index.impl_->locationTable->contains(source.ids[1]));
+    const auto movedLoc = index.impl_->locationTable->lookupLocation(source.ids[2]);
+    ASSERT_TRUE(movedLoc.has_value());
+    EXPECT_EQ(movedLoc->slot(), 1U);
+
+    std::vector<int64_t> listIds;
+    ASSERT_EQ(index.impl_->getActualIndex(0)->getListIds(source.listId, listIds), ::ascend::APP_ERR_OK);
+    EXPECT_THAT(listIds, ElementsAre(source.ids[0], source.ids[2]));
 }
 
 TEST(TestIndexIVFRaBitQCore, EncodedStorageAccessAndRefineAreDeterministic)
@@ -800,6 +881,116 @@ TEST(TestIndexIVFRaBitQCore, EncodedStorageAccessAndRefineAreDeterministic)
     EXPECT_EQ(labels, labelsBeforeEmptySearch);
     ASSERT_EQ(actual->reset(), ::ascend::APP_ERR_OK);
     EXPECT_EQ(actual->getListLength(3), 0U);
+}
+
+TEST(TestLocationTable, SetLookupClearAndReset)
+{
+    faiss::ascend::LocationTable table(2, NLIST);
+
+    table.setLocation(42, 1, 7, 300);
+    const auto loc = table.lookupLocation(42);
+    ASSERT_TRUE(loc.has_value());
+    EXPECT_EQ(loc->deviceIndex(), 1U);
+    EXPECT_EQ(loc->listId(), 7U);
+    EXPECT_EQ(loc->slot(), 300U);
+
+    // An id that was never written misses outright -- no guessing.
+    EXPECT_FALSE(table.contains(43));
+    EXPECT_FALSE(table.lookupLocation(43).has_value());
+
+    // clearValid only clears the valid bit, and is a no-op for an unallocated id.
+    table.clearValid(42);
+    EXPECT_FALSE(table.contains(42));
+    table.clearValid(1 << 20);
+
+    // Overwriting the same id makes it valid again.
+    table.setLocation(42, 0, 3, 11);
+    ASSERT_TRUE(table.contains(42));
+    EXPECT_EQ(table.lookupLocation(42)->listId(), 3U);
+
+    table.reset();
+    EXPECT_FALSE(table.contains(42));
+    EXPECT_EQ(table.allocatedBlockCount(), 0U);
+
+    // Out-of-range fields are programming errors, so they throw rather than corrupt the record.
+    EXPECT_THROW(table.setLocation(1, 2, 0, 0), std::out_of_range);
+    EXPECT_THROW(table.setLocation(1, 0, NLIST, 0), std::out_of_range);
+    EXPECT_THROW(table.setLocation(-1, 0, 0, 0), std::out_of_range);
+}
+
+// Blocks are keyed by id/kBlockSlots, so a huge id span (> 2^32) costs only what is written rather
+// than a maxId/kBlockSlots top-level array.
+TEST(TestLocationTable, SparseHugeIdsAllocateOnlyTouchedBlocks)
+{
+    faiss::ascend::LocationTable table(1, NLIST);
+    const int64_t idBase = static_cast<int64_t>(std::numeric_limits<uint32_t>::max()) + 1;
+
+    constexpr size_t COUNT = 16;
+    for (size_t i = 0; i < COUNT; ++i)
+    {
+        table.setLocation(idBase + static_cast<int64_t>(i), 0, 1, static_cast<uint32_t>(i));
+    }
+    // idBase is an exact multiple of kBlockSlots, so all of these share one block.
+    EXPECT_EQ(table.allocatedBlockCount(), 1U);
+    for (size_t i = 0; i < COUNT; ++i)
+    {
+        ASSERT_TRUE(table.contains(idBase + static_cast<int64_t>(i)));
+        EXPECT_EQ(table.lookupLocation(idBase + static_cast<int64_t>(i))->slot(), static_cast<uint32_t>(i));
+    }
+
+    // A far-away id costs exactly one more block.
+    table.setLocation(idBase + 100 * static_cast<int64_t>(faiss::ascend::LocationTable::kBlockSlots), 0, 1, 0);
+    EXPECT_EQ(table.allocatedBlockCount(), 2U);
+}
+
+TEST(TestLocationTable, ReserveThenApplyDeltaDoesNotAllocate)
+{
+    faiss::ascend::LocationTable table(1, NLIST);
+
+    faiss::ascend::LocationDelta delta;
+    delta.addedIds.emplace_back(5, faiss::ascend::Location(0, 2, 10));
+    delta.movedIds.emplace_back(6, faiss::ascend::Location(0, 2, 11));
+    table.setLocation(6, 0, 9, 99);
+    delta.erasedIds.push_back(6);
+
+    table.reserveForIds({5, 6});
+    const size_t blocksBefore = table.allocatedBlockCount();
+    ASSERT_NO_THROW(table.validateDelta(delta));
+    table.applyLocationDeltaNoFail(delta);
+    EXPECT_EQ(table.allocatedBlockCount(), blocksBefore);
+
+    // erasedIds clears valid first, then movedIds/addedIds write and set it again.
+    ASSERT_TRUE(table.contains(5));
+    EXPECT_EQ(table.lookupLocation(5)->slot(), 10U);
+    ASSERT_TRUE(table.contains(6));
+    EXPECT_EQ(table.lookupLocation(6)->slot(), 11U);
+}
+
+// Contract violations are checked before publication, never by the noexcept write phase.
+TEST(TestLocationTable, InvalidDeltaRejectsBeforePublication)
+{
+    using faiss::ascend::Location;
+    using faiss::ascend::LocationDelta;
+    faiss::ascend::LocationTable table(1, NLIST);
+    LocationDelta delta;
+    delta.addedIds.emplace_back(123456, Location(0, 1, 0));
+    EXPECT_THROW(table.validateDelta(delta), std::logic_error);
+    table.reserveForIds({123456});
+    ASSERT_NO_THROW(table.validateDelta(delta));
+    EXPECT_FALSE(table.contains(123456));  // Validation never publishes a row.
+
+    for (Location invalid : {Location{}, Location(1, 1, 0), Location(0, NLIST, 0)})
+    {
+        delta.addedIds[0].second = invalid;
+        EXPECT_THROW(table.validateDelta(delta), std::exception);
+        EXPECT_FALSE(table.contains(123456));
+    }
+    delta.addedIds[0] = {-1, Location(0, 1, 0)};
+    EXPECT_THROW(table.validateDelta(delta), std::exception);
+    delta.addedIds.clear();
+    delta.movedIds.emplace_back(123456, Location(0, 1, 0));  // Reserved but not an existing valid moved ID.
+    EXPECT_THROW(table.validateDelta(delta), std::exception);
+    EXPECT_FALSE(table.contains(123456));
 }
 
 void Norm(float* data, int ntotal, int dim)
@@ -1797,6 +1988,38 @@ TEST(TestAscendIndexIVFRaBitQ, PublicMutationCountsRejectBeforeNarrowingOrPointe
     EXPECT_EQ(rejectedCountImplCalls, 1);
 }
 
+size_t CountDeviceMappedIds(const faiss::ascend::LocationTable& table, size_t device)
+{
+    size_t count = 0;
+    table.forEachValidId(
+        [&](int64_t id)
+        {
+            if (table.lookupLocation(id)->deviceIndex() == device) ++count;
+        });
+    return count;
+}
+
+std::vector<std::pair<int64_t, uint64_t>> SnapshotLocations(const faiss::ascend::LocationTable& table)
+{
+    std::vector<std::pair<int64_t, uint64_t>> locations;
+    table.forEachValidId(
+        [&](int64_t id)
+        {
+            const auto loc = *table.lookupLocation(id);
+            locations.emplace_back(id,
+                                   (uint64_t{loc.deviceIndex()} << 48) | (uint64_t{loc.listId()} << 32) | loc.slot());
+        });
+    std::sort(locations.begin(), locations.end());
+    return locations;
+}
+
+size_t CountMappedIds(const faiss::ascend::LocationTable& table)
+{
+    size_t count = 0;
+    table.forEachValidId([&](int64_t) { ++count; });
+    return count;
+}
+
 TEST(TestAscendIndexIVFRaBitQ, AutomaticAddSkipsOccupiedIdsAfterRemovingLowId)
 {
     auto source = MakePretrainedCpuIndex(false);
@@ -1807,16 +2030,18 @@ TEST(TestAscendIndexIVFRaBitQ, AutomaticAddSkipsOccupiedIdsAfterRemovingLowId)
     const faiss::idx_t lowId = 0;
     ASSERT_NO_THROW(index.remove_ids(1, &lowId));
     ASSERT_EQ(index.ntotal, 2);
-    ASSERT_EQ(index.impl_->idToDeviceMap.count(2), 1U);
+    ASSERT_EQ(static_cast<size_t>(index.impl_->locationTable->contains(2)), 1U);
 
     ASSERT_NO_THROW(index.add(2, vectors.data()));
     EXPECT_EQ(index.ntotal, 4);
-    EXPECT_EQ(index.impl_->idToDeviceMap.size(), 4U);
-    EXPECT_EQ(index.impl_->idToDeviceMap.count(0), 0U);
+    EXPECT_EQ(CountMappedIds(*index.impl_->locationTable), 4U);
+    EXPECT_EQ(static_cast<size_t>(index.impl_->locationTable->contains(0)), 0U);
     for (faiss::idx_t id : {1, 2, 3, 4})
     {
-        EXPECT_EQ(index.impl_->idToDeviceMap.count(id), 1U);
-        EXPECT_EQ(index.impl_->findDeviceId(id), 0);
+        EXPECT_EQ(static_cast<size_t>(index.impl_->locationTable->contains(id)), 1U);
+        const auto loc = index.impl_->locationTable->lookupLocation(id);
+        ASSERT_TRUE(loc.has_value());
+        EXPECT_EQ(loc->deviceIndex(), 0);
     }
 }
 
@@ -1830,17 +2055,17 @@ TEST(TestAscendIndexIVFRaBitQ, AutomaticAddProbesLocallyWithoutPersistentHighWat
     ASSERT_NO_THROW(index.add_with_ids(1, vectors.data(), &occupied));
     ASSERT_NO_THROW(index.add(2, vectors.data()));
     EXPECT_EQ(index.ntotal, 3);
-    EXPECT_EQ(index.impl_->idToDeviceMap.count(2), 1U);
-    EXPECT_EQ(index.impl_->idToDeviceMap.count(3), 1U);
+    EXPECT_EQ(static_cast<size_t>(index.impl_->locationTable->contains(2)), 1U);
+    EXPECT_EQ(static_cast<size_t>(index.impl_->locationTable->contains(3)), 1U);
 
     const faiss::idx_t removed[] = {2, 3};
     ASSERT_NO_THROW(index.remove_ids(2, removed));
     ASSERT_EQ(index.ntotal, 1);
     ASSERT_NO_THROW(index.add(1, vectors.data()));
     EXPECT_EQ(index.ntotal, 2);
-    EXPECT_EQ(index.impl_->idToDeviceMap.count(2), 1U);
-    EXPECT_EQ(index.impl_->idToDeviceMap.count(3), 0U);
-    EXPECT_EQ(index.impl_->idToDeviceMap.count(4), 0U);
+    EXPECT_EQ(static_cast<size_t>(index.impl_->locationTable->contains(2)), 1U);
+    EXPECT_EQ(static_cast<size_t>(index.impl_->locationTable->contains(3)), 0U);
+    EXPECT_EQ(static_cast<size_t>(index.impl_->locationTable->contains(4)), 0U);
 }
 
 TEST(TestAscendIndexIVFRaBitQ, ExplicitAddStillRejectsBatchAndExistingDuplicateIds)
@@ -1852,15 +2077,15 @@ TEST(TestAscendIndexIVFRaBitQ, ExplicitAddStillRejectsBatchAndExistingDuplicateI
     const faiss::idx_t duplicates[] = {42, 42};
     ExpectExceptionContains([&] { index.add_with_ids(2, vectors.data(), duplicates); }, "duplicate id");
     EXPECT_EQ(index.ntotal, 0);
-    EXPECT_TRUE(index.impl_->idToDeviceMap.empty());
+    EXPECT_TRUE(CountMappedIds(*index.impl_->locationTable) == 0);
 
     ASSERT_NO_THROW(index.add_with_ids(1, vectors.data(), duplicates));
     const faiss::idx_t mixed[] = {43, 42};
     ExpectExceptionContains([&] { index.add_with_ids(2, vectors.data(), mixed); }, "already exists");
     EXPECT_EQ(index.ntotal, 1);
-    EXPECT_EQ(index.impl_->idToDeviceMap.size(), 1U);
-    EXPECT_EQ(index.impl_->idToDeviceMap.count(42), 1U);
-    EXPECT_EQ(index.impl_->idToDeviceMap.count(43), 0U);
+    EXPECT_EQ(CountMappedIds(*index.impl_->locationTable), 1U);
+    EXPECT_EQ(static_cast<size_t>(index.impl_->locationTable->contains(42)), 1U);
+    EXPECT_EQ(static_cast<size_t>(index.impl_->locationTable->contains(43)), 0U);
 }
 
 // Host mutation faults are injected at the publication boundary; successful calls still reach the daemon.
@@ -1868,6 +2093,41 @@ bool failHostAssignment = false;
 int hostUploadCalls = 0;
 int failHostUploadCall = 0;
 std::vector<faiss::idx_t> hostPublishedIds;
+
+std::vector<const ::ascend::IndexIVFRaBitQ*> lengthQueryDevices;
+std::vector<std::vector<size_t>> lengthQueryCounts;
+
+size_t StubTrackedListLength(const ::ascend::IndexIVFRaBitQ* index, int listId)
+{
+    const auto device = std::find(lengthQueryDevices.begin(), lengthQueryDevices.end(), index);
+    FAISS_THROW_IF_NOT(device != lengthQueryDevices.end());
+    ++lengthQueryCounts.at(static_cast<size_t>(device - lengthQueryDevices.begin())).at(listId);
+    // Read real fixture state without recursively calling the mocked query or adding test-owned queries.
+    return index->activeSnapshot->lists.at(listId)->listLen;
+}
+
+struct ListLengthQueryGuard
+{
+    explicit ListLengthQueryGuard(faiss::ascend::AscendIndexIVFRaBitQImpl* impl)
+    {
+        lengthQueryDevices.clear();
+        for (int deviceId : impl->indexConfig.deviceList) lengthQueryDevices.push_back(impl->getActualIndex(deviceId));
+        lengthQueryCounts.assign(lengthQueryDevices.size(), std::vector<size_t>(NLIST, 0));
+        MOCKER_CPP(&::ascend::IndexIVFRaBitQ::getListLength).stubs().will(invoke(StubTrackedListLength));
+    }
+    ~ListLengthQueryGuard() { GlobalMockObject::verify(); }
+};
+
+void ExpectListLengthQueries(const std::vector<int>& touchedLists)
+{
+    for (const auto& counts : lengthQueryCounts)
+    {
+        for (int listId = 0; listId < NLIST; ++listId)
+        {
+            EXPECT_EQ(counts[listId], std::count(touchedLists.begin(), touchedLists.end(), listId)) << listId;
+        }
+    }
+}
 
 void StubHostAssignment(faiss::ascend::AscendIndexIVFRaBitQImpl*, int n, const float* x,
                         std::unique_ptr<faiss::idx_t[]>& assign)
@@ -1883,13 +2143,14 @@ void StubHostAssignment(faiss::ascend::AscendIndexIVFRaBitQImpl*, int n, const f
 }
 
 void StubHostUpload(faiss::ascend::AscendIndexIVFRaBitQImpl* impl,
-                    faiss::ascend::IndexParam<float, float, faiss::ascend::ascend_idx_t>& param)
+                    faiss::ascend::IndexParam<float, float, faiss::ascend::ascend_idx_t>& param, size_t* baseSlotOut)
 {
     if (++hostUploadCalls == failHostUploadCall)
     {
         throw std::runtime_error("injected host upload failure");
     }
-    const auto ret = impl->getActualIndex(param.deviceId)->addVectors(param.listId, param.n, param.query, param.label);
+    const auto ret =
+        impl->getActualIndex(param.deviceId)->addVectors(param.listId, param.n, param.query, param.label, baseSlotOut);
     FAISS_THROW_IF_NOT(ret == ::ascend::APP_ERR_OK);
     for (int i = 0; i < param.n; ++i)
     {
@@ -1911,6 +2172,122 @@ struct HostAddFaultGuard
     ~HostAddFaultGuard() { GlobalMockObject::verify(); }
 };
 
+TEST(TestAscendIndexIVFRaBitQ, AddDeltaConfiguredFieldsRejectBeforeAnyDevicePublication)
+{
+    for (bool invalidDevice : {false, true})
+    {
+        auto source = MakePretrainedCpuIndex(false);
+        faiss::ascend::AscendIndexIVFRaBitQ index(DIM, faiss::METRIC_L2, NLIST, MakeConfig({0, 1}));
+        ASSERT_NO_THROW(index.copyFrom(source.index.get()));
+        auto* impl = index.impl_.get();
+        impl->locationTable =
+            std::make_unique<faiss::ascend::LocationTable>(invalidDevice ? 1 : 2, invalidDevice ? NLIST : 1);
+        faiss::ascend::AscendIndexIVFRaBitQImpl::AddStaging staging;
+        auto& list = staging.try_emplace(7, std::vector<int>{0, 0}).first->second;
+        const size_t device = invalidDevice ? 1 : 0;
+        list.devices[device].ids = {41};
+        list.devices[device].codes = MakePatternData(1, DIM);
+        list.occupancy[device] = 1;
+        const auto* first = impl->getActualIndex(0)->activeSnapshot.get();
+        const auto* second = impl->getActualIndex(1)->activeSnapshot.get();
+        EXPECT_THROW(impl->copyVectorToDevice(1, staging), std::exception);
+        EXPECT_EQ(index.ntotal, 0);
+        EXPECT_EQ(impl->locationTable->allocatedBlockCount(), 0U);
+        EXPECT_EQ(impl->getActualIndex(0)->activeSnapshot.get(), first);
+        EXPECT_EQ(impl->getActualIndex(1)->activeSnapshot.get(), second);
+        EXPECT_FALSE(list.devices[device].published);
+    }
+}
+
+std::atomic<bool> siblingUploadEntered{false};
+std::atomic<bool> releaseSiblingUpload{false};
+std::atomic<bool> failedUploadReturned{false};
+
+void StubHostUploadWithWaitingSibling(faiss::ascend::AscendIndexIVFRaBitQImpl* impl,
+                                      faiss::ascend::IndexParam<float, float, faiss::ascend::ascend_idx_t>& param,
+                                      size_t* baseSlotOut)
+{
+    if (param.deviceId == 0)
+    {
+        failedUploadReturned.store(true);
+        throw std::runtime_error("injected sibling upload failure");
+    }
+    siblingUploadEntered.store(true);
+    while (!releaseSiblingUpload.load()) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    const auto ret =
+        impl->getActualIndex(param.deviceId)->addVectors(param.listId, param.n, param.query, param.label, baseSlotOut);
+    FAISS_THROW_IF_NOT(ret == ::ascend::APP_ERR_OK);
+}
+
+TEST(TestAscendIndexIVFRaBitQ, FailedAddCleanupWaitsForSiblingAndKeepsOnlyPublishedBlocks)
+{
+    auto source = MakePretrainedCpuIndex(false);
+    faiss::ascend::AscendIndexIVFRaBitQ index(DIM, faiss::METRIC_L2, NLIST, MakeConfig({0, 1}));
+    ASSERT_NO_THROW(index.copyFrom(source.index.get()));
+    auto vectors = MakePatternData(2, DIM);
+    vectors[0] = vectors[DIM] = 0.0f;
+    const faiss::idx_t ids[] = {41, 42};  // Sibling's reserved slot shares the failed device's block.
+    siblingUploadEntered = releaseSiblingUpload = failedUploadReturned = false;
+    failHostAssignment = false;
+    MOCKER_CPP(&faiss::ascend::AscendIndexIVFRaBitQImpl::addL1).stubs().will(invoke(StubHostAssignment));
+    MOCKER_CPP(&faiss::ascend::AscendIndexIVFRaBitQImpl::indexIVFRaBitQAdd)
+        .stubs()
+        .will(invoke(StubHostUploadWithWaitingSibling));
+    auto result = std::async(std::launch::async,
+                             [&]
+                             {
+                                 try
+                                 {
+                                     index.add_with_ids(2, vectors.data(), ids);
+                                 }
+                                 catch (const std::exception&)
+                                 {
+                                     return true;
+                                 }
+                                 return false;
+                             });
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while ((!siblingUploadEntered.load() || !failedUploadReturned.load()) &&
+           std::chrono::steady_clock::now() < deadline)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    EXPECT_TRUE(siblingUploadEntered.load());
+    EXPECT_TRUE(failedUploadReturned.load());
+    EXPECT_EQ(result.wait_for(std::chrono::milliseconds(0)), std::future_status::timeout);
+    {
+        std::lock_guard<std::mutex> lock(index.impl_->locationMutex);
+        EXPECT_EQ(index.impl_->locationTable->allocatedBlockCount(), 1U);
+        EXPECT_EQ(CountMappedIds(*index.impl_->locationTable), 0U);
+    }
+    releaseSiblingUpload = true;  // Always release before any fatal assertion or mock teardown.
+    EXPECT_TRUE(result.get());
+    EXPECT_EQ(index.ntotal, 1);
+    EXPECT_EQ(index.impl_->locationTable->allocatedBlockCount(), 1U);
+    EXPECT_FALSE(index.impl_->locationTable->contains(41));
+    EXPECT_TRUE(index.impl_->locationTable->contains(42));
+    EXPECT_EQ(index.impl_->getActualIndex(1)->getListLength(7), 1U);
+    GlobalMockObject::verify();
+    ASSERT_NO_THROW(index.remove_ids(1, ids + 1));
+    EXPECT_EQ(index.impl_->locationTable->allocatedBlockCount(), 0U);
+}
+
+TEST(TestAscendIndexIVFRaBitQ, ReservationFailureReclaimsEarlierBlocksBeforeAnyUpload)
+{
+    auto source = MakePretrainedCpuIndex(false);
+    faiss::ascend::AscendIndexIVFRaBitQ index(DIM, faiss::METRIC_L2, NLIST, MakeConfig());
+    ASSERT_NO_THROW(index.copyFrom(source.index.get()));
+    index.impl_->locationTable = std::make_unique<faiss::ascend::LocationTable>(1, NLIST, 41);
+    auto vectors = MakePatternData(2, DIM);
+    vectors[0] = vectors[DIM] = 0.0f;
+    const faiss::idx_t ids[] = {41, 42};
+    HostAddFaultGuard mock;
+    EXPECT_THROW(index.add_with_ids(2, vectors.data(), ids), std::exception);
+    EXPECT_EQ(hostUploadCalls, 0);
+    EXPECT_EQ(index.ntotal, 0);
+    EXPECT_EQ(index.impl_->locationTable->allocatedBlockCount(), 0U);
+}
+
 TEST(TestAscendIndexIVFRaBitQ, FailedStagingAndUploadDoNotLeakIntoRetry)
 {
     auto source = MakePretrainedCpuIndex(false);
@@ -1926,13 +2303,14 @@ TEST(TestAscendIndexIVFRaBitQ, FailedStagingAndUploadDoNotLeakIntoRetry)
     EXPECT_EQ(hostUploadCalls, 0);
     EXPECT_EQ(index.ntotal, 0);
     EXPECT_EQ(index.impl_->deviceAddNumMap[7][0], 0);
-    EXPECT_TRUE(index.impl_->idToDeviceMap.empty());
+    EXPECT_TRUE(CountMappedIds(*index.impl_->locationTable) == 0);
 
     failHostAssignment = false;
     failHostUploadCall = 1;
     ExpectExceptionContains([&] { index.add_with_ids(2, vectors.data(), ids); }, "injected host upload failure");
     EXPECT_EQ(index.ntotal, 0);
-    EXPECT_TRUE(index.impl_->idToDeviceMap.empty());
+    EXPECT_TRUE(CountMappedIds(*index.impl_->locationTable) == 0);
+    EXPECT_EQ(index.impl_->locationTable->allocatedBlockCount(), 0U);
     EXPECT_EQ(index.impl_->deviceAddNumMap[7][0], 0);
     EXPECT_EQ(index.impl_->getActualIndex(0)->getListLength(7), 0U);
 
@@ -1943,7 +2321,29 @@ TEST(TestAscendIndexIVFRaBitQ, FailedStagingAndUploadDoNotLeakIntoRetry)
     std::vector<int64_t> stored;
     ASSERT_EQ(index.impl_->getActualIndex(0)->getListIds(7, stored), ::ascend::APP_ERR_OK);
     EXPECT_THAT(stored, ElementsAre(41, 42));
-    EXPECT_EQ(index.impl_->deviceInfos[0].idSet.size(), 2U);
+    EXPECT_EQ(CountDeviceMappedIds(*index.impl_->locationTable, 0), 2U);
+}
+
+TEST(TestAscendIndexIVFRaBitQ, NegativeAddRejectsBeforeStagingAndAllowsRetry)
+{
+    auto source = MakePretrainedCpuIndex(false);
+    faiss::ascend::AscendIndexIVFRaBitQ index(DIM, faiss::METRIC_L2, NLIST, MakeConfig());
+    ASSERT_NO_THROW(index.copyFrom(source.index.get()));
+    auto vectors = MakePatternData(2, DIM);
+    vectors[0] = vectors[DIM] = 0.0f;
+    const faiss::idx_t invalid[] = {41, -1};
+    const faiss::idx_t valid[] = {41, 42};
+    HostAddFaultGuard mock;
+    ExpectExceptionContains([&] { index.add_with_ids(2, vectors.data(), invalid); }, "nonnegative");
+    EXPECT_EQ(hostUploadCalls, 0);
+    EXPECT_EQ(index.ntotal, 0);
+    EXPECT_EQ(CountMappedIds(*index.impl_->locationTable), 0U);
+    EXPECT_EQ(index.impl_->getActualIndex(0)->getListLength(7), 0U);
+    ASSERT_NO_THROW(index.add_with_ids(2, vectors.data(), valid));
+    EXPECT_EQ(index.ntotal, 2);
+    const auto loc = index.impl_->locationTable->lookupLocation(42);
+    ASSERT_TRUE(loc.has_value());
+    EXPECT_EQ(loc->slot(), 1U);
 }
 
 TEST(TestAscendIndexIVFRaBitQ, StagingUsesTouchedListDeviceOccupancyAndOrdinals)
@@ -1957,25 +2357,63 @@ TEST(TestAscendIndexIVFRaBitQ, StagingUsesTouchedListDeviceOccupancyAndOrdinals)
     // Physical device IDs deliberately differ from the ordinal used in host maps.
     faiss::ascend::AscendIndexIVFRaBitQ index(DIM, faiss::METRIC_L2, NLIST, MakeConfig({1, 0}));
     ASSERT_NO_THROW(index.copyFrom(source.index.get()));
-    EXPECT_EQ(index.impl_->findDeviceId(71), 0);
-    EXPECT_EQ(index.impl_->findDeviceId(72), 1);
+    const auto firstLoc = index.impl_->locationTable->lookupLocation(71);
+    ASSERT_TRUE(firstLoc.has_value());
+    EXPECT_EQ(firstLoc->deviceIndex(), 0);
+    const auto secondLoc = index.impl_->locationTable->lookupLocation(72);
+    ASSERT_TRUE(secondLoc.has_value());
+    EXPECT_EQ(secondLoc->deviceIndex(), 1);
     const faiss::idx_t remove = 72;
     ASSERT_NO_THROW(index.remove_ids(1, &remove));
-    auto vectors = MakePatternData(2, DIM);
-    vectors[0] = vectors[DIM] = 0.0f;
-    const faiss::idx_t ids[] = {73, 74};
+    auto vectors = MakePatternData(4, DIM);
+    vectors[0] = vectors[DIM] = vectors[3 * DIM] = 0.0f;
+    vectors[2 * DIM] = 1.0f;
+    const faiss::idx_t ids[] = {73, 74, 75, 76};
     // Stale host occupancy must not influence staging; the touched daemon list is authoritative.
     index.impl_->deviceAddNumMap[7] = {100, 100};
-    MOCKER_CPP(&faiss::ascend::AscendIndexIVFRaBitQImpl::addL1).stubs().will(invoke(StubHostAssignment));
+    index.impl_->deviceAddNumMap[8] = {100, 100};
+    ListLengthQueryGuard mock(index.impl_.get());
     failHostAssignment = false;
-    ASSERT_NO_THROW(index.add_with_ids(2, vectors.data(), ids));
-    EXPECT_EQ(index.impl_->findDeviceId(73), 1);
-    EXPECT_EQ(index.impl_->findDeviceId(74), 0);
-    EXPECT_EQ(index.impl_->deviceAddNumMap[7][0], 2);
-    EXPECT_EQ(index.impl_->deviceAddNumMap[7][1], 1);
-    EXPECT_EQ(index.impl_->getActualIndex(1)->getListLength(7), 2U);
-    EXPECT_EQ(index.impl_->getActualIndex(0)->getListLength(7), 1U);
-    GlobalMockObject::verify();
+    MOCKER_CPP(&faiss::ascend::AscendIndexIVFRaBitQImpl::addL1).stubs().will(invoke(StubHostAssignment));
+    faiss::ascend::AscendIndexIVFRaBitQImpl::AddStaging staging;
+    for (size_t page = 0; page < 4; ++page)
+    {
+        ASSERT_NO_THROW(index.impl_->stageAdd(1, vectors.data() + page * DIM, ids + page, staging));
+        ExpectListLengthQueries(page < 2 ? std::vector<int>{7} : std::vector<int>{7, 8});
+    }
+    EXPECT_EQ(staging.at(7).occupancy, (std::vector<int>{2, 2}));
+    EXPECT_EQ(staging.at(8).occupancy, (std::vector<int>{1, 0}));
+    EXPECT_TRUE(staging.at(8).devices[1].ids.empty());  // Queried once even though no row was assigned.
+    ASSERT_NO_THROW(index.impl_->copyVectorToDevice(4, staging));
+    EXPECT_TRUE(staging.at(8).devices[1].ids.empty());
+    EXPECT_FALSE(staging.at(8).devices[1].published);  // No staged rows means no publication request.
+    EXPECT_EQ(staging.at(8).occupancy[1], 0);          // Scratch reflects the actual baseline, not the old host cache.
+    ExpectListLengthQueries({7, 8});                   // Publication preflight must not query any device again.
+    EXPECT_EQ(index.ntotal, 5);
+    const int expectedDevices[] = {1, 0, 0, 1};
+    const uint32_t expectedSlots[] = {0, 1, 0, 1};
+    for (size_t i = 0; i < 4; ++i)
+    {
+        const auto location = index.impl_->locationTable->lookupLocation(ids[i]);
+        ASSERT_TRUE(location.has_value());
+        EXPECT_EQ(location->deviceIndex(), expectedDevices[i]);
+        EXPECT_EQ(location->listId(), i == 2 ? 8 : 7);
+        EXPECT_EQ(location->slot(), expectedSlots[i]);
+    }
+    for (int listId : {7, 8})
+    {
+        for (size_t d = 0; d < 2; ++d)
+        {
+            const auto* actual = index.impl_->getActualIndex(d == 0 ? 1 : 0);
+            EXPECT_EQ(actual->activeSnapshot->lists.at(listId)->listLen,
+                      static_cast<size_t>(staging.at(listId).occupancy[d]));
+            const auto& device = staging.at(listId).devices[d];
+            EXPECT_EQ(device.published, !device.ids.empty());
+            EXPECT_EQ(
+                index.impl_->deviceAddNumMap[listId][d],
+                device.ids.empty() ? 100 : staging.at(listId).occupancy[d]);  // No request preserves the old count.
+        }
+    }
 }
 
 TEST(TestAscendIndexIVFRaBitQ, PartialListPublicationReconcilesCountMappingFilterAndRetry)
@@ -1986,7 +2424,7 @@ TEST(TestAscendIndexIVFRaBitQ, PartialListPublicationReconcilesCountMappingFilte
     auto vectors = MakePatternData(2, DIM);
     vectors[0] = 0.0f;
     vectors[DIM] = 1.0f;
-    const faiss::idx_t ids[] = {51, 52};
+    const faiss::idx_t ids[] = {51, 8192 + 52};  // Distinct blocks expose failed-reservation cleanup.
     faiss::IDSelectorRange sel(0, 100);
     index.impl_->getCachedFilter(&sel);
     const auto generation = index.impl_->cachedFilterGeneration;
@@ -1999,9 +2437,10 @@ TEST(TestAscendIndexIVFRaBitQ, PartialListPublicationReconcilesCountMappingFilte
     const int committedList = committedRow == 0 ? 7 : 8;
     const int failedRow = 1 - committedRow;
     EXPECT_EQ(index.ntotal, 1);
-    EXPECT_EQ(index.impl_->idToDeviceMap.size(), 1U);
-    EXPECT_EQ(index.impl_->idToDeviceMap.count(committedId), 1U);
-    EXPECT_EQ(index.impl_->idToDeviceMap.count(ids[failedRow]), 0U);
+    EXPECT_EQ(CountMappedIds(*index.impl_->locationTable), 1U);
+    EXPECT_EQ(index.impl_->locationTable->allocatedBlockCount(), 1U);
+    EXPECT_EQ(static_cast<size_t>(index.impl_->locationTable->contains(committedId)), 1U);
+    EXPECT_EQ(static_cast<size_t>(index.impl_->locationTable->contains(ids[failedRow])), 0U);
     EXPECT_EQ(index.impl_->deviceAddNumMap[committedList][0], 1);
     EXPECT_EQ(index.impl_->deviceAddNumMap[committedList == 7 ? 8 : 7][0], 0);
     EXPECT_GT(index.impl_->cachedFilterGeneration, generation);
@@ -2011,6 +2450,7 @@ TEST(TestAscendIndexIVFRaBitQ, PartialListPublicationReconcilesCountMappingFilte
     EXPECT_EQ(index.ntotal, 2);
     EXPECT_EQ(index.impl_->getActualIndex(0)->getListLength(7), 1U);
     EXPECT_EQ(index.impl_->getActualIndex(0)->getListLength(8), 1U);
+    EXPECT_EQ(index.impl_->locationTable->allocatedBlockCount(), 2U);
 }
 
 TEST(TestAscendIndexIVFRaBitQ, PartialRefinePublicationStaysNotReadyUntilResetOrValidLoad)
@@ -2085,9 +2525,9 @@ TEST(TestAscendIndexIVFRaBitQ, DuplicateAndMissingDeletesOnlyCountStoredIds)
     const faiss::idx_t deletes[] = {61, 61, 999, 999};
     ASSERT_NO_THROW(index.remove_ids(4, deletes));
     EXPECT_EQ(index.ntotal, 1);
-    EXPECT_EQ(index.impl_->idToDeviceMap.size(), 1U);
-    EXPECT_EQ(index.impl_->idToDeviceMap.count(62), 1U);
-    EXPECT_EQ(index.impl_->deviceInfos[0].idSet.size(), 1U);
+    EXPECT_EQ(CountMappedIds(*index.impl_->locationTable), 1U);
+    EXPECT_EQ(static_cast<size_t>(index.impl_->locationTable->contains(62)), 1U);
+    EXPECT_EQ(CountDeviceMappedIds(*index.impl_->locationTable, 0), 1U);
     ASSERT_NO_THROW(index.remove_ids(4, deletes));
     EXPECT_EQ(index.ntotal, 1);
     size_t stored = 0;
@@ -2103,14 +2543,16 @@ TEST(TestAscendIndexIVFRaBitQ, DuplicateAndMissingDeletesOnlyCountStoredIds)
 
 int hostDeleteCalls = 0;
 int failHostDeleteCall = 0;
-void StubHostDelete(faiss::ascend::AscendIndexIVFRaBitQImpl* impl,
-                    faiss::ascend::IndexParam<void, void, faiss::ascend::ascend_idx_t>& param)
+void StubHostDelete(faiss::ascend::AscendIndexIVFRaBitQImpl* impl, int deviceId, const std::vector<faiss::idx_t>& ids,
+                    const std::vector<int>& lists, const std::vector<size_t>& slots,
+                    std::vector<::ascend::IndexIVFRaBitQ::MovedSlot>& moved,
+                    const ::ascend::IndexIVFRaBitQ::MoveValidator& validateMoves)
 {
-    if (++hostDeleteCalls == failHostDeleteCall)
-    {
-        throw std::runtime_error("injected host delete failure");
-    }
-    FAISS_THROW_IF_NOT(impl->getActualIndex(param.deviceId)->removeIds(param.n, param.label) == ::ascend::APP_ERR_OK);
+    if (++hostDeleteCalls == failHostDeleteCall) throw std::runtime_error("injected host delete failure");
+    std::vector<::ascend::Index::idx_t> daemonIds(ids.begin(), ids.end());
+    FAISS_THROW_IF_NOT(impl->getActualIndex(deviceId)->removeIds(ids.size(), daemonIds.data(), lists.data(),
+                                                                 slots.data(), &moved,
+                                                                 validateMoves) == ::ascend::APP_ERR_OK);
 }
 
 TEST(TestAscendIndexIVFRaBitQ, FailedSecondDeviceDeletePreservesSuccessfulDeviceCount)
@@ -2118,9 +2560,17 @@ TEST(TestAscendIndexIVFRaBitQ, FailedSecondDeviceDeletePreservesSuccessfulDevice
     auto source = MakePretrainedCpuIndex();
     faiss::ascend::AscendIndexIVFRaBitQ index(DIM, faiss::METRIC_L2, NLIST, MakeConfig({0, 1}));
     ASSERT_NO_THROW(index.copyFrom(source.index.get()));
-    const auto oldMappings = index.impl_->idToDeviceMap;
     const auto oldCounts = index.impl_->deviceAddNumMap;
-    const auto oldSecondIds = index.impl_->deviceInfos[1].idSet;
+    std::vector<std::pair<faiss::idx_t, faiss::ascend::Location>> oldSecondLocations;
+    for (const auto id : source.ids)
+    {
+        const auto loc = index.impl_->locationTable->lookupLocation(id);
+        ASSERT_TRUE(loc.has_value());
+        if (loc->deviceIndex() == 1)
+        {
+            oldSecondLocations.emplace_back(id, *loc);
+        }
+    }
     hostDeleteCalls = 0;
     failHostDeleteCall = 2;
     MOCKER_CPP(&faiss::ascend::AscendIndexIVFRaBitQImpl::deleteFromIVFRaBitQ).stubs().will(invoke(StubHostDelete));
@@ -2133,49 +2583,265 @@ TEST(TestAscendIndexIVFRaBitQ, FailedSecondDeviceDeletePreservesSuccessfulDevice
         const auto count = index.impl_->getActualIndex(dev)->getListLength(source.listId);
         stored += count;
         EXPECT_EQ(index.impl_->deviceAddNumMap[source.listId][dev], static_cast<int>(count));
-        EXPECT_EQ(index.impl_->deviceInfos[dev].idSet.size(), count);
+        EXPECT_EQ(CountDeviceMappedIds(*index.impl_->locationTable, dev), count);
     }
     EXPECT_GT(stored, 0U);
     EXPECT_EQ(index.impl_->deviceAddNumMap[source.listId][1], oldCounts[source.listId][1]);
-    EXPECT_EQ(index.impl_->deviceInfos[1].idSet, oldSecondIds);
-    for (const auto id : oldSecondIds)
+    EXPECT_EQ(CountDeviceMappedIds(*index.impl_->locationTable, 1), oldSecondLocations.size());
+    for (const auto& entry : oldSecondLocations)
     {
-        EXPECT_EQ(index.impl_->idToDeviceMap.at(id), oldMappings.at(id));
+        const auto loc = index.impl_->locationTable->lookupLocation(entry.first);
+        ASSERT_TRUE(loc.has_value());
+        EXPECT_EQ(loc->deviceIndex(), entry.second.deviceIndex());
+        EXPECT_EQ(loc->listId(), entry.second.listId());
+        EXPECT_EQ(loc->slot(), entry.second.slot());
     }
     EXPECT_LT(stored, source.ids.size());
     EXPECT_EQ(index.ntotal, static_cast<faiss::idx_t>(stored));
-    EXPECT_EQ(index.impl_->idToDeviceMap.size(), stored);
+    EXPECT_EQ(CountMappedIds(*index.impl_->locationTable), stored);
     GlobalMockObject::verify();
     ASSERT_NO_THROW(index.remove_ids(source.ids.size(), source.ids.data()));
     EXPECT_EQ(index.ntotal, 0);
+}
+
+TEST(TestAscendIndexIVFRaBitQ, DeleteCleanupKeepsOtherDeviceReservationUntilItsOutcome)
+{
+    auto source = MakePretrainedCpuIndex(false);
+    source.listId = 7;
+    source.ids = {41, 42};
+    source.codes.resize(2 * source.index->code_size, 0);
+    source.index->invlists->add_entries(7, 2, source.ids.data(), source.codes.data());
+    source.index->ntotal = 2;
+    faiss::ascend::AscendIndexIVFRaBitQ index(DIM, faiss::METRIC_L2, NLIST, MakeConfig({0, 1}));
+    ASSERT_NO_THROW(index.copyFrom(source.index.get()));
+    hostDeleteCalls = 0;
+    failHostDeleteCall = 2;
+    MOCKER_CPP(&faiss::ascend::AscendIndexIVFRaBitQImpl::deleteFromIVFRaBitQ).stubs().will(invoke(StubHostDelete));
+    EXPECT_THROW(index.remove_ids(2, source.ids.data()), std::exception);
+    EXPECT_EQ(index.ntotal, 1);
+    EXPECT_EQ(index.impl_->locationTable->allocatedBlockCount(), 1U);
+    EXPECT_EQ(CountMappedIds(*index.impl_->locationTable), 1U);
+    GlobalMockObject::verify();
+    ASSERT_NO_THROW(index.remove_ids(2, source.ids.data()));
+    EXPECT_EQ(index.ntotal, 0);
+    EXPECT_EQ(index.impl_->locationTable->allocatedBlockCount(), 0U);
+}
+
+TEST(TestAscendIndexIVFRaBitQ, ImportPreflightRejectsInvalidIdsAndCountsWithoutChangingState)
+{
+    auto source = MakePretrainedCpuIndex();
+    const faiss::idx_t oldIds[] = {0, 1, 2};
+    source.index->invlists->update_entries(source.listId, 0, 3, oldIds, source.codes.data());
+    faiss::ascend::AscendIndexIVFRaBitQ index(DIM, faiss::METRIC_L2, NLIST, MakeConfig());
+    ASSERT_NO_THROW(index.copyFrom(source.index.get()));
+    const auto originals = MakePatternData(3, DIM);
+    ASSERT_NO_THROW(index.loadRefineSources(originals.data(), 3));
+    const auto locations = SnapshotLocations(*index.impl_->locationTable);
+    const auto counts = index.impl_->deviceAddNumMap;
+    const auto generation = index.impl_->cachedFilterGeneration;
+    const auto* snapshot = index.impl_->getActualIndex(0)->activeSnapshot.get();
+    for (int invalid : {0, 1, 2, 3})
+    {
+        auto replacement = MakePretrainedCpuIndex();
+        replacement.index->nprobe = NPROBE + 1;
+        if (invalid < 2)
+        {
+            const faiss::idx_t badIds[] = {50, invalid == 0 ? -1 : 50, 52};
+            replacement.index->invlists->update_entries(replacement.listId, 0, 3, badIds, replacement.codes.data());
+        }
+        else if (invalid == 2)
+        {
+            replacement.index->invlists->add_entries((replacement.listId + 1) % NLIST, 1, replacement.ids.data(),
+                                                     replacement.codes.data());
+            ++replacement.index->ntotal;  // Duplicate across lists, not merely within one list.
+        }
+        else
+        {
+            ++replacement.index->ntotal;
+        }
+        ExpectExceptionContains([&] { index.copyFrom(replacement.index.get()); }, invalid == 0   ? "nonnegative"
+                                                                                  : invalid == 3 ? "count"
+                                                                                                 : "duplicate id");
+        EXPECT_EQ(index.ntotal, 3);
+        EXPECT_EQ(index.getNumProbes(), NPROBE);
+        EXPECT_EQ(SnapshotLocations(*index.impl_->locationTable), locations);
+        EXPECT_EQ(index.impl_->deviceAddNumMap, counts);
+        EXPECT_EQ(index.impl_->srcIndexes, originals);
+        EXPECT_TRUE(index.impl_->copiedSources_);
+        EXPECT_TRUE(index.impl_->refineSourcesReady_);
+        EXPECT_EQ(index.impl_->cachedFilterGeneration, generation);
+        EXPECT_EQ(index.impl_->getActualIndex(0)->activeSnapshot.get(), snapshot);
+    }
+}
+
+TEST(TestAscendIndexIVFRaBitQ, DerivedCountingBatchUsesVirtualMembership)
+{
+    auto source = MakePretrainedCpuIndex();
+    faiss::ascend::AscendIndexIVFRaBitQ index(DIM, faiss::METRIC_L2, NLIST, MakeConfig());
+    ASSERT_NO_THROW(index.copyFrom(source.index.get()));
+    for (int64_t block = 1; block <= 64; ++block)
+    {
+        const int64_t id = block * faiss::ascend::LocationTable::kBlockSlots;
+        index.impl_->locationTable->setLocation(id, 0, 0, 0);
+        index.impl_->locationTable->clearValid(id);  // Many allocated blocks, no extra stored IDs.
+    }
+    struct CountingBatch : faiss::IDSelectorBatch
+    {
+        mutable size_t probes = 0;
+        CountingBatch(size_t n, const faiss::idx_t* ids) : faiss::IDSelectorBatch(n, ids) {}
+        bool is_member(faiss::idx_t id) const override
+        {
+            ++probes;
+            return faiss::IDSelectorBatch::is_member(id);
+        }
+    };
+    const faiss::idx_t selected[] = {source.ids[1], source.ids[1], 999999};
+    CountingBatch batch(3, selected);
+    EXPECT_EQ(static_cast<faiss::Index&>(index).remove_ids(batch), 1U);
+    EXPECT_EQ(batch.probes, source.ids.size());
+    EXPECT_EQ(index.ntotal, 2);
+    const auto loc = index.impl_->locationTable->lookupLocation(source.ids[2]);
+    ASSERT_TRUE(loc.has_value());
+    EXPECT_EQ(loc->slot(), 1U);
+    EXPECT_EQ(index.impl_->deviceAddNumMap[source.listId][0], 2);
+    ASSERT_NO_THROW(index.remove_ids(1, &source.ids[2]));
+    EXPECT_EQ(index.ntotal, 1);
+}
+
+TEST(TestAscendIndexIVFRaBitQ, DerivedBatchAndArrayDeletesHonorRestrictingAndExpandingPredicates)
+{
+    struct DerivedBatch : faiss::IDSelectorBatch
+    {
+        bool expand;
+        faiss::idx_t target;
+        mutable size_t probes = 0;
+        DerivedBatch(const faiss::idx_t* ids, bool expansion, faiss::idx_t id)
+            : faiss::IDSelectorBatch(1, ids), expand(expansion), target(id)
+        {
+        }
+        bool is_member(faiss::idx_t id) const override
+        {
+            ++probes;
+            return expand ? faiss::IDSelectorBatch::is_member(id) || id == target
+                          : faiss::IDSelectorBatch::is_member(id) && id != target;
+        }
+    };
+    struct DerivedArray : faiss::IDSelectorArray
+    {
+        bool expand;
+        faiss::idx_t target;
+        mutable size_t probes = 0;
+        DerivedArray(const faiss::idx_t* ids, bool expansion, faiss::idx_t id)
+            : faiss::IDSelectorArray(1, ids), expand(expansion), target(id)
+        {
+        }
+        bool is_member(faiss::idx_t id) const override
+        {
+            ++probes;
+            return expand ? faiss::IDSelectorArray::is_member(id) || id == target
+                          : faiss::IDSelectorArray::is_member(id) && id != target;
+        }
+    };
+    for (bool array : {false, true})
+    {
+        for (bool expand : {false, true})
+        {
+            SCOPED_TRACE(array);
+            SCOPED_TRACE(expand);
+            auto source = MakePretrainedCpuIndex();
+            faiss::ascend::AscendIndexIVFRaBitQ index(DIM, faiss::METRIC_L2, NLIST, MakeConfig());
+            ASSERT_NO_THROW(index.copyFrom(source.index.get()));
+            const faiss::idx_t selected = source.ids[0];
+            const faiss::idx_t target = expand ? source.ids[1] : selected;
+            DerivedBatch batch(&selected, expand, target);
+            DerivedArray arr(&selected, expand, target);
+            const faiss::IDSelector& selector =
+                array ? static_cast<const faiss::IDSelector&>(arr) : static_cast<const faiss::IDSelector&>(batch);
+            EXPECT_EQ(static_cast<faiss::Index&>(index).remove_ids(selector), expand ? 2U : 0U);
+            EXPECT_EQ(array ? arr.probes : batch.probes, source.ids.size());
+            EXPECT_EQ(index.ntotal, expand ? 1 : 3);
+            EXPECT_EQ(index.impl_->locationTable->contains(selected), !expand);
+            EXPECT_TRUE(index.impl_->locationTable->contains(source.ids[2]));
+        }
+    }
+}
+
+TEST(TestAscendIndexIVFRaBitQ, ExactBatchAndArrayDeletesUseStoredPayload)
+{
+    for (bool array : {false, true})
+    {
+        auto source = MakePretrainedCpuIndex();
+        faiss::ascend::AscendIndexIVFRaBitQ index(DIM, faiss::METRIC_L2, NLIST, MakeConfig());
+        ASSERT_NO_THROW(index.copyFrom(source.index.get()));
+        const faiss::idx_t selected[] = {source.ids[1], source.ids[1], -1, 999999};
+        faiss::IDSelectorBatch batch(4, selected);
+        faiss::IDSelectorArray arr(4, selected);
+        const faiss::IDSelector& selector =
+            array ? static_cast<const faiss::IDSelector&>(arr) : static_cast<const faiss::IDSelector&>(batch);
+        EXPECT_EQ(static_cast<faiss::Index&>(index).remove_ids(selector), 1U);
+        EXPECT_EQ(index.ntotal, 2);
+        const auto loc = index.impl_->locationTable->lookupLocation(source.ids[2]);
+        ASSERT_TRUE(loc.has_value());
+        EXPECT_EQ(loc->slot(), 1U);
+    }
+}
+
+int encodedImportCalls = 0;
+::ascend::APP_ERROR StubEncodedImportFailure(::ascend::IndexIVFRaBitQ*, int, size_t, const uint8_t*,
+                                             const ::ascend::Index::idx_t*, size_t*)
+{
+    ++encodedImportCalls;
+    return ::ascend::APP_ERR_INNER_ERROR;
+}
+
+TEST(TestAscendIndexIVFRaBitQ, FailedImportAfterTableSwapCleansConcreteReplacement)
+{
+    auto source = MakePretrainedCpuIndex();
+    faiss::ascend::AscendIndexIVFRaBitQ index(DIM, faiss::METRIC_L2, NLIST, MakeConfig());
+    ASSERT_NO_THROW(index.copyFrom(source.index.get()));
+    encodedImportCalls = 0;
+    MOCKER_CPP(&::ascend::IndexIVFRaBitQ::addEncodedVectors).stubs().will(invoke(StubEncodedImportFailure));
+    EXPECT_THROW(index.copyFrom(source.index.get()), std::exception);
+    EXPECT_EQ(encodedImportCalls, 1);
+    EXPECT_EQ(index.ntotal, 0);
+    EXPECT_EQ(index.impl_->locationTable->allocatedBlockCount(), 0U);
+    EXPECT_EQ(index.impl_->getActualIndex(0)->getListLength(source.listId), 0U);
+    GlobalMockObject::verify();
+    ASSERT_NO_THROW(index.copyFrom(source.index.get()));
+    EXPECT_EQ(index.ntotal, 3);
+    EXPECT_EQ(index.impl_->locationTable->allocatedBlockCount(), 1U);
 }
 
 TEST(TestAscendIndexIVFRaBitQ, CopyFromReplacesListsMappingsAndSourceState)
 {
     auto source = MakePretrainedCpuIndex();
     faiss::ascend::AscendIndexIVFRaBitQ index(DIM, faiss::METRIC_L2, NLIST, MakeConfig());
+    ListLengthQueryGuard mock(index.impl_.get());
     ASSERT_NO_THROW(index.copyFrom(source.index.get()));
+    ExpectListLengthQueries({});
     ASSERT_NO_THROW(index.copyFrom(source.index.get()));
+    ExpectListLengthQueries({});  // Re-import resets old nonzero lists rather than querying their lengths.
     EXPECT_EQ(index.ntotal, 3);
-    EXPECT_EQ(index.impl_->getActualIndex(0)->getListLength(source.listId), 3U);
+    EXPECT_EQ(index.impl_->getActualIndex(0)->activeSnapshot->lists.at(source.listId)->listLen, 3U);
     EXPECT_EQ(index.impl_->deviceAddNumMap[source.listId][0], 3);
-    EXPECT_EQ(index.impl_->idToDeviceMap.size(), 3U);
+    EXPECT_EQ(CountMappedIds(*index.impl_->locationTable), 3U);
     auto empty = MakePretrainedCpuIndex(false);
     ASSERT_NO_THROW(index.copyFrom(empty.index.get()));
+    ExpectListLengthQueries({});
     EXPECT_EQ(index.ntotal, 0);
-    EXPECT_TRUE(index.impl_->idToDeviceMap.empty());
-    EXPECT_EQ(index.impl_->getActualIndex(0)->getListLength(source.listId), 0U);
+    EXPECT_TRUE(CountMappedIds(*index.impl_->locationTable) == 0);
+    EXPECT_EQ(index.impl_->getActualIndex(0)->activeSnapshot->lists.at(source.listId)->listLen, 0U);
     EXPECT_FALSE(index.impl_->copiedSources_);
     EXPECT_TRUE(index.impl_->refineSourcesReady_);
 }
 
-int encodedImportCalls = 0;
 int failEncodedImportCall = 0;
 
 ::ascend::APP_ERROR StubEncodedImport(::ascend::IndexIVFRaBitQ* index, int listId, size_t numVecs, const uint8_t*,
-                                      const ::ascend::Index::idx_t*)
+                                      const ::ascend::Index::idx_t*, size_t* baseSlotOut)
 {
     if (++encodedImportCalls == failEncodedImportCall) return ::ascend::APP_ERR_INVALID_PARAM;
+    if (baseSlotOut != nullptr) *baseSlotOut = index->activeSnapshot->lists.at(listId)->listLen;
     SeedList(index, listId, numVecs);  // Publish fixture storage so reset sees the committed daemon count.
     return ::ascend::APP_ERR_OK;
 }
@@ -2235,8 +2901,8 @@ TEST(TestAscendIndexIVFRaBitQ, CopyFromSetupFailuresLeaveUntrainedEmptyStateAndA
                 EXPECT_EQ(encodedImportCalls, 0);
                 EXPECT_EQ(index.ntotal, 0);
                 EXPECT_FALSE(index.is_trained);
-                EXPECT_TRUE(index.impl_->idToDeviceMap.empty());
-                EXPECT_TRUE(index.impl_->deviceInfos[0].idSet.empty());
+                EXPECT_EQ(CountMappedIds(*index.impl_->locationTable), 0U);
+                EXPECT_EQ(CountDeviceMappedIds(*index.impl_->locationTable, 0), 0U);
                 EXPECT_EQ(index.impl_->getActualIndex(0)->getListLength(old.listId), 0U);
             }
             ASSERT_NO_THROW(index.copyFrom(source.index.get()));
@@ -2261,8 +2927,8 @@ TEST(TestAscendIndexIVFRaBitQ, PartialEncodedImportKeepsCompletedSetupTrained)
         EXPECT_EQ(encodedImportCalls, 2);
         EXPECT_TRUE(index.is_trained);
         EXPECT_EQ(index.ntotal, static_cast<faiss::idx_t>(source.ids.size()));
-        EXPECT_EQ(index.impl_->idToDeviceMap.size(), source.ids.size());
-        EXPECT_EQ(index.impl_->idToDeviceMap.count(extra), 0U);
+        EXPECT_EQ(CountMappedIds(*index.impl_->locationTable), source.ids.size());
+        EXPECT_FALSE(index.impl_->locationTable->contains(extra));
         EXPECT_EQ(index.impl_->deviceAddNumMap[source.listId][0], 3);
         EXPECT_EQ(index.impl_->deviceAddNumMap[source.listId + 1][0], 0);
         EXPECT_FALSE(index.impl_->refineSourcesReady_);
@@ -2422,11 +3088,13 @@ TEST(TestAscendIndexIVFRaBitQ, LaterDeviceResetPreparationBadAllocReconcilesSucc
     auto* first = index.impl_->getActualIndex(0);
     auto* second = index.impl_->getActualIndex(1);
     const auto* oldSecond = second->activeSnapshot.get();
-    const auto oldMappings = index.impl_->idToDeviceMap;
+    const auto oldMappings = SnapshotLocations(*index.impl_->locationTable);
     const auto oldCounts = index.impl_->deviceAddNumMap;
     const auto* oldArena = second->listArena_.get();
     const auto oldArenaBytes = oldArena->TotalReservedBytes();
     ASSERT_EQ(oldMappings.size(), 3U);
+    const auto oldSecondMapping = oldMappings[1];
+    ASSERT_EQ(oldSecondMapping.first, 1);
     ASSERT_EQ(oldCounts[source.listId][0], 2);
     ASSERT_EQ(oldCounts[source.listId][1], 1);
     {
@@ -2443,12 +3111,11 @@ TEST(TestAscendIndexIVFRaBitQ, LaterDeviceResetPreparationBadAllocReconcilesSucc
         EXPECT_EQ(index.ntotal, 1);
         EXPECT_TRUE(index.is_trained);
         EXPECT_EQ(index.getNumProbes(), NPROBE);
-        EXPECT_EQ(index.impl_->idToDeviceMap.size(), 1U);
-        EXPECT_EQ(index.impl_->idToDeviceMap.at(1), oldMappings.at(1));
-        EXPECT_EQ(index.impl_->idToDeviceMap.count(0), 0U);
-        EXPECT_EQ(index.impl_->idToDeviceMap.count(2), 0U);
-        EXPECT_TRUE(index.impl_->deviceInfos[0].idSet.empty());
-        EXPECT_EQ(index.impl_->deviceInfos[1].idSet.size(), 1U);
+        EXPECT_THAT(SnapshotLocations(*index.impl_->locationTable), ElementsAre(oldSecondMapping));
+        EXPECT_FALSE(index.impl_->locationTable->contains(0));
+        EXPECT_FALSE(index.impl_->locationTable->contains(2));
+        EXPECT_EQ(CountDeviceMappedIds(*index.impl_->locationTable, 0), 0U);
+        EXPECT_EQ(CountDeviceMappedIds(*index.impl_->locationTable, 1), 1U);
         EXPECT_EQ(index.impl_->deviceAddNumMap[source.listId][0], 0);
         EXPECT_EQ(index.impl_->deviceAddNumMap[source.listId][1], oldCounts[source.listId][1]);
         EXPECT_FALSE(index.impl_->refineSourcesReady_);
@@ -2457,7 +3124,7 @@ TEST(TestAscendIndexIVFRaBitQ, LaterDeviceResetPreparationBadAllocReconcilesSucc
     ASSERT_NO_THROW(index.copyFrom(replacement.index.get()));
     EXPECT_EQ(index.ntotal, 0);
     EXPECT_EQ(index.getNumProbes(), NPROBE + 1);
-    EXPECT_TRUE(index.impl_->idToDeviceMap.empty());
+    EXPECT_TRUE(SnapshotLocations(*index.impl_->locationTable).empty());
     EXPECT_FALSE(index.impl_->refineSourcesAttached());
     EXPECT_TRUE(index.impl_->refineSourcesReady_);
 }
@@ -2514,6 +3181,100 @@ struct ReaderDrainMockGuard
     }
 };
 
+TEST(TestIndexIVFRaBitQCore, FailedPreciseDeleteDoesNotExposeCandidateMoves)
+{
+    auto source = MakePretrainedCpuIndex();
+    faiss::ascend::AscendIndexIVFRaBitQ index(DIM, faiss::METRIC_L2, NLIST, MakeConfig());
+    ASSERT_NO_THROW(index.copyFrom(source.index.get()));
+    auto* actual = index.impl_->getActualIndex(0);
+    const auto* snapshot = actual->activeSnapshot.get();
+    ReaderDrainMockGuard mock(*actual);
+    resetFaultWriter = actual->writerContext->computeStream;
+    const int list = source.listId;
+    const size_t slot = 1;
+    const ::ascend::Index::idx_t id = static_cast<::ascend::Index::idx_t>(source.ids[1]);
+    std::vector<::ascend::IndexIVFRaBitQ::MovedSlot> moves;
+    EXPECT_EQ(actual->removeIds(1, &id, &list, &slot, &moves), ::ascend::APP_ERR_INNER_ERROR);
+    EXPECT_TRUE(moves.empty());
+    EXPECT_EQ(actual->activeSnapshot.get(), snapshot);
+    EXPECT_EQ(index.ntotal, 3);
+    const auto loc = index.impl_->locationTable->lookupLocation(source.ids[2]);
+    ASSERT_TRUE(loc.has_value());
+    EXPECT_EQ(loc->slot(), 2U);
+    resetFaultWriter = nullptr;
+    ASSERT_EQ(actual->removeIds(1, &id, &list, &slot, &moves), ::ascend::APP_ERR_OK);
+    ASSERT_EQ(moves.size(), 1U);
+    EXPECT_EQ(moves[0].id, static_cast<::ascend::Index::idx_t>(source.ids[2]));
+    EXPECT_EQ(moves[0].newSlot, 1U);
+}
+
+TEST(TestIndexIVFRaBitQCore, MoveValidationThrowRejectsSnapshotAndLeavesOutputUntouched)
+{
+    auto source = MakePretrainedCpuIndex();
+    faiss::ascend::AscendIndexIVFRaBitQ index(DIM, faiss::METRIC_L2, NLIST, MakeConfig());
+    ASSERT_NO_THROW(index.copyFrom(source.index.get()));
+    auto* actual = index.impl_->getActualIndex(0);
+    const auto* snapshot = actual->activeSnapshot.get();
+    const int list = source.listId;
+    const size_t slot = 1;
+    const ::ascend::Index::idx_t id = static_cast<::ascend::Index::idx_t>(source.ids[1]);
+    std::vector<::ascend::IndexIVFRaBitQ::MovedSlot> moves = {{999, 0, 123}};
+    bool invoked = false;
+    ::ascend::IndexIVFRaBitQ::MoveValidator reject = [&](const auto& prepared)
+    {
+        invoked = true;
+        ASSERT_EQ(prepared.size(), 1U);
+        EXPECT_EQ(prepared[0].id, static_cast<::ascend::Index::idx_t>(source.ids[2]));
+        EXPECT_EQ(prepared[0].newSlot, 1U);
+        EXPECT_EQ(actual->activeSnapshot.get(), snapshot);
+        throw std::runtime_error("injected move validation failure");
+    };
+    ExpectExceptionContains([&] { actual->removeIds(1, &id, &list, &slot, &moves, reject); },
+                            "injected move validation failure");
+    EXPECT_TRUE(invoked);
+    EXPECT_EQ(actual->activeSnapshot.get(), snapshot);
+    ASSERT_EQ(moves.size(), 1U);
+    EXPECT_EQ(moves[0].id, 999U);
+    EXPECT_EQ(moves[0].newSlot, 123U);
+    EXPECT_EQ(actual->getListLength(list), 3U);
+
+    // A validator still receives moves when a legacy caller does not request movedOut.
+    invoked = false;
+    ::ascend::IndexIVFRaBitQ::MoveValidator accept = [&](const auto& prepared)
+    {
+        invoked = true;
+        EXPECT_EQ(prepared.size(), 1U);
+    };
+    ASSERT_EQ(actual->removeIds(1, &id, &list, &slot, nullptr, accept), ::ascend::APP_ERR_OK);
+    EXPECT_TRUE(invoked);
+    EXPECT_EQ(actual->getListLength(list), 2U);
+}
+
+TEST(TestAscendIndexIVFRaBitQ, UnknownMovedIdRejectsBeforeHostAndDaemonPublication)
+{
+    auto source = MakePretrainedCpuIndex();
+    faiss::ascend::AscendIndexIVFRaBitQ index(DIM, faiss::METRIC_L2, NLIST, MakeConfig());
+    ASSERT_NO_THROW(index.copyFrom(source.index.get()));
+    auto* actual = index.impl_->getActualIndex(0);
+    const auto* snapshot = actual->activeSnapshot.get();
+    index.impl_->locationTable->clearValid(source.ids[2]);  // Simulate an unknown surviving daemon tail ID.
+    const auto locations = SnapshotLocations(*index.impl_->locationTable);
+    const auto counts = index.impl_->deviceAddNumMap;
+    ExpectExceptionContains([&] { index.remove_ids(1, &source.ids[1]); }, "moved ID");
+    EXPECT_EQ(actual->activeSnapshot.get(), snapshot);
+    EXPECT_EQ(actual->getListLength(source.listId), 3U);
+    EXPECT_EQ(index.ntotal, 3);
+    EXPECT_EQ(index.impl_->deviceAddNumMap, counts);
+    EXPECT_EQ(SnapshotLocations(*index.impl_->locationTable), locations);
+    // Restore the faulted metadata and retry; rejected compaction did not mutate source segments.
+    index.impl_->locationTable->setLocation(source.ids[2], 0, source.listId, 2);
+    ASSERT_NO_THROW(index.remove_ids(1, &source.ids[1]));
+    EXPECT_EQ(index.ntotal, 2);
+    const auto loc = index.impl_->locationTable->lookupLocation(source.ids[2]);
+    ASSERT_TRUE(loc.has_value());
+    EXPECT_EQ(loc->slot(), 1U);
+}
+
 TEST(TestAscendIndexIVFRaBitQ, FailedCopyFromReaderDrainPreservesOldMetadataAndSources)
 {
     auto source = MakePretrainedCpuIndex();
@@ -2527,7 +3288,7 @@ TEST(TestAscendIndexIVFRaBitQ, FailedCopyFromReaderDrainPreservesOldMetadataAndS
     ASSERT_NO_THROW(index.copyFrom(source.index.get()));
     const auto originals = MakePatternData(3, DIM);
     ASSERT_NO_THROW(index.loadRefineSources(originals.data(), 3));
-    const auto mapping = index.impl_->idToDeviceMap;
+    const auto mapping = SnapshotLocations(*index.impl_->locationTable);
     const auto counts = index.impl_->deviceAddNumMap;
     const auto generation = index.impl_->cachedFilterGeneration;
     const auto* first = index.impl_->getActualIndex(0)->activeSnapshot.get();
@@ -2539,7 +3300,7 @@ TEST(TestAscendIndexIVFRaBitQ, FailedCopyFromReaderDrainPreservesOldMetadataAndS
     EXPECT_EQ(index.ntotal, 3);
     EXPECT_EQ(index.getNumProbes(), NPROBE);
     EXPECT_TRUE(index.is_trained);
-    EXPECT_EQ(index.impl_->idToDeviceMap, mapping);
+    EXPECT_EQ(SnapshotLocations(*index.impl_->locationTable), mapping);
     EXPECT_EQ(index.impl_->deviceAddNumMap, counts);
     EXPECT_EQ(index.impl_->srcIndexes, originals);
     EXPECT_TRUE(index.impl_->copiedSources_);
@@ -2551,7 +3312,7 @@ TEST(TestAscendIndexIVFRaBitQ, FailedCopyFromReaderDrainPreservesOldMetadataAndS
     ASSERT_NO_THROW(index.copyFrom(replacement.index.get()));
     EXPECT_EQ(index.ntotal, 0);
     EXPECT_EQ(index.getNumProbes(), NPROBE + 1);
-    EXPECT_TRUE(index.impl_->idToDeviceMap.empty());
+    EXPECT_TRUE(CountMappedIds(*index.impl_->locationTable) == 0);
     EXPECT_TRUE(index.impl_->srcIndexes.empty());
 }
 
@@ -2578,10 +3339,10 @@ TEST(TestAscendIndexIVFRaBitQ, LateCopyFromResetFailureReconcilesSuccessfulDevic
     EXPECT_EQ(index.ntotal, 1);
     EXPECT_TRUE(index.is_trained);
     EXPECT_EQ(index.getNumProbes(), NPROBE);  // Replacement metadata was never installed.
-    EXPECT_EQ(index.impl_->idToDeviceMap.size(), 1U);
-    EXPECT_EQ(index.impl_->idToDeviceMap.count(1), 1U);
-    EXPECT_TRUE(index.impl_->deviceInfos[0].idSet.empty());
-    EXPECT_EQ(index.impl_->deviceInfos[1].idSet.size(), 1U);
+    EXPECT_EQ(CountMappedIds(*index.impl_->locationTable), 1U);
+    EXPECT_EQ(static_cast<size_t>(index.impl_->locationTable->contains(1)), 1U);
+    EXPECT_TRUE(CountDeviceMappedIds(*index.impl_->locationTable, 0) == 0);
+    EXPECT_EQ(CountDeviceMappedIds(*index.impl_->locationTable, 1), 1U);
     EXPECT_EQ(index.impl_->deviceAddNumMap[source.listId][0], 0);
     EXPECT_EQ(index.impl_->deviceAddNumMap[source.listId][1], 1);
     EXPECT_FALSE(index.impl_->refineSourcesReady_);
@@ -2783,7 +3544,7 @@ TEST(TestIndexIVFRaBitQCore, CompactionCopiesAllPayloadAndLeavesOldSnapshotUncha
         SCOPED_TRACE(deletes.front());
         List next = oldList;
         auto slots = deletes;
-        EXPECT_EQ(actual->compactList(oldList, next, slots, stream), ::ascend::APP_ERR_OK);
+        EXPECT_EQ(actual->compactList(oldList, next, slots, stream, 0, nullptr), ::ascend::APP_ERR_OK);
         ASSERT_EQ(::ascend::synchronizeStream(stream), ACL_SUCCESS);
         EXPECT_EQ(next.listLen, 9U);
         EXPECT_NE(next.codes.segmentData(1), oldList.codes.segmentData(1));

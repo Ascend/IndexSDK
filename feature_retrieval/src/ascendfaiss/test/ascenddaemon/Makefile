@@ -28,8 +28,14 @@ TestParallelFutureUtils: TestParallelFutureUtils.cpp ../../ascenddaemon/utils/Pa
 host-parallel-future-test: TestParallelFutureUtils
 	./TestParallelFutureUtils
 
+TestLocationTable: TestLocationTable.cpp ../../ascend/impl/LocationTable.h
+	$(HOSTCXX) $(HOSTCXXFLAGS) -I../../ -o $@ $< $(HOST_GTEST_FLAGS) -pthread
+
+host-location-table-test: TestLocationTable
+	./TestLocationTable
+
 clean:
-	rm -f *.o $(TESTS_BIN) TestParallelFutureUtils
+	rm -f *.o $(TESTS_BIN) TestParallelFutureUtils TestLocationTable
 
 
-.PHONY: clean run host-parallel-future-test
+.PHONY: clean run host-parallel-future-test host-location-table-test

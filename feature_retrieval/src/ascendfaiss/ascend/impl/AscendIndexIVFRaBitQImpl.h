@@ -20,6 +20,7 @@
 #define ASCEND_INDEX_IVFRABITQ_IMPL_INCLUDED
 
 #include <cstdint>
+#include <memory>
 #include <mutex>
 #include <random>
 #include <unordered_map>
@@ -28,6 +29,7 @@
 
 #include "ascend/AscendIndexIVFRaBitQ.h"
 #include "ascend/impl/AscendIndexIVFImpl.h"
+#include "ascend/impl/LocationTable.h"
 #include "ascenddaemon/impl/IndexIVFFlat.h"
 #include "ascenddaemon/impl/IndexIVFRaBitQ.h"
 #include "common/RabitqIdFilter.h"
@@ -78,10 +80,16 @@ class AscendIndexIVFRaBitQImpl : public AscendIndexIVFImpl
     // each other itself, so a delete no longer has to exclude in-flight searches.
     void deleteConcurrent(int n, const idx_t *ids);
     void deleteImpl(int n, const idx_t *ids);
-    void deleteFromIVFRaBitQ(IndexParam<void, void, ascend_idx_t> &param);
-    idx_t findDeviceId(idx_t id);
-    void updateIdMapping(const ascend_idx_t *ids, int deviceId, int num);
-    void removeIdMapping(const std::vector<idx_t> &ids);
+    // Resolves the selector against the LocationTable and routes through deleteImpl. The base class
+    // version hands the selector to the daemon, which would compact without reporting the slots tail
+    // backfill relocated, leaving the host mapping stale.
+    size_t removeImpl(const IDSelector &sel) override;
+    // slots carries the LocationTable slot of each id in deleteIds, so the daemon deletes by exact
+    // position instead of searching. movedOut receives the ids its tail backfill relocated.
+    void deleteFromIVFRaBitQ(
+        int deviceId, const std::vector<idx_t> &deleteIds, const std::vector<int> &listIds,
+        const std::vector<size_t> &slots, std::vector<::ascend::IndexIVFRaBitQ::MovedSlot> &movedOut,
+        const ::ascend::IndexIVFRaBitQ::MoveValidator &validateMoves = ::ascend::IndexIVFRaBitQ::MoveValidator{});
     std::vector<idx_t> update(idx_t n, const float *x, const idx_t *ids);
     // Read-locked counterpart of the base class' add_with_ids, with local duplicate-ID checks.
     void addConcurrent(int n, const float *x, const idx_t *ids);
@@ -128,7 +136,7 @@ class AscendIndexIVFRaBitQImpl : public AscendIndexIVFImpl
     // Called from AscendIndex for add/add_with_ids
     void addL1(int n, const float *x, std::unique_ptr<idx_t[]> &assign);
     void addImpl(int n, const float *x, const idx_t *ids) override;
-    void indexIVFRaBitQAdd(IndexParam<float, float, ascend_idx_t> &param);
+    void indexIVFRaBitQAdd(IndexParam<float, float, ascend_idx_t> &param, size_t *baseSlotOut);
     inline ::ascend::IndexIVFRaBitQ *getActualIndex(int deviceId) const
     {
         FAISS_THROW_IF_NOT_FMT(indexes.find(deviceId) != indexes.end(), "deviceId is out of range, deviceId=%d.",
@@ -144,6 +152,7 @@ class AscendIndexIVFRaBitQImpl : public AscendIndexIVFImpl
     {
         std::vector<float> codes;
         std::vector<ascend_idx_t> ids;
+        LocationDelta delta;
         bool published = false;
     };
     struct StagedListAdd
@@ -211,9 +220,10 @@ class AscendIndexIVFRaBitQImpl : public AscendIndexIVFImpl
     mutable int filterSlotLru = 0;
     mutable uint64_t cachedFilterGeneration = 0;
 
-    std::unordered_map<idx_t, idx_t> idToDeviceMap;
-
-    std::mutex mapMutex;
+    // Single source of truth for where an id lives. Only writers touch it, but copyFrom and
+    // threadUnsafeReset reach it without going through writerMutex, so it keeps its own.
+    std::unique_ptr<LocationTable> locationTable;
+    std::mutex locationMutex;
 
     // Serialises writers against each other now that they only hold a read lock on mtx.
     std::mutex writerMutex;
@@ -222,12 +232,6 @@ class AscendIndexIVFRaBitQImpl : public AscendIndexIVFImpl
     // concurrent search fanning out over the same devices.
     std::shared_ptr<AscendThreadPool> readPool;
     std::shared_ptr<AscendThreadPool> writePool;
-
-    struct DeviceInfo
-    {
-        std::unordered_set<idx_t> idSet;
-    };
-    std::vector<DeviceInfo> deviceInfos;
 
     // Source ownership is a mode, not a test of vector size: an empty copied source still forbids mutation.
     bool copiedSources_ = false;
