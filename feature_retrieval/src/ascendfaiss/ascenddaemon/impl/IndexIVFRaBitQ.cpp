@@ -562,13 +562,14 @@ std::unique_ptr<IndexIVFRaBitQ::GlobalSnapshot> IndexIVFRaBitQ::makeEmptySnapsho
     // Base IndexIVF's deviceListData/deviceListIndices stay unused: RaBitQ keeps codes, factors and ids
     // in the snapshot's lists instead.
     auto snapshot = std::make_unique<GlobalSnapshot>();
-    snapshot->lists.reserve(static_cast<size_t>(numLists));
     const size_t codePartBytes = getCodePartBytes();
-    for (int i = 0; i < numLists; ++i)
-    {
-        snapshot->lists.push_back(std::make_shared<const ListStorage>(
-            static_cast<size_t>(blockSize), IVF_RABITQ_TAIL_GROWTH, codePartBytes, listArena_));
-    }
+    snapshot->lists.resizeFill(static_cast<size_t>(numLists),
+                               [&](size_t)
+                               {
+                                   return std::make_shared<const ListStorage>(static_cast<size_t>(blockSize),
+                                                                              IVF_RABITQ_TAIL_GROWTH, codePartBytes,
+                                                                              listArena_);
+                               });
     return snapshot;
 }
 
@@ -585,17 +586,20 @@ std::unique_ptr<IndexIVFRaBitQ::GlobalSnapshot> IndexIVFRaBitQ::cloneSnapshot(co
 
 size_t IndexIVFRaBitQ::retainedBytes(const GlobalSnapshot &snapshot) const
 {
+    // Reclamation leaves at most the hazard-protected retired snapshot. Skip chunks still held by active:
+    // their slots may each have use_count()==1 even though active reaches the same slot through the chunk.
+    // In exclusive chunks, list and segment refcounts accurately identify the device allocations that
+    // dropping this snapshot would free, including lists changed after this version was retired.
     size_t bytes = 0;
-    for (const auto &list : snapshot.lists)
-    {
-        // Shared with the snapshot that replaced it, so dropping this one frees nothing.
-        if (list.use_count() != 1)
+    snapshot.lists.forEachInUniqueChunks(
+        [&](const auto &list)
         {
-            continue;
-        }
-        bytes += list->codes.uniquelyOwnedBytes() + list->indexL1.uniquelyOwnedBytes() +
-                 list->indexL2.uniquelyOwnedBytes() + list->ids.uniquelyOwnedBytes();
-    }
+            if (list.use_count() == 1)
+            {
+                bytes += list->codes.uniquelyOwnedBytes() + list->indexL1.uniquelyOwnedBytes() +
+                         list->indexL2.uniquelyOwnedBytes() + list->ids.uniquelyOwnedBytes();
+            }
+        });
     return bytes;
 }
 
@@ -636,11 +640,8 @@ void IndexIVFRaBitQ::publishSnapshot(std::unique_ptr<GlobalSnapshot> snapshot)
     // validation sees the replacement, or the scan sees the reader's hazard before reclaiming `old`.
     currentSnapshot.store(activeSnapshot.get(), std::memory_order_seq_cst);
 
-    // retainedBytes must be measured after the swap: a list is only uniquely owned by `old` once the
-    // new snapshot no longer references it.
-    const size_t bytes = retainedBytes(*old);
-    retiredSnapshots.push_back({std::move(old), bytes});
-    retiredBytes += bytes;
+    // Provisional zero: recount after the swap and after unprotected retired versions release ownership.
+    retiredSnapshots.push_back({std::move(old), 0});
     this->ntotal = activeSnapshot->total;
     reclaimRetiredSnapshots();
 }
@@ -1072,7 +1073,7 @@ IndexIVFRaBitQ::ListStorage &IndexIVFRaBitQ::listForWrite(GlobalSnapshot &next, 
     {
         auto listCopy = std::make_shared<ListStorage>(*base.lists[listId]);
         ListStorage &list = *listCopy;
-        next.lists[listId] = std::move(listCopy);
+        next.lists.set(static_cast<size_t>(listId), std::move(listCopy));
         return list;
     }
     // Already cloned earlier in this batch, and next is unpublished, so no reader can see it yet.
@@ -3114,7 +3115,7 @@ APP_ERROR IndexIVFRaBitQ::removeIdsInternal(const std::unordered_map<int, std::v
         auto listCopy = std::make_shared<ListStorage>(oldList);
         auto ret = compactList(oldList, *listCopy, deletedSlots, stream, listId, needMoves ? &preparedMoves : nullptr);
         APPERR_RETURN_IF(ret != APP_ERR_OK, ret);
-        nextSnapshot->lists[listId] = std::move(listCopy);
+        nextSnapshot->lists.set(static_cast<size_t>(listId), std::move(listCopy));
         removeCntAll += deletedSlots.size();
     }
     if (removeCntAll == 0)

@@ -1740,7 +1740,7 @@ void SeedList(::ascend::IndexIVFRaBitQ* index, int listId, size_t numVecs)
     listCopy->ids.commitLength(numVecs);
     next->total += numVecs - listCopy->listLen;
     listCopy->listLen = numVecs;
-    next->lists.at(listId) = std::move(listCopy);
+    next->lists.set(static_cast<size_t>(listId), std::move(listCopy));
     index->publishSnapshot(std::move(next));
 }
 
@@ -3720,13 +3720,15 @@ TEST(TestIndexIVFRaBitQCore, ReclamationRecountsSegmentsThatBecomeExclusiveToPin
     {
         std::lock_guard<std::mutex> writerLock(actual->writerLock);
         auto first = actual->cloneSnapshot(*actual->activeSnapshot);
-        first->lists[1] = std::make_shared<const ::ascend::IndexIVFRaBitQ::ListStorage>(
-            actual->blockSize, actual->blockSize / 8, actual->getCodePartBytes(), actual->listArena_);
+        first->lists.set(1,
+                         std::make_shared<const ::ascend::IndexIVFRaBitQ::ListStorage>(
+                             actual->blockSize, actual->blockSize / 8, actual->getCodePartBytes(), actual->listArena_));
         actual->publishSnapshot(std::move(first));
         EXPECT_EQ(actual->retiredBytes, 0U);  // list 0 is still shared with active
         auto second = actual->cloneSnapshot(*actual->activeSnapshot);
-        second->lists[0] = std::make_shared<const ::ascend::IndexIVFRaBitQ::ListStorage>(
-            actual->blockSize, actual->blockSize / 8, actual->getCodePartBytes(), actual->listArena_);
+        second->lists.set(
+            0, std::make_shared<const ::ascend::IndexIVFRaBitQ::ListStorage>(
+                   actual->blockSize, actual->blockSize / 8, actual->getCodePartBytes(), actual->listArena_));
         second->total = 0;
         actual->publishSnapshot(std::move(second));
         const auto& oldList = *pinned->lists[0];
@@ -3741,6 +3743,93 @@ TEST(TestIndexIVFRaBitQCore, ReclamationRecountsSegmentsThatBecomeExclusiveToPin
     {
         std::lock_guard<std::mutex> writerLock(actual->writerLock);
         actual->reclaimRetiredSnapshots();
+        EXPECT_EQ(actual->retiredBytes, 0U);
+    }
+}
+
+TEST(TestIndexIVFRaBitQCore, ReclamationRecountsLaterWritesInAnotherChunk)
+{
+    using Core = ::ascend::IndexIVFRaBitQ;
+    constexpr size_t otherListId = Core::kListChunkSize;
+    faiss::ascend::AscendIndexIVFRaBitQ hostIndex(DIM, faiss::METRIC_L2, 2 * otherListId, MakeConfig());
+    auto actual = hostIndex.impl_->getActualIndex(0);
+    SeedList(actual, 0, 2);
+    SeedList(actual, otherListId, 2);
+    SeedList(actual, otherListId + 1, 2);
+    const auto* pinned = actual->activeSnapshot.get();
+    const auto allocatedBytes = [](const Core::ListStorage& list)
+    {
+        return list.codes.allocatedBytes() + list.indexL1.allocatedBytes() + list.indexL2.allocatedBytes() +
+               list.ids.allocatedBytes();
+    };
+    const auto uniqueBytes = [](const Core::ListStorage& list)
+    {
+        return list.codes.uniquelyOwnedBytes() + list.indexL1.uniquelyOwnedBytes() + list.indexL2.uniquelyOwnedBytes() +
+               list.ids.uniquelyOwnedBytes();
+    };
+    const size_t firstBytes = allocatedBytes(*pinned->lists[0]);
+    const size_t laterBytes = allocatedBytes(*pinned->lists[otherListId]);
+    const size_t sharedBytes = allocatedBytes(*pinned->lists[otherListId + 1]);
+    ASSERT_GT(firstBytes, 0U);
+    ASSERT_GT(laterBytes, 0U);
+    ASSERT_GT(sharedBytes, 0U);
+    Core::SnapshotGuard guard(*actual);
+    {
+        std::lock_guard<std::mutex> writerLock(actual->writerLock);
+        auto first = actual->cloneSnapshot(*actual->activeSnapshot);
+        first->lists.set(0, std::make_shared<const Core::ListStorage>(actual->blockSize, actual->blockSize / 8,
+                                                                      actual->getCodePartBytes(), actual->listArena_));
+        first->total -= 2;
+        actual->publishSnapshot(std::move(first));
+        ASSERT_EQ(actual->retiredSnapshots.size(), 1U);
+        EXPECT_EQ(actual->retiredSnapshots.front().snapshot.get(), pinned);
+        EXPECT_EQ(actual->retiredSnapshots.front().bytes, firstBytes);
+        EXPECT_EQ(actual->retiredBytes, firstBytes);
+        // Active reaches the same slots through the shared second chunk without bumping their refcounts.
+        EXPECT_EQ(pinned->lists[otherListId].use_count(), 1);
+        EXPECT_EQ(pinned->lists[otherListId + 1].use_count(), 1);
+
+        auto second = actual->cloneSnapshot(*actual->activeSnapshot);
+        second->lists.set(otherListId,
+                          std::make_shared<const Core::ListStorage>(actual->blockSize, actual->blockSize / 8,
+                                                                    actual->getCodePartBytes(), actual->listArena_));
+        second->total -= 2;
+        actual->publishSnapshot(std::move(second));
+        const size_t expected = firstBytes + laterBytes;
+        ASSERT_EQ(actual->retiredSnapshots.size(), 1U);
+        EXPECT_EQ(actual->retiredSnapshots.front().snapshot.get(), pinned);
+        EXPECT_EQ(actual->retiredSnapshots.front().bytes, expected);
+        EXPECT_EQ(actual->retiredBytes, expected);  // laterBytes was shared when pinned first retired
+        EXPECT_EQ(pinned->lists[otherListId + 1].get(), actual->activeSnapshot->lists[otherListId + 1].get());
+        EXPECT_EQ(pinned->lists[otherListId + 1].use_count(), 2);
+        EXPECT_EQ(uniqueBytes(*pinned->lists[otherListId + 1]), sharedBytes);  // list gate excludes these segments
+
+        {
+            auto heldList = pinned->lists[0];
+            actual->reclaimRetiredSnapshots();
+            EXPECT_EQ(actual->retiredBytes, laterBytes);
+        }
+        actual->reclaimRetiredSnapshots();
+        EXPECT_EQ(actual->retiredBytes, expected);
+        {
+            Core::ListStorage heldSegments = *pinned->lists[otherListId];
+            EXPECT_EQ(pinned->lists[otherListId].use_count(), 1);
+            EXPECT_EQ(uniqueBytes(*pinned->lists[otherListId]), 0U);
+            actual->reclaimRetiredSnapshots();
+            EXPECT_EQ(actual->retiredBytes, firstBytes);
+        }
+        actual->reclaimRetiredSnapshots();
+        EXPECT_EQ(actual->retiredBytes, expected);
+        actual->retiredMemoryHighWatermark = expected;
+        EXPECT_EQ(actual->checkRetiredMemory(), ::ascend::APP_ERR_OK);
+        actual->retiredMemoryHighWatermark = expected - 1;
+        EXPECT_EQ(actual->checkRetiredMemory(), ::ascend::APP_ERR_ACL_BAD_ALLOC);
+    }
+    EXPECT_EQ(guard.finish(), ACL_SUCCESS);
+    {
+        std::lock_guard<std::mutex> writerLock(actual->writerLock);
+        actual->reclaimRetiredSnapshots();
+        EXPECT_TRUE(actual->retiredSnapshots.empty());
         EXPECT_EQ(actual->retiredBytes, 0U);
     }
 }
