@@ -21,9 +21,11 @@
 #include <algorithm>
 #include <map>
 #include <memory>
+#include <mockcpp/mockcpp.hpp>
 #include <numeric>
 #include <vector>
 
+#include "../TestEnvGuard.h"
 #include "DeviceMemArena.h"
 #include "DeviceVector.h"
 
@@ -35,6 +37,40 @@ namespace ascend
 
 class TestDeviceVector : public Test
 {
+   protected:
+    void SetUp() override
+    {
+        // Pools are keyed by device id and the ACL mock refuses aclrtGetDevice() until a
+        // device is active, so state the precondition here instead of inheriting it from
+        // whichever test happened to run first.
+        ASSERT_EQ(aclrtSetDevice(0), ACL_SUCCESS);
+
+        // Keep per-test host memory small for pools created below.
+        chunkMbEnv_.reset(new ScopedEnv("ASCENDFAISS_MEM_POOL_CHUNK_MB", "4"));
+
+        // Start from an empty registry. Tests here assert that a freed block is handed
+        // straight back out, which only holds on a pool that no earlier test has
+        // fragmented, so without this they break under --gtest_filter, --gtest_shuffle
+        // or sharding.
+        ResetMemoryPoolsForTest();
+
+        poolWasEnabled_ = MemoryPoolEnabled();
+        SetMemoryPoolEnabled(true);
+    }
+
+    void TearDown() override
+    {
+        // Drop the chunks, including any still pinned by a pointer a failing test
+        // leaked, so they cannot outlive this test and reach the real aclrtFree().
+        ResetMemoryPoolsForTest();
+        SetMemoryPoolEnabled(poolWasEnabled_);
+        GlobalMockObject::verify();
+        chunkMbEnv_.reset();
+    }
+
+   private:
+    bool poolWasEnabled_{false};
+    std::unique_ptr<ScopedEnv> chunkMbEnv_;
 };
 
 TEST_F(TestDeviceVector, create_empty_device_vector)
@@ -257,10 +293,8 @@ TEST_F(TestDeviceVector, memcpySChunked_count_exceeds_capacity)
 
 TEST_F(TestDeviceVector, arena_reuses_reallocated_blocks)
 {
-    // Repeated growth used to retain every old block. Capacity is now honoured,
-    // and replaced blocks coalesce for reuse, keeping slab growth bounded.
     constexpr size_t kSteps = 4096;
-    auto arena = std::make_shared<DeviceMemArena>(4096);
+    auto arena = std::make_shared<DeviceMemArena>();
     DeviceVector<uint8_t> codes(arena);
 
     for (size_t n = 1; n <= kSteps; ++n)
@@ -269,13 +303,16 @@ TEST_F(TestDeviceVector, arena_reuses_reallocated_blocks)
     }
 
     EXPECT_EQ(codes.size(), kSteps);
-    EXPECT_LT(arena->SlabCount(), 16u);
-    EXPECT_LT(arena->TotalReservedBytes(), kSteps * 16);
+    EXPECT_EQ(arena->AllocationCount(), 1u);
+    EXPECT_EQ(arena->AllocatedBytes(), codes.capacity());
+    codes.clear();
+    EXPECT_EQ(arena->AllocationCount(), 0u);
+    EXPECT_EQ(arena->AllocatedBytes(), 0u);
 }
 
 TEST_F(TestDeviceVector, arena_append_uses_existing_capacity)
 {
-    auto arena = std::make_shared<DeviceMemArena>(4096);
+    auto arena = std::make_shared<DeviceMemArena>();
     DeviceVector<uint8_t> values(arena);
     std::vector<uint8_t> initial(100, 1);
     const uint8_t extra = 2;
@@ -284,19 +321,20 @@ TEST_F(TestDeviceVector, arena_append_uses_existing_capacity)
     ASSERT_GT(values.capacity(), values.size());
     auto *dataBefore = values.data();
     const size_t capacityBefore = values.capacity();
-    const size_t reservedBefore = arena->TotalReservedBytes();
+    const size_t allocatedBefore = arena->AllocatedBytes();
 
     while (values.size() < capacityBefore)
     {
         values.append(&extra, 1, false);
         EXPECT_EQ(values.data(), dataBefore);
     }
-    EXPECT_EQ(arena->TotalReservedBytes(), reservedBefore);
+    EXPECT_EQ(arena->AllocatedBytes(), allocatedBefore);
+    EXPECT_EQ(arena->AllocationCount(), 1u);
 }
 
 TEST_F(TestDeviceVector, arena_realloc_preserves_data)
 {
-    auto arena = std::make_shared<DeviceMemArena>(1024);
+    auto arena = std::make_shared<DeviceMemArena>();
     DeviceVector<uint8_t> values(arena);
     std::vector<uint8_t> input(128);
     std::iota(input.begin(), input.end(), static_cast<uint8_t>(0));
@@ -307,6 +345,67 @@ TEST_F(TestDeviceVector, arena_realloc_preserves_data)
 
     ASSERT_EQ(output.size(), 4096u);
     EXPECT_TRUE(std::equal(input.begin(), input.end(), output.begin()));
+}
+
+TEST_F(TestDeviceVector, arena_empty_reallocation_releases_previous_capacity)
+{
+    auto arena = std::make_shared<DeviceMemArena>();
+    DeviceVector<uint8_t> values(arena);
+    values.reserve(64);
+    values.reserve(128);
+    EXPECT_EQ(values.size(), 0u);
+    EXPECT_EQ(arena->AllocationCount(), 1u);
+    EXPECT_EQ(arena->AllocatedBytes(), values.capacity());
+
+    values.resize(8);
+    values.resize(0);
+    values.reserve(256);
+    EXPECT_EQ(arena->AllocationCount(), 1u);
+    EXPECT_EQ(arena->AllocatedBytes(), values.capacity());
+    values.clear();
+    EXPECT_EQ(arena->AllocationCount(), 0u);
+}
+
+TEST_F(TestDeviceVector, arena_vector_reuses_memoryspace_vector_storage)
+{
+    auto arena = std::make_shared<DeviceMemArena>();
+    DeviceVector<uint8_t> plain(MemorySpace::DEVICE_HUGEPAGE);
+    DeviceVector<uint8_t> grouped(arena);
+    plain.resize(128, true);
+    auto *released = plain.data();
+    ASSERT_NE(released, nullptr);
+    plain.clear();
+    // Both vectors reach the same (device, space) pool, and SetUp() left that pool
+    // empty, so the block plain just returned is the exact best fit for the next
+    // request of the same size.
+    grouped.resize(128, true);
+    EXPECT_EQ(grouped.data(), released);
+    grouped.clear();
+    plain.resize(128, true);
+    EXPECT_EQ(plain.data(), released);
+}
+
+TEST_F(TestDeviceVector, arena_copy_failure_keeps_old_storage_and_returns_new_allocation)
+{
+    auto arena = std::make_shared<DeviceMemArena>();
+    DeviceVector<uint8_t> values(arena);
+    const std::vector<uint8_t> input(128, 0x5a);
+    values.append(input.data(), input.size(), true);
+    auto *original = values.data();
+    const size_t capacity = values.capacity();
+#ifdef HOSTCPU
+    MOCKER_CPP(&aclrtMemcpy).stubs().will(returnValue(ACL_ERROR_FAILURE));
+#else
+    MOCKER_CPP(&memcpy_s).stubs().will(returnValue(ERANGE));
+#endif
+    EXPECT_THROW(values.resize(4096, true), std::exception);
+    EXPECT_EQ(values.data(), original);
+    EXPECT_EQ(values.capacity(), capacity);
+    EXPECT_EQ(values.size(), input.size());
+    EXPECT_EQ(arena->AllocationCount(), 1u);
+    EXPECT_EQ(arena->AllocatedBytes(), capacity);
+    GlobalMockObject::verify();
+    EXPECT_EQ(values.copyToStlVector(), input);
 }
 
 TEST_F(TestDeviceVector, aclrtMemcpyChunked_normal_and_invalid)

@@ -22,6 +22,7 @@ create_testable_target(${PROJECT_NAME}
     TestRandom.cpp
     TestAscendRWLock.cpp
     TestMemorySpace.cpp
+    TestMemoryPool.cpp
     TestDistComputeOpsManager.cpp
     TestFp16Parallel.cpp
 
