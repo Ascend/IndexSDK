@@ -21,6 +21,21 @@
 
 __simt_vf__ __aicore__ LAUNCH_BOUND(32) inline void CagraRabitqUnsupportedTilingKey() { __trap(); }
 
+template <unsigned Capacity, class IndexT>
+__forceinline__ __simt_callee__[aicore] void SortRadixCandidates(uint32_t count, uint32_t topk,
+                                                                 __ubuf__ float *distances, __ubuf__ IndexT *indices,
+                                                                 __ubuf__ uint32_t *hints, __ubuf__ uint32_t *scratch)
+{
+    // The histogram's convert() float-flips raw FP32 bits; final sorting compares FP32 values.
+    // Preserve negative RaBitQ estimates rather than clamping or transforming the input twice.
+    if (threadIdx.x == 0) hints[0] = ~0U;
+    __sync_workitems();
+    auto *keys = reinterpret_cast<__ubuf__ uint32_t *>(distances);
+    topk_by_radix_sort<Capacity, IndexT>{}(topk, 56, count, keys, indices, keys, indices, nullptr, hints, true,
+                                           scratch);
+    __sync_workitems();
+}
+
 template <int TEAM_SIZE, int DATASET_BLOCK_DIM, int MAX_ITOPK, int MAX_CANDIDATES, bool TOPK_BY_BITONIC_SORT,
           typename DATA_T, typename INDEX_T, typename DISTANCE_T>
 __simt_vf__ __aicore__ LAUNCH_BOUND(256) inline void Simtsearch(
@@ -38,8 +53,8 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(256) inline void Simtsearch(
     const uint32_t internal_topk, const uint32_t search_width, const uint32_t max_iteration,
     const uint32_t min_iteration, const uint32_t top_k, __gm__ DISTANCE_T *result_distances_ptr,
     __gm__ INDEX_T *result_indices_ptr, __gm__ uint32_t *const num_executed_iterations,
-    __ubuf__ uint32_t *smem_work_ptr, const uint32_t small_hash_reset_interval, const uint32_t adding_pref,
-    __ubuf__ uint32_t *filter_flag, __gm__ uint32_t *const visited_hashmap_ptr)
+    __ubuf__ uint32_t *smem_work_ptr, const uint32_t adding_pref, __ubuf__ uint32_t *filter_flag,
+    __gm__ uint32_t *const visited_hashmap_ptr)
 
 {
     none_cagra_sample_filter sample_filter;
@@ -77,7 +92,8 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(256) inline void Simtsearch(
     compute_distance_to_random_nodes_rabitq<TEAM_SIZE, DATASET_BLOCK_DIM>(
         result_indices_buffer, result_distances_buffer, code, rotated_qq_buffer, result_buffer_size, num_distillation,
         rand_xor_mask, local_seed_ptr, num_seeds, local_visited_hashmap_ptr, hash_table_size, ld, size, dim,
-        qr_to_c_L2sqr, qb, sum_q_quant, scale_q, shift_query, query_id * result_buffer_size, 1);
+        qr_to_c_L2sqr, qb, sum_q_quant, scale_q, shift_query, query_id * result_buffer_size, 1,
+        size <= result_buffer_size);
 
     for (int i = threadIdx.x; i < search_width * graph_degree; i += blockDim.x)
     {
@@ -85,10 +101,23 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(256) inline void Simtsearch(
         temp_indices_buffer[i] = get_max_value<INDEX_T>();
     }
 
+    if constexpr (!TOPK_BY_BITONIC_SORT)
+    {
+        __sync_workitems();
+        SortRadixCandidates<MAX_ITOPK>(result_buffer_size, internal_topk, result_distances_buffer,
+                                       result_indices_buffer, topk_ws, smem_work_ptr);
+        // Selected entries can still occur in the unsorted tail. Discard that tail before expansion.
+        for (uint32_t i = internal_topk + threadIdx.x; i < result_buffer_size; i += blockDim.x)
+        {
+            result_distances_buffer[i] = get_max_value<DISTANCE_T>();
+            result_indices_buffer[i] = get_max_value<INDEX_T>();
+        }
+        __sync_workitems();
+    }
     uint32_t iter = 0;
     std::uint32_t not_add_count = 0;
 
-    while (not_add_count <= patience)
+    while (iter < max_iteration && (TOPK_BY_BITONIC_SORT ? not_add_count <= patience : size > internal_topk))
     {
         if (threadIdx.x == 0)
         {
@@ -98,7 +127,8 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(256) inline void Simtsearch(
         if constexpr (TOPK_BY_BITONIC_SORT)
         {
             const unsigned multi_warps_1 = ((blockDim.x >= 64) && (MAX_CANDIDATES > 128)) ? 1 : 0;
-            const unsigned multi_warps_2 = ((blockDim.x >= 64) && (MAX_ITOPK > 256)) ? 1 : 0;
+            // Split 256-entry lists across two warps to keep per-lane register pressure bounded on A5.
+            const unsigned multi_warps_2 = ((blockDim.x >= 64) && (MAX_ITOPK >= 256)) ? 1 : 0;
 
             __sync_workitems();
 
@@ -184,29 +214,70 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(256) inline void Simtsearch(
         }
         else
         {
-            topk_by_radix_sort<MAX_ITOPK, INDEX_T>{}(
-                internal_topk, 56, result_buffer_size, reinterpret_cast<__ubuf__ uint32_t *>(result_distances_buffer),
-                result_indices_buffer, reinterpret_cast<__ubuf__ uint32_t *>(result_distances_buffer),
-                result_indices_buffer, nullptr, topk_ws, true, reinterpret_cast<__ubuf__ uint32_t *>(smem_work_ptr));
-
-            if ((iter + 1) % small_hash_reset_interval == 0)
+            // The radix prefix already contains all candidates from the previous expansion.
+            // Select from the full prefix, rather than stopping when its first 26 entries settle.
             {
-                init(local_visited_hashmap_ptr, hash_table_size);
+                const unsigned first_tid = ((blockDim.x <= 32) ? 0 : 32);
+                pickup_next_parents<TOPK_BY_BITONIC_SORT, INDEX_T>(terminate_flag, parent_offsets_buffer,
+                                                                   result_indices_buffer, internal_topk, size,
+                                                                   search_width, first_tid);
             }
+
+            __sync_workitems();
             if (threadIdx.x == 0)
             {
-                count_flag[0] = 1;
+                const INDEX_T invalid_index = get_max_value<INDEX_T>();
+                const INDEX_T parent_offset = parent_offsets_buffer[0];
+                if (parent_offset != invalid_index)
+                {
+                    parent_offsets_buffer[0] = result_indices_buffer[parent_offset];
+                    result_indices_buffer[parent_offset] |= gen_index_msb_1_mask<INDEX_T>::value;
+                    terminate_flag[0] = 0;
+                }
+                else
+                {
+                    terminate_flag[0] = 1;
+                }
             }
+
+            __sync_workitems();
+            if (*terminate_flag && iter >= min_iteration)
+            {
+                break;
+            }
+
+            pickChildren(knn_graph, graph_degree, temp_indices_buffer, parent_offsets_buffer, search_width,
+                         local_visited_hashmap_ptr, hash_table_size, size);
+
+            __sync_workitems();
+
+            if (threadIdx.x >= 32)
+            {
+                compute_distance_to_child_nodes_rabitq<TEAM_SIZE, DATASET_BLOCK_DIM>(
+                    temp_indices_buffer, temp_distances_buffer, rotated_qq_buffer, code, dim, graph_degree,
+                    search_width, qr_to_c_L2sqr, qb, sum_q_quant, scale_q, shift_query);
+            }
+            __sync_workitems();
+
+            // Merge this expansion before testing the iteration limit, including the final round.
+            copy_buffer_distances(result_indices_buffer + internal_topk, result_distances_buffer + internal_topk,
+                                  temp_distances_buffer, temp_indices_buffer, search_width * graph_degree);
+            __sync_workitems();
+            SortRadixCandidates<MAX_ITOPK>(result_buffer_size, internal_topk, result_distances_buffer,
+                                           result_indices_buffer, topk_ws, smem_work_ptr);
         }
         __sync_workitems();
 
-        if (count_flag[0] == 1)
+        if constexpr (TOPK_BY_BITONIC_SORT)
         {
-            not_add_count++;
-        }
-        else
-        {
-            not_add_count = 0;
+            if (count_flag[0] == 1)
+            {
+                not_add_count++;
+            }
+            else
+            {
+                not_add_count = 0;
+            }
         }
         if (iter + 1 == max_iteration)
         {
@@ -217,10 +288,10 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(256) inline void Simtsearch(
             break;
         }
 
-        copy_buffer_distances(result_indices_buffer + internal_topk, result_distances_buffer + internal_topk,
-                              temp_distances_buffer, temp_indices_buffer, search_width * graph_degree);
-
+        if constexpr (TOPK_BY_BITONIC_SORT)
         {
+            copy_buffer_distances(result_indices_buffer + internal_topk, result_distances_buffer + internal_topk,
+                                  temp_distances_buffer, temp_indices_buffer, search_width * graph_degree);
             unsigned first_tid = blockDim.x <= search_width * graph_degree ? 0 : search_width * graph_degree;
             set_parents(result_indices_buffer, internal_topk, parent_offsets_buffer, first_tid);
         }
@@ -329,8 +400,18 @@ extern "C" __global__ __aicore__ void cagra_rabitq(GM_ADDR queries_ptr_gm, GM_AD
     constexpr uint32_t num_seeds = 0;
     constexpr uint32_t search_width = 1;
     constexpr uint32_t min_iteration = 0;
-    constexpr uint32_t max_iteration = 64;
-    constexpr uint32_t small_hash_reset_interval = 1;
+    uint32_t max_iteration = 64;
+    if (internal_topk >= 512)
+    {
+        // Single-path budget, following cuVS single-CTA planning. Small bitonic searches keep
+        // their existing limit. uint64_t keeps the reachable-node estimate from overflowing.
+        max_iteration = internal_topk / search_width;
+        const uint64_t branching = graph_degree / 2 > 2 ? graph_degree / 2 : 2;
+        for (uint64_t reachable = 1; reachable < size; reachable *= branching)
+        {
+            ++max_iteration;
+        }
+    }
 
     std::uint32_t adding_pref = 25;
     std::uint32_t patience = 16;
@@ -339,7 +420,7 @@ extern "C" __global__ __aicore__ void cagra_rabitq(GM_ADDR queries_ptr_gm, GM_AD
 
     constexpr uint32_t TEAM_SIZE = 4;
     constexpr uint32_t DATASET_BLOCK_DIM = 128;
-    constexpr unsigned TOPK_BY_BITONIC_SORT = 1;
+    static_assert(CAGRA_MAX_LOCAL_MEMORY_BYTES <= CAGRA_LOCAL_MEMORY_SIZE, "CAGRA UB overflow");
 
     none_cagra_sample_filter sample_filter;
 
@@ -393,17 +474,17 @@ extern "C" __global__ __aicore__ void cagra_rabitq(GM_ADDR queries_ptr_gm, GM_AD
 
     __ubuf__ uint32_t *filter_flag = terminate_flag;
 
-#define LAUNCH_CAGRA_RABITQ(MAX_TOPK, MAX_CANDIDATES)                                                                \
-    Simt::VF_CALL<Simtsearch<TEAM_SIZE, DATASET_BLOCK_DIM, MAX_TOPK, MAX_CANDIDATES, TOPK_BY_BITONIC_SORT, float,    \
-                             uint32_t, float>>(                                                                      \
-        dim3{256, 1, 1}, precompute_all, code, rotated_qq_ptr_all, qb, rotated_qq_size, rotated_qq_buffer,           \
-        distance_flag, queries_ptr, dim, query_buffer, query_smem_buffer_length, terminate_flag, topk_ws,            \
-        hash_table_size, seed_ptr, num_seeds, result_indices_buffer, result_distances_buffer, result_buffer_size,    \
-        num_distillation, rand_xor_mask, ptr, ld, size, knn_graph, graph_degree, count_flag,                         \
-        candidate_distances_buffer, candidate_indices_buffer, parent_offsets_buffer, temp_indices_buffer,            \
-        temp_distances_buffer, patience, internal_topk, search_width, max_iteration, min_iteration, top_k,           \
-        result_distances_ptr, result_indices_ptr, num_executed_iterations, smem_work_ptr, small_hash_reset_interval, \
-        adding_pref, filter_flag, visited_hashmap_ptr)
+#define LAUNCH_CAGRA_RABITQ(MAX_TOPK, MAX_CANDIDATES)                                                                  \
+    Simt::VF_CALL<                                                                                                     \
+        Simtsearch<TEAM_SIZE, DATASET_BLOCK_DIM, MAX_TOPK, MAX_CANDIDATES, (MAX_TOPK < 512), float, uint32_t, float>>( \
+        dim3{256, 1, 1}, precompute_all, code, rotated_qq_ptr_all, qb, rotated_qq_size, rotated_qq_buffer,             \
+        distance_flag, queries_ptr, dim, query_buffer, query_smem_buffer_length, terminate_flag, topk_ws,              \
+        hash_table_size, seed_ptr, num_seeds, result_indices_buffer, result_distances_buffer, result_buffer_size,      \
+        num_distillation, rand_xor_mask, ptr, ld, size, knn_graph, graph_degree, count_flag,                           \
+        candidate_distances_buffer, candidate_indices_buffer, parent_offsets_buffer, temp_indices_buffer,              \
+        temp_distances_buffer, patience, internal_topk, search_width, max_iteration, min_iteration, top_k,             \
+        result_distances_ptr, result_indices_ptr, num_executed_iterations, smem_work_ptr, adding_pref, filter_flag,    \
+        visited_hashmap_ptr)
 
     if (TILING_KEY_IS(640064))
     {
@@ -417,6 +498,14 @@ extern "C" __global__ __aicore__ void cagra_rabitq(GM_ADDR queries_ptr_gm, GM_AD
     {
         LAUNCH_CAGRA_RABITQ(256, 64);
     }
+    else if (TILING_KEY_IS(640512))
+    {
+        LAUNCH_CAGRA_RABITQ(512, 64);
+    }
+    else if (TILING_KEY_IS(641024))
+    {
+        LAUNCH_CAGRA_RABITQ(1024, 64);
+    }
     else if (TILING_KEY_IS(1280064))
     {
         LAUNCH_CAGRA_RABITQ(64, 128);
@@ -429,29 +518,13 @@ extern "C" __global__ __aicore__ void cagra_rabitq(GM_ADDR queries_ptr_gm, GM_AD
     {
         LAUNCH_CAGRA_RABITQ(256, 128);
     }
-    else if (TILING_KEY_IS(2560064))
+    else if (TILING_KEY_IS(1280512))
     {
-        LAUNCH_CAGRA_RABITQ(64, 256);
+        LAUNCH_CAGRA_RABITQ(512, 128);
     }
-    else if (TILING_KEY_IS(2560128))
+    else if (TILING_KEY_IS(1281024))
     {
-        LAUNCH_CAGRA_RABITQ(128, 256);
-    }
-    else if (TILING_KEY_IS(2560256))
-    {
-        LAUNCH_CAGRA_RABITQ(256, 256);
-    }
-    else if (TILING_KEY_IS(5120064))
-    {
-        LAUNCH_CAGRA_RABITQ(64, 512);
-    }
-    else if (TILING_KEY_IS(5120128))
-    {
-        LAUNCH_CAGRA_RABITQ(128, 512);
-    }
-    else if (TILING_KEY_IS(5120256))
-    {
-        LAUNCH_CAGRA_RABITQ(256, 512);
+        LAUNCH_CAGRA_RABITQ(1024, 128);
     }
     else
     {

@@ -164,7 +164,8 @@ __forceinline__ __simt_callee__[aicore] void compute_distance_to_random_nodes_ra
     const unsigned num_distillation, const uint64_t rand_xor_mask, __gm__ const INDEX_T *const seed_ptr,
     const uint32_t num_seeds, __gm__ INDEX_T *const visited_hash_ptr, const uint32_t hash_table_size, const size_t ld,
     const size_t size, const uint32_t dim, float qr_to_c_L2sqr, int qb, float sum_q_quant, float scale_q,
-    float shift_query, const uint32_t block_id = 0, const uint32_t num_blocks = 1)
+    float shift_query, const uint32_t block_id = 0, const uint32_t num_blocks = 1,
+    const bool enumerate_small_dataset = false)
 {
     uint32_t max_i = num_pickup;
     const uint32_t lane_id = threadIdx.x % TEAM_SIZE;
@@ -183,7 +184,11 @@ __forceinline__ __simt_callee__[aicore] void compute_distance_to_random_nodes_ra
             if (valid_i)
             {
                 uint32_t gid = block_id + (num_blocks * (i + (num_pickup * j)));
-                if (seed_ptr && (gid < num_seeds))
+                if (enumerate_small_dataset)
+                {
+                    seed_index = i;
+                }
+                else if (seed_ptr && (gid < num_seeds))
                 {
                     seed_index = seed_ptr[gid];
                 }
@@ -206,9 +211,10 @@ __forceinline__ __simt_callee__[aicore] void compute_distance_to_random_nodes_ra
             }
         }
 
-        if (valid_i && lane_id == 0)
+        if (lane_id == 0)
         {
-            if (hashmap_insert(visited_hash_ptr, hash_table_size, best_index_team_local))
+            if (valid_i && best_index_team_local < size &&
+                hashmap_insert(visited_hash_ptr, hash_table_size, best_index_team_local))
             {
                 result_distances_ptr[i] = best_norm2_team_local;
                 result_indices_ptr[i] = best_index_team_local;

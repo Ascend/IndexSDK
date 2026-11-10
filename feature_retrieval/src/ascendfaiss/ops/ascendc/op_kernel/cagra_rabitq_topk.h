@@ -18,6 +18,7 @@
 #ifndef CAGRA_RABITQ_TOPK_H
 #define CAGRA_RABITQ_TOPK_H
 #include "cagra_rabitq_distance.h"
+#include "cagra_rabitq_limits.h"
 
 template <unsigned MAX_ITOPK, class IdxT = void>
 __forceinline__ __simt_callee__[aicore] void topk_by_bitonic_sort_2nd(
@@ -431,8 +432,9 @@ __forceinline__ __simt_callee__[aicore] void select_best_index_for_next_threshol
     }
     if (threadIdx.x < num_bins)
     {
-        const int laneid = 31 - __clz((int)__ballot((my_index != 0xffffffff)));
-        if ((threadIdx.x & 0x1f) == laneid)
+        const uint32_t ballot = __ballot(my_index != 0xffffffff);
+        const int laneid = ballot == 0 ? -1 : 31 - __clz(static_cast<int>(ballot));
+        if (ballot != 0 && static_cast<int>(threadIdx.x & 0x1f) == laneid)
         {
             const uint32_t old_index = atomicMax(best_index, my_index);
             if (old_index < my_index)
@@ -772,7 +774,7 @@ __forceinline__ __simt_callee__[aicore] void topk_cta_11_core(
 template <unsigned MAX_INTERNAL_TOPK>
 struct topk_by_radix_sort_base
 {
-    static constexpr uint32_t smem_size = MAX_INTERNAL_TOPK * 2 + 2048 + 8;
+    static constexpr uint32_t smem_size = CAGRA_RADIX_SCRATCH_WORDS(MAX_INTERNAL_TOPK);
     static constexpr uint32_t state_bit_length = 0;
     static constexpr uint32_t vecLen = 2;
 };
@@ -783,7 +785,7 @@ struct topk_by_radix_sort : topk_by_radix_sort_base<MAX_INTERNAL_TOPK>
 
 template <unsigned MAX_INTERNAL_TOPK, class IdxT>
 struct topk_by_radix_sort<MAX_INTERNAL_TOPK, IdxT, enable_if_t<((MAX_INTERNAL_TOPK <= 64))>>
-    : topk_by_radix_sort_base<MAX_INTERNAL_TOPK>
+    : topk_by_radix_sort_base<64>
 {
     __forceinline__ __simt_callee__[aicore] void operator()(uint32_t topk, uint32_t batch_size, uint32_t len_x,
                                                             __ubuf__ const uint32_t *_x, __ubuf__ const IdxT *_in_vals,
@@ -802,7 +804,7 @@ struct topk_by_radix_sort<MAX_INTERNAL_TOPK, IdxT, enable_if_t<((MAX_INTERNAL_TO
     template <unsigned MAX_INTERNAL_TOPK, class IdxT>                                                                 \
     struct topk_by_radix_sort<MAX_INTERNAL_TOPK, IdxT,                                                                \
                               enable_if_t<((MAX_INTERNAL_TOPK <= V) && (2 * MAX_INTERNAL_TOPK > V))>>                 \
-        : topk_by_radix_sort_base<MAX_INTERNAL_TOPK>                                                                  \
+        : topk_by_radix_sort_base<V>                                                                                  \
     {                                                                                                                 \
         __forceinline__ __simt_callee__[aicore] void operator()(uint32_t topk, uint32_t batch_size, uint32_t len_x,   \
                                                                 __ubuf__ const uint32_t *_x,                          \

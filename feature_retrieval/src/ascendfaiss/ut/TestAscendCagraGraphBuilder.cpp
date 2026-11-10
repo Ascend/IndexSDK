@@ -48,7 +48,10 @@ TEST(TestAscendCagraGraphBuilder, RejectsInvalidInitParametersBeforeDeviceAccess
 
     EXPECT_EQ(builder.Init(0, 64, 10000, oneDevice), ::ascend::APP_ERR_INVALID_PARAM);
     EXPECT_EQ(builder.Init(3073, 64, 10000, oneDevice), ::ascend::APP_ERR_INVALID_PARAM);
-    EXPECT_EQ(builder.Init(128, 0, 10000, oneDevice), ::ascend::APP_ERR_INVALID_PARAM);
+    for (int degree : {0, 1, 32, 96, 256, 512})
+        EXPECT_EQ(builder.Init(128, degree, 10000, oneDevice), ::ascend::APP_ERR_INVALID_PARAM);
+    for (int degree : {64, 128})
+        EXPECT_EQ(builder.Init(128, degree, degree, oneDevice), ::ascend::APP_ERR_INVALID_PARAM);
     EXPECT_EQ(builder.Init(128, 10000, 10000, oneDevice), ::ascend::APP_ERR_INVALID_PARAM);
     EXPECT_EQ(builder.Init(128, 64, 1, oneDevice), ::ascend::APP_ERR_INVALID_PARAM);
     EXPECT_EQ(builder.Init(128, 64, 10000, {}), ::ascend::APP_ERR_INVALID_PARAM);

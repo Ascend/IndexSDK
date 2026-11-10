@@ -26,7 +26,7 @@ AscendCagraGraphBuilder提供单张Ascend 950上的CAGRA近邻图构建能力。
 <tr><td align="center">输入</td><td><code>dim</code>：向量维度D。<br><code>graphDegree</code>：最终图每行邻居数G。<br><code>dataNum</code>：底库向量数N。<br><code>deviceList</code>：仅包含一个有效设备ID的列表。</td></tr>
 <tr><td align="center">输出</td><td>无。</td></tr>
 <tr><td align="center">返回值</td><td>APP_ERROR：0表示成功，非0表示失败。</td></tr>
-<tr><td align="center">约束说明</td><td>● 仅支持单张Ascend 950。<br>● dim取值[1,3072]；常用验证档位为{64,128,256,384,512,1024,1536,2048,3072}。<br>● dataNum取值[2,INT32_MAX]，并受Host/Device内存限制。<br>● graphDegree满足0&lt;G&lt;N；执行Build时还须满足G≤M≤128、M&lt;N。<br>● 同一对象成功Init后不能再次Init；改变N/D/G时创建新对象。<br>● 构图OM的N/D/M/G须与运行参数一致。</td></tr>
+<tr><td align="center">约束说明</td><td>● 仅支持单张Ascend 950。<br>● dim取值[1,3072]；常用验证档位为{64,128,256,384,512,1024,1536,2048,3072}。<br>● dataNum取值[2,INT32_MAX]，并受Host/Device内存限制。<br>● graphDegree支持{64,128}且G&lt;N；执行Build时还须满足G≤M≤128、M&lt;N。<br>● 同一对象成功Init后不能再次Init；改变N/D/G时创建新对象。<br>● 构图OM的N/D/M/G须与运行参数一致。</td></tr>
 </tbody></table>
 
 ## Build接口

@@ -27,9 +27,8 @@ JSON_FILE = "{}.json"
 _BIT = 6
 _PRE_COMPUTE_SIZE = 4
 _VALID_DIMS = (64, 128, 256, 512, 1024, 1536, 3072)
-_VALID_DEGREES = (64, 128, 256, 512)
-_MIN_TOPK = 1
-_MAX_TOPK = 256
+_VALID_DEGREES = (64, 128)
+_VALID_TOPK = (32, 64, 128, 256, 512, 1024)
 
 
 def arg_parse():
@@ -42,7 +41,7 @@ def arg_parse():
     utils.op_common_parse(parser, "-d", 'dim', 128, int, "dimension")
     utils.op_common_parse(parser, "-data_base", 'data_base', 1000000, int, "data_base")
     utils.op_common_parse(parser, "-degree", 'degree', 64, int, "degree")
-    utils.op_common_parse(parser, "-topK", 'topK', 64, int, "topK")
+    utils.op_common_parse(parser, "-topK", 'topK', 64, int, "topK: 32, 64, 128, 256, 512 or 1024")
     utils.op_common_parse(parser, "-p", 'process_id', 0, int, "Number of process_id")
     utils.op_common_parse(parser, "-t", 'npu_type', "Ascend950PR", str, "NPU type, Ascend950PR by default")
 
@@ -83,8 +82,10 @@ def generate_search_distance_offline_model():
         raise ValueError("dim must be one of {}".format(_VALID_DIMS))
     if degree not in _VALID_DEGREES:
         raise ValueError("degree must be one of {}".format(_VALID_DEGREES))
-    if topK < _MIN_TOPK or topK > _MAX_TOPK:
-        raise ValueError("topK must be in range [{}, {}]".format(_MIN_TOPK, _MAX_TOPK))
+    if topK not in _VALID_TOPK:
+        raise ValueError("topK must be one of {}".format(_VALID_TOPK))
+    if degree >= data_base:
+        raise ValueError("degree must be less than data_base")
     if topK > data_base:
         raise ValueError("topK must not exceed data_base")
 

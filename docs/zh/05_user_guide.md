@@ -512,7 +512,7 @@ VSTAR检索当前只支持<term>Atlas推理系列产品</term>，涉及VSTAR业�
 <tr><td width="140" align="center" valign="middle">用法</td><td valign="middle"><strong><code>python3 cagra_generate_model.py -d &lt;dim&gt; -data_base &lt;data_base&gt; -degree &lt;degree&gt; -topK &lt;topK&gt; -p &lt;process_id&gt; -t &lt;npu_type&gt;</code></strong></td></tr>
 <tr><td width="140" align="center" valign="middle">参数名称</td><td valign="middle">&lt;dim&gt;：特征向量维度，默认值为&quot;128&quot;。<br>&lt;data_base&gt;：底库数据量，默认值为&quot;1000000&quot;。<br>&lt;degree&gt;：图度数，默认值为&quot;64&quot;。<br>&lt;topK&gt;：检索返回的最近邻个数，默认值为&quot;64&quot;。<br>&lt;process_id&gt;：批量生成算子多进程调度的进程ID，默认值为&quot;0&quot;，无需设置。<br>&lt;npu_type&gt;：硬件形态，默认值为&quot;Ascend950PR&quot;。<br>--help | -h：查询帮助信息。</td></tr>
 <tr><td width="140" align="center" valign="middle">说明</td><td valign="middle">执行此命令，用户可以得到一组算子模型文件，用户需要自行修改命令中的参数。例如对于Ascend 950PR系列产品 生成128维，底库100万，图度数64，topK 64的算子：python3 cagra_generate_model.py -d 128 -data_base 1000000 -degree 64 -topK 64 -t Ascend950PR</td></tr>
-<tr><td width="140" align="center" valign="middle">约束说明</td><td valign="middle">● 仅支持Ascend 950PR系列产品<br>● dim ∈ {64, 128, 256, 512, 1024, 1536, 3072}<br>● degree ∈ {64, 128, 256, 512}<br>● 1 ≤ topK ≤ min(256, data_base)，Init、Search 和模型 top_k 属性须一致</td></tr>
+<tr><td width="140" align="center" valign="middle">约束说明</td><td valign="middle">● 仅支持Ascend 950PR系列产品<br>● dim ∈ {64, 128, 256, 512, 1024, 1536, 3072}<br>● degree ∈ {64, 128}<br>● topK ∈ {32,64,128,256,512,1024}且topK ≤ data_base，Init、Search 和模型 top_k 属性须一致</td></tr>
 </tbody></table>
 
 ##### Cagra NPU 构图算子模型<a name="cagra-npu-build"></a>
@@ -524,7 +524,7 @@ VSTAR检索当前只支持<term>Atlas推理系列产品</term>，涉及VSTAR业�
 <tr><td width="140" align="center" valign="middle">用法</td><td valign="middle"><strong><code>python3 cagra_build_generate_model.py --cores &lt;core_num&gt; -n &lt;data_size&gt; -d &lt;dim&gt; -i &lt;intermediate_degree&gt; -graph &lt;graph_degree&gt; -p &lt;process_id&gt; -t &lt;npu_type&gt;</code></strong></td></tr>
 <tr><td width="140" align="center" valign="middle">参数名称</td><td valign="middle">&lt;core_num&gt;：AI Core 数量，Ascend 950 当前必须为&quot;56&quot;。<br>&lt;data_size&gt;：底库向量数量 N，默认值为&quot;10000&quot;。<br>&lt;dim&gt;：FP32 向量维度 D，默认值为&quot;128&quot;。<br>&lt;intermediate_degree&gt;：NN-Descent 中间图出度 M，默认值为&quot;128&quot;。<br>&lt;graph_degree&gt;：最终 CAGRA 图出度 G，默认值为&quot;64&quot;。<br>&lt;process_id&gt;：模型生成进程 ID，默认值为&quot;0&quot;。<br>&lt;npu_type&gt;：ATC 目标硬件，使用&quot;Ascend950PR&quot;；&quot;Ascend950&quot;作为兼容别名。<br>--help | -h：查询帮助信息。</td></tr>
 <tr><td width="140" align="center" valign="middle">说明</td><td valign="middle">执行命令后，在当前目录的 <code>op_models</code> 中生成构图 OM。模型使用静态 shape，生成模型时的 N、D、M、G 必须与运行时完全一致。<br><br>例如，生成 100 万条 128 维向量、M=128、G=64 的构图模型：<br><strong><code>python3 cagra_build_generate_model.py --cores 56 -n 1000000 -d 128 -i 128 -graph 64 -t Ascend950PR</code></strong></td></tr>
-<tr><td width="140" align="center" valign="middle">约束说明</td><td valign="middle">● 仅支持 Ascend 950 系列产品和单卡构图。<br>● 2 ≤ data_size ≤ 2147483647，实际规模受 Host 和 Device 内存限制。<br>● 支持 1 ≤ dim ≤ 3072，已验证 dim ∈ {64, 128, 256, 384, 512, 1024, 1536, 2048, 3072}。<br>● 1 ≤ graph_degree ≤ intermediate_degree ≤ 128，并且 intermediate_degree &lt; data_size。<br>● 构图仅支持有限 FP32 输入和 L2 距离，输入数据不能包含 NaN、正无穷或负无穷。<br>● 构图命令没有 topK 参数；topK 只影响检索。</td></tr>
+<tr><td width="140" align="center" valign="middle">约束说明</td><td valign="middle">● 仅支持 Ascend 950 系列产品和单卡构图。<br>● 2 ≤ data_size ≤ 2147483647，实际规模受 Host 和 Device 内存限制。<br>● 支持 1 ≤ dim ≤ 3072，已验证 dim ∈ {64, 128, 256, 384, 512, 1024, 1536, 2048, 3072}。<br>● graph_degree ∈ {64,128}，graph_degree ≤ intermediate_degree ≤ 128，并且 intermediate_degree &lt; data_size。<br>● 构图仅支持有限 FP32 输入和 L2 距离，输入数据不能包含 NaN、正无穷或负无穷。<br>● 构图命令没有 topK 参数；topK 只影响检索。</td></tr>
 </tbody></table>
 
 构图模型生成后，设置模型目录，并通过公共 C++ 接口构图：
@@ -565,7 +565,7 @@ SIFT1M默认规格：N=1000000、D=128、M=128、G=64、TopK=32、内部候选�
 | CAGRA_SIFT_DIR | 无 | SIFT数据目录；未设置时跳过该用例 |
 | CAGRA_DEVICE_ID | 0 | 设备ID |
 | CAGRA_DATA_NUM | 1000000 | 读取的底库条数，须大于128；修改后需生成匹配的OM |
-| CAGRA_TOPK | 32 | 返回数量，取值32至min(256,N-1)；修改后需生成匹配的检索OM |
+| CAGRA_TOPK | 32 | 返回数量，取值{32,64,128,256,512,1024}，且不超过N；修改后需生成匹配的检索OM |
 | CAGRA_QUERY_NUM | 100 | 查询数，取值1至4096；兼容CAGRA_SIFT_NQ |
 | CAGRA_MAX_ITERATIONS | 20 | 最大构图轮数，取值1至1000 |
 | CAGRA_GRAPH_ACCURACY_SAMPLES | 0 | 均匀抽样图行数，0跳过额外图精度评估；兼容CAGRA_GRAPH_SAMPLES |

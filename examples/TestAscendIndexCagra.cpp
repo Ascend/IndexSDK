@@ -120,7 +120,12 @@ Config ReadConfig()
     Config config;
     config.deviceId = GetEnvInt("CAGRA_DEVICE_ID", 0, 0, 1024);
     config.dataNum = GetEnvInt("CAGRA_DATA_NUM", 1000000, 129, std::numeric_limits<int>::max());
-    config.topK = GetEnvInt("CAGRA_TOPK", 32, 32, std::min(256, config.dataNum - 1));
+    config.topK = GetEnvInt("CAGRA_TOPK", 32, 1, std::min(1024, config.dataNum));
+    if (config.topK != 32 && config.topK != 64 && config.topK != 128 && config.topK != 256 && config.topK != 512 &&
+        config.topK != 1024)
+    {
+        throw std::runtime_error("CAGRA_TOPK must be in {32,64,128,256,512,1024}");
+    }
     config.queryNum = GetCompatibleEnvInt("CAGRA_QUERY_NUM", "CAGRA_SIFT_NQ", 100, 1, 4096);
     config.graphAccuracySamples =
         GetCompatibleEnvInt("CAGRA_GRAPH_ACCURACY_SAMPLES", "CAGRA_GRAPH_SAMPLES", 0, 0, config.dataNum);
@@ -309,6 +314,7 @@ struct ExactReferences
     std::vector<uint32_t> queryGroundTruth;
     std::vector<uint32_t> graphGroundTruth;
     std::vector<uint32_t> graphSampleRows;
+    int graphGroundTruthWidth = 0;
     double indexAddMs = 0.0;
     double queryGroundTruthMs = 0.0;
     double graphGroundTruthMs = 0.0;
@@ -348,18 +354,19 @@ ExactReferences BuildExactReferences(const Config &config, const std::vector<flo
                     sampleVectors.data() + static_cast<size_t>(sample) * config.dim);
     }
 
-    const int candidates = config.topK + 1;
+    result.graphGroundTruthWidth = std::min(32, config.dataNum - 1);
+    const int candidates = result.graphGroundTruthWidth + 1;
     std::vector<float> sampleDistances(static_cast<size_t>(config.graphAccuracySamples) * candidates);
     std::vector<faiss::idx_t> sampleLabels(static_cast<size_t>(config.graphAccuracySamples) * candidates);
     start = Clock::now();
     exactIndex.search(config.graphAccuracySamples, sampleVectors.data(), candidates, sampleDistances.data(),
                       sampleLabels.data());
     result.graphGroundTruthMs = ElapsedMs(start, Clock::now());
-    result.graphGroundTruth.resize(static_cast<size_t>(config.graphAccuracySamples) * config.topK);
+    result.graphGroundTruth.resize(static_cast<size_t>(config.graphAccuracySamples) * result.graphGroundTruthWidth);
     for (int sample = 0; sample < config.graphAccuracySamples; ++sample)
     {
         int outputRank = 0;
-        for (int rank = 0; rank < candidates && outputRank < config.topK; ++rank)
+        for (int rank = 0; rank < candidates && outputRank < result.graphGroundTruthWidth; ++rank)
         {
             const faiss::idx_t candidate = sampleLabels[static_cast<size_t>(sample) * candidates + rank];
             if (candidate < 0 || candidate >= config.dataNum ||
@@ -367,11 +374,11 @@ ExactReferences BuildExactReferences(const Config &config, const std::vector<flo
             {
                 continue;
             }
-            result.graphGroundTruth[static_cast<size_t>(sample) * config.topK + outputRank] =
+            result.graphGroundTruth[static_cast<size_t>(sample) * result.graphGroundTruthWidth + outputRank] =
                 static_cast<uint32_t>(candidate);
             ++outputRank;
         }
-        if (outputRank != config.topK)
+        if (outputRank != result.graphGroundTruthWidth)
         {
             throw std::runtime_error("exact graph ground truth returned an incomplete row");
         }
@@ -434,8 +441,8 @@ double GraphNeighborRecallAtK(const Config &config, const ExactReferences &refer
     for (int sample = 0; sample < config.graphAccuracySamples; ++sample)
     {
         std::unordered_set<uint32_t> truth(
-            reference.graphGroundTruth.begin() + static_cast<size_t>(sample) * config.topK,
-            reference.graphGroundTruth.begin() + static_cast<size_t>(sample) * config.topK + k);
+            reference.graphGroundTruth.begin() + static_cast<size_t>(sample) * reference.graphGroundTruthWidth,
+            reference.graphGroundTruth.begin() + static_cast<size_t>(sample) * reference.graphGroundTruthWidth + k);
         const size_t graphOffset = static_cast<size_t>(reference.graphSampleRows[sample]) * config.graphDegree;
         for (int rank = 0; rank < graphRanks; ++rank)
         {
@@ -678,6 +685,46 @@ void RunSift1M(const Config &config)
               << " qps=" << search.endToEndQps << std::endl;
     std::cout << "PASS: SIFT1M NPU build, quantization and search completed"
               << (config.runCpuGroundTruth ? "" : " (Recall not evaluated)") << std::endl;
+}
+
+TEST(TestAscendIndexCagra, FullTopKDoesNotChangeGraphGroundTruthWidth)
+{
+    for (int count : {256, 512, 1024})
+    {
+        Config config;
+        config.dim = 64;
+        config.dataNum = count;
+        config.queryNum = 2;
+        config.topK = count;
+        config.graphAccuracySamples = 3;
+        std::vector<float> base(static_cast<size_t>(count) * config.dim, 0.0F);
+        for (int row = 0; row < count; ++row) base[static_cast<size_t>(row) * config.dim] = row;
+        std::vector<float> queries(static_cast<size_t>(config.queryNum) * config.dim);
+        std::copy_n(base.data(), config.dim, queries.data());
+        std::copy_n(base.data() + static_cast<size_t>(count - 1) * config.dim, config.dim, queries.data() + config.dim);
+        const auto exact = BuildExactReferences(config, base, queries);
+        ASSERT_EQ(exact.queryGroundTruth.size(), static_cast<size_t>(config.queryNum) * count);
+        ASSERT_EQ(exact.graphGroundTruthWidth, 32);
+        ASSERT_EQ(exact.graphGroundTruth.size(), static_cast<size_t>(config.graphAccuracySamples) * 32);
+        for (int query = 0; query < config.queryNum; ++query)
+        {
+            const auto begin = exact.queryGroundTruth.begin() + static_cast<size_t>(query) * count;
+            const std::unordered_set<uint32_t> row(begin, begin + count);
+            ASSERT_EQ(row.size(), static_cast<size_t>(count));
+            for (uint32_t node : row) ASSERT_TRUE(node < static_cast<uint32_t>(count));
+        }
+        std::vector<uint32_t> graph(static_cast<size_t>(count) * config.graphDegree, 0);
+        for (int sample = 0; sample < config.graphAccuracySamples; ++sample)
+        {
+            const auto begin = exact.graphGroundTruth.begin() + static_cast<size_t>(sample) * 32;
+            const std::unordered_set<uint32_t> row(begin, begin + 32);
+            ASSERT_EQ(row.size(), 32U);
+            ASSERT_TRUE(row.count(exact.graphSampleRows[sample]) == 0);
+            std::copy_n(begin, 32,
+                        graph.begin() + static_cast<size_t>(exact.graphSampleRows[sample]) * config.graphDegree);
+        }
+        EXPECT_FLOAT_EQ(GraphNeighborRecallAtK(config, exact, graph, 32, false), 1.0F);
+    }
 }
 
 TEST(TestAscendIndexCagra, Sift1M)

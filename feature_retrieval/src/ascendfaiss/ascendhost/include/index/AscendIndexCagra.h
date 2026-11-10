@@ -36,7 +36,8 @@ class AscendIndexCagra
     AscendIndexCagra(const AscendIndexCagra&) = delete;
     AscendIndexCagra& operator=(const AscendIndexCagra&) = delete;
     virtual ~AscendIndexCagra();
-    // dim: {64,128,256,512,1024,1536,3072}; topK: [1,min(256,dataNum)].
+    // dim: {64,128,256,512,1024,1536,3072}; graphDegree: {64,128}.
+    // topK: {32,64,128,256,512,1024}, topK <= dataNum.
     // The dataset size is also limited by available host and device memory.
     APP_ERROR Init(int dim, int graphDegree, int dataNum, int topK, const std::vector<int>& deviceList);
     // hash is retained for ABI compatibility and must be non-null; its contents are not read.

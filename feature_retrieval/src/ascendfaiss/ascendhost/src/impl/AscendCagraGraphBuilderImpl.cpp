@@ -44,6 +44,39 @@ constexpr int MAX_CAGRA_BUILD_DIM = 3072;
 constexpr int CAGRA_SIMT_CACHED_DIM = 128;
 constexpr int CAGRA_SIMT_BATCHED_MAX_DIM = 512;
 
+void MoveNearestNeighborFirst(const float *data, uint32_t *graph, int64_t nodeNum, int dim, uint32_t degree)
+{
+    // BuildGraph validates the graph before this pass. Reorder only existing edges, after
+    // pruning, reverse-edge merging and optional connectivity repair have all finished.
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static)
+#endif
+    for (int64_t row = 0; row < nodeNum; ++row)
+    {
+        const float *query = data + static_cast<size_t>(row) * dim;
+        uint32_t *neighbors = graph + static_cast<size_t>(row) * degree;
+        uint32_t bestRank = 0;
+        float bestDistance = std::numeric_limits<float>::infinity();
+        for (uint32_t rank = 0; rank < degree; ++rank)
+        {
+            const float *candidate = data + static_cast<size_t>(neighbors[rank]) * dim;
+            float distance = 0.0F;
+            for (int d = 0; d < dim; ++d)
+            {
+                const float diff = query[d] - candidate[d];
+                distance += diff * diff;
+            }
+            // Equal distances keep their existing priority.
+            if (distance < bestDistance)
+            {
+                bestDistance = distance;
+                bestRank = rank;
+            }
+        }
+        std::rotate(neighbors, neighbors + bestRank, neighbors + bestRank + 1);
+    }
+}
+
 uint32_t FindGraphRoot(std::vector<uint32_t> &parents, uint32_t node)
 {
     uint32_t root = node;
@@ -286,7 +319,8 @@ APP_ERROR AscendCagraGraphBuilderImpl::Initialize()
     APPERR_RETURN_IF_NOT(dim > 0 && dim <= MAX_CAGRA_BUILD_DIM, APP_ERR_INVALID_PARAM);
     APPERR_RETURN_IF_NOT(config.dataSize > 1 && config.dataSize <= std::numeric_limits<int32_t>::max(),
                          APP_ERR_INVALID_PARAM);
-    APPERR_RETURN_IF_NOT(config.graphDegree > 0 && config.graphDegree < static_cast<uint64_t>(config.dataSize),
+    APPERR_RETURN_IF_NOT((config.graphDegree == 64 || config.graphDegree == 128) &&
+                             config.graphDegree < static_cast<uint64_t>(config.dataSize),
                          APP_ERR_INVALID_PARAM);
     APPERR_RETURN_IF_NOT(config.deviceId >= 0, APP_ERR_INVALID_PARAM);
     const uint32_t deviceCount = SocUtils::GetInstance().GetDeviceCount();
@@ -340,6 +374,15 @@ APP_ERROR AscendCagraGraphBuilderImpl::BuildGraph(const float *data, uint32_t *g
     ASCEND_THROW_IF_NOT_MSG(ret == APP_ERR_OK, "CallGraphBuildKernel failed");
     ret = ValidateGraph(graph, config.graphDegree);
     ASCEND_THROW_IF_NOT_MSG(ret == APP_ERR_OK, "CAGRA graph validation failed");
+    const auto reorderStart = GraphBuildClock::now();
+    MoveNearestNeighborFirst(data, graph, config.dataSize, dim, config.graphDegree);
+    if (buildConfig.verbose)
+    {
+        const double elapsedMs =
+            std::chrono::duration<double, std::milli>(GraphBuildClock::now() - reorderStart).count();
+        std::fprintf(stderr, "CAGRA graph-build step NearestNeighborFirst done elapsed_ms=%.4f\n", elapsedMs);
+        std::fflush(stderr);
+    }
     return APP_ERR_OK;
 }
 
