@@ -1066,7 +1066,8 @@ void IndexIVFRaBitQ::runCenterLUTOp(AscendTensor<float, DIMS_2> &centroid, Ascen
     op->exec(*topkOpInput, *topkOpOutput, stream);
 }
 
-APP_ERROR IndexIVFRaBitQ::addVectors(int listId, size_t numVecs, const float *codes, const idx_t *indices)
+APP_ERROR IndexIVFRaBitQ::addVectors(int listId, size_t numVecs, const float *codes, const idx_t *indices,
+                                     size_t *baseSlotOut)
 {
     APPERR_RETURN_IF_NOT_FMT(listId >= 0 && listId < numLists, APP_ERR_INVALID_PARAM,
                              "the listId is %d, out of numLists(%d)", listId, numLists);
@@ -1083,7 +1084,13 @@ APP_ERROR IndexIVFRaBitQ::addVectors(int listId, size_t numVecs, const float *co
     auto listCopy = std::make_shared<ListStorage>(*nextSnapshot->lists[listId]);
     auto &list = *listCopy;
     const size_t oldLen = list.listLen;
+    APPERR_RETURN_IF_NOT_FMT(oldLen <= UINT32_MAX && numVecs <= UINT32_MAX - oldLen, APP_ERR_INVALID_PARAM,
+                             "list slots exceed Location representability");
     const size_t newLen = oldLen + numVecs;
+    if (baseSlotOut != nullptr)
+    {
+        *baseSlotOut = oldLen;
+    }
     if (MemDebugEnabled())
     {
         static std::atomic<uint64_t> addLogSeq{0};
@@ -2568,7 +2575,7 @@ APP_ERROR IndexIVFRaBitQ::getCentroids(std::vector<float> &centroids) const
 }
 
 APP_ERROR IndexIVFRaBitQ::addEncodedVectors(int listId, size_t numVecs, const uint8_t *encodedCodes,
-                                            const idx_t *indices)
+                                            const idx_t *indices, size_t *baseSlotOut)
 {
     APPERR_RETURN_IF_NOT_FMT(listId >= 0 && listId < numLists, APP_ERR_INVALID_PARAM,
                              "the listId is %d, out of numLists(%d)", listId, numLists);
@@ -2585,7 +2592,13 @@ APP_ERROR IndexIVFRaBitQ::addEncodedVectors(int listId, size_t numVecs, const ui
     auto listCopy = std::make_shared<ListStorage>(*nextSnapshot->lists[listId]);
     auto &list = *listCopy;
     const size_t oldLen = list.listLen;
+    APPERR_RETURN_IF_NOT_FMT(oldLen <= UINT32_MAX && numVecs <= UINT32_MAX - oldLen, APP_ERR_INVALID_PARAM,
+                             "list slots exceed Location representability");
     const size_t newLen = oldLen + numVecs;
+    if (baseSlotOut != nullptr)
+    {
+        *baseSlotOut = oldLen;
+    }
 
     auto stream = writerContext->computeStream;
     StreamDrainGuard drainGuard(stream, writerContext->aicpuStream);
@@ -2806,10 +2819,17 @@ APP_ERROR IndexIVFRaBitQ::searchImpl(int n, const float *x, int k, float *distan
 }
 
 APP_ERROR IndexIVFRaBitQ::compactList(const ListStorage &oldList, ListStorage &newList,
-                                      std::vector<size_t> &deletedSlots, aclrtStream stream)
+                                      std::vector<size_t> &deletedSlots, aclrtStream stream, int listId,
+                                      std::vector<MovedSlot> *movedOut)
 {
     std::sort(deletedSlots.begin(), deletedSlots.end());
+    const size_t beforeUnique = deletedSlots.size();
     deletedSlots.erase(std::unique(deletedSlots.begin(), deletedSlots.end()), deletedSlots.end());
+    if (deletedSlots.size() != beforeUnique)
+    {
+        APP_LOG_WARNING("duplicate slots in delete request for list %d: %zu entries deduped to %zu\n", listId,
+                        beforeUnique, deletedSlots.size());
+    }
     if (deletedSlots.empty())
     {
         return APP_ERR_OK;
@@ -2838,6 +2858,11 @@ APP_ERROR IndexIVFRaBitQ::compactList(const ListStorage &oldList, ListStorage &n
             sources.push_back(slot);
         }
     }
+    if (holes.size() != sources.size())
+    {
+        APP_LOG_WARNING("holes/sources mismatch for list %d: holes=%zu sources=%zu (listLen=%zu newLen=%zu)\n", listId,
+                        holes.size(), sources.size(), oldLen, newLen);
+    }
     APPERR_RETURN_IF_NOT(holes.size() == sources.size(), APP_ERR_INNER_ERROR);
 
     // Unlike an append, compaction overwrites slots below the old length, which a reader on the
@@ -2863,6 +2888,21 @@ APP_ERROR IndexIVFRaBitQ::compactList(const ListStorage &oldList, ListStorage &n
         newList.indexL1.adoptClonedSegment(segmentId, oldList.indexL1, capacity, stream);
         newList.indexL2.adoptClonedSegment(segmentId, oldList.indexL2, capacity, stream);
         newList.ids.adoptClonedSegment(segmentId, oldList.ids, capacity, stream);
+    }
+
+    // Read the ids being relocated off the source slots before any copy runs. oldList is immutable
+    // here, so this is independent of the moves below, and doing it up front keeps the synchronous
+    // readback out of the middle of the async copy stream.
+    if (movedOut != nullptr)
+    {
+        for (size_t i = 0; i < sources.size(); ++i)
+        {
+            idx_t movedId = 0;
+            auto ret = aclrtMemcpy(&movedId, sizeof(movedId), oldList.ids.slot(sources[i]), sizeof(movedId),
+                                   ACL_MEMCPY_DEVICE_TO_HOST);
+            APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "read moved id failed %d", ret);
+            movedOut->push_back({movedId, listId, holes[i]});
+        }
     }
 
     const size_t codeBytes = oldList.codes.elementsPerSlot() * sizeof(uint8_t);
@@ -2926,13 +2966,15 @@ static void CollectDeletedSlots(const IndexIVFRaBitQ::ListStorage &list, size_t 
     }
 }
 
-APP_ERROR IndexIVFRaBitQ::removeIdsInternal(const std::unordered_set<idx_t> &ids, size_t *removed)
+APP_ERROR IndexIVFRaBitQ::removeIdsInternal(const std::unordered_map<int, std::vector<size_t>> &perListDeletes,
+                                            std::vector<MovedSlot> *movedOut, size_t *removed,
+                                            const MoveValidator &validateMoves)
 {
     if (removed != nullptr)
     {
         *removed = 0;
     }
-    APPERR_RETURN_IF(ids.empty(), APP_ERR_OK);
+    APPERR_RETURN_IF(perListDeletes.empty(), APP_ERR_OK);
 
     std::shared_lock<std::shared_mutex> lock(indexLock);
     std::lock_guard<std::mutex> writeLock(writerLock);
@@ -2947,25 +2989,36 @@ APP_ERROR IndexIVFRaBitQ::removeIdsInternal(const std::unordered_set<idx_t> &ids
     StreamDrainGuard drainGuard(stream, writerContext->aicpuStream);
 
     // Serial over lists: the previous parallel-for is gone because all writers now share one writer
-    // stream and one snapshot under construction.
+    // stream and one snapshot under construction. Only the lists the caller named are visited, so a
+    // delete no longer walks all numLists reading every id back off the device.
     size_t removeCntAll = 0;
-    for (int listId = 0; listId < numLists; ++listId)
+    std::vector<MovedSlot> preparedMoves;
+    const bool needMoves = movedOut != nullptr || static_cast<bool>(validateMoves);
+    if (needMoves)
     {
+        size_t maxMoves = 0;
+        for (const auto &perList : perListDeletes) maxMoves += perList.second.size();
+        preparedMoves.reserve(maxMoves);
+    }
+    for (const auto &perList : perListDeletes)
+    {
+        const int listId = perList.first;
+        if (listId < 0 || listId >= numLists)
+        {
+            return APP_ERR_INVALID_PARAM;
+        }
         const auto &oldList = *base.lists[listId];
-        std::vector<size_t> deletedSlots;
-        CollectDeletedSlots(
-            oldList, static_cast<size_t>(blockSize), [&ids](idx_t vecId) { return ids.find(vecId) != ids.end(); },
-            deletedSlots);
+        // compactList sorts and dedupes in place, so this copy is what ends up being the real count.
+        std::vector<size_t> deletedSlots = perList.second;
         if (deletedSlots.empty())
         {
             continue;
         }
-        const size_t removedHere = deletedSlots.size();
         auto listCopy = std::make_shared<ListStorage>(oldList);
-        auto ret = compactList(oldList, *listCopy, deletedSlots, stream);
+        auto ret = compactList(oldList, *listCopy, deletedSlots, stream, listId, needMoves ? &preparedMoves : nullptr);
         APPERR_RETURN_IF(ret != APP_ERR_OK, ret);
         nextSnapshot->lists[listId] = std::move(listCopy);
-        removeCntAll += removedHere;
+        removeCntAll += deletedSlots.size();
     }
     if (removeCntAll == 0)
     {
@@ -2974,8 +3027,10 @@ APP_ERROR IndexIVFRaBitQ::removeIdsInternal(const std::unordered_set<idx_t> &ids
 
     auto ret = synchronizeStream(stream);
     APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "synchronizeStream after remove failed %d", ret);
+    if (validateMoves) validateMoves(preparedMoves);  // Rejection is still before publication/output mutation.
     nextSnapshot->total -= removeCntAll;
     publishSnapshot(std::move(nextSnapshot));
+    if (movedOut != nullptr) movedOut->swap(preparedMoves);  // Failed transactions never expose candidate moves.
     if (removed != nullptr)
     {
         *removed = removeCntAll;
@@ -2985,35 +3040,24 @@ APP_ERROR IndexIVFRaBitQ::removeIdsInternal(const std::unordered_set<idx_t> &ids
 
 size_t IndexIVFRaBitQ::removeIds(const ascend::IDSelector &sel)
 {
-    // The selector can only be evaluated against ids actually stored, so gather the matching ids from
-    // the snapshot first and then go through the common remove path.
-    std::unordered_set<idx_t> ids;
+    // The selector can only be evaluated against ids actually stored, so this cold path reads the ids
+    // back off the device to locate them. The host-driven path passes slots directly and skips it.
+    std::unordered_map<int, std::vector<size_t>> perListDeletes;
     {
         // Released before removeIdsInternal, which acquires both locks itself. Holding either across
         // the call would deadlock on writerLock and risk it on a writer-preferring shared_mutex.
         std::shared_lock<std::shared_mutex> lock(indexLock);
         SnapshotGuard guard(*this);
-        std::vector<idx_t> segIds;
-        for (const auto &list : guard.get().lists)
+        const auto &lists = guard.get().lists;
+        for (int listId = 0; listId < numLists; ++listId)
         {
-            for (size_t segId = 0; segId < list->ids.segmentCount(); ++segId)
+            std::vector<size_t> deletedSlots;
+            CollectDeletedSlots(
+                *lists[listId], static_cast<size_t>(blockSize), [&sel](idx_t vecId) { return sel.is_member(vecId); },
+                deletedSlots);
+            if (!deletedSlots.empty())
             {
-                const size_t count = list->ids.segmentLength(segId);
-                if (count == 0)
-                {
-                    continue;
-                }
-                segIds.resize(count);
-                auto ret = aclrtMemcpy(segIds.data(), count * sizeof(idx_t), list->ids.segmentData(segId),
-                                       count * sizeof(idx_t), ACL_MEMCPY_DEVICE_TO_HOST);
-                ASCEND_THROW_IF_NOT_FMT(ret == ACL_SUCCESS, "Memcpy error %d", ret);
-                for (size_t j = 0; j < count; ++j)
-                {
-                    if (sel.is_member(segIds[j]))
-                    {
-                        ids.insert(segIds[j]);
-                    }
-                }
+                perListDeletes.emplace(listId, std::move(deletedSlots));
             }
         }
         const auto drainRet = guard.finish();
@@ -3022,17 +3066,26 @@ size_t IndexIVFRaBitQ::removeIds(const ascend::IDSelector &sel)
     }
 
     size_t removed = 0;
-    auto ret = removeIdsInternal(ids, &removed);
+    auto ret = removeIdsInternal(perListDeletes, nullptr, &removed);
     ASCEND_THROW_IF_NOT_FMT(ret == APP_ERR_OK, "removeIds failed %d", ret);
     return removed;
 }
 
-APP_ERROR IndexIVFRaBitQ::removeIds(size_t numVecs, const idx_t *indices)
+APP_ERROR IndexIVFRaBitQ::removeIds(size_t numVecs, const idx_t *indices, const int *listIds, const size_t *slots,
+                                    std::vector<MovedSlot> *movedOut, const MoveValidator &validateMoves)
 {
     APPERR_RETURN_IF(numVecs == 0, APP_ERR_OK);
-    APPERR_RETURN_IF_NOT(indices != nullptr, APP_ERR_INVALID_PARAM);
-    std::unordered_set<idx_t> deleteSet(indices, indices + numVecs);
-    return removeIdsInternal(deleteSet, nullptr);
+    APPERR_RETURN_IF_NOT(indices != nullptr && listIds != nullptr && slots != nullptr, APP_ERR_INVALID_PARAM);
+    // The slot alone identifies the vector; the ids of the ones tail backfill relocates are read off
+    // the device in compactList. indices stays in the signature so the call site reads as a delete by
+    // id and so the ids are to hand if this ever needs to verify them against the device.
+    VALUE_UNUSED(indices);
+    std::unordered_map<int, std::vector<size_t>> perListDeletes;
+    for (size_t i = 0; i < numVecs; ++i)
+    {
+        perListDeletes[listIds[i]].push_back(slots[i]);
+    }
+    return removeIdsInternal(perListDeletes, movedOut, nullptr, validateMoves);
 }
 
 APP_ERROR IndexIVFRaBitQ::searchImpl(int n, const float16_t *x, int k, float16_t *distances, idx_t *labels)

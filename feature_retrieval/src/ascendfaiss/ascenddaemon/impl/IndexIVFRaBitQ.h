@@ -19,10 +19,13 @@
 #ifndef ASCEND_INDEXIVFRABITQ_INCLUDED
 #define ASCEND_INDEXIVFRABITQ_INCLUDED
 #include <atomic>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <shared_mutex>
+#include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 #include "ascenddaemon/impl/IndexIVF.h"
 #include "ascenddaemon/utils/AscendOperator.h"
@@ -48,6 +51,17 @@ class IndexIVFRaBitQ : public IndexIVF
    public:
     template <typename T>
     using SegmentedVector = SegmentedDeviceVector<T>;
+
+    // A surviving id that tail backfill moved into a hole left by a delete. Its list does not change,
+    // only its slot, so the host can patch its LocationTable entry from this alone.
+    struct MovedSlot
+    {
+        idx_t id;
+        int listId;
+        size_t newSlot;
+    };
+
+    using MoveValidator = std::function<void(const std::vector<MovedSlot> &)>;
 
     // One inverted list's device storage. The four vectors share the same slot numbering, so slot s of
     // codes/indexL1/indexL2/ids all describe the same vector; listLen is the number of slots in use.
@@ -138,9 +152,18 @@ class IndexIVFRaBitQ : public IndexIVF
 
     APP_ERROR updateCoarseCenterImpl(std::vector<float> &centerData);
 
-    APP_ERROR addVectors(int listId, size_t numVecs, const float *codes, const idx_t *indices);
+    // baseSlotOut receives the slot the first of these vectors landed in; an append is contiguous, so
+    // the host derives the rest as baseSlot + i.
+    APP_ERROR addVectors(int listId, size_t numVecs, const float *codes, const idx_t *indices,
+                         size_t *baseSlotOut = nullptr);
 
-    APP_ERROR removeIds(size_t numVecs, const idx_t *indices);
+    // The host owns the id -> slot mapping, so it passes the exact (listId, slot) of every id to
+    // delete rather than making the daemon search for them. movedOut receives the ids tail backfill
+    // relocated, which the host needs to keep its mapping in step.
+    // validateMoves runs synchronously after stream drain and before publication; throwing rejects
+    // the candidate snapshot and leaves movedOut untouched. It has no dependency on host table types.
+    APP_ERROR removeIds(size_t numVecs, const idx_t *indices, const int *listIds, const size_t *slots,
+                        std::vector<MovedSlot> *movedOut, const MoveValidator &validateMoves = MoveValidator{});
 
     APP_ERROR searchImpl(int n, const float16_t *x, int k, float16_t *distances, idx_t *labels) override;
 
@@ -178,7 +201,8 @@ class IndexIVFRaBitQ : public IndexIVF
 
     APP_ERROR getCentroids(std::vector<float> &centroids) const;
 
-    APP_ERROR addEncodedVectors(int listId, size_t numVecs, const uint8_t *encodedCodes, const idx_t *indices);
+    APP_ERROR addEncodedVectors(int listId, size_t numVecs, const uint8_t *encodedCodes, const idx_t *indices,
+                                size_t *baseSlotOut = nullptr);
 
    protected:
     void uploadLUTMatrix();
@@ -345,12 +369,17 @@ class IndexIVFRaBitQ : public IndexIVF
     // Rebuild `newList` (a fresh copy of `oldList`) with `deletedSlots` removed, by moving the
     // surviving tail slots into the holes they leave behind and shrinking to the new length.
     // `deletedSlots` need not be sorted. Every segment written into is copy-on-write cloned first, so
-    // `oldList` and the snapshot holding it are left untouched.
+    // `oldList` and the snapshot holding it are left untouched. When movedOut is non-null, each
+    // relocated id is appended to it so the host can update its slot.
     APP_ERROR compactList(const ListStorage &oldList, ListStorage &newList, std::vector<size_t> &deletedSlots,
-                          aclrtStream stream);
+                          aclrtStream stream, int listId, std::vector<MovedSlot> *movedOut);
 
     // Remove every id in `ids`, rebuilding each affected list in a fresh snapshot.
-    APP_ERROR removeIdsInternal(const std::unordered_set<idx_t> &ids, size_t *removed);
+    // perListDeletes[listId] holds the slots to delete from that list. Only the listIds present are
+    // touched, so a delete no longer scans all numLists.
+    APP_ERROR removeIdsInternal(const std::unordered_map<int, std::vector<size_t>> &perListDeletes,
+                                std::vector<MovedSlot> *movedOut, size_t *removed,
+                                const MoveValidator &validateMoves = MoveValidator{});
 
    protected:
     // Declared first so it is destroyed after the list storage that carves segments out of it.
