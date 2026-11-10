@@ -33,6 +33,7 @@
 #include <iostream>
 #include <limits>
 #include <memory>
+#include <mutex>
 #include <new>
 #include <numeric>
 #include <random>
@@ -75,6 +76,7 @@ namespace
 {
 using testing::ElementsAre;
 using testing::HasSubstr;
+using testing::UnorderedElementsAre;
 
 constexpr int DIM = 128;
 constexpr int NLIST = 1024;
@@ -839,6 +841,122 @@ TEST(TestAscendIndexIVFRaBitQ, SelectorDeleteKeepsHostSlotsInStep)
     std::vector<int64_t> listIds;
     ASSERT_EQ(index.impl_->getActualIndex(0)->getListIds(source.listId, listIds), ::ascend::APP_ERR_OK);
     EXPECT_THAT(listIds, ElementsAre(source.ids[0], source.ids[2]));
+}
+
+// A batch that names the same list twice must append to the copy the first request made, not clone the
+// base list again -- otherwise the second append would silently overwrite the first.
+TEST(TestIndexIVFRaBitQCore, EncodedBatchPublishesOnceAndAppendsRepeatedLists)
+{
+    faiss::ascend::AscendIndexIVFRaBitQ hostIndex(DIM, faiss::METRIC_L2, NLIST, MakeConfig());
+    auto actual = hostIndex.impl_->getActualIndex(0);
+    ASSERT_NE(actual, nullptr);
+
+    const size_t codeSize = actual->getCodeSize();
+    auto packed = [codeSize](size_t numVecs, uint8_t seed)
+    {
+        std::vector<uint8_t> buf(numVecs * codeSize);
+        for (size_t i = 0; i < buf.size(); ++i)
+        {
+            buf[i] = static_cast<uint8_t>((i * 7 + seed) % 251);
+        }
+        return buf;
+    };
+    auto firstCodes = packed(2, 1);
+    auto secondCodes = packed(1, 2);
+    auto thirdCodes = packed(1, 3);
+    std::vector<::ascend::Index::idx_t> firstIds = {11, 12};
+    std::vector<::ascend::Index::idx_t> secondIds = {21};
+    std::vector<::ascend::Index::idx_t> thirdIds = {13};
+
+    std::vector<::ascend::IndexIVFRaBitQ::ListEncodedAddRequest> reqs = {
+        {3, firstIds.size(), firstCodes.data(), firstIds.data()},
+        {7, secondIds.size(), secondCodes.data(), secondIds.data()},
+        {3, thirdIds.size(), thirdCodes.data(), thirdIds.data()}};
+
+    const uint64_t verBefore = actual->activeSnapshot->publishVer;
+    std::vector<size_t> baseSlots(reqs.size(), 0);
+    ASSERT_EQ(actual->addEncodedVectorsBatch(reqs.data(), reqs.size(), baseSlots.data()), ::ascend::APP_ERR_OK);
+
+    EXPECT_EQ(actual->activeSnapshot->publishVer, verBefore + 1);
+    EXPECT_EQ(actual->activeSnapshot->total, 4U);
+    EXPECT_EQ(actual->activeSnapshot->maxStoredId, 21U);
+    EXPECT_EQ(actual->maxListLength, ::ascend::utils::roundUp(3, ::ascend::CUBE_ALIGN));
+    EXPECT_THAT(baseSlots, ElementsAre(0U, 0U, 2U));
+
+    std::vector<int64_t> listIds;
+    ASSERT_EQ(actual->getListIds(3, listIds), ::ascend::APP_ERR_OK);
+    EXPECT_THAT(listIds, ElementsAre(11, 12, 13));
+    ASSERT_EQ(actual->getListIds(7, listIds), ::ascend::APP_ERR_OK);
+    EXPECT_THAT(listIds, ElementsAre(21));
+    std::vector<uint8_t> expected(3 * codeSize);
+    const size_t codeBytes = codeSize - 2 * sizeof(float);
+    for (size_t part = 0; part < 3; ++part)
+    {
+        const size_t width = part == 0 ? codeBytes : sizeof(float);
+        const size_t firstOffset = part == 0 ? 0 : 2 * codeBytes + (part - 1) * 2 * sizeof(float);
+        const size_t thirdOffset = part == 0 ? 0 : codeBytes + (part - 1) * sizeof(float);
+        const size_t outputOffset = part == 0 ? 0 : 3 * codeBytes + (part - 1) * 3 * sizeof(float);
+        std::copy_n(firstCodes.data() + firstOffset, 2 * width, expected.data() + outputOffset);
+        std::copy_n(thirdCodes.data() + thirdOffset, width, expected.data() + outputOffset + 2 * width);
+    }
+    std::vector<uint8_t> raw;
+    ASSERT_EQ(actual->getListRawCodes(3, raw), ::ascend::APP_ERR_OK);
+    EXPECT_EQ(raw, expected);  // Codes, L2 and L1 all survive the repeated-list append.
+    ASSERT_EQ(actual->getListRawCodes(7, raw), ::ascend::APP_ERR_OK);
+    EXPECT_EQ(raw, secondCodes);
+    const auto* published = actual->activeSnapshot.get();
+    const auto emptyVersion = published->publishVer;
+    const int emptyMaxLength = actual->maxListLength;
+    const ::ascend::IndexIVFRaBitQ::ListEncodedAddRequest emptyReqs[] = {
+        {3, 0, nullptr, nullptr}, {7, 0, nullptr, nullptr}, {3, 0, nullptr, nullptr}};
+    size_t emptyBases[3] = {};
+    ASSERT_EQ(actual->addEncodedVectorsBatch(emptyReqs, 3, emptyBases), ::ascend::APP_ERR_OK);
+    EXPECT_THAT(emptyBases, ElementsAre(3U, 1U, 3U));
+    EXPECT_EQ(actual->activeSnapshot.get(), published);
+    EXPECT_EQ(actual->activeSnapshot->publishVer, emptyVersion);
+    EXPECT_EQ(actual->activeSnapshot->total, 4U);
+    EXPECT_EQ(actual->activeSnapshot->maxStoredId, 21U);
+    EXPECT_EQ(actual->maxListLength, emptyMaxLength);
+    EXPECT_EQ(actual->addEncodedVectorsBatch(nullptr, 0, nullptr), ::ascend::APP_ERR_OK);
+}
+
+// A rejected request must leave the index exactly as it was: the clone is dropped unpublished, so the
+// earlier requests in the same batch have to vanish with it.
+TEST(TestIndexIVFRaBitQCore, EncodedBatchFailureLeavesActiveSnapshotUntouched)
+{
+    faiss::ascend::AscendIndexIVFRaBitQ hostIndex(DIM, faiss::METRIC_L2, NLIST, MakeConfig());
+    auto actual = hostIndex.impl_->getActualIndex(0);
+    std::vector<uint8_t> originalCodes(2 * actual->getCodeSize(), 0x37);
+    const ::ascend::Index::idx_t originalIds[] = {15, 16};
+    ASSERT_EQ(actual->addEncodedVectors(5, 2, originalCodes.data(), originalIds), ::ascend::APP_ERR_OK);
+    std::vector<uint8_t> payloadBefore;
+    std::vector<int64_t> idsBefore;
+    ASSERT_EQ(actual->getListRawCodes(5, payloadBefore), ::ascend::APP_ERR_OK);
+    ASSERT_EQ(actual->getListIds(5, idsBefore), ::ascend::APP_ERR_OK);
+    std::vector<uint8_t> codes(2 * actual->getCodeSize(), 0x5A);
+    std::vector<::ascend::Index::idx_t> ids = {static_cast<::ascend::Index::idx_t>(UINT32_MAX) + 1, 32};
+
+    std::vector<::ascend::IndexIVFRaBitQ::ListEncodedAddRequest> reqs = {{5, ids.size(), codes.data(), ids.data()},
+                                                                         {NLIST, ids.size(), codes.data(), ids.data()}};
+
+    const uint64_t verBefore = actual->activeSnapshot->publishVer;
+    const auto* snapshotBefore = actual->activeSnapshot.get();
+    const size_t totalBefore = actual->activeSnapshot->total;
+    const auto maxIdBefore = actual->activeSnapshot->maxStoredId;
+    const int maxListLengthBefore = actual->maxListLength;
+    EXPECT_EQ(actual->addEncodedVectorsBatch(reqs.data(), reqs.size(), nullptr), ::ascend::APP_ERR_INVALID_PARAM);
+    EXPECT_EQ(actual->activeSnapshot.get(), snapshotBefore);
+    EXPECT_EQ(actual->activeSnapshot->publishVer, verBefore);
+    EXPECT_EQ(actual->activeSnapshot->total, totalBefore);
+    EXPECT_EQ(actual->activeSnapshot->maxStoredId, maxIdBefore);
+    EXPECT_EQ(actual->maxListLength, maxListLengthBefore);
+    EXPECT_EQ(actual->getListLength(5), 2U);
+    std::vector<uint8_t> payloadAfter;
+    std::vector<int64_t> idsAfter;
+    ASSERT_EQ(actual->getListRawCodes(5, payloadAfter), ::ascend::APP_ERR_OK);
+    ASSERT_EQ(actual->getListIds(5, idsAfter), ::ascend::APP_ERR_OK);
+    EXPECT_EQ(payloadAfter, payloadBefore);
+    EXPECT_EQ(idsAfter, idsBefore);
 }
 
 TEST(TestIndexIVFRaBitQCore, EncodedStorageAccessAndRefineAreDeterministic)
@@ -2090,8 +2208,9 @@ TEST(TestAscendIndexIVFRaBitQ, ExplicitAddStillRejectsBatchAndExistingDuplicateI
 
 // Host mutation faults are injected at the publication boundary; successful calls still reach the daemon.
 bool failHostAssignment = false;
-int hostUploadCalls = 0;
-int failHostUploadCall = 0;
+std::atomic<int> hostUploadCalls{0};
+int failHostUploadDevice = -1;
+std::mutex hostPublishedMutex;
 std::vector<faiss::idx_t> hostPublishedIds;
 
 std::vector<const ::ascend::IndexIVFRaBitQ*> lengthQueryDevices;
@@ -2142,19 +2261,24 @@ void StubHostAssignment(faiss::ascend::AscendIndexIVFRaBitQImpl*, int n, const f
     }
 }
 
-void StubHostUpload(faiss::ascend::AscendIndexIVFRaBitQImpl* impl,
-                    faiss::ascend::IndexParam<float, float, faiss::ascend::ascend_idx_t>& param, size_t* baseSlotOut)
+void StubHostUpload(faiss::ascend::AscendIndexIVFRaBitQImpl* impl, int deviceId,
+                    const std::vector<::ascend::IndexIVFRaBitQ::ListAddRequest>& reqs, std::vector<size_t>& baseSlots)
 {
-    if (++hostUploadCalls == failHostUploadCall)
+    ++hostUploadCalls;
+    if (deviceId == failHostUploadDevice)
     {
         throw std::runtime_error("injected host upload failure");
     }
-    const auto ret =
-        impl->getActualIndex(param.deviceId)->addVectors(param.listId, param.n, param.query, param.label, baseSlotOut);
+    baseSlots.resize(reqs.size());
+    const auto ret = impl->getActualIndex(deviceId)->addVectorsBatch(reqs.data(), reqs.size(), baseSlots.data());
     FAISS_THROW_IF_NOT(ret == ::ascend::APP_ERR_OK);
-    for (int i = 0; i < param.n; ++i)
+    std::lock_guard<std::mutex> lock(hostPublishedMutex);
+    for (const auto& req : reqs)
     {
-        hostPublishedIds.push_back(static_cast<faiss::idx_t>(param.label[i]));
+        for (size_t i = 0; i < req.numVecs; ++i)
+        {
+            hostPublishedIds.push_back(static_cast<faiss::idx_t>(req.indices[i]));
+        }
     }
 }
 
@@ -2163,11 +2287,14 @@ struct HostAddFaultGuard
     HostAddFaultGuard()
     {
         failHostAssignment = false;
-        hostUploadCalls = failHostUploadCall = 0;
+        hostUploadCalls = 0;
+        failHostUploadDevice = -1;
         hostPublishedIds.clear();
         hostPublishedIds.reserve(16);
         MOCKER_CPP(&faiss::ascend::AscendIndexIVFRaBitQImpl::addL1).stubs().will(invoke(StubHostAssignment));
-        MOCKER_CPP(&faiss::ascend::AscendIndexIVFRaBitQImpl::indexIVFRaBitQAdd).stubs().will(invoke(StubHostUpload));
+        MOCKER_CPP(&faiss::ascend::AscendIndexIVFRaBitQImpl::indexIVFRaBitQAddBatch)
+            .stubs()
+            .will(invoke(StubHostUpload));
     }
     ~HostAddFaultGuard() { GlobalMockObject::verify(); }
 };
@@ -2203,19 +2330,18 @@ std::atomic<bool> siblingUploadEntered{false};
 std::atomic<bool> releaseSiblingUpload{false};
 std::atomic<bool> failedUploadReturned{false};
 
-void StubHostUploadWithWaitingSibling(faiss::ascend::AscendIndexIVFRaBitQImpl* impl,
-                                      faiss::ascend::IndexParam<float, float, faiss::ascend::ascend_idx_t>& param,
-                                      size_t* baseSlotOut)
+void StubHostUploadWithWaitingSibling(faiss::ascend::AscendIndexIVFRaBitQImpl* impl, int deviceId,
+                                      const std::vector<::ascend::IndexIVFRaBitQ::ListAddRequest>& reqs,
+                                      std::vector<size_t>& baseSlots)
 {
-    if (param.deviceId == 0)
+    if (deviceId == 0)
     {
         failedUploadReturned.store(true);
         throw std::runtime_error("injected sibling upload failure");
     }
     siblingUploadEntered.store(true);
     while (!releaseSiblingUpload.load()) std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    const auto ret =
-        impl->getActualIndex(param.deviceId)->addVectors(param.listId, param.n, param.query, param.label, baseSlotOut);
+    const auto ret = impl->getActualIndex(deviceId)->addVectorsBatch(reqs.data(), reqs.size(), baseSlots.data());
     FAISS_THROW_IF_NOT(ret == ::ascend::APP_ERR_OK);
 }
 
@@ -2230,7 +2356,7 @@ TEST(TestAscendIndexIVFRaBitQ, FailedAddCleanupWaitsForSiblingAndKeepsOnlyPublis
     siblingUploadEntered = releaseSiblingUpload = failedUploadReturned = false;
     failHostAssignment = false;
     MOCKER_CPP(&faiss::ascend::AscendIndexIVFRaBitQImpl::addL1).stubs().will(invoke(StubHostAssignment));
-    MOCKER_CPP(&faiss::ascend::AscendIndexIVFRaBitQImpl::indexIVFRaBitQAdd)
+    MOCKER_CPP(&faiss::ascend::AscendIndexIVFRaBitQImpl::indexIVFRaBitQAddBatch)
         .stubs()
         .will(invoke(StubHostUploadWithWaitingSibling));
     auto result = std::async(std::launch::async,
@@ -2300,13 +2426,13 @@ TEST(TestAscendIndexIVFRaBitQ, FailedStagingAndUploadDoNotLeakIntoRetry)
 
     failHostAssignment = true;
     EXPECT_THROW(index.add_with_ids(2, vectors.data(), ids), std::exception);
-    EXPECT_EQ(hostUploadCalls, 0);
+    EXPECT_EQ(hostUploadCalls.load(), 0);
     EXPECT_EQ(index.ntotal, 0);
     EXPECT_EQ(index.impl_->deviceAddNumMap[7][0], 0);
     EXPECT_TRUE(CountMappedIds(*index.impl_->locationTable) == 0);
 
     failHostAssignment = false;
-    failHostUploadCall = 1;
+    failHostUploadDevice = 0;
     ExpectExceptionContains([&] { index.add_with_ids(2, vectors.data(), ids); }, "injected host upload failure");
     EXPECT_EQ(index.ntotal, 0);
     EXPECT_TRUE(CountMappedIds(*index.impl_->locationTable) == 0);
@@ -2314,7 +2440,7 @@ TEST(TestAscendIndexIVFRaBitQ, FailedStagingAndUploadDoNotLeakIntoRetry)
     EXPECT_EQ(index.impl_->deviceAddNumMap[7][0], 0);
     EXPECT_EQ(index.impl_->getActualIndex(0)->getListLength(7), 0U);
 
-    failHostUploadCall = 0;
+    failHostUploadDevice = -1;
     ASSERT_NO_THROW(index.add_with_ids(2, vectors.data(), ids));
     EXPECT_EQ(index.ntotal, 2);
     EXPECT_EQ(index.impl_->deviceAddNumMap[7][0], 2);
@@ -2335,7 +2461,7 @@ TEST(TestAscendIndexIVFRaBitQ, NegativeAddRejectsBeforeStagingAndAllowsRetry)
     const faiss::idx_t valid[] = {41, 42};
     HostAddFaultGuard mock;
     ExpectExceptionContains([&] { index.add_with_ids(2, vectors.data(), invalid); }, "nonnegative");
-    EXPECT_EQ(hostUploadCalls, 0);
+    EXPECT_EQ(hostUploadCalls.load(), 0);
     EXPECT_EQ(index.ntotal, 0);
     EXPECT_EQ(CountMappedIds(*index.impl_->locationTable), 0U);
     EXPECT_EQ(index.impl_->getActualIndex(0)->getListLength(7), 0U);
@@ -2416,56 +2542,185 @@ TEST(TestAscendIndexIVFRaBitQ, StagingUsesTouchedListDeviceOccupancyAndOrdinals)
     }
 }
 
-TEST(TestAscendIndexIVFRaBitQ, PartialListPublicationReconcilesCountMappingFilterAndRetry)
+TEST(TestAscendIndexIVFRaBitQ, RawMultiListBatchPublishesOnceAndEmptyBatchIsNoop)
 {
     auto source = MakePretrainedCpuIndex(false);
     faiss::ascend::AscendIndexIVFRaBitQ index(DIM, faiss::METRIC_L2, NLIST, MakeConfig());
     ASSERT_NO_THROW(index.copyFrom(source.index.get()));
-    auto vectors = MakePatternData(2, DIM);
-    vectors[0] = 0.0f;
+    auto* actual = index.impl_->getActualIndex(0);
+    const auto version = actual->activeSnapshot->publishVer;
+    auto vectors = MakePatternData(3, DIM);
+    vectors[0] = vectors[2 * DIM] = 0.0f;
     vectors[DIM] = 1.0f;
-    const faiss::idx_t ids[] = {51, 8192 + 52};  // Distinct blocks expose failed-reservation cleanup.
+    const faiss::idx_t ids[] = {81, 82, 83};
+    HostAddFaultGuard mock;
+    ASSERT_NO_THROW(index.add_with_ids(3, vectors.data(), ids));
+    EXPECT_EQ(hostUploadCalls.load(), 1);
+    EXPECT_EQ(actual->activeSnapshot->publishVer, version + 1);
+    EXPECT_EQ(actual->activeSnapshot->total, 3U);
+    EXPECT_EQ(actual->activeSnapshot->maxStoredId, 83U);
+    EXPECT_EQ(index.ntotal, 3);
+    EXPECT_EQ(index.impl_->deviceAddNumMap[7][0], 2);
+    EXPECT_EQ(index.impl_->deviceAddNumMap[8][0], 1);
+    const auto loc = index.impl_->locationTable->lookupLocation(83);
+    ASSERT_TRUE(loc.has_value());
+    EXPECT_EQ(loc->slot(), 1U);
+    const auto* snapshot = actual->activeSnapshot.get();
+    const ::ascend::IndexIVFRaBitQ::ListAddRequest empty[] = {
+        {7, 0, nullptr, nullptr}, {8, 0, nullptr, nullptr}, {7, 0, nullptr, nullptr}};
+    size_t bases[3] = {};
+    EXPECT_EQ(actual->addVectorsBatch(empty, 3, bases), ::ascend::APP_ERR_OK);
+    EXPECT_THAT(bases, ElementsAre(2U, 1U, 2U));
+    EXPECT_EQ(actual->activeSnapshot.get(), snapshot);
+    EXPECT_EQ(actual->addVectorsBatch(nullptr, 0, nullptr), ::ascend::APP_ERR_OK);
+}
+
+TEST(TestAscendIndexIVFRaBitQ, PartialDeviceBatchReconcilesCountMappingFilterAndRetry)
+{
+    auto source = MakePretrainedCpuIndex(false);
+    faiss::ascend::AscendIndexIVFRaBitQ index(DIM, faiss::METRIC_L2, NLIST, MakeConfig({1, 0}));
+    ASSERT_NO_THROW(index.copyFrom(source.index.get()));
+    auto vectors = MakePatternData(4, DIM);
+    vectors[0] = vectors[DIM] = 0.0f;
+    vectors[2 * DIM] = vectors[3 * DIM] = 1.0f;
+    const faiss::idx_t ids[] = {51, 8192 + 52, 53, 8192 + 54};
     faiss::IDSelectorRange sel(0, 100);
     index.impl_->getCachedFilter(&sel);
     const auto generation = index.impl_->cachedFilterGeneration;
+    auto* success = index.impl_->getActualIndex(1);
+    auto* failed = index.impl_->getActualIndex(0);
+    const auto successVersion = success->activeSnapshot->publishVer;
+    const auto* failedSnapshot = failed->activeSnapshot.get();
     HostAddFaultGuard mock;
-    failHostUploadCall = 2;
-    ExpectExceptionContains([&] { index.add_with_ids(2, vectors.data(), ids); }, "injected host upload failure");
-    ASSERT_EQ(hostPublishedIds.size(), 1U);
-    const auto committedId = hostPublishedIds[0];
-    const int committedRow = committedId == ids[0] ? 0 : 1;
-    const int committedList = committedRow == 0 ? 7 : 8;
-    const int failedRow = 1 - committedRow;
-    EXPECT_EQ(index.ntotal, 1);
-    EXPECT_EQ(CountMappedIds(*index.impl_->locationTable), 1U);
+    failHostUploadDevice = 0;
+    ExpectExceptionContains([&] { index.add_with_ids(4, vectors.data(), ids); }, "injected host upload failure");
+    EXPECT_EQ(hostUploadCalls.load(), 2);
+    EXPECT_THAT(hostPublishedIds, UnorderedElementsAre(51, 53));
+    EXPECT_EQ(index.ntotal, 2);
+    EXPECT_EQ(CountMappedIds(*index.impl_->locationTable), 2U);
     EXPECT_EQ(index.impl_->locationTable->allocatedBlockCount(), 1U);
-    EXPECT_EQ(static_cast<size_t>(index.impl_->locationTable->contains(committedId)), 1U);
-    EXPECT_EQ(static_cast<size_t>(index.impl_->locationTable->contains(ids[failedRow])), 0U);
-    EXPECT_EQ(index.impl_->deviceAddNumMap[committedList][0], 1);
-    EXPECT_EQ(index.impl_->deviceAddNumMap[committedList == 7 ? 8 : 7][0], 0);
+    EXPECT_EQ(success->activeSnapshot->publishVer, successVersion + 1);
+    EXPECT_EQ(success->activeSnapshot->total, 2U);
+    EXPECT_EQ(success->activeSnapshot->maxStoredId, 53U);
+    EXPECT_EQ(failed->activeSnapshot.get(), failedSnapshot);
+    EXPECT_EQ(failed->activeSnapshot->total, 0U);
+    for (int list : {7, 8})
+    {
+        EXPECT_EQ(index.impl_->deviceAddNumMap[list][0], 1);
+        EXPECT_EQ(index.impl_->deviceAddNumMap[list][1], 0);
+        EXPECT_EQ(success->getListLength(list), 1U);
+        EXPECT_EQ(failed->getListLength(list), 0U);
+    }
+    for (int row : {0, 2})
+    {
+        const auto loc = index.impl_->locationTable->lookupLocation(ids[row]);
+        ASSERT_TRUE(loc.has_value());
+        EXPECT_EQ(loc->deviceIndex(), 0);  // Logical ordinal, not physical device 1.
+        EXPECT_EQ(loc->slot(), 0U);
+    }
+    EXPECT_FALSE(index.impl_->locationTable->contains(ids[1]));
+    EXPECT_FALSE(index.impl_->locationTable->contains(ids[3]));
     EXPECT_GT(index.impl_->cachedFilterGeneration, generation);
     EXPECT_EQ(index.impl_->FindFilterCacheHit(index.impl_->MakeFilterCacheKey(&sel)), -1);
-    failHostUploadCall = 0;
-    ASSERT_NO_THROW(index.add_with_ids(1, vectors.data() + static_cast<size_t>(failedRow) * DIM, ids + failedRow));
-    EXPECT_EQ(index.ntotal, 2);
-    EXPECT_EQ(index.impl_->getActualIndex(0)->getListLength(7), 1U);
-    EXPECT_EQ(index.impl_->getActualIndex(0)->getListLength(8), 1U);
+    failHostUploadDevice = -1;
+    std::vector<float> retry(vectors.begin() + DIM, vectors.begin() + 2 * DIM);
+    retry.insert(retry.end(), vectors.begin() + 3 * DIM, vectors.end());
+    const faiss::idx_t retryIds[] = {ids[1], ids[3]};
+    ASSERT_NO_THROW(index.add_with_ids(2, retry.data(), retryIds));
+    EXPECT_EQ(index.ntotal, 4);
     EXPECT_EQ(index.impl_->locationTable->allocatedBlockCount(), 2U);
+    EXPECT_EQ(failed->activeSnapshot->total, 2U);
+    EXPECT_EQ(CountDeviceMappedIds(*index.impl_->locationTable, 1), 2U);
+}
+
+int failEncodedBatchDevice = -1;
+std::vector<uint64_t> encodedBatchCalls;
+std::vector<uint64_t> encodedBatchBeforeVersion;
+std::vector<const ::ascend::IndexIVFRaBitQ::GlobalSnapshot*> encodedBatchBeforeSnapshot;
+void StubEncodedHostBatch(faiss::ascend::AscendIndexIVFRaBitQImpl* impl, int deviceId,
+                          const std::vector<::ascend::IndexIVFRaBitQ::ListEncodedAddRequest>& reqs,
+                          std::vector<size_t>& baseSlots)
+{
+    auto* actual = impl->getActualIndex(deviceId);
+    ++encodedBatchCalls[deviceId];
+    encodedBatchBeforeVersion[deviceId] = actual->activeSnapshot->publishVer;
+    encodedBatchBeforeSnapshot[deviceId] = actual->activeSnapshot.get();
+    if (deviceId == failEncodedBatchDevice)
+    {
+        auto rejected = reqs;
+        rejected.push_back({NLIST, 0, nullptr, nullptr});
+        FAISS_THROW_IF_NOT(actual->addEncodedVectorsBatch(rejected.data(), rejected.size(), nullptr) ==
+                           ::ascend::APP_ERR_INVALID_PARAM);
+        throw std::runtime_error("injected encoded batch failure");
+    }
+    FAISS_THROW_IF_NOT(actual->addEncodedVectorsBatch(reqs.data(), reqs.size(), baseSlots.data()) ==
+                       ::ascend::APP_ERR_OK);
+}
+
+TEST(TestAscendIndexIVFRaBitQ, EncodedCopyFromBatchesListsAndReconcilesPartialDevices)
+{
+    auto source = MakePretrainedCpuIndex(false);
+    const faiss::idx_t first[] = {91, 92};
+    const faiss::idx_t second[] = {93, 94};
+    std::vector<uint8_t> codes(2 * source.index->code_size, 0x4C);
+    source.index->invlists->add_entries(7, 2, first, codes.data());
+    source.index->invlists->add_entries(8, 2, second, codes.data());
+    source.index->ntotal = 4;
+    faiss::ascend::AscendIndexIVFRaBitQ index(DIM, faiss::METRIC_L2, NLIST, MakeConfig({1, 0}));
+    encodedBatchCalls.assign(2, 0);
+    encodedBatchBeforeVersion.assign(2, 0);
+    encodedBatchBeforeSnapshot.assign(2, nullptr);
+    failEncodedBatchDevice = 1;  // Fail the first ordinal; the later device must still publish.
+    MOCKER_CPP(&faiss::ascend::AscendIndexIVFRaBitQImpl::indexIVFRaBitQAddEncodedBatch)
+        .stubs()
+        .will(invoke(StubEncodedHostBatch));
+    ExpectExceptionContains([&] { index.copyFrom(source.index.get()); }, "injected encoded batch failure");
+    EXPECT_THAT(encodedBatchCalls, ElementsAre(1U, 1U));
+    EXPECT_EQ(index.ntotal, 2);
+    EXPECT_EQ(index.impl_->locationTable->allocatedBlockCount(), 1U);
+    EXPECT_EQ(CountMappedIds(*index.impl_->locationTable), 2U);
+    auto* success = index.impl_->getActualIndex(0);
+    auto* failed = index.impl_->getActualIndex(1);
+    EXPECT_EQ(success->activeSnapshot->publishVer, encodedBatchBeforeVersion[0] + 1);
+    EXPECT_EQ(success->activeSnapshot->total, 2U);
+    EXPECT_EQ(success->activeSnapshot->maxStoredId, 94U);
+    EXPECT_EQ(failed->activeSnapshot.get(), encodedBatchBeforeSnapshot[1]);
+    EXPECT_EQ(failed->activeSnapshot->total, 0U);
+    EXPECT_FALSE(index.impl_->refineSourcesReady_);
+    for (int list : {7, 8})
+    {
+        EXPECT_EQ(index.impl_->deviceAddNumMap[list][0], 0);
+        EXPECT_EQ(index.impl_->deviceAddNumMap[list][1], 1);
+        EXPECT_EQ(failed->getListLength(list), 0U);
+        EXPECT_EQ(success->getListLength(list), 1U);
+    }
+    EXPECT_FALSE(index.impl_->locationTable->contains(91));
+    EXPECT_FALSE(index.impl_->locationTable->contains(93));
+    const auto firstLoc = index.impl_->locationTable->lookupLocation(92);
+    ASSERT_TRUE(firstLoc.has_value());
+    EXPECT_EQ(firstLoc->deviceIndex(), 1);
+    const auto secondLoc = index.impl_->locationTable->lookupLocation(94);
+    ASSERT_TRUE(secondLoc.has_value());
+    EXPECT_EQ(secondLoc->slot(), 0U);
+    GlobalMockObject::verify();
+    failEncodedBatchDevice = -1;
+    ASSERT_NO_THROW(index.copyFrom(source.index.get()));
+    EXPECT_EQ(index.ntotal, 4);
+    EXPECT_EQ(CountMappedIds(*index.impl_->locationTable), 4U);
 }
 
 TEST(TestAscendIndexIVFRaBitQ, PartialRefinePublicationStaysNotReadyUntilResetOrValidLoad)
 {
     auto source = MakePretrainedCpuIndex(false);
-    auto config = MakeConfig();
+    auto config = MakeConfig({0, 1});
     config.needRefine = true;
     faiss::ascend::AscendIndexIVFRaBitQ index(DIM, faiss::METRIC_L2, NLIST, config);
     ASSERT_NO_THROW(index.copyFrom(source.index.get()));
     auto vectors = MakePatternData(2, DIM);
-    vectors[0] = 0.0f;
-    vectors[DIM] = 1.0f;
+    vectors[0] = vectors[DIM] = 0.0f;
     const faiss::idx_t ids[] = {0, 1};
     HostAddFaultGuard mock;
-    failHostUploadCall = 2;
+    failHostUploadDevice = 0;  // Leave ID 1 only, so loading one row must reject the hole.
     EXPECT_THROW(index.add_with_ids(2, vectors.data(), ids), std::exception);
     ASSERT_EQ(index.ntotal, 1);
     EXPECT_TRUE(index.impl_->srcIndexes.empty());
@@ -2477,21 +2732,13 @@ TEST(TestAscendIndexIVFRaBitQ, PartialRefinePublicationStaysNotReadyUntilResetOr
     // A matching row count cannot conceal a partial-publication hole.
     index.impl_->srcIndexes.resize(DIM);
     ExpectExceptionContains([&] { index.impl_->getRefineSources(); }, "not ready");
-    if (hostPublishedIds[0] == 0)
-    {
-        ASSERT_NO_THROW(index.loadRefineSources(vectors.data(), 1));
-        EXPECT_TRUE(index.impl_->refineSourcesReady_);
-        EXPECT_NO_THROW(index.impl_->getRefineSources());
-    }
-    else
-    {
-        ExpectExceptionContains([&] { index.loadRefineSources(vectors.data() + DIM, 1); }, "unique IDs");
-        EXPECT_FALSE(index.impl_->refineSourcesReady_);
-    }
+    EXPECT_THAT(hostPublishedIds, ElementsAre(1));
+    ExpectExceptionContains([&] { index.loadRefineSources(vectors.data() + DIM, 1); }, "unique IDs");
+    EXPECT_FALSE(index.impl_->refineSourcesReady_);
     ASSERT_NO_THROW(index.reset());
     EXPECT_FALSE(index.impl_->copiedSources_);
     EXPECT_TRUE(index.impl_->refineSourcesReady_);
-    failHostUploadCall = 0;
+    failHostUploadDevice = -1;
     ASSERT_NO_THROW(index.add(2, vectors.data()));
     EXPECT_EQ(index.ntotal, 2);
     EXPECT_EQ(index.impl_->srcIndexes, vectors);
@@ -2787,8 +3034,8 @@ TEST(TestAscendIndexIVFRaBitQ, ExactBatchAndArrayDeletesUseStoredPayload)
 }
 
 int encodedImportCalls = 0;
-::ascend::APP_ERROR StubEncodedImportFailure(::ascend::IndexIVFRaBitQ*, int, size_t, const uint8_t*,
-                                             const ::ascend::Index::idx_t*, size_t*)
+::ascend::APP_ERROR StubEncodedImportFailure(::ascend::IndexIVFRaBitQ*,
+                                             const ::ascend::IndexIVFRaBitQ::ListEncodedAddRequest*, size_t, size_t*)
 {
     ++encodedImportCalls;
     return ::ascend::APP_ERR_INNER_ERROR;
@@ -2800,7 +3047,7 @@ TEST(TestAscendIndexIVFRaBitQ, FailedImportAfterTableSwapCleansConcreteReplaceme
     faiss::ascend::AscendIndexIVFRaBitQ index(DIM, faiss::METRIC_L2, NLIST, MakeConfig());
     ASSERT_NO_THROW(index.copyFrom(source.index.get()));
     encodedImportCalls = 0;
-    MOCKER_CPP(&::ascend::IndexIVFRaBitQ::addEncodedVectors).stubs().will(invoke(StubEncodedImportFailure));
+    MOCKER_CPP(&::ascend::IndexIVFRaBitQ::addEncodedVectorsBatch).stubs().will(invoke(StubEncodedImportFailure));
     EXPECT_THROW(index.copyFrom(source.index.get()), std::exception);
     EXPECT_EQ(encodedImportCalls, 1);
     EXPECT_EQ(index.ntotal, 0);
@@ -2837,12 +3084,18 @@ TEST(TestAscendIndexIVFRaBitQ, CopyFromReplacesListsMappingsAndSourceState)
 
 int failEncodedImportCall = 0;
 
-::ascend::APP_ERROR StubEncodedImport(::ascend::IndexIVFRaBitQ* index, int listId, size_t numVecs, const uint8_t*,
-                                      const ::ascend::Index::idx_t*, size_t* baseSlotOut)
+::ascend::APP_ERROR StubEncodedImport(::ascend::IndexIVFRaBitQ* index,
+                                      const ::ascend::IndexIVFRaBitQ::ListEncodedAddRequest* reqs, size_t requestCount,
+                                      size_t* baseSlotsOut)
 {
     if (++encodedImportCalls == failEncodedImportCall) return ::ascend::APP_ERR_INVALID_PARAM;
-    if (baseSlotOut != nullptr) *baseSlotOut = index->activeSnapshot->lists.at(listId)->listLen;
-    SeedList(index, listId, numVecs);  // Publish fixture storage so reset sees the committed daemon count.
+    for (size_t r = 0; r < requestCount; ++r)
+    {
+        const auto& req = reqs[r];
+        const size_t baseSlot = index->activeSnapshot->lists.at(req.listId)->listLen;
+        if (baseSlotsOut != nullptr) baseSlotsOut[r] = baseSlot;
+        SeedList(index, req.listId, baseSlot + req.numVecs);  // Reset sees each committed daemon count.
+    }
     return ::ascend::APP_ERR_OK;
 }
 
@@ -2856,7 +3109,7 @@ struct ImportFaultMockGuard
     ImportFaultMockGuard()
     {
         encodedImportCalls = failEncodedImportCall = 0;
-        MOCKER_CPP(&::ascend::IndexIVFRaBitQ::addEncodedVectors).stubs().will(invoke(StubEncodedImport));
+        MOCKER_CPP(&::ascend::IndexIVFRaBitQ::addEncodedVectorsBatch).stubs().will(invoke(StubEncodedImport));
     }
     ~ImportFaultMockGuard() { GlobalMockObject::verify(); }
 };
@@ -2919,24 +3172,31 @@ TEST(TestAscendIndexIVFRaBitQ, PartialEncodedImportKeepsCompletedSetupTrained)
     const faiss::idx_t extra = 404;
     source.index->invlists->add_entries(source.listId + 1, 1, &extra, source.codes.data());
     ++source.index->ntotal;
-    faiss::ascend::AscendIndexIVFRaBitQ index(DIM, faiss::METRIC_L2, NLIST, MakeConfig());
-    {
-        ImportFaultMockGuard mock;
-        failEncodedImportCall = 2;  // Model one committed list followed by a rejected publication.
-        ExpectExceptionContains([&] { index.copyFrom(source.index.get()); }, "Failed to add encoded vectors");
-        EXPECT_EQ(encodedImportCalls, 2);
-        EXPECT_TRUE(index.is_trained);
-        EXPECT_EQ(index.ntotal, static_cast<faiss::idx_t>(source.ids.size()));
-        EXPECT_EQ(CountMappedIds(*index.impl_->locationTable), source.ids.size());
-        EXPECT_FALSE(index.impl_->locationTable->contains(extra));
-        EXPECT_EQ(index.impl_->deviceAddNumMap[source.listId][0], 3);
-        EXPECT_EQ(index.impl_->deviceAddNumMap[source.listId + 1][0], 0);
-        EXPECT_FALSE(index.impl_->refineSourcesReady_);
-    }
+    faiss::ascend::AscendIndexIVFRaBitQ index(DIM, faiss::METRIC_L2, NLIST, MakeConfig({0, 1}));
+    encodedBatchCalls.assign(2, 0);
+    encodedBatchBeforeVersion.assign(2, 0);
+    encodedBatchBeforeSnapshot.assign(2, nullptr);
+    failEncodedBatchDevice = 0;  // Reject one device batch; the other device still commits.
+    MOCKER_CPP(&faiss::ascend::AscendIndexIVFRaBitQImpl::indexIVFRaBitQAddEncodedBatch)
+        .stubs()
+        .will(invoke(StubEncodedHostBatch));
+    ExpectExceptionContains([&] { index.copyFrom(source.index.get()); }, "injected encoded batch failure");
+    EXPECT_THAT(encodedBatchCalls, ElementsAre(1U, 1U));
+    EXPECT_TRUE(index.is_trained);
+    EXPECT_EQ(index.ntotal, 1);
+    EXPECT_EQ(CountMappedIds(*index.impl_->locationTable), 1U);
+    EXPECT_TRUE(index.impl_->locationTable->contains(source.ids[1]));
+    EXPECT_FALSE(index.impl_->locationTable->contains(extra));
+    EXPECT_EQ(index.impl_->deviceAddNumMap[source.listId], (std::vector<int>{0, 1}));
+    EXPECT_EQ(index.impl_->deviceAddNumMap[source.listId + 1], (std::vector<int>{0, 0}));
+    EXPECT_FALSE(index.impl_->refineSourcesReady_);
+    GlobalMockObject::verify();
+    failEncodedBatchDevice = -1;
     ASSERT_NO_THROW(index.copyFrom(source.index.get()));
     EXPECT_TRUE(index.is_trained);
     EXPECT_EQ(index.ntotal, source.index->ntotal);
-    EXPECT_EQ(index.impl_->getActualIndex(0)->getListLength(source.listId), source.ids.size());
+    EXPECT_EQ(index.impl_->getActualIndex(0)->getListLength(source.listId), 2U);
+    EXPECT_EQ(index.impl_->getActualIndex(1)->getListLength(source.listId), 1U);
     EXPECT_EQ(index.impl_->getActualIndex(0)->getListLength(source.listId + 1), 1U);
 }
 

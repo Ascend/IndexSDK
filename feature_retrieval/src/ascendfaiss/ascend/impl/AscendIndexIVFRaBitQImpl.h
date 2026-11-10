@@ -136,7 +136,14 @@ class AscendIndexIVFRaBitQImpl : public AscendIndexIVFImpl
     // Called from AscendIndex for add/add_with_ids
     void addL1(int n, const float *x, std::unique_ptr<idx_t[]> &assign);
     void addImpl(int n, const float *x, const idx_t *ids) override;
-    void indexIVFRaBitQAdd(IndexParam<float, float, ascend_idx_t> &param, size_t *baseSlotOut);
+    // One batch append per device instead of one per list: the daemon clones and publishes a snapshot
+    // once for the whole fan-out. The caller preallocates baseSlots to reqs.size(); it receives each
+    // list's append start slot.
+    void indexIVFRaBitQAddBatch(int deviceId, const std::vector<::ascend::IndexIVFRaBitQ::ListAddRequest> &reqs,
+                                std::vector<size_t> &baseSlots);
+    void indexIVFRaBitQAddEncodedBatch(int deviceId,
+                                       const std::vector<::ascend::IndexIVFRaBitQ::ListEncodedAddRequest> &reqs,
+                                       std::vector<size_t> &baseSlots);
     inline ::ascend::IndexIVFRaBitQ *getActualIndex(int deviceId) const
     {
         FAISS_THROW_IF_NOT_FMT(indexes.find(deviceId) != indexes.end(), "deviceId is out of range, deviceId=%d.",
@@ -152,7 +159,6 @@ class AscendIndexIVFRaBitQImpl : public AscendIndexIVFImpl
     {
         std::vector<float> codes;
         std::vector<ascend_idx_t> ids;
-        LocationDelta delta;
         bool published = false;
     };
     struct StagedListAdd

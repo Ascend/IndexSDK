@@ -1066,23 +1066,37 @@ void IndexIVFRaBitQ::runCenterLUTOp(AscendTensor<float, DIMS_2> &centroid, Ascen
     op->exec(*topkOpInput, *topkOpOutput, stream);
 }
 
-APP_ERROR IndexIVFRaBitQ::addVectors(int listId, size_t numVecs, const float *codes, const idx_t *indices,
-                                     size_t *baseSlotOut)
+IndexIVFRaBitQ::ListStorage &IndexIVFRaBitQ::listForWrite(GlobalSnapshot &next, const GlobalSnapshot &base, int listId)
 {
+    if (next.lists[listId] == base.lists[listId])
+    {
+        auto listCopy = std::make_shared<ListStorage>(*base.lists[listId]);
+        ListStorage &list = *listCopy;
+        next.lists[listId] = std::move(listCopy);
+        return list;
+    }
+    // Already cloned earlier in this batch, and next is unpublished, so no reader can see it yet.
+    return const_cast<ListStorage &>(*next.lists[listId]);
+}
+
+APP_ERROR IndexIVFRaBitQ::applyListAdd(GlobalSnapshot &next, const GlobalSnapshot &base, const ListAddRequest &req,
+                                       aclrtStream stream, size_t *baseSlotOut)
+{
+    const int listId = req.listId;
+    const size_t numVecs = req.numVecs;
     APPERR_RETURN_IF_NOT_FMT(listId >= 0 && listId < numLists, APP_ERR_INVALID_PARAM,
                              "the listId is %d, out of numLists(%d)", listId, numLists);
-    APPERR_RETURN_IF(numVecs == 0, APP_ERR_OK);
+    if (numVecs == 0)
+    {
+        if (baseSlotOut != nullptr)
+        {
+            *baseSlotOut = next.lists[listId]->listLen;
+        }
+        return APP_ERR_OK;
+    }
+    APPERR_RETURN_IF_NOT(req.codes != nullptr && req.indices != nullptr, APP_ERR_INVALID_PARAM);
 
-    std::shared_lock<std::shared_mutex> lock(indexLock);
-    std::lock_guard<std::mutex> writeLock(writerLock);
-    APPERR_RETURN_IF_NOT(activeSnapshot != nullptr, APP_ERR_INNER_ERROR);
-    auto memRet = checkRetiredMemory();
-    APPERR_RETURN_IF(memRet != APP_ERR_OK, memRet);
-
-    InvalidateCachedFilterPayload();
-    auto nextSnapshot = cloneSnapshot(*activeSnapshot);
-    auto listCopy = std::make_shared<ListStorage>(*nextSnapshot->lists[listId]);
-    auto &list = *listCopy;
+    ListStorage &list = listForWrite(next, base, listId);
     const size_t oldLen = list.listLen;
     APPERR_RETURN_IF_NOT_FMT(oldLen <= UINT32_MAX && numVecs <= UINT32_MAX - oldLen, APP_ERR_INVALID_PARAM,
                              "list slots exceed Location representability");
@@ -1105,8 +1119,6 @@ APP_ERROR IndexIVFRaBitQ::addVectors(int listId, size_t numVecs, const float *co
     }
 
     auto &mem = writerContext->memory;
-    auto stream = writerContext->computeStream;
-    StreamDrainGuard drainGuard(stream, writerContext->aicpuStream);
     ensureListCapacity(list, newLen, stream);
     AscendTensor<float, DIMS_2> rotatematrixDev(OrthogonalMatrixOnDevice->data(), {dims, dims});
     AscendTensor<float, DIMS_2> centroidDev(centroidsOnDevice->data() + listId * dims, {1, dims});
@@ -1125,7 +1137,7 @@ APP_ERROR IndexIVFRaBitQ::addVectors(int listId, size_t numVecs, const float *co
         const size_t count =
             std::min(numVecs - inputOffset, static_cast<size_t>(blockSize) - slot % static_cast<size_t>(blockSize));
         // 原始索引向量传到npu
-        auto ret = aclrtMemcpy(indexOriginVec.data(), count * dims * sizeof(float), codes + inputOffset * dims,
+        auto ret = aclrtMemcpy(indexOriginVec.data(), count * dims * sizeof(float), req.codes + inputOffset * dims,
                                count * dims * sizeof(float), ACL_MEMCPY_HOST_TO_DEVICE);
         APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "copy index to device failed %d", ret);
         vectorSize[0] = static_cast<int32_t>(count);
@@ -1146,7 +1158,7 @@ APP_ERROR IndexIVFRaBitQ::addVectors(int listId, size_t numVecs, const float *co
                                     indexesl2, indexesl1, stream);
         ret = synchronizeStream(stream);
         APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "synchronizeStream writer stream: %i\n", ret);
-        ret = aclrtMemcpy(list.ids.slot(slot), count * sizeof(idx_t), indices + inputOffset, count * sizeof(idx_t),
+        ret = aclrtMemcpy(list.ids.slot(slot), count * sizeof(idx_t), req.indices + inputOffset, count * sizeof(idx_t),
                           ACL_MEMCPY_HOST_TO_DEVICE);
         APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "copy ids to device failed %d", ret);
         inputOffset += count;
@@ -1156,12 +1168,7 @@ APP_ERROR IndexIVFRaBitQ::addVectors(int listId, size_t numVecs, const float *co
     list.indexL2.commitLength(newLen);
     list.ids.commitLength(newLen);
     list.listLen = newLen;
-    nextSnapshot->lists[listId] = std::move(listCopy);
-    nextSnapshot->total += numVecs;
-    nextSnapshot->maxStoredId = std::max(nextSnapshot->maxStoredId, MaxId(indices, numVecs));
-    publishSnapshot(std::move(nextSnapshot));
-    maxListLength = std::max(maxListLength, static_cast<int>(newLen));
-    maxListLength = utils::roundUp(maxListLength, CUBE_ALIGN);
+    next.maxStoredId = std::max(next.maxStoredId, MaxId(req.indices, numVecs));
     if (MemDebugEnabled() && listArena_ != nullptr)
     {
         static std::atomic<uint64_t> afterAddLogSeq{0};
@@ -1178,6 +1185,55 @@ APP_ERROR IndexIVFRaBitQ::addVectors(int listId, size_t numVecs, const float *co
         }
     }
     return APP_ERR_OK;
+}
+
+APP_ERROR IndexIVFRaBitQ::addVectorsBatch(const ListAddRequest *reqs, size_t count, size_t *baseSlotsOut)
+{
+    APPERR_RETURN_IF(count == 0, APP_ERR_OK);
+    APPERR_RETURN_IF_NOT(reqs != nullptr, APP_ERR_INVALID_PARAM);
+
+    std::shared_lock<std::shared_mutex> lock(indexLock);
+    std::lock_guard<std::mutex> writeLock(writerLock);
+    APPERR_RETURN_IF_NOT(activeSnapshot != nullptr, APP_ERR_INNER_ERROR);
+    auto memRet = checkRetiredMemory();
+    APPERR_RETURN_IF(memRet != APP_ERR_OK, memRet);
+
+    InvalidateCachedFilterPayload();
+    const GlobalSnapshot &base = *activeSnapshot;
+    auto nextSnapshot = cloneSnapshot(base);
+    auto stream = writerContext->computeStream;
+    StreamDrainGuard drainGuard(stream, writerContext->aicpuStream);
+
+    size_t totalAdded = 0;
+    size_t maxAddedListLen = 0;
+    for (size_t i = 0; i < count; ++i)
+    {
+        size_t baseSlot = 0;
+        // On failure nextSnapshot is discarded unpublished, so the lists it cloned are freed and the
+        // active snapshot is left exactly as it was.
+        auto ret = applyListAdd(*nextSnapshot, base, reqs[i], stream, &baseSlot);
+        APPERR_RETURN_IF(ret != APP_ERR_OK, ret);
+        if (baseSlotsOut != nullptr)
+        {
+            baseSlotsOut[i] = baseSlot;
+        }
+        totalAdded += reqs[i].numVecs;
+        maxAddedListLen = std::max(maxAddedListLen, nextSnapshot->lists[reqs[i].listId]->listLen);
+    }
+    // An all-empty batch would otherwise retire the active snapshot to publish an identical one.
+    APPERR_RETURN_IF(totalAdded == 0, APP_ERR_OK);
+
+    nextSnapshot->total += totalAdded;
+    publishSnapshot(std::move(nextSnapshot));
+    maxListLength = utils::roundUp(std::max(maxListLength, static_cast<int>(maxAddedListLen)), CUBE_ALIGN);
+    return APP_ERR_OK;
+}
+
+APP_ERROR IndexIVFRaBitQ::addVectors(int listId, size_t numVecs, const float *codes, const idx_t *indices,
+                                     size_t *baseSlotOut)
+{
+    ListAddRequest req{listId, numVecs, codes, indices};
+    return addVectorsBatch(&req, 1, baseSlotOut);
 }
 
 APP_ERROR IndexIVFRaBitQ::resetIndexRotateL2Op()
@@ -2574,23 +2630,24 @@ APP_ERROR IndexIVFRaBitQ::getCentroids(std::vector<float> &centroids) const
     return APP_ERR_OK;
 }
 
-APP_ERROR IndexIVFRaBitQ::addEncodedVectors(int listId, size_t numVecs, const uint8_t *encodedCodes,
-                                            const idx_t *indices, size_t *baseSlotOut)
+APP_ERROR IndexIVFRaBitQ::applyListAddEncoded(GlobalSnapshot &next, const GlobalSnapshot &base,
+                                              const ListEncodedAddRequest &req, aclrtStream stream, size_t *baseSlotOut)
 {
+    const int listId = req.listId;
+    const size_t numVecs = req.numVecs;
     APPERR_RETURN_IF_NOT_FMT(listId >= 0 && listId < numLists, APP_ERR_INVALID_PARAM,
                              "the listId is %d, out of numLists(%d)", listId, numLists);
-    APPERR_RETURN_IF(numVecs == 0, APP_ERR_OK);
+    if (numVecs == 0)
+    {
+        if (baseSlotOut != nullptr)
+        {
+            *baseSlotOut = next.lists[listId]->listLen;
+        }
+        return APP_ERR_OK;
+    }
+    APPERR_RETURN_IF_NOT(req.encodedCodes != nullptr && req.indices != nullptr, APP_ERR_INVALID_PARAM);
 
-    std::shared_lock<std::shared_mutex> lock(indexLock);
-    std::lock_guard<std::mutex> writeLock(writerLock);
-    APPERR_RETURN_IF_NOT(activeSnapshot != nullptr, APP_ERR_INNER_ERROR);
-    auto memRet = checkRetiredMemory();
-    APPERR_RETURN_IF(memRet != APP_ERR_OK, memRet);
-
-    InvalidateCachedFilterPayload();
-    auto nextSnapshot = cloneSnapshot(*activeSnapshot);
-    auto listCopy = std::make_shared<ListStorage>(*nextSnapshot->lists[listId]);
-    auto &list = *listCopy;
+    ListStorage &list = listForWrite(next, base, listId);
     const size_t oldLen = list.listLen;
     APPERR_RETURN_IF_NOT_FMT(oldLen <= UINT32_MAX && numVecs <= UINT32_MAX - oldLen, APP_ERR_INVALID_PARAM,
                              "list slots exceed Location representability");
@@ -2600,16 +2657,14 @@ APP_ERROR IndexIVFRaBitQ::addEncodedVectors(int listId, size_t numVecs, const ui
         *baseSlotOut = oldLen;
     }
 
-    auto stream = writerContext->computeStream;
-    StreamDrainGuard drainGuard(stream, writerContext->aicpuStream);
     ensureListCapacity(list, newLen, stream);
 
     size_t codePartBytes = getCodePartBytes();  // 压缩码部分字节数
     size_t factorBytes = sizeof(float);         // 每个因子字节数
 
     // 输入布局：[所有压缩码][所有 L2 因子][所有 L1 因子]
-    const uint8_t *allCodesPtr = encodedCodes;
-    const uint8_t *allL2Ptr = encodedCodes + numVecs * codePartBytes;
+    const uint8_t *allCodesPtr = req.encodedCodes;
+    const uint8_t *allL2Ptr = req.encodedCodes + numVecs * codePartBytes;
     const uint8_t *allL1Ptr = allL2Ptr + numVecs * factorBytes;
 
     size_t inputOffset = 0;
@@ -2636,7 +2691,7 @@ APP_ERROR IndexIVFRaBitQ::addEncodedVectors(int listId, size_t numVecs, const ui
         APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "copy L1 factors failed for list %d, ret=%d",
                                  listId, ret);
 
-        ret = aclrtMemcpy(list.ids.slot(slot), count * sizeof(idx_t), indices + inputOffset, count * sizeof(idx_t),
+        ret = aclrtMemcpy(list.ids.slot(slot), count * sizeof(idx_t), req.indices + inputOffset, count * sizeof(idx_t),
                           ACL_MEMCPY_HOST_TO_DEVICE);
         APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "copy ids failed for list %d, ret=%d", listId,
                                  ret);
@@ -2644,23 +2699,65 @@ APP_ERROR IndexIVFRaBitQ::addEncodedVectors(int listId, size_t numVecs, const ui
         inputOffset += count;
     }
 
-    auto ret = synchronizeStream(stream);
-    APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR,
-                             "synchronizeStream failed after addEncodedVectors, ret=%d", ret);
-
     list.codes.commitLength(newLen);
     list.indexL1.commitLength(newLen);
     list.indexL2.commitLength(newLen);
     list.ids.commitLength(newLen);
     list.listLen = newLen;
-    nextSnapshot->lists[listId] = std::move(listCopy);
-    nextSnapshot->total += numVecs;
-    nextSnapshot->maxStoredId = std::max(nextSnapshot->maxStoredId, MaxId(indices, numVecs));
-    publishSnapshot(std::move(nextSnapshot));
-    maxListLength = std::max(maxListLength, static_cast<int>(newLen));
-    maxListLength = utils::roundUp(maxListLength, CUBE_ALIGN);
-
+    next.maxStoredId = std::max(next.maxStoredId, MaxId(req.indices, numVecs));
     return APP_ERR_OK;
+}
+
+APP_ERROR IndexIVFRaBitQ::addEncodedVectorsBatch(const ListEncodedAddRequest *reqs, size_t count, size_t *baseSlotsOut)
+{
+    APPERR_RETURN_IF(count == 0, APP_ERR_OK);
+    APPERR_RETURN_IF_NOT(reqs != nullptr, APP_ERR_INVALID_PARAM);
+
+    std::shared_lock<std::shared_mutex> lock(indexLock);
+    std::lock_guard<std::mutex> writeLock(writerLock);
+    APPERR_RETURN_IF_NOT(activeSnapshot != nullptr, APP_ERR_INNER_ERROR);
+    auto memRet = checkRetiredMemory();
+    APPERR_RETURN_IF(memRet != APP_ERR_OK, memRet);
+
+    InvalidateCachedFilterPayload();
+    const GlobalSnapshot &base = *activeSnapshot;
+    auto nextSnapshot = cloneSnapshot(base);
+    auto stream = writerContext->computeStream;
+    StreamDrainGuard drainGuard(stream, writerContext->aicpuStream);
+
+    size_t totalAdded = 0;
+    size_t maxAddedListLen = 0;
+    for (size_t i = 0; i < count; ++i)
+    {
+        size_t baseSlot = 0;
+        auto ret = applyListAddEncoded(*nextSnapshot, base, reqs[i], stream, &baseSlot);
+        APPERR_RETURN_IF(ret != APP_ERR_OK, ret);
+        if (baseSlotsOut != nullptr)
+        {
+            baseSlotsOut[i] = baseSlot;
+        }
+        totalAdded += reqs[i].numVecs;
+        maxAddedListLen = std::max(maxAddedListLen, nextSnapshot->lists[reqs[i].listId]->listLen);
+    }
+    APPERR_RETURN_IF(totalAdded == 0, APP_ERR_OK);
+
+    // One sync for the whole batch: the copies above are queued on the one writer stream, and nothing
+    // is published until they have all landed.
+    auto ret = synchronizeStream(stream);
+    APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR,
+                             "synchronizeStream failed after addEncodedVectors, ret=%d", ret);
+
+    nextSnapshot->total += totalAdded;
+    publishSnapshot(std::move(nextSnapshot));
+    maxListLength = utils::roundUp(std::max(maxListLength, static_cast<int>(maxAddedListLen)), CUBE_ALIGN);
+    return APP_ERR_OK;
+}
+
+APP_ERROR IndexIVFRaBitQ::addEncodedVectors(int listId, size_t numVecs, const uint8_t *encodedCodes,
+                                            const idx_t *indices, size_t *baseSlotOut)
+{
+    ListEncodedAddRequest req{listId, numVecs, encodedCodes, indices};
+    return addEncodedVectorsBatch(&req, 1, baseSlotOut);
 }
 
 template <typename T, typename C>

@@ -27,6 +27,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <deque>
 #include <exception>
 #include <limits>
 #include <mutex>
@@ -95,21 +96,26 @@ void PrefillAddedLocations(LocationDelta& delta, const std::vector<Id>& ids, siz
     FAISS_THROW_IF_NOT_MSG(
         device < Location::kMaxDeviceCount && list >= 0 && static_cast<size_t>(list) < Location::kMaxListCount,
         "Location fields exceed representability");
-    delta.addedIds.resize(ids.size());
+    const size_t offset = delta.addedIds.size();
+    delta.addedIds.resize(offset + ids.size());
     for (size_t i = 0; i < ids.size(); ++i)
     {
-        delta.addedIds[i] = {static_cast<int64_t>(ids[i]),
-                             Location(static_cast<uint8_t>(device), static_cast<uint16_t>(list), 0)};
+        delta.addedIds[offset + i] = {static_cast<int64_t>(ids[i]),
+                                      Location(static_cast<uint8_t>(device), static_cast<uint16_t>(list), 0)};
     }
 }
 
-void PatchAddedSlots(LocationDelta& delta, size_t baseSlot) noexcept
+void PatchAddedSlots(LocationDelta& delta, size_t baseSlot, size_t offset = 0,
+                     size_t count = std::numeric_limits<size_t>::max()) noexcept
 {
+    if (count == std::numeric_limits<size_t>::max()) count = delta.addedIds.size() - offset;
     // The daemon enforces this bound before publication for both add paths.
-    if (baseSlot > UINT32_MAX || delta.addedIds.size() > UINT32_MAX - baseSlot) std::terminate();
-    for (size_t i = 0; i < delta.addedIds.size(); ++i)
+    if (offset > delta.addedIds.size() || count > delta.addedIds.size() - offset || baseSlot > UINT32_MAX ||
+        count > UINT32_MAX - baseSlot)
+        std::terminate();
+    for (size_t i = 0; i < count; ++i)
     {
-        auto& loc = delta.addedIds[i].second;
+        auto& loc = delta.addedIds[offset + i].second;
         loc.assign(loc.deviceIndex(), loc.listId(), static_cast<uint32_t>(baseSlot + i));
     }
 }
@@ -471,9 +477,16 @@ void AscendIndexIVFRaBitQImpl::copyVectorToDevice(int n, AddStaging& staging)
 {
     const size_t deviceCnt = indexConfig.deviceList.size();
     const bool memDebug = ::ascend::MemDebugEnabled();
-    const size_t every = memDebug ? ::ascend::MemDebugEvery() : 0;
 
-    // Allocate location blocks before any list publication.
+    // Prepare every device's requests, output slots and deltas before the first publication.
+    struct DeviceBatch
+    {
+        std::vector<::ascend::IndexIVFRaBitQ::ListAddRequest> reqs;
+        std::vector<StagedDeviceAdd*> participants;
+        std::vector<size_t> baseSlots;
+        LocationDelta delta;
+    };
+    std::vector<DeviceBatch> batches(deviceCnt);
     std::vector<int64_t> pendingIds;
     std::vector<size_t> pendingCounts(deviceCnt, 0);
     pendingIds.reserve(static_cast<size_t>(n));
@@ -483,7 +496,6 @@ void AscendIndexIVFRaBitQImpl::copyVectorToDevice(int n, AddStaging& staging)
         for (size_t d = 0; d < deviceCnt; ++d)
         {
             auto& device = centroid.second.devices[d];
-            PrefillAddedLocations(device.delta, device.ids, d, centroid.first);
             const int occupancy = centroid.second.occupancy[d];
             FAISS_THROW_IF_NOT_MSG(occupancy >= 0 && device.ids.size() <= static_cast<size_t>(occupancy),
                                    "Invalid staged list occupancy");
@@ -491,6 +503,13 @@ void AscendIndexIVFRaBitQImpl::copyVectorToDevice(int n, AddStaging& staging)
             const size_t oldLen = static_cast<size_t>(occupancy) - device.ids.size();
             FAISS_THROW_IF_NOT_MSG(oldLen <= UINT32_MAX && device.ids.size() <= UINT32_MAX - oldLen,
                                    "list slots exceed Location representability");
+            auto& batch = batches[d];
+            PrefillAddedLocations(batch.delta, device.ids, d, centroid.first);
+            if (!device.ids.empty())
+            {
+                batch.reqs.push_back({centroid.first, device.ids.size(), device.codes.data(), device.ids.data()});
+                batch.participants.push_back(&device);
+            }
             for (ascend_idx_t id : device.ids)
             {
                 FAISS_THROW_IF_NOT_MSG(static_cast<int64_t>(id) >= 0, "id must be nonnegative");
@@ -499,6 +518,10 @@ void AscendIndexIVFRaBitQImpl::copyVectorToDevice(int n, AddStaging& staging)
                 ++pendingCounts[d];
             }
         }
+    }
+    for (auto& batch : batches)
+    {
+        batch.baseSlots.resize(batch.reqs.size());
     }
     const auto touchedKeys = LocationTable::collectTouchedBlockKeys(pendingIds);
     LocationCleanupGuard cleanup(*locationTable, locationMutex, touchedKeys);
@@ -509,10 +532,7 @@ void AscendIndexIVFRaBitQImpl::copyVectorToDevice(int n, AddStaging& staging)
             FAISS_THROW_IF_NOT_FMT(!locationTable->contains(id), "id %ld already exists", id);
         }
         locationTable->reserveForIds(pendingIds);
-        for (const auto& centroid : staging)
-        {
-            for (const auto& device : centroid.second.devices) locationTable->validateDelta(device.delta);
-        }
+        for (const auto& batch : batches) locationTable->validateDelta(batch.delta);
     }
 
     if (memDebug)
@@ -542,47 +562,36 @@ void AscendIndexIVFRaBitQImpl::copyVectorToDevice(int n, AddStaging& staging)
             ::ascend::LogHbm("copyVectorToDevice_device_begin", deviceId);
         }
 
-        for (auto& centroid : staging)
+        auto& batch = batches[idx];
+        if (batch.reqs.empty())
         {
-            const int listId = centroid.first;
-            auto& device = centroid.second.devices[idx];
-            const int num = static_cast<int>(device.ids.size());
-            if (num == 0)
-            {
-                continue;
-            }
-            IndexParam<float, float, ascend_idx_t> param(deviceId, num, 0, 0);
-            param.listId = listId;
-            param.query = device.codes.data();
-            param.label = device.ids.data();
-            auto& delta = device.delta;
-            {
-                std::lock_guard<std::mutex> lock(locationMutex);
-                locationTable->validateDelta(delta);
-            }
-            size_t baseSlot = 0;
-            indexIVFRaBitQAdd(param, &baseSlot);
-            device.published = true;
-            {
-                std::lock_guard<std::mutex> lock(locationMutex);
-                PatchAddedSlots(delta, baseSlot);
-                locationTable->applyLocationDeltaNoFail(delta);
-                deviceAddNumMap[listId][idx] = centroid.second.occupancy[idx];
-            }
-
+            return;
+        }
+        indexIVFRaBitQAddBatch(deviceId, batch.reqs, batch.baseSlots);
+        // The daemon published the whole device batch. Mark every participant before reconciliation.
+        for (auto* participant : batch.participants)
+        {
+            participant->published = true;
+        }
+        size_t offset = 0;
+        for (size_t r = 0; r < batch.reqs.size(); ++r)
+        {
+            const auto& req = batch.reqs[r];
+            PatchAddedSlots(batch.delta, batch.baseSlots[r], offset, req.numVecs);
+            offset += req.numVecs;
             if (memDebug)
             {
                 ++listsDone;
-                vecsUploaded += static_cast<size_t>(num);
-                bytesEst += static_cast<size_t>(num) * perVecBytes;
-                if (every > 0 && (listsDone % every == 0))
-                {
-                    ::ascend::MemDebugPrintf(
-                        "[MemDebug] upload device=%d listId=%d num=%d listsDone=%zu "
-                        "vecsUploaded=%zu bytesEst=%zu\n",
-                        deviceId, listId, num, listsDone, vecsUploaded, bytesEst);
-                    ::ascend::LogHbm("copyVectorToDevice_progress", deviceId);
-                }
+                vecsUploaded += req.numVecs;
+                bytesEst += req.numVecs * perVecBytes;
+            }
+        }
+        {
+            std::lock_guard<std::mutex> lock(locationMutex);
+            locationTable->applyLocationDeltaNoFail(batch.delta);
+            for (const auto& req : batch.reqs)
+            {
+                deviceAddNumMap[req.listId][idx] = staging.at(req.listId).occupancy[idx];
             }
         }
 
@@ -622,7 +631,7 @@ void AscendIndexIVFRaBitQImpl::copyVectorToDevice(int n, AddStaging& staging)
     }
     if (failure)
     {
-        std::rethrow_exception(failure);  // Successful lists stay published; no global rollback.
+        std::rethrow_exception(failure);  // Successful devices stay published; no global rollback.
     }
 
     if (memDebug)
@@ -759,7 +768,7 @@ void AscendIndexIVFRaBitQImpl::addPaged(int n, const float* x, const idx_t* ids)
     {
         if (keepRefineSources && intf_->ntotal != previousTotal)
         {
-            // Per-list publication need not be an ID prefix. Never expose partial originals as ready.
+            // Per-device publication need not be an ID prefix. Never expose partial originals as ready.
             copiedSources_ = true;
             refineSourcesReady_ = false;
         }
@@ -774,15 +783,34 @@ void AscendIndexIVFRaBitQImpl::addPaged(int n, const float* x, const idx_t* ids)
     APP_LOG_INFO("AscendIndexIVFRaBitQImpl addPaged operation finished.\n");
 }
 
-void AscendIndexIVFRaBitQImpl::indexIVFRaBitQAdd(IndexParam<float, float, ascend_idx_t>& param, size_t* baseSlotOut)
+void AscendIndexIVFRaBitQImpl::indexIVFRaBitQAddBatch(int deviceId,
+                                                      const std::vector<::ascend::IndexIVFRaBitQ::ListAddRequest>& reqs,
+                                                      std::vector<size_t>& baseSlots)
 {
-    auto pIndex = getActualIndex(param.deviceId);
-    using namespace ::ascend;
-    const float* codes = param.query;
-    const ascend_idx_t* ids = param.label;
-    auto ret =
-        pIndex->addVectors(param.listId, param.n, codes, static_cast<const ::ascend::Index::idx_t*>(ids), baseSlotOut);
-    FAISS_THROW_IF_NOT_FMT(ret == APP_ERR_OK, "failed to add to ivf rabitq, ret: %d", ret);
+    if (reqs.empty())
+    {
+        return;
+    }
+    auto pIndex = getActualIndex(deviceId);
+    FAISS_THROW_IF_NOT_MSG(baseSlots.size() == reqs.size(), "batch output slots must be preallocated");
+    auto ret = pIndex->addVectorsBatch(reqs.data(), reqs.size(), baseSlots.data());
+    FAISS_THROW_IF_NOT_FMT(ret == ::ascend::APP_ERR_OK, "failed to batch add to ivf rabitq, deviceId %d, ret: %d",
+                           deviceId, ret);
+}
+
+void AscendIndexIVFRaBitQImpl::indexIVFRaBitQAddEncodedBatch(
+    int deviceId, const std::vector<::ascend::IndexIVFRaBitQ::ListEncodedAddRequest>& reqs,
+    std::vector<size_t>& baseSlots)
+{
+    if (reqs.empty())
+    {
+        return;
+    }
+    auto pIndex = getActualIndex(deviceId);
+    FAISS_THROW_IF_NOT_MSG(baseSlots.size() == reqs.size(), "batch output slots must be preallocated");
+    auto ret = pIndex->addEncodedVectorsBatch(reqs.data(), reqs.size(), baseSlots.data());
+    FAISS_THROW_IF_NOT_FMT(ret == ::ascend::APP_ERR_OK,
+                           "failed to batch add encoded to ivf rabitq, deviceId %d, ret: %d", deviceId, ret);
 }
 
 std::shared_ptr<::ascend::Index> AscendIndexIVFRaBitQImpl::createIndex(int deviceId)
@@ -2030,6 +2058,16 @@ void AscendIndexIVFRaBitQImpl::copyFrom(const faiss::IndexIVFRaBitQ* index)
     size_t deviceCnt = indexConfig.deviceList.size();
     size_t codeSize = index->code_size;
 
+    // Accumulate every list's encoded data per device, then publish one snapshot per device instead of
+    // one per (list, device). The deque is what makes the requests safe to hold: push_back never
+    // invalidates the buffers already in it. Costs one extra host copy of the packed data for the
+    // duration of copyFrom.
+    std::vector<std::deque<std::vector<uint8_t>>> perDeviceCodeBufs(deviceCnt);
+    std::vector<std::deque<std::vector<faiss::idx_t>>> perDeviceIdBufs(deviceCnt);
+    std::vector<std::vector<::ascend::IndexIVFRaBitQ::ListEncodedAddRequest>> perDeviceReqs(deviceCnt);
+    std::vector<LocationDelta> perDeviceDeltas(deviceCnt);
+    std::vector<std::vector<size_t>> perDeviceBaseSlots(deviceCnt);
+
     for (int listId = 0; listId < nlist; ++listId)
     {
         size_t listLen = index->invlists->list_size(listId);
@@ -2103,45 +2141,66 @@ void AscendIndexIVFRaBitQImpl::copyFrom(const faiss::IndexIVFRaBitQ* index)
             }
         }
 
-        std::vector<LocationDelta> perDeviceDeltas(deviceCnt);
-        {
-            std::lock_guard<std::mutex> lock(locationMutex);
-            for (size_t devIdx = 0; devIdx < deviceCnt; ++devIdx)
-            {
-                PrefillAddedLocations(perDeviceDeltas[devIdx], perDeviceIds[devIdx], devIdx, listId);
-                locationTable->validateDelta(perDeviceDeltas[devIdx]);
-            }
-        }
         for (size_t devIdx = 0; devIdx < deviceCnt; ++devIdx)
         {
             if (perDeviceCodes[devIdx].empty()) continue;
 
-            int deviceId = indexConfig.deviceList[devIdx];
-            auto pIndex = getActualIndex(deviceId);
-            size_t numVecs = perDeviceIds[devIdx].size();
-            auto& delta = perDeviceDeltas[devIdx];
-            // All devices reset successfully before this loop; each list/device is imported once.
-            FAISS_THROW_IF_NOT_MSG(numVecs <= UINT32_MAX, "list slots exceed Location representability");
-
-            size_t baseSlot = 0;
-            auto ret =
-                pIndex->addEncodedVectors(listId, numVecs, perDeviceCodes[devIdx].data(),
-                                          reinterpret_cast<const uint64_t*>(perDeviceIds[devIdx].data()), &baseSlot);
-
-            FAISS_THROW_IF_NOT_FMT(ret == ::ascend::APP_ERR_OK,
-                                   "Failed to add encoded vectors to device %d, list %d, ret=%d", deviceId, listId,
-                                   ret);
-            {
-                std::lock_guard<std::mutex> lock(locationMutex);
-                PatchAddedSlots(delta, baseSlot);
-                locationTable->applyLocationDeltaNoFail(delta);
-                deviceAddNumMap[listId][devIdx] = occupancy[devIdx];
-            }
-            this->intf_->ntotal += static_cast<idx_t>(numVecs);
-            refineSourcesReady_ = false;
-            InvalidateFilterCache();
+            // Deques keep every request's packed payload and IDs stable until all devices finish.
+            perDeviceCodeBufs[devIdx].push_back(std::move(perDeviceCodes[devIdx]));
+            perDeviceIdBufs[devIdx].push_back(std::move(perDeviceIds[devIdx]));
+            const auto& codeBuf = perDeviceCodeBufs[devIdx].back();
+            const auto& idBuf = perDeviceIdBufs[devIdx].back();
+            perDeviceReqs[devIdx].push_back(
+                {listId, idBuf.size(), codeBuf.data(), reinterpret_cast<const ::ascend::Index::idx_t*>(idBuf.data())});
+            // All devices reset successfully; each list/device is imported once from a zero baseline.
+            FAISS_THROW_IF_NOT_MSG(idBuf.size() <= UINT32_MAX, "list slots exceed Location representability");
+            PrefillAddedLocations(perDeviceDeltas[devIdx], idBuf, devIdx, listId);
         }
     }
+    // Finish every allocation before any encoded publication. Location blocks were reserved before reset.
+    for (size_t devIdx = 0; devIdx < deviceCnt; ++devIdx)
+    {
+        perDeviceBaseSlots[devIdx].resize(perDeviceReqs[devIdx].size());
+    }
+    {
+        std::lock_guard<std::mutex> lock(locationMutex);
+        for (const auto& delta : perDeviceDeltas) locationTable->validateDelta(delta);
+    }
+    std::exception_ptr publicationFailure;
+    for (size_t devIdx = 0; devIdx < deviceCnt; ++devIdx)
+    {
+        const auto& reqs = perDeviceReqs[devIdx];
+        if (reqs.empty()) continue;
+        auto& baseSlots = perDeviceBaseSlots[devIdx];
+        try
+        {
+            indexIVFRaBitQAddEncodedBatch(indexConfig.deviceList[devIdx], reqs, baseSlots);
+        }
+        catch (...)
+        {
+            if (!publicationFailure) publicationFailure = std::current_exception();
+            continue;  // Other devices can still commit; never roll back a successful device.
+        }
+        auto& delta = perDeviceDeltas[devIdx];
+        size_t offset = 0;
+        for (size_t r = 0; r < reqs.size(); ++r)
+        {
+            PatchAddedSlots(delta, baseSlots[r], offset, reqs[r].numVecs);
+            offset += reqs[r].numVecs;
+        }
+        {
+            std::lock_guard<std::mutex> lock(locationMutex);
+            locationTable->applyLocationDeltaNoFail(delta);
+            for (size_t r = 0; r < reqs.size(); ++r)
+            {
+                deviceAddNumMap[reqs[r].listId][devIdx] = static_cast<int>(baseSlots[r] + reqs[r].numVecs);
+            }
+        }
+        intf_->ntotal += static_cast<idx_t>(delta.addedIds.size());
+        refineSourcesReady_ = false;
+        InvalidateFilterCache();
+    }
+    if (publicationFailure) std::rethrow_exception(publicationFailure);
 
     FAISS_THROW_IF_NOT_MSG(this->intf_->ntotal == index->ntotal, "Imported vector count does not match ntotal");
     this->intf_->is_trained = index->is_trained;
