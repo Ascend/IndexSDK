@@ -25,7 +25,7 @@ Adds support for the IVFPQ index on Atlas A3 inference products and Atlas 950PR 
 </tr>
 <tr><th class="firstcol" valign="top" width="25%"><p>Maintenance Period</p>
 </th>
-<td class="cellrowborder" valign="top" width="75%"><p>For details, see the <a href="https://atomgit.com/Ascend/IndexSDK/blob/master/README.md#%E7%89%88%E6%9C%AC%E7%BB%B4%E6%8A%A4%E7%AD%96%E7%95%A5">Maintenance Policy</a>.</p>
+<td class="cellrowborder" valign="top" width="75%"><p>For details, see the <a href="../../README_en.md#-version-maintenance-strategy">Maintenance Policy</a>.</p>
 </td>
 </tr>
 </tbody>
