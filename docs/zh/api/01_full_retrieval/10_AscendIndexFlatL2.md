@@ -6,6 +6,8 @@ AscendIndexFlatL2是存储FP16浮点数类型并使用L2距离的特征暴力检
 
 支持多线程并发调用，需要设置“MX\_INDEX\_MULTITHREAD”环境变量为1，即export MX\_INDEX\_MULTITHREAD=1，设置为其他值或者不设置，则表示不开启多线程功能。当前的特征检索内部会使用OMP做性能加速，OMP不支持与其他多线程机制混用。反复创建新线程使用OMP会导致内存持续累加，因此建议使用固定的线程来运行检索任务。
 
+继承`AscendIndexFlat`的[search_with_selector接口](./08_AscendIndexFlat.md#search-with-selector)，支持Bitmap过滤；单设备及多设备副本约束见[AscendIndexFlatConfig](./09_AscendIndexFlatConfig.md#flat-shard-mode)。
+
 > [!NOTE]
 >AscendIndexFlatL2算法支持在线算子转换，如果环境变量**MX\_INDEX\_USE\_ONLINEOP**设置为1（设置命令：export MX\_INDEX\_USE\_ONLINEOP=1），则会在线转换算子并调用，使用在线算子需要用户在应用程序的最后显式调用 \(void\)aclFinalize\(\) （需要包含头文件：\#include "acl/acl.h"）。
 
