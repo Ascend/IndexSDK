@@ -16,16 +16,15 @@
  * -------------------------------------------------------------------------
  */
 
-
 #ifndef ASCEND_ASCENDINDEX_IMPL_INCLUDED
 #define ASCEND_ASCENDINDEX_IMPL_INCLUDED
 
-#include <vector>
-#include <unordered_map>
+#include <faiss/Index.h>
+
 #include <memory>
 #include <shared_mutex>
-
-#include <faiss/Index.h>
+#include <unordered_map>
+#include <vector>
 
 #include "ascend/AscendIndex.h"
 #include "ascend/IndexImplBase.h"
@@ -33,11 +32,14 @@
 #include "common/IndexParam.h"
 #include "common/threadpool/AscendThreadPool.h"
 
-namespace faiss {
-namespace ascend {
+namespace faiss
+{
+namespace ascend
+{
 
-class AscendIndexImpl : public IndexImplBase {
-public:
+class AscendIndexImpl : public IndexImplBase
+{
+   public:
     AscendIndexImpl(int dims, faiss::MetricType metric, AscendIndexConfig config, AscendIndex *intf);
 
     AscendIndexImpl(int dims, faiss::MetricType metric, AscendIndexConfig config, AscendIndex *intf, bool enablePool);
@@ -69,10 +71,12 @@ public:
         CheckFilterTime(n, ids);
 
         std::vector<idx_t> tmpIds;
-        if (ids == nullptr && addImplRequiresIDs()) {
+        if (ids == nullptr && addImplRequiresIDs())
+        {
             tmpIds = std::vector<idx_t>(n);
 
-            for (idx_t i = 0; i < n; ++i) {
+            for (idx_t i = 0; i < n; ++i)
+            {
                 tmpIds[i] = this->intf_->ntotal + i;
             }
 
@@ -105,17 +109,17 @@ public:
 
     // AscendIndex object is NON-copyable
     AscendIndexImpl(const AscendIndexImpl &) = delete;
-    AscendIndexImpl &operator = (const AscendIndexImpl &) = delete;
+    AscendIndexImpl &operator=(const AscendIndexImpl &) = delete;
 
     std::shared_ptr<std::shared_lock<std::shared_mutex>> getReadLock() const;
 
     const std::shared_ptr<AscendThreadPool> GetPool() const override;
     faiss::idx_t GetIdxFromDeviceMap(int deviceId, int idxId) const override;
-    void CheckIndexParams(IndexImplBase &index, bool checkFilterable = false) const override;
+    void CheckIndexParams(IndexImplBase &index, bool checkFilterable) const override;
     faiss::ascendSearch::AscendIndexIVFSPSQ *GetIVFSPSQPtr() const override;
-    void* GetActualIndex(int deviceId, bool isNeedSetDevice) const override;
+    void *GetActualIndex(int deviceId, bool isNeedSetDevice) const override;
 
-protected:
+   protected:
     void initIndexes();
     void clearIndexes();
 
@@ -132,7 +136,7 @@ protected:
     // addImpl to actually perform the add for the current page
     virtual void addPaged(int n, const float *x, const idx_t *ids);
 
-    virtual void addPaged(int n, const uint16_t* x, const idx_t* ids);
+    virtual void addPaged(int n, const uint16_t *x, const idx_t *ids);
 
     // Overridden to actually perform the add
     virtual void addImpl(int n, const float *x, const idx_t *ids) = 0;
@@ -162,6 +166,8 @@ protected:
     // Overridden to actually perform the remove_ids
     virtual size_t removeImpl(const IDSelector &sel);
 
+    virtual size_t getLogicalRemoveCount(size_t removed) const { return removed; }
+
     void removeSingle(std::vector<std::vector<ascend_idx_t>> &removes, int deviceNum, ascend_idx_t idx);
 
     void removeIdx(std::vector<std::vector<ascend_idx_t>> &removeMaps);
@@ -186,25 +192,26 @@ protected:
 
     // merge topk results from all devices used in search process
     virtual void mergeSearchResult(size_t devices, std::vector<std::vector<float>> &dist,
-                                   std::vector<std::vector<ascend_idx_t>> &label, idx_t n, idx_t k,
-                                   float *distances, idx_t *labels) const;
+                                   std::vector<std::vector<ascend_idx_t>> &label, idx_t n, idx_t k, float *distances,
+                                   idx_t *labels) const;
 
     std::function<bool(float, float)> GetCompFunc() const;
 
     // post process after search results got from all devices
     virtual void searchPostProcess(size_t devices, std::vector<std::vector<float>> &dist,
-                                   std::vector<std::vector<ascend_idx_t>> &label, idx_t n,
-                                   idx_t k, float *distances, idx_t *labels) const;
+                                   std::vector<std::vector<ascend_idx_t>> &label, idx_t n, idx_t k, float *distances,
+                                   idx_t *labels) const;
 
     virtual void checkParameters(int dims, faiss::MetricType metric, AscendIndexConfig config, AscendIndex *intf) const;
 
     void indexSearch(IndexParam<uint16_t, uint16_t, ascend_idx_t> &param) const;
 
-    inline ::ascend::Index* getActualIndex(int deviceId, bool isNeedSetDevice = true) const
+    inline ::ascend::Index *getActualIndex(int deviceId, bool isNeedSetDevice = true) const
     {
-        FAISS_THROW_IF_NOT_FMT(indexes.find(deviceId) != indexes.end(),
-                               "deviceId is out of range, deviceId=%d.", deviceId);
-        if (isNeedSetDevice) {
+        FAISS_THROW_IF_NOT_FMT(indexes.find(deviceId) != indexes.end(), "deviceId is out of range, deviceId=%d.",
+                               deviceId);
+        if (isNeedSetDevice)
+        {
             FAISS_THROW_IF_NOT(aclrtSetDevice(deviceId) == ACL_ERROR_NONE);
         }
         std::shared_ptr<::ascend::Index> index = indexes.at(deviceId);
@@ -213,8 +220,7 @@ protected:
     }
 
     template <typename T>
-    inline void check(int64_t n, const T *x, int64_t k, const float *distances,
-                      const idx_t *labels) const
+    inline void check(int64_t n, const T *x, int64_t k, const float *distances, const idx_t *labels) const
     {
         FAISS_THROW_IF_NOT_FMT((n > 0) && (n < MAX_N), "n must be > 0 and < %ld", MAX_N);
         FAISS_THROW_IF_NOT_FMT((k > 0) && (k <= MAX_K), "k must be > 0 and <= %ld", MAX_K);
@@ -231,14 +237,14 @@ protected:
         APP_LOG_INFO("AscendIndex start to searchProcess: searchNum=%ld, topK=%ld.\n", n, k);
         check(n, x, k, distances, labels);
         FAISS_THROW_IF_NOT_MSG(indexes.size() > 0, "indexes.size must be >0");
-    
+
         searchPaged(n, x, k, distances, labels);
         APP_LOG_INFO("AscendIndex searchProcess operation finished.\n");
     }
 
     virtual bool isSupportFp16Search() const { return false; }
 
-protected:
+   protected:
     AscendIndex *intf_;
 
     AscendIndexConfig indexConfig;
@@ -254,7 +260,7 @@ protected:
 
     mutable std::shared_mutex mtx;
 };
-} // namespace ascend
-} // namespace faiss
+}  // namespace ascend
+}  // namespace faiss
 
 #endif

@@ -16,37 +16,51 @@
  * -------------------------------------------------------------------------
  */
 
-
 #ifndef ASCEND_INDEX_FLAT_INCLUDED
 #define ASCEND_INDEX_FLAT_INCLUDED
 
 #include <faiss/MetaIndexes.h>
+#include <faiss/impl/IDSelector.h>
+
 #include "ascend/AscendIndex.h"
 
-namespace faiss {
+namespace faiss
+{
 struct IndexFlat;
 struct IndexFlatL2;
-} // faiss
+}  // namespace faiss
 
-namespace faiss {
-namespace ascend {
-const int64_t FLAT_DEFAULT_MEM = 0x8000000; // 0x8000000 mean 128M(resource mem pool's size)
+namespace faiss
+{
+namespace ascend
+{
+const int64_t FLAT_DEFAULT_MEM = 0x8000000;  // 0x8000000 mean 128M(resource mem pool's size)
 
-struct AscendIndexFlatConfig : public AscendIndexConfig {
+struct AscendIndexFlatConfig : public AscendIndexConfig
+{
     inline AscendIndexFlatConfig() {}
 
-    inline AscendIndexFlatConfig(std::initializer_list<int> devices, int64_t resourceSize = FLAT_DEFAULT_MEM)
-        : AscendIndexConfig(devices, resourceSize)
-    {}
+    inline AscendIndexFlatConfig(std::initializer_list<int> devices, int64_t resourceSize = FLAT_DEFAULT_MEM,
+                                 bool isShard = true)
+        : AscendIndexConfig(devices, resourceSize), shard(isShard)
+    {
+    }
 
-    inline AscendIndexFlatConfig(std::vector<int> devices, int64_t resourceSize = FLAT_DEFAULT_MEM)
-        : AscendIndexConfig(devices, resourceSize)
-    {}
+    inline AscendIndexFlatConfig(std::vector<int> devices, int64_t resourceSize = FLAT_DEFAULT_MEM, bool isShard = true)
+        : AscendIndexConfig(devices, resourceSize), shard(isShard)
+    {
+    }
+
+    // true: split the base across devices (existing behavior);
+    // false: keep the full base on every device and dispatch each search to one.
+    // Multi-device replica mode requires MX_INDEX_MULTITHREAD=1 before process start.
+    bool shard = true;
 };
 
 class AscendIndexFlatImpl;
-class AscendIndexFlat : public AscendIndex {
-public:
+class AscendIndexFlat : public AscendIndex
+{
+   public:
     // Construct from a pre-existing faiss::IndexFlat instance
     AscendIndexFlat(const faiss::IndexFlat *index, AscendIndexFlatConfig config = AscendIndexFlatConfig());
     AscendIndexFlat(const faiss::IndexIDMap *index, AscendIndexFlatConfig config = AscendIndexFlatConfig());
@@ -70,30 +84,38 @@ public:
     size_t getBaseSize(int deviceId) const;
 
     // Returns the vectors of we contain
-    void getBase(int deviceId, char* xb) const;
+    void getBase(int deviceId, char *xb) const;
 
     // Returns the index of vector we contain
     void getIdxMap(int deviceId, std::vector<idx_t> &idxMap) const;
 
-    void search_with_masks(idx_t n, const float *x, idx_t k,
-        float *distances, idx_t *labels, const void *mask) const;
+    void search_with_masks(idx_t n, const float *x, idx_t k, float *distances, idx_t *labels, const void *mask) const;
 
-    void search_with_masks(idx_t n, const uint16_t *x, idx_t k,
-        float *distances, idx_t *labels, const void *mask) const;
+    void search_with_masks(idx_t n, const uint16_t *x, idx_t k, float *distances, idx_t *labels,
+                           const void *mask) const;
+
+    // Search with one IDSelector shared by all queries in the batch.
+    // Only selected IDs may appear in the results. Multi-device search requires shard=false.
+    void search_with_selector(idx_t n, const float *x, idx_t k, float *distances, idx_t *labels,
+                              const faiss::IDSelector *sel) const;
+
+    void search_with_selector(idx_t n, const uint16_t *x, idx_t k, float *distances, idx_t *labels,
+                              const faiss::IDSelector *sel) const;
 
     // AscendIndex object is NON-copyable
-    AscendIndexFlat(const AscendIndexFlat&) = delete;
-    AscendIndexFlat& operator=(const AscendIndexFlat&) = delete;
+    AscendIndexFlat(const AscendIndexFlat &) = delete;
+    AscendIndexFlat &operator=(const AscendIndexFlat &) = delete;
 
-protected:
+   protected:
     std::shared_ptr<AscendIndexFlatImpl> impl_;
 };
 
 // Wrapper around the Ascend implementation that looks like
 // faiss::IndexFlatL2; copies over centroid data from a given
 // faiss::IndexFlat
-class AscendIndexFlatL2 : public AscendIndexFlat {
-public:
+class AscendIndexFlatL2 : public AscendIndexFlat
+{
+   public:
     // Construct from a pre-existing faiss::IndexFlatL2 instance, copying
     // data over to the given Ascend
     AscendIndexFlatL2(faiss::IndexFlatL2 *index, AscendIndexFlatConfig config = AscendIndexFlatConfig());
@@ -113,9 +135,9 @@ public:
     void copyTo(faiss::IndexFlat *index);
 
     // AscendIndex object is NON-copyable
-    AscendIndexFlatL2(const AscendIndexFlatL2&) = delete;
-    AscendIndexFlatL2& operator=(const AscendIndexFlatL2&) = delete;
+    AscendIndexFlatL2(const AscendIndexFlatL2 &) = delete;
+    AscendIndexFlatL2 &operator=(const AscendIndexFlatL2 &) = delete;
 };
-} // ascend
-} // faiss
-#endif // ASCEND_INDEX_FLAT_INCLUDED
+}  // namespace ascend
+}  // namespace faiss
+#endif  // ASCEND_INDEX_FLAT_INCLUDED
