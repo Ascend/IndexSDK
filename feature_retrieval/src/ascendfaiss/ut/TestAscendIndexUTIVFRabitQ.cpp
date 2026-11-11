@@ -318,13 +318,51 @@ int64_t FilterScanLimit(const ::ascend::RabitqIdFilterHost& filter, const roarin
     return ::ascend::APP_ERR_OK;
 }
 
+struct TopKSearchCall
+{
+    std::atomic<int> count{0};
+    std::atomic<int> n{0};
+    std::atomic<int> k{0};
+    std::atomic<int64_t> filterMode{aicpu::RABITQ_ID_FILTER_NONE};
+    std::atomic<const float*> refineSources{nullptr};
+
+    void reset()
+    {
+        count = 0;
+        n = 0;
+        k = 0;
+        filterMode = aicpu::RABITQ_ID_FILTER_NONE;
+        refineSources = nullptr;
+    }
+};
+
+TopKSearchCall topKSearchCall;
+
+::ascend::APP_ERROR StubCountingFilteredSearch(::ascend::IndexIVFRaBitQ* index, int n, const float* x, int k,
+                                               float* distances, ::ascend::idx_t* labels, const float* srcIndexes,
+                                               const ::ascend::RabitqIdFilterHost* idFilter, int searchNprobe)
+{
+    ++topKSearchCall.count;
+    topKSearchCall.n = n;
+    topKSearchCall.k = k;
+    topKSearchCall.filterMode = idFilter != nullptr ? idFilter->mode : aicpu::RABITQ_ID_FILTER_NONE;
+    topKSearchCall.refineSources = srcIndexes;
+
+    // These routing fixtures import three sequential IDs. Leave the rest of the
+    // requested (possibly refined) candidate buffer as invalid padding.
+    ::ascend::RabitqIdFilterHost allIds;
+    allIds.mode = aicpu::RABITQ_ID_FILTER_RANGE;
+    allIds.aux0 = 0;
+    allIds.aux1 = 3;
+    return StubFilteredSearch(index, n, x, k, distances, labels, srcIndexes, idFilter != nullptr ? idFilter : &allIds,
+                              searchNprobe);
+}
+
 struct FilteredSearchMockGuard
 {
-    FilteredSearchMockGuard()
+    explicit FilteredSearchMockGuard(decltype(&StubFilteredSearch) search = StubFilteredSearch)
     {
-        MOCKER_CPP(static_cast<FilteredSearchFn>(&::ascend::IndexIVFRaBitQ::searchImpl))
-            .stubs()
-            .will(invoke(StubFilteredSearch));
+        MOCKER_CPP(static_cast<FilteredSearchFn>(&::ascend::IndexIVFRaBitQ::searchImpl)).stubs().will(invoke(search));
     }
 
     ~FilteredSearchMockGuard() { GlobalMockObject::verify(); }
@@ -365,6 +403,227 @@ CpuIVFRaBitQIndex MakePretrainedCpuIndex(bool withVectors = true)
         result.index->ntotal = static_cast<faiss::idx_t>(result.ids.size());
     }
     return result;
+}
+
+CpuIVFRaBitQIndex MakeSequentialPretrainedCpuIndex()
+{
+    auto source = MakePretrainedCpuIndex();
+    std::iota(source.ids.begin(), source.ids.end(), 0);
+    source.index->invlists->update_entries(source.listId, 0, source.ids.size(), source.ids.data(), source.codes.data());
+    return source;
+}
+
+struct TopKSearchBuffers
+{
+    static constexpr float DISTANCE_CANARY = -1234.5f;
+    static constexpr faiss::idx_t LABEL_CANARY = -987654;
+    std::vector<float> distances;
+    std::vector<faiss::idx_t> labels;
+
+    explicit TopKSearchBuffers(size_t count) : distances(count + 2, DISTANCE_CANARY), labels(count + 2, LABEL_CANARY) {}
+
+    float* distanceData() { return distances.data() + 1; }
+    faiss::idx_t* labelData() { return labels.data() + 1; }
+
+    void expectCanaries() const
+    {
+        EXPECT_FLOAT_EQ(distances.front(), DISTANCE_CANARY);
+        EXPECT_FLOAT_EQ(distances.back(), DISTANCE_CANARY);
+        EXPECT_EQ(labels.front(), LABEL_CANARY);
+        EXPECT_EQ(labels.back(), LABEL_CANARY);
+    }
+
+    void expectUnchanged() const
+    {
+        EXPECT_TRUE(
+            std::all_of(distances.begin(), distances.end(), [](float value) { return value == DISTANCE_CANARY; }));
+        EXPECT_TRUE(
+            std::all_of(labels.begin(), labels.end(), [](faiss::idx_t value) { return value == LABEL_CANARY; }));
+    }
+
+    void expectResults(int n, int k) const
+    {
+        expectCanaries();
+        ASSERT_EQ(distances.size(), static_cast<size_t>(n) * static_cast<size_t>(k) + 2);
+        ASSERT_EQ(labels.size(), distances.size());
+        for (int q = 0; q < n; ++q)
+        {
+            const size_t offset = 1 + static_cast<size_t>(q) * static_cast<size_t>(k);
+            for (int j = 0; j < 3; ++j)
+            {
+                EXPECT_FLOAT_EQ(distances[offset + static_cast<size_t>(j)], 0.0f);
+                EXPECT_EQ(labels[offset + static_cast<size_t>(j)], j);
+            }
+            EXPECT_TRUE(std::all_of(distances.begin() + offset + 3, distances.begin() + offset + k,
+                                    [](float value) { return value == std::numeric_limits<float>::max(); }));
+            EXPECT_TRUE(std::all_of(labels.begin() + offset + 3, labels.begin() + offset + k,
+                                    [](faiss::idx_t value) { return value == -1; }));
+        }
+    }
+};
+
+TEST(TestAscendIndexIVFRaBitQ, PublicSearchAcceptsTopKThrough65536WithAndWithoutSelector)
+{
+    ASSERT_EQ(faiss::ascend::MAX_K, 65536);
+    auto source = MakeSequentialPretrainedCpuIndex();
+    faiss::ascend::AscendIndexIVFRaBitQ index(DIM, faiss::METRIC_L2, NLIST, MakeConfig());
+    ASSERT_NO_THROW(index.copyFrom(source.index.get()));
+    ASSERT_TRUE(index.is_trained);
+    const int nq = 2;
+    const auto query = MakePatternData(nq, DIM);
+    faiss::IDSelectorRange selector(0, 3);
+    faiss::SearchParameters params;
+    params.sel = &selector;
+    FilteredSearchMockGuard mock(StubCountingFilteredSearch);
+
+    for (bool filtered : {false, true})
+    {
+        SCOPED_TRACE(filtered ? "selector" : "ordinary");
+        for (int k : {4097, 16384, 65535, 65536})
+        {
+            SCOPED_TRACE(k);
+            TopKSearchBuffers buffers(static_cast<size_t>(nq) * static_cast<size_t>(k));
+            topKSearchCall.reset();
+            ASSERT_NO_THROW(index.search(nq, query.data(), k, buffers.distanceData(), buffers.labelData(),
+                                         filtered ? &params : nullptr));
+            EXPECT_EQ(topKSearchCall.count.load(), 1);
+            EXPECT_EQ(topKSearchCall.n.load(), nq);
+            EXPECT_EQ(topKSearchCall.k.load(), k);
+            EXPECT_EQ(topKSearchCall.filterMode.load(),
+                      filtered ? aicpu::RABITQ_ID_FILTER_RANGE : aicpu::RABITQ_ID_FILTER_NONE);
+            EXPECT_EQ(topKSearchCall.refineSources.load(), nullptr);
+            buffers.expectResults(nq, k);
+        }
+    }
+}
+
+TEST(TestAscendIndexIVFRaBitQ, PublicSearchRejectsInvalidTopKBeforeBackendAndOutputWrite)
+{
+    ASSERT_EQ(faiss::ascend::MAX_K, 65536);
+    auto source = MakeSequentialPretrainedCpuIndex();
+    faiss::ascend::AscendIndexIVFRaBitQ index(DIM, faiss::METRIC_L2, NLIST, MakeConfig());
+    ASSERT_NO_THROW(index.copyFrom(source.index.get()));
+    ASSERT_TRUE(index.is_trained);
+    const auto query = MakePatternData(1, DIM);
+    faiss::IDSelectorRange selector(0, 3);
+    faiss::SearchParameters params;
+    params.sel = &selector;
+    FilteredSearchMockGuard mock(StubCountingFilteredSearch);
+    const faiss::idx_t invalidTopKs[] = {0, -1, 65537, std::numeric_limits<faiss::idx_t>::max()};
+
+    for (bool filtered : {false, true})
+    {
+        SCOPED_TRACE(filtered ? "selector" : "ordinary");
+        for (faiss::idx_t k : invalidTopKs)
+        {
+            SCOPED_TRACE(k);
+            // A real workspace holds even MAX_K+1. max(idx_t) must be rejected
+            // before narrowing or writing; it must not require an impossible allocation.
+            TopKSearchBuffers buffers(static_cast<size_t>(faiss::ascend::MAX_K) + 1);
+            topKSearchCall.reset();
+            ExpectExceptionContains(
+                [&] {
+                    index.search(1, query.data(), k, buffers.distanceData(), buffers.labelData(),
+                                 filtered ? &params : nullptr);
+                },
+                "k must be > 0 and <= 65536");
+            EXPECT_EQ(topKSearchCall.count.load(), 0);
+            buffers.expectUnchanged();
+        }
+    }
+}
+
+TEST(TestAscendIndexIVFRaBitQ, RefineTopK65536AllowsInternalCandidatesAbovePublicLimit)
+{
+    ASSERT_EQ(faiss::ascend::MAX_K, 65536);
+    auto source = MakeSequentialPretrainedCpuIndex();
+    auto config = MakeConfig();
+    config.needRefine = true;
+    faiss::ascend::AscendIndexIVFRaBitQ index(DIM, faiss::METRIC_L2, NLIST, config);
+    ASSERT_NO_THROW(index.copyFrom(source.index.get()));
+    ASSERT_TRUE(index.is_trained);
+    const auto originals = MakePatternData(source.ids.size(), DIM);
+    ASSERT_NO_THROW(index.attachRefineSources(originals.data(), source.ids.size()));
+    faiss::IDSelectorRange selector(0, 3);
+    faiss::SearchParameters params;
+    params.sel = &selector;
+    FilteredSearchMockGuard mock(StubCountingFilteredSearch);
+    struct RefineCase
+    {
+        int k;
+        float alpha;
+        int candidateK;
+    };
+    // Preserve the existing float multiplication for fractional alpha too:
+    // 10 * 1.3f rounds to 13 before validation and conversion to int.
+    const RefineCase cases[] = {{65536, 2.0f, 131072}, {65536, 1.0f, 65536}, {10, 1.3f, 13}};
+
+    for (const auto& item : cases)
+    {
+        SCOPED_TRACE(item.k);
+        SCOPED_TRACE(item.alpha);
+        const int k = item.k;
+        index.impl_->ivfrabitqConfig.refineAlpha = item.alpha;
+        const int candidateK = item.candidateK;
+        for (bool filtered : {false, true})
+        {
+            SCOPED_TRACE(filtered ? "selector" : "ordinary");
+            TopKSearchBuffers buffers(static_cast<size_t>(k));
+            topKSearchCall.reset();
+            ASSERT_NO_THROW(index.search(1, originals.data(), k, buffers.distanceData(), buffers.labelData(),
+                                         filtered ? &params : nullptr));
+            EXPECT_EQ(topKSearchCall.count.load(), 1);
+            EXPECT_EQ(topKSearchCall.n.load(), 1);
+            EXPECT_EQ(topKSearchCall.k.load(), candidateK);
+            EXPECT_EQ(topKSearchCall.filterMode.load(),
+                      filtered ? aicpu::RABITQ_ID_FILTER_RANGE : aicpu::RABITQ_ID_FILTER_NONE);
+            EXPECT_EQ(topKSearchCall.refineSources.load(), originals.data());
+            buffers.expectResults(1, k);
+        }
+    }
+}
+
+TEST(TestAscendIndexIVFRaBitQ, RefineRejectsInvalidCandidateCountBeforeBackendAndOutputWrite)
+{
+    ASSERT_EQ(faiss::ascend::MAX_K, 65536);
+    auto source = MakeSequentialPretrainedCpuIndex();
+    auto config = MakeConfig();
+    config.needRefine = true;
+    faiss::ascend::AscendIndexIVFRaBitQ index(DIM, faiss::METRIC_L2, NLIST, config);
+    ASSERT_NO_THROW(index.copyFrom(source.index.get()));
+    ASSERT_TRUE(index.is_trained);
+    const auto originals = MakePatternData(source.ids.size(), DIM);
+    ASSERT_NO_THROW(index.attachRefineSources(originals.data(), source.ids.size()));
+    faiss::IDSelectorRange selector(0, 3);
+    faiss::SearchParameters params;
+    params.sel = &selector;
+    FilteredSearchMockGuard mock(StubCountingFilteredSearch);
+    const int k = 65536;
+    // 32768 * 65536 is INT_MAX+1 exactly: a float comparison against
+    // float(INT_MAX) can round the bound up and accidentally permit this value.
+    const float invalidAlphas[] = {
+        std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::infinity(), 0.0f, 0.5f, 32768.0f,
+        std::numeric_limits<float>::max()};
+
+    for (float alpha : invalidAlphas)
+    {
+        SCOPED_TRACE(alpha);
+        index.impl_->ivfrabitqConfig.refineAlpha = alpha;
+        for (bool filtered : {false, true})
+        {
+            SCOPED_TRACE(filtered ? "selector" : "ordinary");
+            TopKSearchBuffers buffers(static_cast<size_t>(k));
+            topKSearchCall.reset();
+            ExpectExceptionContains(
+                [&] {
+                    index.search(1, originals.data(), k, buffers.distanceData(), buffers.labelData(),
+                                 filtered ? &params : nullptr);
+                },
+                "Invalid refine candidate count");
+            EXPECT_EQ(topKSearchCall.count.load(), 0);
+            buffers.expectUnchanged();
+        }
+    }
 }
 
 void ExpectOrthogonal(const std::vector<float>& matrix, int rows, int cols)

@@ -16,38 +16,44 @@
  * -------------------------------------------------------------------------
  */
 
-
 #ifndef ASCEND_ASCENDINDEX_INCLUDED
 #define ASCEND_ASCENDINDEX_INCLUDED
-
-#include <vector>
-#include <unordered_map>
-#include <memory>
 
 #include <faiss/Index.h>
 #include <faiss/impl/FaissAssert.h>
 
-namespace faiss {
-namespace ascend {
+#include <memory>
+#include <unordered_map>
+#include <vector>
+
+namespace faiss
+{
+namespace ascend
+{
 using rpcContext = void *;
 using ascend_idx_t = uint64_t;
 
 const idx_t MAX_N = 1e9;
-const idx_t MAX_K = 4096;
-const int64_t INDEX_DEFAULT_MEM = 0x2000000; // 0x2000000 mean 32M(resource mem pool's size)
-const int64_t INDEX_MAX_MEM =  0x280000000;    //  0x280000000 mean 10GB
+const idx_t MAX_K = 65536;
+const int64_t INDEX_DEFAULT_MEM = 0x2000000;  // 0x2000000 mean 32M(resource mem pool's size)
+const int64_t INDEX_MAX_MEM = 0x280000000;    //  0x280000000 mean 10GB
 const uint32_t DEFAULT_BLOCK_SIZE = 16384 * 16;
 
-struct AscendIndexConfig {
-    inline AscendIndexConfig() : deviceList({ 0 }), resourceSize(INDEX_DEFAULT_MEM), dBlockSize(DEFAULT_BLOCK_SIZE) {}
+struct AscendIndexConfig
+{
+    inline AscendIndexConfig() : deviceList({0}), resourceSize(INDEX_DEFAULT_MEM), dBlockSize(DEFAULT_BLOCK_SIZE) {}
 
     inline AscendIndexConfig(std::initializer_list<int> devices, int64_t resources = INDEX_DEFAULT_MEM,
-        uint32_t blockSize = DEFAULT_BLOCK_SIZE)
-        : deviceList(devices), resourceSize(resources), dBlockSize(blockSize) {}
+                             uint32_t blockSize = DEFAULT_BLOCK_SIZE)
+        : deviceList(devices), resourceSize(resources), dBlockSize(blockSize)
+    {
+    }
 
     inline AscendIndexConfig(std::vector<int> devices, int64_t resources = INDEX_DEFAULT_MEM,
-        uint32_t blockSize = DEFAULT_BLOCK_SIZE)
-        : deviceList(devices), resourceSize(resources), dBlockSize(blockSize) {}
+                             uint32_t blockSize = DEFAULT_BLOCK_SIZE)
+        : deviceList(devices), resourceSize(resources), dBlockSize(blockSize)
+    {
+    }
 
     // Ascend devices mask on which the index is resident
     std::vector<int> deviceList;
@@ -59,8 +65,9 @@ struct AscendIndexConfig {
 
 class AscendIndexImpl;
 class IndexImplBase;
-class AscendIndex : public faiss::Index {
-public:
+class AscendIndex : public faiss::Index
+{
+   public:
     AscendIndex(int dims, faiss::MetricType metric, AscendIndexConfig config);
 
     virtual ~AscendIndex();
@@ -79,7 +86,7 @@ public:
 
     // `x`, `distances` and `labels` need to be resident on the CPU
     void search(idx_t n, const float *x, idx_t k, float *distances, idx_t *labels,
-        const SearchParameters *params = nullptr) const override;
+                const SearchParameters *params = nullptr) const override;
 
     // reserve memory for the database.
     virtual void reserveMemory(size_t numVecs);
@@ -94,11 +101,11 @@ public:
     std::vector<int> getDeviceList();
 
     // Return ImplBase for inner use
-    IndexImplBase& GetIndexImplBase() const;
+    IndexImplBase &GetIndexImplBase() const;
 
     // AscendIndex object is NON-copyable
-    AscendIndex(const AscendIndex&) = delete;
-    AscendIndex& operator=(const AscendIndex&) = delete;
+    AscendIndex(const AscendIndex &) = delete;
+    AscendIndex &operator=(const AscendIndex &) = delete;
 
     void add(idx_t n, const uint16_t *x);
 
@@ -106,12 +113,12 @@ public:
 
     void search(idx_t n, const uint16_t *x, idx_t k, float *distances, idx_t *labels) const;
 
-protected:
+   protected:
     std::shared_ptr<AscendIndexImpl> impl_;
 };
 
 #define VALUE_UNUSED(x) (void)(x)
-} // namespace ascend
-} // namespace faiss
+}  // namespace ascend
+}  // namespace faiss
 
 #endif

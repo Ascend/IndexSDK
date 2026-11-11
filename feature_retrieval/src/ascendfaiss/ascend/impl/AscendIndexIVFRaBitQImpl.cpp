@@ -1433,13 +1433,27 @@ void AscendIndexIVFRaBitQImpl::searchImplFiltered(int n, const float* x, int k, 
 {
     APP_LOG_INFO("AscendIndex searchImpl operation started: n=%d, k=%d, searchNprobe=%d.\n", n, k, searchNprobe);
     size_t deviceCnt = indexConfig.deviceList.size();
-    int finalk = k;
+    const int finalk = k;
     if (ivfrabitqConfig.needRefine)
     {
-        k = finalk * ivfrabitqConfig.refineAlpha;
+        // Preserve float-product rounding, but check the int bound without rounding it up to float.
+        const double candidateCount = static_cast<double>(finalk * ivfrabitqConfig.refineAlpha);
+        FAISS_THROW_IF_NOT_MSG(std::isfinite(candidateCount) && candidateCount >= finalk &&
+                                   candidateCount <= std::numeric_limits<int>::max(),
+                               "Invalid refine candidate count");
+        k = static_cast<int>(candidateCount);
     }
-    std::vector<std::vector<float>> dist(deviceCnt, std::vector<float>(n * k, 0));
-    std::vector<std::vector<ascend_idx_t>> label(deviceCnt, std::vector<ascend_idx_t>(n * k, 0));
+    FAISS_THROW_IF_NOT_MSG(n > 0 && k > 0, "Invalid search result shape");
+    const size_t queryCount = static_cast<size_t>(n);
+    const size_t candidateCount = static_cast<size_t>(k);
+    FAISS_THROW_IF_NOT_MSG(queryCount <= std::numeric_limits<size_t>::max() / candidateCount,
+                           "Search result count overflow");
+    const size_t resultCount = queryCount * candidateCount;
+    FAISS_THROW_IF_NOT_MSG(
+        resultCount <= std::vector<float>().max_size() && resultCount <= std::vector<ascend_idx_t>().max_size(),
+        "Search result buffers are too large");
+    std::vector<std::vector<float>> dist(deviceCnt, std::vector<float>(resultCount, 0));
+    std::vector<std::vector<ascend_idx_t>> label(deviceCnt, std::vector<ascend_idx_t>(resultCount, 0));
 
     auto searchFunctor = [&](int idx)
     {
