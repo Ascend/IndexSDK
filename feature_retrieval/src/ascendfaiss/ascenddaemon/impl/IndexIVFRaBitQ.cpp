@@ -1100,7 +1100,7 @@ APP_ERROR IndexIVFRaBitQ::applyListAdd(GlobalSnapshot &next, const GlobalSnapsho
     ListStorage &list = listForWrite(next, base, listId);
     const size_t oldLen = list.listLen;
     APPERR_RETURN_IF_NOT_FMT(oldLen <= UINT32_MAX && numVecs <= UINT32_MAX - oldLen, APP_ERR_INVALID_PARAM,
-                             "list slots exceed Location representability");
+                             "list slots exceed Location representability: oldLen=%zu, numVecs=%zu", oldLen, numVecs);
     const size_t newLen = oldLen + numVecs;
     if (baseSlotOut != nullptr)
     {
@@ -1851,7 +1851,6 @@ APP_ERROR IndexIVFRaBitQ::fillDisOpInputData(
     int64_t selAux0, int64_t selAux1, int64_t selNegate)
 {
     size_t iterNum = (totalBlockNum + coreNum - 1) / coreNum;
-    size_t ivfRabitqBlockSize = static_cast<size_t>(IVF_RABITQ_BLOCK_SIZE);
     std::vector<uint64_t> offsetHost(iterNum * coreNum, 0);
     AscendTensor<uint64_t, DIMS_2, size_t> offsetHostVec(offsetHost.data(), {iterNum, coreNum});
     std::vector<uint64_t> indexl2OffsetHost(iterNum * coreNum, 0);
@@ -2653,7 +2652,7 @@ APP_ERROR IndexIVFRaBitQ::applyListAddEncoded(GlobalSnapshot &next, const Global
     ListStorage &list = listForWrite(next, base, listId);
     const size_t oldLen = list.listLen;
     APPERR_RETURN_IF_NOT_FMT(oldLen <= UINT32_MAX && numVecs <= UINT32_MAX - oldLen, APP_ERR_INVALID_PARAM,
-                             "list slots exceed Location representability");
+                             "list slots exceed Location representability: oldLen=%zu, numVecs=%zu", oldLen, numVecs);
     const size_t newLen = oldLen + numVecs;
     if (baseSlotOut != nullptr)
     {
