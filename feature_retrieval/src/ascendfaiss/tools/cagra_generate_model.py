@@ -20,6 +20,7 @@ See the Mulan PSL v2 for more details.
 
 import os
 import argparse
+import cagra_build_generate_model as graph_build
 import common as utils
 from common import OpJsonGenerator
 
@@ -36,7 +37,7 @@ def arg_parse():
     Parse arguments to the operator model
     """
 
-    parser = argparse.ArgumentParser(description='generate aicore operator model')
+    parser = argparse.ArgumentParser(description='generate CAGRA graph-build and search models')
 
     utils.op_common_parse(parser, "-d", 'dim', 128, int, "dimension")
     utils.op_common_parse(parser, "-data_base", 'data_base', 1000000, int, "data_base")
@@ -44,6 +45,19 @@ def arg_parse():
     utils.op_common_parse(parser, "-topK", 'topK', 64, int, "topK: 32, 64, 128, 256, 512 or 1024")
     utils.op_common_parse(parser, "-p", 'process_id', 0, int, "Number of process_id")
     utils.op_common_parse(parser, "-t", 'npu_type', "Ascend950PR", str, "NPU type, Ascend950PR by default")
+    parser.add_argument(
+        '--intermediate-degree',
+        type=int,
+        default=graph_build.MAX_INTERMEDIATE_DEGREE,
+        help='NN-Descent intermediate degree (default: 128)',
+    )
+    parser.add_argument(
+        '--cores',
+        dest='core_num',
+        type=int,
+        default=graph_build.A5_CORE_NUM,
+        help='A5 cores (56)',
+    )
 
     return parser.parse_args()
 
@@ -68,7 +82,6 @@ def generate_search_distance_json(dim, data_base, code_size, batch, degree, rota
 
 
 def generate_search_distance_offline_model():
-    utils.set_env()
     args = arg_parse()
     process_id = args.process_id
     dim = args.dim
@@ -76,18 +89,31 @@ def generate_search_distance_offline_model():
     degree = args.degree
     topK = args.topK
 
-    if data_base <= 1:
-        raise ValueError("data_base must be greater than 1")
+    if data_base <= 1 or data_base > 1000000000:
+        raise ValueError("data_base must be in [2, 1000000000]")
     if dim not in _VALID_DIMS:
         raise ValueError("dim must be one of {}".format(_VALID_DIMS))
     if degree not in _VALID_DEGREES:
         raise ValueError("degree must be one of {}".format(_VALID_DEGREES))
-    if topK not in _VALID_TOPK:
-        raise ValueError("topK must be one of {}".format(_VALID_TOPK))
     if degree >= data_base:
         raise ValueError("degree must be less than data_base")
+    if topK not in _VALID_TOPK:
+        raise ValueError("topK must be one of {}".format(_VALID_TOPK))
     if topK > data_base:
         raise ValueError("topK must not exceed data_base")
+
+    if args.npu_type not in ('Ascend950PR', 'Ascend950'):
+        raise ValueError('CAGRA requires Ascend950PR or Ascend950')
+    graph_args = argparse.Namespace(
+        dim=dim,
+        data_size=data_base,
+        graph_degree=degree,
+        intermediate_degree=args.intermediate_degree,
+        core_num=args.core_num,
+    )
+    graph_build.validate_args(graph_args)
+
+    utils.set_env()
 
     offset = (dim + 7) // 8
     rotated_size = offset * _BIT
@@ -97,6 +123,10 @@ def generate_search_distance_offline_model():
     search_page_sizes = (64, 32, 16, 8, 4, 2, 1)
     work_dir = '.'
     config_path = utils.get_config_path(work_dir)
+    operators = graph_build.generate_operators(dim, data_base, args.intermediate_degree, degree)
+    for index, operator in enumerate(operators):
+        graph_build.compile_operator(operator, index, process_id, config_path, soc_version)
+
     cagra_rabitq_op_name = "ascendc_cagra_search_distance_op{}_pid{}"
 
     for page_size in search_page_sizes:

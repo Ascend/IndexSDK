@@ -1,4 +1,4 @@
-# CAGRA 图构建 Ascend 950 适配技术方案设计（RFC）
+# CAGRA 图构建 Ascend 950 PR 适配技术方案设计（RFC）
 
 **状态（Status）：** Draft
 
@@ -6,9 +6,9 @@
 
 **创建日期（Created）：** 2026-09-17
 
-**更新日期（Updated）：** 2026-09-17
+**更新日期（Updated）：** 2026-11-06
 
-**相关模块：** `AscendCagraGraphBuilder`、CAGRA AICore 构图算子
+**相关模块：** `AscendIndexCagra`、CAGRA AICore 构图与检索算子
 
 ---
 
@@ -16,13 +16,13 @@
 
 ## 1.1 背景
 
-Index SDK 已有 `AscendIndexCagra` 图检索能力，但原有流程依赖外部 CPU 脚本生成图文件。百万级及以上底库在 CPU 侧执行 NN-Descent、剪枝并生成固定出度图，会增加离线构建时间和 Host 内存开销，也无法使用 Ascend 950 的 SIMT 并行资源。
+Index SDK 已有 `AscendIndexCagra` 图检索能力，但原有流程依赖外部 CPU 脚本生成图文件。百万级及以上底库在 CPU 侧执行 NN-Descent、剪枝并生成固定出度图，会增加离线构建时间和 Host 内存开销，也无法使用 Ascend 950 PR 的 SIMT 并行资源。
 
-本方案新增 `AscendCagraGraphBuilder`，在 Ascend 950 上完成 CAGRA 构图。输入为 FP32 底库向量，输出为行优先的固定出度邻接矩阵 `uint32_t[dataNum][graphDegree]`。该图可以直接传入 `AscendIndexCagra::Add`，构图和检索保持为两个独立阶段。
+本方案在 Ascend 950 PR 上完成 CAGRA 构图，输入为 FP32 底库向量，构图产物为行优先的固定出度邻接矩阵 `uint32_t[dataNum][graphDegree]`。对外由 `AscendIndexCagra` 统一管理构图、底库量化、查询和图导出，配置统一使用`AscendIndexCagraConfig`。
 
 ## 1.2 目标
 
-- 在单张 Ascend 950 上完成 NN-Descent 近似 KNN 图构建、CAGRA 剪枝、反向边补齐和连通性保障。
+- 在单张 Ascend 950 PR 上完成 NN-Descent 近似 KNN 图构建、CAGRA 剪枝、反向边补齐和连通性保障。
 - 使用 AICore SIMT 实现距离计算、候选生成、图更新和剪枝等主要计算。
 - 提供公共 C++ 接口，以及与静态 shape 匹配的离线模型生成脚本。
 - 输出固定出度、无非法节点、无自环、行内无重复节点的邻接矩阵。
@@ -31,15 +31,15 @@ Index SDK 已有 `AscendIndexCagra` 图检索能力，但原有流程依赖外�
 
 ## 1.3 非目标
 
-- 本 RFC 不修改 CAGRA 在线检索算法和 RaBitQ 量化格式。
+- 保持RaBitQ量化格式与距离计算，不引入FP32重排。
 - 本 RFC 不提供多卡或分布式构图。
-- 本 RFC 不承诺任意维度和任意 TopK 的端到端检索；相关限制和后续改造见第 6 章。
+- 不提供增量插入、更新或删除；数据集变化后通过Reset和Train重新建库。
 
 ## 1.4 平台支持
 
 | 项目 | 当前支持情况 |
 | --- | --- |
-| 硬件 | Ascend 950 系列 |
+| 硬件 | Ascend 950 PR系列产品 |
 | Index SDK 安装参数 | `--platform=Ascend950` |
 | ATC 模型参数 | `-t Ascend950PR`，映射到 `Ascend950PR_957c` |
 | 构图卡数 | 单卡 |
@@ -53,10 +53,10 @@ Index SDK 已有 `AscendIndexCagra` 图检索能力，但原有流程依赖外�
 
 1. 用户准备 `dataNum × dim` 的 FP32 底库向量。
 2. 按实际 `dataNum`、`dim`、`intermediateDegree` 和 `graphDegree` 生成构图 OM。
-3. 创建 `AscendCagraGraphBuilder` 并调用 `Init`。
-4. 调用 `Build` 获得内存中的邻接矩阵，或者调用 `BuildToFile` 直接生成图文件。
-5. 对图结构和抽样近邻准确率进行验证。
-6. 当参数满足检索约束时，将图传给 `AscendIndexCagra::Add` 完成后续量化和检索。
+3. 创建`AscendIndexCagra`，配置`AscendIndexCagraConfig`并调用`Init`。
+4. 调用`Train(n, data)`或`Add(n, data)`，完成构图、底库装载和底库量化。
+5. 调用`GetKnnGraph`读取图，验证结构和抽样近邻准确率；需要文件时调用`SaveGraphToFile`。
+6. 通过同一Index调用`Search`完成查询量化和检索。
 
 ## 2.2 总体数据流
 
@@ -81,6 +81,8 @@ CagraPruneReverse
 CagraMerge
     ▼
 Host连通性保障（可关闭）
+    ▼
+图结构校验
     ▼
 uint32_t[dataNum][graphDegree]
 ```
@@ -138,19 +140,20 @@ stopUpdates = terminationThreshold × dataNum × intermediateDegree
 ## 4.1 初始化接口
 
 ```cpp
-APP_ERROR Init(int dim, int graphDegree, int dataNum,
-               const std::vector<int>& deviceList);
+APP_ERROR Init(int dim, const std::vector<int>& deviceList,
+               const AscendIndexCagraConfig& config = {});
 ```
 
-- `dim`：输入向量维度。
-- `graphDegree`：最终图每行的邻居数 G。
-- `dataNum`：底库向量数量 N。
+- `dim`：支持`{64,128,256,512,1024,1536,3072}`。
+- `config`：构图参数；输出度数G为64或128，满足`G<=M<=128`。
 - `deviceList`：仅允许包含一个 Device ID。
+- Init保存配置，不提前加载检索模型；数据量N在Train/Add传入，须满足`M<N<=1e9`且内存足够。
 
 ## 4.2 构图配置
 
 ```cpp
-struct AscendCagraGraphBuildConfig {
+struct AscendIndexCagraConfig {
+    uint32_t graphDegree{64};
     uint32_t intermediateDegree{128};
     uint32_t maxIterations{20};
     float terminationThreshold{0.0001F};
@@ -161,47 +164,73 @@ struct AscendCagraGraphBuildConfig {
 
 | 参数 | 含义 | 影响 |
 | --- | --- | --- |
+| `graphDegree` | 最终图出度G，支持64/128 | 影响图大小、遍历开销和邻居覆盖 |
 | `intermediateDegree` | NN-Descent 中间图出度 M | 越大通常图质量越高，但显存、计算量增加 |
 | `maxIterations` | 最大迭代轮数 | 防止未收敛时无限迭代 |
 | `terminationThreshold` | 更新比例阈值 | 越小收敛条件越严格 |
 | `verbose` | 输出逐阶段耗时和候选统计 | 用于性能与精度诊断 |
 | `guaranteeConnectivity` | 是否执行 Host 连通性保障 | 默认开启；会产生中间图 D2H 拷贝和 Host 处理 |
 
-## 4.3 构图接口
+## 4.3 建库、查询和图导出接口
 
 ```cpp
-APP_ERROR Build(const float* data, uint32_t* graph,
-                const AscendCagraGraphBuildConfig& config = {});
-
-APP_ERROR BuildToFile(const float* data,
-                      const std::string& graphFilePath,
-                      const AscendCagraGraphBuildConfig& config = {});
+APP_ERROR Train(int n, const float* data);
+APP_ERROR Add(int n, const float* data);
+APP_ERROR Search(int n, const float* queries, int topK, float* distances, uint32_t* labels);
+APP_ERROR GetKnnGraph(std::vector<uint32_t>& graph) const;
+APP_ERROR SaveGraphToFile(const std::string& filePath) const;
+APP_ERROR Reset();
+bool IsTrained() const;
+int GetSize() const;
 ```
 
-`Build` 要求调用者为 `graph` 分配 `dataNum × graphDegree × sizeof(uint32_t)` 字节。`BuildToFile` 按相同的行优先布局写入二进制文件。
+Train/Add输入连续、有限的FP32底库，两者均完成全量建库；重复Train保持原状态，已建库再次Add返回`APP_ERR_INVALID_PARAM`。Reset清空底库并保留配置，之后可重新Train/Add。Train失败不发布半初始化状态。Search自动量化本次查询，支持Q为1至4096，TopK为`{32,64,128,256,512,1024}`，且TopK≤N，输出缓冲各至少Q×TopK个元素。
+
+GetKnnGraph读取N×G个行优先邻居ID。SaveGraphToFile导出相同内容，文件为本机字节序uint32_t、无文件头，不含向量和量化数据；覆盖已有文件，父目录需存在，路径不得为空或含NUL。未训练返回APP_ERR_INDEX_NOT_INIT，文件操作失败返回非0，可能留下不完整文件，索引保持可用。
 
 ## 4.4 调用示例
 
 ```cpp
-#include "index/AscendCagraGraphBuilder.h"
+#include <faiss/ascend/AscendIndexCagra.h>
 
-faiss::ascend::AscendCagraGraphBuilder builder;
+faiss::ascend::AscendIndexCagra index;
 std::vector<int> devices{0};
-int ret = builder.Init(128, 64, dataNum, devices);
-if (ret != 0) {
-    return ret;
-}
-
-faiss::ascend::AscendCagraGraphBuildConfig config;
+faiss::ascend::AscendIndexCagraConfig config;
+config.graphDegree = 64;
 config.intermediateDegree = 128;
 config.maxIterations = 20;
 config.terminationThreshold = 0.0001F;
 config.verbose = true;
 config.guaranteeConnectivity = true;
 
-std::vector<uint32_t> graph(static_cast<size_t>(dataNum) * 64);
-ret = builder.Build(baseData.data(), graph.data(), config);
+int ret = index.Init(128, devices, config);
+if (ret != 0) return ret;
+ret = index.Train(dataNum, baseData.data());
+if (ret != 0) return ret;
+std::vector<uint32_t> graph;
+ret = index.GetKnnGraph(graph);
+if (ret != 0) return ret;
+ret = index.SaveGraphToFile("cagra_graph.bin");
+if (ret != 0) return ret;
+std::vector<float> distances(static_cast<size_t>(queryNum) * topK);
+std::vector<uint32_t> labels(static_cast<size_t>(queryNum) * topK);
+ret = index.Search(queryNum, queryData.data(), topK, distances.data(), labels.data());
+if (ret != 0) return ret;
 ```
+
+## 4.5 单Index建库与查询入口
+
+构图调度与检索实现统一放入`AscendIndexCagraImpl.cpp`，公开层`AscendIndexCagra.cpp`负责参数检查、锁和调用转发。六个构图算子仍独立实现，由Train内部的私有构图上下文管理临时资源。对外不再提供独立Builder类；原有外部图Add和手动量化接口保留。
+
+- Init保存维度、单卡设备和构图配置，统一支持七档维度及自建图G=64/128；N与M的关系在Train前置校验。
+- Train/Add构建整张图，释放构图临时资源后装载底库并执行底库量化。两者不提供增量插入；重复Train保持原状态，重复Add返回`APP_ERR_INVALID_PARAM`，Reset后可重新建库。
+- 建库过程在临时实现对象中完成，全部成功后提交，失败不发布部分可用状态。
+- Search自动准备当前查询量化数据，允许同一索引按次指定`{32,64,128,256,512,1024}`的TopK（TopK≤N）。算子句柄以TopK和分页大小为键缓存；每个使用的TopK仍需部署对应静态OM。
+- 内部容量为64/128/256时沿用bitonic，512/1024接入radix路径；共享本地内存预算，保留量化距离，不做FP32重排。
+- radix搜索每轮扩展1个节点并立即将新邻居合入候选池；以无可扩展父节点或达到轮数上限作为结束条件，取消仅观察前26名的连续未改进停止条件。上限为内部容量加图深度估计：从1开始反复乘以`max(2,G/2)`，达到N的次数即深度。N=1000000、G=64时，容量512/1024对应516/1028轮上限。bitonic保留原64轮上限和早停策略。大K的召回与耗时分别测试，轮数上限不等于实际执行轮数。
+- 旧Init/Add/QuantizeData/QuantizeQueries/Search保留原手动准备与固定TopK语义。统一Init与旧外部图Add调用模式分开使用。
+
+完整接口、配置默认值与示例见[AscendIndexCagra API](../../zh/api/02_approximate_retrieval/18_AscendIndexCagra.md)。验证覆盖参数白名单、失败状态、Reset重建、分页、多TopK缓存、七档维度与TopK至1024组合，以及旧接口回归。主机模拟与Ascend 950 PR实测结果分别记录。
 
 # 5. 模型生成与部署
 
@@ -218,9 +247,11 @@ python3 cagra_build_generate_model.py \
     -t Ascend950PR
 ```
 
-构图 OM 为静态 shape。模型生成参数 `N/D/M/G` 必须与 `Init` 和 `Build` 的实际参数完全一致。不同规模或参数组合需要分别生成模型，并共同放在 `MX_INDEX_MODELPATH` 目录下。
+构图OM为静态shape。模型生成参数N/D/M/G必须与Init配置和Train的数据量一致。不同规模或参数组合需要分别生成模型，并共同放在`MX_INDEX_MODELPATH`目录下。
 
 ## 5.2 构图与检索模型的关系
+
+`cagra_generate_model.py`默认生成构图和检索模型：用同一组`-data_base/-d/-degree`配置先生成六个构图OM，再生成当前`-topK`的七档检索分页OM。`--intermediate-degree`默认128、`--cores`默认56，支持G=64/128，要求G<=M<=128且M<N；任一阶段失败即停止。独立构图脚本继续可用。算子包仍需在生成模型前编译安装。
 
 构图命令没有 `topK` 参数。`topK` 只影响在线检索模型：
 
@@ -234,7 +265,7 @@ python3 cagra_generate_model.py \
     -t Ascend950PR
 ```
 
-如果只需要生成图文件，无需生成检索模型。上面的 `D=128、G=64、topK=32` 是本次构图 POC 采用的端到端联调规格，不改变既有 CAGRA 检索接口的支持范围。
+如果仅调用Train和图导出，无需生成检索模型；Train仍会装载底库并完成量化。调用Search前须部署匹配N/D/G/TopK的检索OM。
 
 # 6. 参数约束与维度扩展
 
@@ -242,16 +273,16 @@ python3 cagra_generate_model.py \
 
 | 参数 | NPU 构图 | CAGRA RaBitQ 检索 | 端到端当前可用组合 |
 | --- | --- | --- | --- |
-| `dim` | SIMT 接受整数 `[1, 3072]`；已验证 64/128/256/384/512/1024/1536/2048/3072 | `{64, 128, 256, 512}` | 取二者共同支持的规格；新增高维检索规格不属于本 RFC 范围 |
-| `dataNum` | `[2, INT32_MAX]`，并受 Device/Host 内存限制 | `(0, 1e9]` | OM 与运行值一致 |
-| `graphDegree` | `G ∈ {64,128}`，且 `G ≤ M ≤ 128`、`M < N` | `{64,128}`，且 `G < N` | `{64,128}` |
+| `dim` | `{64,128,256,512,1024,1536,3072}` | `{64,128,256,512,1024,1536,3072}` | `{64,128,256,512,1024,1536,3072}` |
+| `dataNum` | `M<N<=1e9` | `G<N<=1e9` | `M<N<=1e9` |
+| `graphDegree` | `{64,128}`, `G<=M<=128`, `M<N` | 外部图支持`{64,128}` | `{64,128}`, `G<=M<=128` |
 | `intermediateDegree` | `G ≤ M ≤ 128` | 不适用 | 推荐 128 |
-| `topK` | 不适用 | `(0, 4096]` | 由检索模型决定 |
+| `topK` | 不适用 | `{32,64,128,256,512,1024}`, `TopK<=N` | `Search` 按次指定 |
 | `cores` | 固定 56 | 由检索模型决定 | 56（构图） |
 
 构图输入必须全部为有限 FP32 数值，不支持 NaN、正无穷和负无穷。非有限值会破坏 L2 距离的排序关系，调用方需要在构图前完成数据清洗。
 
-`dim=129` 等非 128 对齐维度可以进入 SIMT 通用距离路径，但还需要在 A5 上补充模型编译、图结构和图 Recall 验证。既有检索能力不属于本阶段修改范围，本次端到端回归仍使用 `D=128、G=64、topK=32`。
+统一Index在Init阶段校验七档端到端维度；构图和后续查询使用同一D/G配置。SIFT1M精度和性能使用`D=128、G=64、topK=32`，其余支持组合另做功能回归。
 
 ## 6.2 为什么构图不能只修改生成脚本支持 129 维
 
@@ -270,12 +301,12 @@ float lhsValues[16];
 
 1. 保留 `dim ≤ 128` 的现有缓存路径，避免 128 维基线性能回退。
 2. `128 < dim ≤ 512` 使用 4 候选批处理的流式 L2 距离路径；`dim > 512` 使用无 lhs 私有数组的双 rhs 流式路径。后者仅保留两个距离累加器，同时把 lhs 元素读取量减半，在访存复用与线程资源占用之间取得平衡。
-3. 硬件验证覆盖 `dim ∈ {64, 128, 256, 384, 512, 1024, 1536, 2048, 3072}`，每个规格单独生成静态 shape OM。
+3. 统一Index的硬件验证覆盖`dim ∈ {64,128,256,512,1024,1536,3072}`，每个规格单独生成静态shape OM。
 4. 对每个规格验证非法边、自环、重复边、连通性、抽样图 Recall 和构图性能。
 
 ## 6.4 cuVS 参数边界参考
 
-cuVS 主线 CAGRA 接口没有给 `dim` 设置离散白名单。数据集以二维矩阵传入，维度由矩阵第二维在运行时决定，因此其实现思路也是通用维度加运行时资源选择，而不是为 64/128/256 等维度分别定义算法接口。具体构建后端仍可能因数据类型、显存和内部算法参数产生约束。
+cuVS 主线 CAGRA 接口没有给 `dim` 设置离散白名单。数据集以二维矩阵传入，维度由矩阵第二维在运行时决定，因此其实现思路也是通用维度加运行时资源选择，而不是为 64/128 等维度分别定义算法接口。具体构建后端仍可能因数据类型、显存和内部算法参数产生约束。
 
 cuVS 的默认 `intermediate_graph_degree` 为 128，默认 `graph_degree` 为 64，并要求中间图度数不小于输出图度数；源码建议中间图度数取输出图度数的 1.5 到 2 倍并按 32 对齐。它没有为 CAGRA API 声明一个类似 `{64, 128, 256, 512}` 的 degree 白名单。
 
@@ -309,7 +340,7 @@ cuVS 的默认 `intermediate_graph_degree` 为 128，默认 `graph_degree` 为 6
 
 ## 7.3 当前 POC 结果
 
-在 SIFT1M 的 `N=1,000,000、D=128、M=128、G=64` 配置下，A5 SIMT 构图耗时约 38.32 秒，吞吐约 2.61 万向量/秒。最终图弱连通分量数为 1、零入度节点数为 0；使用 CPU FP32 精确距离遍历该图时，Recall@1/10/32 分别为 0.9900、0.9950 和 0.9856。该结果用于验证构图功能与质量，不作为不同数据集和硬件版本下的固定 SLA。
+在 SIFT1M 的 `N=1,000,000、D=128、M=128、G=64` 配置下，Ascend 950 PR SIMT 构图耗时约 38.32 秒，吞吐约 2.61 万向量/秒。最终图弱连通分量数为 1、零入度节点数为 0；使用 CPU FP32 精确距离遍历该图时，Recall@1/10/32 分别为 0.9900、0.9950 和 0.9856。该结果用于验证构图功能与质量，不作为不同数据集和硬件版本下的固定 SLA。
 
 # 8. 风险与后续工作
 
@@ -318,20 +349,20 @@ cuVS 的默认 `intermediate_graph_degree` 为 128，默认 `graph_degree` 为 6
 - OM 采用静态 shape，参数不一致会导致模型匹配失败。
 - NN-Descent 属于近似构图，迭代数和候选容量会影响图质量。
 - `guaranteeConnectivity=true` 包含 D2H 回传和 Host 计算，大规模场景需要关注 Host 内存。
-- 已完成常用维度和 1024/1536/2048/3072 维的 A5 功能验证；不同静态 shape 仍需分别生成 OM 并回归。
+- 独立Builder接口移除后，调用方需改用Index的Init、Train/Add和GetKnnGraph/SaveGraphToFile，并使用同版本头文件和库重新编译。
+- 已完成常用维度和 1024/1536/2048/3072 维的 Ascend 950 PR 功能验证；不同静态 shape 仍需分别生成 OM 并回归。
 
 ## 8.2 后续工作
 
 1. 补充更多真实业务数据集上的图 Recall 与端到端检索 Recall。
 2. 建立多数据规模、多维度的自动化模型生成和测试矩阵。
 3. 将连通性保障迁移到 Device 或降低中间图回传成本。
-4. 按第 6.3 节完成多维度 A5 验证和高维 SIMT 距离性能优化。
+4. 按第 6.3 节完成多维度 Ascend 950 PR 验证和高维 SIMT 距离性能优化。
 
 # 9. 参考资料
 
 - [Index SDK 用户指南](../../zh/05_user_guide.md)
 - [AscendIndexCagra API](../../zh/api/02_approximate_retrieval/18_AscendIndexCagra.md#ascendindexcagra)
-- [AscendCagraGraphBuilder API](../../zh/api/02_approximate_retrieval/19_AscendCagraGraphBuilder.md)
-- [AscendCagraGraphBuildConfig](../../zh/api/02_approximate_retrieval/20_AscendCagraGraphBuildConfig.md)
+- [AscendIndexCagra API与配置](../../zh/api/02_approximate_retrieval/18_AscendIndexCagra.md)
 - [RAPIDS cuVS CAGRA 接口](https://github.com/rapidsai/cuvs/blob/main/cpp/include/cuvs/neighbors/cagra.hpp)
 - [RAPIDS cuVS CAGRA 搜索参数检查](https://github.com/rapidsai/cuvs/blob/main/cpp/src/neighbors/detail/cagra/search_plan.cuh)

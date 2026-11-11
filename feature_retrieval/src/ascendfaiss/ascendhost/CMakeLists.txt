@@ -183,7 +183,6 @@ SET(ASCENDFAISS_HOST_SRC
     ${CMAKE_CURRENT_LIST_DIR}/../ascenddaemon/utils/ModelExecuter.cpp
     ${CMAKE_CURRENT_LIST_DIR}/../ascendhost/src/impl/HeteroBlockGroupMgrImpl.cpp
     ${CMAKE_CURRENT_LIST_DIR}/../ascendhost/src/impl/AscendClusteringImpl.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/../ascendhost/src/impl/AscendCagraGraphBuilderImpl.cpp
     ${CMAKE_CURRENT_LIST_DIR}/../ascendhost/src/impl/AscendIndexBinaryFlatImpl.cpp
     ${CMAKE_CURRENT_LIST_DIR}/../ascendhost/src/impl/TSBase.cpp
     ${CMAKE_CURRENT_LIST_DIR}/../ascendhost/src/impl/TSBinaryFlat.cpp
@@ -194,7 +193,6 @@ SET(ASCENDFAISS_HOST_SRC
     ${CMAKE_CURRENT_LIST_DIR}/../ascendhost/src/impl/AscendIndexILFlatImpl.cpp
     ${CMAKE_CURRENT_LIST_DIR}/../ascendhost/src/impl/AscendIndexCagraImpl.cpp
     ${CMAKE_CURRENT_LIST_DIR}/../ascendhost/src/index/AscendIndexBinaryFlat.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/../ascendhost/src/index/AscendCagraGraphBuilder.cpp
     ${CMAKE_CURRENT_LIST_DIR}/../ascendhost/src/index/AscendIndexCluster.cpp
     ${CMAKE_CURRENT_LIST_DIR}/../ascendhost/src/index/AscendIndexILFlat.cpp
     ${CMAKE_CURRENT_LIST_DIR}/../ascendhost/src/index/AscendIndexTS.cpp

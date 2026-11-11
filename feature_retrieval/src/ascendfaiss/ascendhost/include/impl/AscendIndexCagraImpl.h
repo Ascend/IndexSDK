@@ -27,6 +27,7 @@
 #include "ascenddaemon/AscendResourcesProxy.h"
 #include "ascenddaemon/utils/AscendOperator.h"
 #include "ascenddaemon/utils/AscendTensor.h"
+#include "ascendhost/include/index/AscendIndexCagra.h"
 #include "common/AscendFp16.h"
 #include "common/ErrorCode.h"
 
@@ -51,6 +52,16 @@ class AscendIndexCagraImpl
     virtual ~AscendIndexCagraImpl();
 
     APP_ERROR Init(int graphDegree, int dataNum);
+    APP_ERROR Init(int graphDegree, int dataNum, bool eagerSearchModels);
+    void Configure(const AscendIndexCagraConfig& config);
+    bool IsUnified() const { return unifiedMode; }
+    bool IsTrained() const { return trained; }
+    int GetSize() const { return trained ? static_cast<int>(dataNum) : 0; }
+    std::shared_ptr<AscendIndexCagraImpl> CreateEmpty() const;
+    APP_ERROR Train(int n, const float* data);
+    APP_ERROR GetKnnGraph(std::vector<uint32_t>& graph) const;
+    APP_ERROR SaveGraphToFile(const std::string& filePath) const;
+    APP_ERROR QuantizeBase(int ntotal, const float* baseData);
 
     APP_ERROR Add(const uint32_t* graph, const uint32_t* hash, const float* data);
 
@@ -72,7 +83,8 @@ class AscendIndexCagraImpl
     int rotatedSize{0};
     std::vector<int> deviceList;
     int64_t ascendResourceSize{128 * 1024 * 1024};
-    std::map<int, std::unique_ptr<AscendOperator>> cagraSearchOp;
+    using SearchOpMap = std::map<int, std::unique_ptr<AscendOperator>>;
+    std::map<int, SearchOpMap> cagraSearchOp;
     std::vector<int> searchBatchSizes;
     AscendTensor<uint8_t, DIMS_1, int64_t> g_code;
     std::vector<float> g_centroid;
@@ -98,7 +110,10 @@ class AscendIndexCagraImpl
                           AscendTensor<uint8_t, DIMS_1>& rotated, AscendTensor<uint32_t, DIMS_2>& outIndices,
                           AscendTensor<float, DIMS_2>& outDistances, aclrtStream stream);
 
-    APP_ERROR ResetCagraSearchOp();
+    APP_ERROR ResetCagraSearchOp(int searchTopK);
+    bool unifiedMode{false};
+    bool trained{false};
+    AscendIndexCagraConfig buildConfig;
     std::unique_ptr<AscendResourcesProxy> pResources;
 
     // Device information
@@ -114,13 +129,13 @@ class AscendIndexCagraImpl
     inline std::vector<float> MatMul(const std::vector<float>& A, const std::vector<float>& B, int ARows, int ACols,
                                      int BCols)
     {
-        std::vector<float> C(ARows * BCols, 0.0f);
+        std::vector<float> C(static_cast<size_t>(ARows) * BCols, 0.0f);
         for (int i = 0; i < ARows; ++i)
         {
             for (int k = 0; k < ACols; ++k)
             {
-                float a_ik = A[i * ACols + k];
-                for (int j = 0; j < BCols; ++j) C[i * BCols + j] += a_ik * B[k * BCols + j];
+                float a_ik = A[static_cast<size_t>(i) * ACols + k];
+                for (int j = 0; j < BCols; ++j) C[static_cast<size_t>(i) * BCols + j] += a_ik * B[k * BCols + j];
             }
         }
         return C;

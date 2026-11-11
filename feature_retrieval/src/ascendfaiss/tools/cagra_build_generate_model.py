@@ -18,7 +18,8 @@ from common import OpJsonGenerator
 # Keep these graph-build limits synchronized with ops/ascendc/op_host/cagra_build.cpp and
 # ops/ascendc/op_kernel/cagra_build_kernel.h. A5_CORE_NUM must also match tools/common.py.
 A5_CORE_NUM = 56
-MAX_BUILD_DIM = 3072
+VALID_DIMS = (64, 128, 256, 512, 1024, 1536, 3072)
+VALID_GRAPH_DEGREES = (64, 128)
 MAX_INTERMEDIATE_DEGREE = 128
 MAX_SAMPLE_DEGREE = 32
 SIZE_ENTRY_COUNT = 4
@@ -30,7 +31,7 @@ def parse_args():
     utils.op_common_parse(
         parser, "--cores", 'core_num', A5_CORE_NUM, int, f"AI Core number (A5 default: {A5_CORE_NUM})"
     )
-    utils.op_common_parse(parser, "-d", 'dim', 128, int, f"vector dimension in range [1, {MAX_BUILD_DIM}]")
+    utils.op_common_parse(parser, "-d", 'dim', 128, int, f"vector dimension: {VALID_DIMS}")
     utils.op_common_parse(parser, "-n", 'data_size', 10000, int, "number of base vectors")
     utils.op_common_parse(parser, "-i", 'intermediate_degree', MAX_INTERMEDIATE_DEGREE, int, "NN-Descent graph degree")
     utils.op_common_parse(parser, "-graph", 'graph_degree', 64, int, "final CAGRA graph degree")
@@ -47,12 +48,12 @@ def parse_args():
 
 
 def validate_args(args):
-    if args.dim <= 0 or args.dim > MAX_BUILD_DIM:
-        raise ValueError(f"CAGRA graph builder requires dim in range [1, {MAX_BUILD_DIM}]")
+    if args.dim not in VALID_DIMS:
+        raise ValueError(f"CAGRA dim must be one of {VALID_DIMS}")
+    if args.graph_degree not in VALID_GRAPH_DEGREES:
+        raise ValueError(f"CAGRA graph_degree must be one of {VALID_GRAPH_DEGREES}")
     if args.data_size <= 1 or args.data_size > MAX_DATA_SIZE:
         raise ValueError(f"data_size must be in range [2, {MAX_DATA_SIZE}]")
-    if args.graph_degree not in (64, 128):
-        raise ValueError("CAGRA graph_degree must be 64 or 128")
     if not 0 < args.graph_degree <= args.intermediate_degree < args.data_size:
         raise ValueError("degrees must satisfy 0 < graph_degree <= intermediate_degree < data_size")
     if args.intermediate_degree > MAX_INTERMEDIATE_DEGREE:
@@ -149,7 +150,6 @@ def compile_operator(operator, index, process_id, config_path, soc_version):
             generated.append(file_name)
     if not generated:
         raise RuntimeError(f"ATC did not generate an OM model for {op_name}")
-    print(f"  generated {op_name}: {', '.join(sorted(generated))}")
     return file_path
 
 
@@ -167,16 +167,8 @@ def generate_models():
         args.intermediate_degree,
         args.graph_degree,
     )
-    config_files = []
     for index, operator in enumerate(operators):
-        config_files.append(compile_operator(operator, index, args.process_id, config_path, soc_version))
-
-    print("CAGRA graph-build models generated successfully")
-    print(f"  N={args.data_size}, D={args.dim}, intermediate_degree={args.intermediate_degree}")
-    print(f"  graph_degree={args.graph_degree}, cores={args.core_num}")
-    print(f"  soc_version={soc_version}")
-    print(f"  configs={len(config_files)} files under {config_path}")
-    print("  output=./op_models")
+        compile_operator(operator, index, args.process_id, config_path, soc_version)
 
 
 if __name__ == '__main__':

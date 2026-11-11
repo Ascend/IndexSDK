@@ -42,7 +42,6 @@
 #include "common/utils/DataType.h"
 #include "common/utils/LogUtils.h"
 #include "common/utils/SocUtils.h"
-#include "impl/AscendCagraGraphBuilderImpl.h"
 
 using namespace ascend;
 namespace faiss
@@ -51,10 +50,15 @@ namespace ascend
 {
 namespace
 {
-// Graph construction uses the existing Builder class until the unified lifecycle is enabled.
+
+// Construction resources are scoped to Train and released before search data is allocated.
 using InputBuffers = std::shared_ptr<std::vector<const aclDataBuffer *>>;
 using OutputBuffers = std::shared_ptr<std::vector<aclDataBuffer *>>;
 using GraphBuildClock = std::chrono::steady_clock;
+constexpr uint32_t CAGRA_MAX_INTERMEDIATE_DEGREE = 128;
+constexpr uint32_t CAGRA_SAMPLE_DEGREE_CAP = 32;
+constexpr uint32_t CAGRA_SIZES_CHANNEL_COUNT = 4;
+constexpr uint32_t CAGRA_MIN_BACKBONE_DEGREE = 2;
 constexpr uint32_t CAGRA_NODE_MASK = 0x7fffffffU;
 constexpr int MAX_CAGRA_BUILD_DIM = 3072;
 constexpr int CAGRA_SIMT_CACHED_DIM = 128;
@@ -320,9 +324,60 @@ void SynchronizeGraphBuildStep(aclrtStream stream, const char *step, bool verbos
         std::fflush(stderr);
     }
 }
-}  // namespace
+class CagraGraphBuildContext
+{
+   public:
+    struct Config
+    {
+        int deviceId = 0;
+        uint32_t graphDegree = 64;
+        int64_t dataSize = 0;
+    };
 
-APP_ERROR AscendCagraGraphBuilderImpl::Initialize()
+    using BuildConfig = AscendIndexCagraConfig;
+
+    CagraGraphBuildContext(int dim, const Config &config);
+    ~CagraGraphBuildContext();
+
+    CagraGraphBuildContext(const CagraGraphBuildContext &) = delete;
+    CagraGraphBuildContext &operator=(const CagraGraphBuildContext &) = delete;
+    CagraGraphBuildContext(CagraGraphBuildContext &&) = delete;
+    CagraGraphBuildContext &operator=(CagraGraphBuildContext &&) = delete;
+
+    APP_ERROR Initialize();
+
+    /**
+     * Build a row-major uint32 adjacency matrix into caller-owned memory.
+     */
+    APP_ERROR BuildGraph(const float *data, uint32_t *graph, const BuildConfig &buildConfig);
+
+    void Reset();
+
+   private:
+    APP_ERROR ResetGraphBuildOp(const BuildConfig &buildConfig);
+    APP_ERROR CallGraphBuildKernel(const float *data, uint32_t *graph, const BuildConfig &buildConfig);
+    APP_ERROR SetDevice();
+    APP_ERROR ValidateGraph(const uint32_t *graph, uint32_t degree) const;
+
+   private:
+    int dim;
+    Config config;
+    BuildConfig buildConfig;
+    bool initialized = false;
+    std::unique_ptr<AscendOperator> nndInitOp;
+    std::unique_ptr<AscendOperator> nndSampleReverseOp;
+    std::unique_ptr<AscendOperator> nndLocalJoinOp;
+    std::unique_ptr<AscendOperator> nndUpdateOp;
+    std::unique_ptr<AscendOperator> cagraPruneReverseOp;
+    std::unique_ptr<AscendOperator> cagraMergeOp;
+    std::unique_ptr<AscendResourcesProxy> resources;
+};
+
+CagraGraphBuildContext::CagraGraphBuildContext(int dim, const Config &config) : dim(dim), config(config) {}
+
+CagraGraphBuildContext::~CagraGraphBuildContext() { Reset(); }
+
+APP_ERROR CagraGraphBuildContext::Initialize()
 {
     if (initialized)
     {
@@ -344,14 +399,14 @@ APP_ERROR AscendCagraGraphBuilderImpl::Initialize()
     return APP_ERR_OK;
 }
 
-APP_ERROR AscendCagraGraphBuilderImpl::SetDevice()
+APP_ERROR CagraGraphBuildContext::SetDevice()
 {
     aclError ret = aclrtSetDevice(config.deviceId);
     ASCEND_THROW_IF_NOT_MSG(ret == ACL_ERROR_NONE, "Set device failed");
     return APP_ERR_OK;
 }
 
-APP_ERROR AscendCagraGraphBuilderImpl::BuildGraph(const float *data, uint32_t *graph, const BuildConfig &newBuildConfig)
+APP_ERROR CagraGraphBuildContext::BuildGraph(const float *data, uint32_t *graph, const BuildConfig &newBuildConfig)
 {
     APPERR_RETURN_IF_NOT(initialized, APP_ERR_INDEX_NOT_INIT);
     APPERR_RETURN_IF_NOT(dim > 0, APP_ERR_INVALID_PARAM);
@@ -381,7 +436,6 @@ APP_ERROR AscendCagraGraphBuilderImpl::BuildGraph(const float *data, uint32_t *g
         ASCEND_THROW_IF_NOT_MSG(ret == APP_ERR_OK, "ResetGraphBuildOp failed");
     }
 
-    graphSize = config.dataSize;
     ret = CallGraphBuildKernel(data, graph, buildConfig);
     ASCEND_THROW_IF_NOT_MSG(ret == APP_ERR_OK, "CallGraphBuildKernel failed");
     ret = ValidateGraph(graph, config.graphDegree);
@@ -399,7 +453,7 @@ APP_ERROR AscendCagraGraphBuilderImpl::BuildGraph(const float *data, uint32_t *g
 }
 
 APP_ERROR
-AscendCagraGraphBuilderImpl::ResetGraphBuildOp(const BuildConfig &cfg)
+CagraGraphBuildContext::ResetGraphBuildOp(const BuildConfig &cfg)
 {
     const int64_t sampleDegree = std::min<int64_t>(CAGRA_SAMPLE_DEGREE_CAP, cfg.intermediateDegree);
     const std::vector<int64_t> dataShape({config.dataSize, static_cast<int64_t>(dim)});
@@ -489,7 +543,7 @@ AscendCagraGraphBuilderImpl::ResetGraphBuildOp(const BuildConfig &cfg)
     return APP_ERR_OK;
 }
 
-APP_ERROR AscendCagraGraphBuilderImpl::CallGraphBuildKernel(const float *data, uint32_t *graph, const BuildConfig &cfg)
+APP_ERROR CagraGraphBuildContext::CallGraphBuildKernel(const float *data, uint32_t *graph, const BuildConfig &cfg)
 {
     APPERR_RETURN_IF_NOT(nndInitOp != nullptr && nndSampleReverseOp != nullptr && nndLocalJoinOp != nullptr &&
                              nndUpdateOp != nullptr && cagraPruneReverseOp != nullptr && cagraMergeOp != nullptr,
@@ -709,7 +763,7 @@ APP_ERROR AscendCagraGraphBuilderImpl::CallGraphBuildKernel(const float *data, u
     return APP_ERR_OK;
 }
 
-void AscendCagraGraphBuilderImpl::Reset()
+void CagraGraphBuildContext::Reset()
 {
     nndInitOp.reset();
     nndSampleReverseOp.reset();
@@ -718,11 +772,10 @@ void AscendCagraGraphBuilderImpl::Reset()
     cagraPruneReverseOp.reset();
     cagraMergeOp.reset();
     resources.reset();
-    graphSize = 0;
     initialized = false;
 }
 
-APP_ERROR AscendCagraGraphBuilderImpl::ValidateGraph(const uint32_t *graph, uint32_t degree) const
+APP_ERROR CagraGraphBuildContext::ValidateGraph(const uint32_t *graph, uint32_t degree) const
 {
     for (int64_t row = 0; row < config.dataSize; ++row)
     {
@@ -748,9 +801,6 @@ APP_ERROR AscendCagraGraphBuilderImpl::ValidateGraph(const uint32_t *graph, uint
     return APP_ERR_OK;
 }
 
-namespace
-{
-
 const uint32_t RANDOM_SEED = 1234;
 const int LOG_INTERVAL = 10;
 const int MAX_SEARCH_BATCH = 64;
@@ -764,9 +814,14 @@ AscendIndexCagraImpl::AscendIndexCagraImpl(int dim, int topK, const std::vector<
 {
 }
 
-AscendIndexCagraImpl::~AscendIndexCagraImpl() {}
+AscendIndexCagraImpl::~AscendIndexCagraImpl()
+{
+    if (pResources != nullptr) (void)aclrtSetDevice(deviceId);
+}
 
-APP_ERROR AscendIndexCagraImpl::Init(int graphDegree, int dataNum)
+APP_ERROR AscendIndexCagraImpl::Init(int graphDegree, int dataNum) { return Init(graphDegree, dataNum, true); }
+
+APP_ERROR AscendIndexCagraImpl::Init(int graphDegree, int dataNum, bool eagerSearchModels)
 {
     APP_LOG_INFO("AscendIndexCagraImpl::Init start");
     APPERR_RETURN_IF_NOT_LOG(graphDegree == 64 || graphDegree == 128, APP_ERR_INVALID_PARAM,
@@ -778,6 +833,7 @@ APP_ERROR AscendIndexCagraImpl::Init(int graphDegree, int dataNum)
     auto ret = aclrtSetDevice(deviceId);
     APP_LOG_INFO("AscendIndexCagraImpl::Init on device(%d).\n", deviceId);
     APPERR_RETURN_IF_NOT_FMT(ret == ACL_SUCCESS, APP_ERR_ACL_SET_DEVICE_FAILED, "failed to set device(%d)", ret);
+    cagraSearchOp.clear();
     pResources = CREATE_UNIQUE_PTR(AscendResourcesProxy);
     pResources->setTempMemory(ascendResourceSize);
     pResources->initialize();
@@ -789,7 +845,7 @@ APP_ERROR AscendIndexCagraImpl::Init(int graphDegree, int dataNum)
     this->dataNum = dataNum;
     this->degree = graphDegree;
 
-    ret = ResetCagraSearchOp();
+    ret = eagerSearchModels ? ResetCagraSearchOp(this->topK) : APP_ERR_OK;
     APPERR_RETURN_IF_NOT_LOG(ret == APP_ERR_OK, APP_ERR_ACL_OP_LOAD_MODEL_FAILED, "ResetCagraSearchOp init failed !!!");
 
     APP_LOG_INFO("AscendIndexCagraImpl::Init finished");
@@ -823,6 +879,73 @@ APP_ERROR AscendIndexCagraImpl::Add(const uint32_t *graph, const uint32_t *hash,
     g_inverseRotation.clear();
     g_precompute.clear();
     g_rotated.clear();
+    trained = false;
+    return APP_ERR_OK;
+}
+
+void AscendIndexCagraImpl::Configure(const AscendIndexCagraConfig &config)
+{
+    unifiedMode = true;
+    buildConfig = config;
+}
+
+std::shared_ptr<AscendIndexCagraImpl> AscendIndexCagraImpl::CreateEmpty() const
+{
+    auto empty = std::make_shared<AscendIndexCagraImpl>(dim, 0, deviceList);
+    empty->Configure(buildConfig);
+    return empty;
+}
+
+APP_ERROR AscendIndexCagraImpl::Train(int n, const float *data)
+{
+    APPERR_RETURN_IF_NOT_LOG(unifiedMode && data != nullptr && n > static_cast<int>(buildConfig.intermediateDegree),
+                             APP_ERR_INVALID_PARAM, "Train requires N > intermediateDegree");
+    const size_t elements = static_cast<size_t>(n) * dim;
+    APPERR_RETURN_IF_NOT_LOG(std::all_of(data, data + elements, [](float v) { return std::isfinite(v); }),
+                             APP_ERR_INVALID_PARAM, "CAGRA input must contain finite FP32 values");
+    std::vector<uint32_t> graph(static_cast<size_t>(n) * buildConfig.graphDegree);
+    {
+        CagraGraphBuildContext::Config config;
+        config.deviceId = deviceList[0];
+        config.graphDegree = buildConfig.graphDegree;
+        config.dataSize = n;
+        CagraGraphBuildContext context(dim, config);
+        auto ret = context.Initialize();
+        if (ret != APP_ERR_OK) return ret;
+        ret = context.BuildGraph(data, graph.data(), buildConfig);
+        if (ret != APP_ERR_OK) return ret;
+    }  // Release construction buffers before allocating the persistent search data.
+    auto ret = Init(buildConfig.graphDegree, n, false);
+    if (ret != APP_ERR_OK) return ret;
+    ret = Add(graph.data(), nullptr, data);
+    if (ret != APP_ERR_OK) return ret;
+    return QuantizeBase(n, data);
+}
+
+APP_ERROR AscendIndexCagraImpl::GetKnnGraph(std::vector<uint32_t> &graph) const
+{
+    APPERR_RETURN_IF_NOT_LOG(trained, APP_ERR_INDEX_NOT_INIT, "CAGRA is not trained");
+    auto ret = aclrtSetDevice(deviceId);
+    APPERR_RETURN_IF_NOT_LOG(ret == ACL_SUCCESS, APP_ERR_ACL_SET_DEVICE_FAILED, "Failed to select CAGRA device");
+    std::vector<uint32_t> copy(dataNum * degree);
+    ret = aclrtMemcpy(copy.data(), copy.size() * sizeof(uint32_t), g_graphDevice.data(), g_graphDevice.getSizeInBytes(),
+                      ACL_MEMCPY_DEVICE_TO_HOST);
+    APPERR_RETURN_IF_NOT_LOG(ret == ACL_SUCCESS, APP_ERR_INNER_ERROR, "Failed to download CAGRA graph");
+    graph.swap(copy);
+    return APP_ERR_OK;
+}
+
+APP_ERROR AscendIndexCagraImpl::SaveGraphToFile(const std::string &filePath) const
+{
+    std::vector<uint32_t> graph;
+    const auto ret = GetKnnGraph(graph);
+    APPERR_RETURN_IF_NOT(ret == APP_ERR_OK, ret);
+    FILE *file = std::fopen(filePath.c_str(), "wb");
+    APPERR_RETURN_IF_NOT_LOG(file != nullptr, APP_ERR_INVALID_PARAM, "Failed to open CAGRA graph file");
+    const size_t written = std::fwrite(graph.data(), sizeof(uint32_t), graph.size(), file);
+    const int closeResult = std::fclose(file);
+    APPERR_RETURN_IF_NOT_LOG(written == graph.size() && closeResult == 0, APP_ERR_INNER_ERROR,
+                             "Failed to write complete CAGRA graph file");
     return APP_ERR_OK;
 }
 
@@ -882,8 +1005,17 @@ APP_ERROR AscendIndexCagraImpl::QuantizeData(int nq, const float *queryData, int
     APP_LOG_INFO("AscendIndexCagraImpl::QuantizeData start");
     APPERR_RETURN_IF_NOT_LOG(nq > 0 && nq <= MAX_QUERY_BATCH_SIZE && queryData != nullptr && baseData != nullptr,
                              APP_ERR_INVALID_PARAM, "Invalid quantization input");
-    APPERR_RETURN_IF_NOT_LOG(ntotal > 0 && static_cast<size_t>(ntotal) == dataNum, APP_ERR_INVALID_PARAM,
-                             "ntotal must match Init dataNum");
+    const auto ret = QuantizeBase(ntotal, baseData);
+    if (ret != APP_ERR_OK) return ret;
+    return QuantizeQueries(nq, queryData);
+}
+
+APP_ERROR AscendIndexCagraImpl::QuantizeBase(int ntotal, const float *baseData)
+{
+    APPERR_RETURN_IF_NOT_LOG(baseData != nullptr && ntotal > 0 && static_cast<size_t>(ntotal) == dataNum,
+                             APP_ERR_INVALID_PARAM, "ntotal must match Init dataNum");
+    APPERR_RETURN_IF_NOT_LOG(g_graphDevice.data() != nullptr && g_dataDevice.data() != nullptr, APP_ERR_INVALID_PARAM,
+                             "Add must precede base quantization");
     int baseBit = 6;  // 量化到6bit
     int seed = 42;
     const int offset = (dim + 7) / 8;
@@ -896,14 +1028,15 @@ APP_ERROR AscendIndexCagraImpl::QuantizeData(int nq, const float *queryData, int
     for (int j = 0; j < dim; ++j)
     {
         float sum = 0.0f;
-        for (int i = 0; i < ntotal; ++i) sum += baseData[i * dim + j];
+        for (int i = 0; i < ntotal; ++i) sum += baseData[static_cast<size_t>(i) * dim + j];
         centroid[j] = sum / static_cast<float>(ntotal);
     }
 
     // 3) 量化 base
-    std::vector<float> baseCentered(ntotal * dim);
+    std::vector<float> baseCentered(static_cast<size_t>(ntotal) * dim);
     for (int i = 0; i < ntotal; ++i)
-        for (int j = 0; j < dim; ++j) baseCentered[i * dim + j] = baseData[i * dim + j] - centroid[j];
+        for (int j = 0; j < dim; ++j)
+            baseCentered[static_cast<size_t>(i) * dim + j] = baseData[static_cast<size_t>(i) * dim + j] - centroid[j];
 
     std::vector<float> oPrime = MatMul(baseCentered, invP, ntotal, dim, dim);
 
@@ -911,7 +1044,7 @@ APP_ERROR AscendIndexCagraImpl::QuantizeData(int nq, const float *queryData, int
     for (int i = 0; i < ntotal; ++i)
     {
         float m = 0.0f;
-        for (int j = 0; j < dim; ++j) m = std::fmax(m, std::fabs(oPrime[i * dim + j]));
+        for (int j = 0; j < dim; ++j) m = std::fmax(m, std::fabs(oPrime[static_cast<size_t>(i) * dim + j]));
         maxAbsBase[i] = m;
     }
 
@@ -922,45 +1055,47 @@ APP_ERROR AscendIndexCagraImpl::QuantizeData(int nq, const float *queryData, int
     std::vector<float> scaleX(ntotal);
     for (int i = 0; i < ntotal; ++i) scaleX[i] = (maxAbsBase[i] == 0.0f) ? 1.0f : maxAbsBase[i] / halfRangeBase;
 
-    std::vector<uint8_t> xQuant(ntotal * dim);
+    std::vector<uint8_t> xQuant(static_cast<size_t>(ntotal) * dim);
     std::vector<float> sumXQuant(ntotal, 0.0f);
     for (int i = 0; i < ntotal; ++i)
     {
         for (int j = 0; j < dim; ++j)
         {
-            float v = std::round(oPrime[i * dim + j] / scaleX[i] + shiftBase);
+            float v = std::round(oPrime[static_cast<size_t>(i) * dim + j] / scaleX[i] + shiftBase);
             if (v < 0.0f) v = 0.0f;
             if (v > maxValBase) v = maxValBase;
-            xQuant[i * dim + j] = static_cast<uint8_t>(v);
+            xQuant[static_cast<size_t>(i) * dim + j] = static_cast<uint8_t>(v);
             sumXQuant[i] += v;
         }
     }
 
-    std::vector<uint8_t> codes(ntotal * this->codeSize, 0);
+    std::vector<uint8_t> codes(static_cast<size_t>(ntotal) * this->codeSize, 0);
     std::vector<uint8_t> bitBuf(dim);
     int ret = 0;
     for (int i = 0; i < ntotal; ++i)
     {
         for (int p = 0; p < baseBit; ++p)
         {
-            for (int j = 0; j < dim; ++j) bitBuf[j] = static_cast<uint8_t>((xQuant[i * dim + j] >> p) & 1);
-            ret = PackbitsLittle(bitBuf.data(), dim, codes.data() + i * this->codeSize + p * offset);
+            for (int j = 0; j < dim; ++j)
+                bitBuf[j] = static_cast<uint8_t>((xQuant[static_cast<size_t>(i) * dim + j] >> p) & 1);
+            ret =
+                PackbitsLittle(bitBuf.data(), dim, codes.data() + static_cast<size_t>(i) * this->codeSize + p * offset);
             APPERR_RETURN_IF_NOT_LOG(ret == APP_ERR_OK, APP_ERR_INNER_ERROR, "PackbitsLittle failed");
         }
         const int pos = offset * baseBit;
         float orCL2sqr = 0.0f;
         for (int j = 0; j < dim; ++j)
         {
-            float diff = baseData[i * dim + j] - centroid[j];
+            float diff = baseData[static_cast<size_t>(i) * dim + j] - centroid[j];
             orCL2sqr += diff * diff;
         }
-        ret = FloatToBytes(orCL2sqr, codes.data() + i * this->codeSize + pos);
+        ret = FloatToBytes(orCL2sqr, codes.data() + static_cast<size_t>(i) * this->codeSize + pos);
         APPERR_RETURN_IF_NOT_LOG(ret == APP_ERR_OK, APP_ERR_INNER_ERROR, "orCL2sqr FloatToBytes failed");
-        ret = FloatToBytes(shiftBase, codes.data() + i * this->codeSize + pos + 4);
+        ret = FloatToBytes(shiftBase, codes.data() + static_cast<size_t>(i) * this->codeSize + pos + 4);
         APPERR_RETURN_IF_NOT_LOG(ret == APP_ERR_OK, APP_ERR_INNER_ERROR, "shiftBase FloatToBytes failed");
-        ret = FloatToBytes(scaleX[i], codes.data() + i * this->codeSize + pos + 8);
+        ret = FloatToBytes(scaleX[i], codes.data() + static_cast<size_t>(i) * this->codeSize + pos + 8);
         APPERR_RETURN_IF_NOT_LOG(ret == APP_ERR_OK, APP_ERR_INNER_ERROR, "scaleX FloatToBytes failed");
-        ret = FloatToBytes(sumXQuant[i], codes.data() + i * this->codeSize + pos + 12);
+        ret = FloatToBytes(sumXQuant[i], codes.data() + static_cast<size_t>(i) * this->codeSize + pos + 12);
         APPERR_RETURN_IF_NOT_LOG(ret == APP_ERR_OK, APP_ERR_INNER_ERROR, "sumXQuant FloatToBytes failed");
     }
 
@@ -975,9 +1110,7 @@ APP_ERROR AscendIndexCagraImpl::QuantizeData(int nq, const float *queryData, int
     g_precompute.clear();
     g_rotated.clear();
 
-    ret = QuantizeQueries(nq, queryData);
-    APPERR_RETURN_IF_NOT_LOG(ret == APP_ERR_OK, ret, "QuantizeQueries failed");
-    APP_LOG_INFO("AscendIndexCagraImpl::QuantizeData finished");
+    trained = true;
     return APP_ERR_OK;
 }
 
@@ -988,13 +1121,18 @@ APP_ERROR AscendIndexCagraImpl::QuantizeQueries(int nq, const float *queryData)
     APPERR_RETURN_IF_NOT_LOG(
         g_centroid.size() == static_cast<size_t>(dim) && g_inverseRotation.size() == static_cast<size_t>(dim) * dim,
         APP_ERR_INVALID_PARAM, "QuantizeData must be called before QuantizeQueries");
+    APPERR_RETURN_IF_NOT_LOG(
+        std::all_of(queryData, queryData + static_cast<size_t>(nq) * dim, [](float v) { return std::isfinite(v); }),
+        APP_ERR_INVALID_PARAM, "CAGRA queries must contain finite FP32 values");
     // Prepare only this request's query codes; base quantization remains a one-time cost.
     const int queryBit = 6;
     const int offset = (dim + 7) / 8;
     std::vector<uint8_t> bitBuf(dim);
-    std::vector<float> queryCentered(nq * dim);
+    std::vector<float> queryCentered(static_cast<size_t>(nq) * dim);
     for (int i = 0; i < nq; ++i)
-        for (int j = 0; j < dim; ++j) queryCentered[i * dim + j] = queryData[i * dim + j] - g_centroid[j];
+        for (int j = 0; j < dim; ++j)
+            queryCentered[static_cast<size_t>(i) * dim + j] =
+                queryData[static_cast<size_t>(i) * dim + j] - g_centroid[j];
 
     std::vector<float> qPrime = MatMul(queryCentered, g_inverseRotation, nq, dim, dim);
 
@@ -1002,7 +1140,7 @@ APP_ERROR AscendIndexCagraImpl::QuantizeQueries(int nq, const float *queryData)
     for (int i = 0; i < nq; ++i)
     {
         float m = 0.0f;
-        for (int j = 0; j < dim; ++j) m = std::fmax(m, std::fabs(qPrime[i * dim + j]));
+        for (int j = 0; j < dim; ++j) m = std::fmax(m, std::fabs(qPrime[static_cast<size_t>(i) * dim + j]));
         maxAbsQ[i] = m;
     }
 
@@ -1013,34 +1151,35 @@ APP_ERROR AscendIndexCagraImpl::QuantizeQueries(int nq, const float *queryData)
     std::vector<float> scaleQ(nq);
     for (int i = 0; i < nq; ++i) scaleQ[i] = (maxAbsQ[i] == 0.0f) ? 1.0f : maxAbsQ[i] / halfRangeQ;
 
-    std::vector<uint8_t> qQuant(nq * dim);
+    std::vector<uint8_t> qQuant(static_cast<size_t>(nq) * dim);
     std::vector<float> sumQQuant(nq, 0.0f);
     for (int i = 0; i < nq; ++i)
     {
         for (int j = 0; j < dim; ++j)
         {
-            float v = std::round(qPrime[i * dim + j] / scaleQ[i] + shiftQuery);
+            float v = std::round(qPrime[static_cast<size_t>(i) * dim + j] / scaleQ[i] + shiftQuery);
             if (v < 0.0f) v = 0.0f;
             if (v > maxValQ) v = maxValQ;
-            qQuant[i * dim + j] = static_cast<uint8_t>(v);
+            qQuant[static_cast<size_t>(i) * dim + j] = static_cast<uint8_t>(v);
             sumQQuant[i] += v;
         }
     }
 
-    std::vector<uint8_t> rotatedQq(nq * this->rotatedSize, 0);
+    std::vector<uint8_t> rotatedQq(static_cast<size_t>(nq) * this->rotatedSize, 0);
     std::vector<float> precomputeAll(nq * PRE_COMPUTE_SIZE, 0.0f);
     for (int n = 0; n < nq; ++n)
     {
         for (int p = 0; p < queryBit; ++p)
         {
-            for (int j = 0; j < dim; ++j) bitBuf[j] = static_cast<uint8_t>((qQuant[n * dim + j] >> p) & 1);
+            for (int j = 0; j < dim; ++j)
+                bitBuf[j] = static_cast<uint8_t>((qQuant[static_cast<size_t>(n) * dim + j] >> p) & 1);
             const auto ret = PackbitsLittle(bitBuf.data(), dim, rotatedQq.data() + n * this->rotatedSize + p * offset);
             APPERR_RETURN_IF_NOT_LOG(ret == APP_ERR_OK, APP_ERR_INNER_ERROR, "PackbitsLittle failed");
         }
         float qrToCL2sqr = 0.0f;
         for (int j = 0; j < dim; ++j)
         {
-            float diff = queryData[n * dim + j] - g_centroid[j];
+            float diff = queryData[static_cast<size_t>(n) * dim + j] - g_centroid[j];
             qrToCL2sqr += diff * diff;
         }
         precomputeAll[n * PRE_COMPUTE_SIZE + 0] = qrToCL2sqr;
@@ -1057,14 +1196,25 @@ APP_ERROR AscendIndexCagraImpl::QuantizeQueries(int nq, const float *queryData)
 APP_ERROR AscendIndexCagraImpl::Search(int n, const float *queryData, int topK, float *dists, uint32_t *labels)
 {
     APP_LOG_INFO("AscendIndexCagraImpl::Search start");
+    APPERR_RETURN_IF_NOT_LOG(!unifiedMode || trained, APP_ERR_INDEX_NOT_INIT, "CAGRA is not trained");
     APPERR_RETURN_IF_NOT_LOG((topK == 32 || topK == 64 || topK == 128 || topK == 256 || topK == 512 || topK == 1024) &&
                                  static_cast<size_t>(topK) <= dataNum,
                              APP_ERR_INVALID_PARAM, "CAGRA topK must be in {32,64,128,256,512,1024} and at most N");
+    const auto deviceRet = aclrtSetDevice(deviceId);
+    APPERR_RETURN_IF_NOT_LOG(deviceRet == ACL_SUCCESS, APP_ERR_ACL_SET_DEVICE_FAILED, "Failed to select CAGRA device");
+    if (unifiedMode)
+    {
+        APPERR_RETURN_IF_NOT_LOG(trained, APP_ERR_INDEX_NOT_INIT, "CAGRA is not trained");
+        auto ret = QuantizeQueries(n, queryData);
+        if (ret != APP_ERR_OK) return ret;
+        ret = ResetCagraSearchOp(topK);
+        if (ret != APP_ERR_OK) return ret;
+    }
     APPERR_RETURN_IF_NOT_LOG(n > 0 && static_cast<size_t>(n) * PRE_COMPUTE_SIZE <= g_precompute.size() &&
                                  static_cast<size_t>(n) * rotatedSize <= g_rotated.size(),
                              APP_ERR_INVALID_PARAM, "Search queries must be quantized before use");
-    APPERR_RETURN_IF_NOT_FMT(topK == this->topK, APP_ERR_INVALID_PARAM, "Search topK %d must match Init topK %d", topK,
-                             this->topK);
+    APPERR_RETURN_IF_NOT_FMT(unifiedMode || topK == this->topK, APP_ERR_INVALID_PARAM,
+                             "Search topK %d must match Init topK %d", topK, this->topK);
 
     size_t size = this->searchBatchSizes.size();
     int searched = 0;
@@ -1159,9 +1309,11 @@ void AscendIndexCagraImpl::ComputeBlockDist(AscendTensor<float, DIMS_2> &queryTe
 {
     AscendOperator *op = nullptr;
     int batchSize = queryTensor.getSize(0);
-    if (this->cagraSearchOp.find(batchSize) != this->cagraSearchOp.end())
+    const auto group = cagraSearchOp.find(outIndices.getSize(1));
+    if (group != cagraSearchOp.end())
     {
-        op = this->cagraSearchOp[batchSize].get();
+        const auto found = group->second.find(batchSize);
+        if (found != group->second.end()) op = found->second.get();
     }
     ASCEND_THROW_IF_NOT(op);
 
@@ -1183,8 +1335,9 @@ void AscendIndexCagraImpl::ComputeBlockDist(AscendTensor<float, DIMS_2> &queryTe
     op->exec(*distOpInput, *distOpOutput, stream);
 }
 
-APP_ERROR AscendIndexCagraImpl::ResetCagraSearchOp()
+APP_ERROR AscendIndexCagraImpl::ResetCagraSearchOp(int searchTopK)
 {
+    if (cagraSearchOp.count(searchTopK) != 0) return APP_ERR_OK;
     APP_LOG_INFO("AscendIndexCagraImpl::ResetCagraSearchOp operation started.\n");
     auto cagraSearchOpReset = [&](std::unique_ptr<AscendOperator> &op, int64_t batch) -> APP_ERROR
     {
@@ -1198,8 +1351,8 @@ APP_ERROR AscendIndexCagraImpl::ResetCagraSearchOp()
         std::vector<int64_t> preCode({rowCount * this->codeSize});
         std::vector<int64_t> rotated({batch * this->rotatedSize});
 
-        std::vector<int64_t> DistShape({batch, this->topK});
-        std::vector<int64_t> IndiceShape({batch, this->topK});
+        std::vector<int64_t> DistShape({batch, searchTopK});
+        std::vector<int64_t> IndiceShape({batch, searchTopK});
 
         desc.addInputTensorDesc(ACL_FLOAT, queryShape.size(), queryShape.data(), ACL_FORMAT_ND);
         desc.addInputTensorDesc(ACL_UINT32, knnShape.size(), knnShape.data(), ACL_FORMAT_ND);
@@ -1211,21 +1364,22 @@ APP_ERROR AscendIndexCagraImpl::ResetCagraSearchOp()
 
         desc.addOutputTensorDesc(ACL_FLOAT, DistShape.size(), DistShape.data(), ACL_FORMAT_ND);
         desc.addOutputTensorDesc(ACL_UINT32, IndiceShape.size(), IndiceShape.data(), ACL_FORMAT_ND);
-        const auto attrRet = aclopSetAttrInt(desc.opAttr, "top_k", this->topK);
+        const auto attrRet = aclopSetAttrInt(desc.opAttr, "top_k", searchTopK);
         APPERR_RETURN_IF_NOT_FMT(attrRet == ACL_SUCCESS, APP_ERR_INVALID_PARAM, "Failed to set CagraRabitq top_k: %d",
                                  attrRet);
 
         op.reset();
         op = CREATE_UNIQUE_PTR(AscendOperator, desc);
-        return op->init();
+        return op->init() ? APP_ERR_OK : APP_ERR_ACL_OP_LOAD_MODEL_FAILED;
     };
 
+    SearchOpMap prepared;
     for (auto batch : this->searchBatchSizes)
     {
-        cagraSearchOp[batch] = std::unique_ptr<AscendOperator>(nullptr);
-        APPERR_RETURN_IF_NOT_LOG(cagraSearchOpReset(cagraSearchOp[batch], batch), APP_ERR_ACL_OP_LOAD_MODEL_FAILED,
-                                 "op init failed !!!");
+        const auto ret = cagraSearchOpReset(prepared[batch], batch);
+        APPERR_RETURN_IF_NOT_LOG(ret == APP_ERR_OK, ret, "CAGRA search model initialization failed");
     }
+    cagraSearchOp.emplace(searchTopK, std::move(prepared));
 
     APP_LOG_INFO("AscendIndexCagraImpl::ResetCagraSearchOp operation end.\n");
     return APP_ERR_OK;

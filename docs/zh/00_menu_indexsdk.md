@@ -7,7 +7,7 @@
 - [生成算子](./05_user_guide.md)
 - [API参考](./api/README.md)
   - [接口变更说明](./api/README.md)
-  - [全量检索]()
+  - [全量检索](./api/01_full_retrieval)
     - [AscendIndex](./api/01_full_retrieval/01_AscendIndex.md)
     <!-- npu="310p" id2 -->
     - [AscendIndexCluster](./api/01_full_retrieval/02_AscendIndexCluster.md)
@@ -29,7 +29,7 @@
     <!-- npu="310p" id4 -->
     - [AscendIndexILFlat](./api/01_full_retrieval/15_AscendIndexILFlat.md)
     <!-- end id4 -->
-  - [近似检索]()
+  - [近似检索](./api/02_approximate_retrieval)
     <!-- npu="310p" id5 -->
     - [AscendIndexBinaryFlat](./api/02_approximate_retrieval/01_AscendIndexBinaryFlat.md)
     <!-- end id5 -->
@@ -65,17 +65,15 @@
     <!-- end id13 -->
     <!-- npu="950" id12 -->
     - [AscendIndexCagra](./api/02_approximate_retrieval/18_AscendIndexCagra.md)
-    - [AscendCagraGraphBuilder](./api/02_approximate_retrieval/19_AscendCagraGraphBuilder.md)
-    - [AscendCagraGraphBuildConfig](./api/02_approximate_retrieval/20_AscendCagraGraphBuildConfig.md)
     <!-- end id12 -->
-  - [属性过滤检索]()
+  - [属性过滤检索](./api/03_attribute_filtering-based_retrieval)
     - [AscendIndexTS](./api/03_attribute_filtering-based_retrieval/01_AscendIndexTS.md)
     - [AttrFilter](./api/03_attribute_filtering-based_retrieval/02_AttrFilter.md)
     - [ExtraValAttr](./api/03_attribute_filtering-based_retrieval/03_ExtraValAttr.md)
     - [ExtraValFilter](./api/03_attribute_filtering-based_retrieval/04_ExtraValFilter.md)
     - [FeatureAttr](./api/03_attribute_filtering-based_retrieval/05_FeatureAttr.md)
   - [多 Index 批量检索](./api/04_multi-index_batch_retrieval/01_multi-index_batch_retrieval.md)
-  - [其他功能]()
+  - [其他功能](./api/05_more_functions)
     - [IReduction](./api/05_more_functions/01_IReduction.md)
     - [AscendNNInference](./api/05_more_functions/02_AscendNNInference.md)
     - [AscendClonerOptions](./api/05_more_functions/03_AscendClonerOptions.md)

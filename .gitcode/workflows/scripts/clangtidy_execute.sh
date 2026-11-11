@@ -19,6 +19,10 @@ exec 3<&-
 CHECK_ARRAY=()
 for file in "${FILE_ARRAY[@]}"; do
     if [[ "${file}" =~ [.](cpp|cc|cxx|c)$ ]]; then
+        if [[ ! -f "./${serviceName}/${file}" ]]; then
+            echo "INFO: 源文件已删除或不存在，跳过检查：${file}"
+            continue
+        fi
         CHECK_ARRAY+=("${file}")
     fi
 done
@@ -83,7 +87,7 @@ for single_file in "${CHECK_ARRAY[@]}"; do
     echo "----------------------------------------"
     ls -a
     echo "正在检测文件：${single_file}"
-    cat ${single_file}
+    cat -- "${single_file}"
 
     res=$(find -name "compile_commands.json")
     if [ -z "$res" ];then

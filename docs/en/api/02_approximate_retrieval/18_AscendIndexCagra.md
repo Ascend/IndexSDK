@@ -2,7 +2,28 @@
 
 ## Overview<a name="en-us_TOPIC_0000002544797645"></a>
 
-`AscendIndexCagra` is a graph retrieval algorithm based on Cagra. It constructs a neighbor graph to achieve efficient approximate nearest neighbor search.
+`AscendIndexCagra` builds an FP32/L2 graph and searches it with RaBitQ on a single device from the Ascend 950 PR series. The unified API owns construction, base quantization and per-call query preparation. The external-graph API remains available for compatibility.
+
+## Unified index API
+
+Include `faiss/ascend/AscendIndexCagra.h`. All buffers are host buffers. Methods returning `APP_ERROR` return zero on success.
+
+| Method | Contract |
+| --- | --- |
+| `Init(int dim, const std::vector<int>& devices, const AscendIndexCagraConfig& config = {})` | Configure an empty index. One nonnegative device ID is required. |
+| `Train(int n, const float* data)` | Build the full graph and quantize the base. Requires finite FP32 `data[n][dim]`, `M<n<=1e9` and sufficient host/device memory. Failed training preserves the original index state. |
+| `Add(int n, const float* data)` | Build an empty index, without incremental insertion. Returns APP_ERR_INVALID_PARAM on a trained index and preserves its data; Reset before rebuilding. Repeated Train remains a no-op. |
+| `Search(int n, const float* queries, int k, float* distances, uint32_t* labels)` | Quantize this request and search. Requires `1<=n<=4096`, `k in {32,64,128,256,512,1024}`, `k<=N` and output buffers of at least `n*k` elements. Different k values may be used on the same index. |
+| `Reset()` | Release graph, dataset, quantization and operator caches while retaining the unified configuration. |
+| `GetKnnGraph(std::vector<uint32_t>& graph) const` | Copy the trained graph to a host vector of N*G IDs. Failure preserves the destination. |
+| `SaveGraphToFile(const std::string& filePath) const` | Export the trained graph as N*G row-major native-endian uint32_t values without a header, vectors or quantization data. Overwrites an existing file. Rejects empty paths or embedded NULs; the parent directory must exist. Returns APP_ERR_INDEX_NOT_INIT before training and a nonzero code on file errors. A failed write may leave a partial file; the index remains usable. |
+| `IsTrained() const` / `GetSize() const` | Return readiness / trained row count. An empty index has size zero. |
+
+`AscendIndexCagraConfig` contains `graphDegree=64` (64 or 128), `intermediateDegree=128` (G<=M<=128 and M<N), `maxIterations=20` (>0), `terminationThreshold=0.0001` (finite, [0,1]), `guaranteeConnectivity=true` and `verbose=false`. Both build and search support dimensions {64,128,256,512,1024,1536,3072}. RaBitQ distances are returned without FP32 reranking.
+
+Generate graph-build models and the seven query-page models matching N, D, G and every requested k. Search models are loaded lazily and cached per k; changing k does not rebuild the graph. Base quantization belongs to Train/Add, and query quantization belongs to Search. Construction configuration belongs to AscendIndexCagraConfig; graph retrieval and file export use the same Index. The legacy external-graph APIs below remain available; do not mix their Init/Add calling mode with unified Init.
+
+After installing the operator package, run `python3 cagra_generate_model.py -data_base N -d D --intermediate-degree 128 -degree G -topK K --cores 56 -t Ascend950PR`. This generates six graph-build models followed by seven search-page models by default, using one N/D/G configuration. The generation command supports G=64/128 and G<=M<=128 with M<N.
 
 ## `AscendIndexCagra`<a name="en-us_TOPIC_0000002513317664"></a>
 
@@ -38,7 +59,7 @@
 <tr><td width="210" align="center" valign="middle">Input</td><td valign="middle"><code>int dim</code>: Dimensionality of the feature vectors.<br><code>int graphDegree</code>: Degree of the neighbor graph, that is, the number of neighbors of each node.<br><code>int dataNum</code>: Number of feature vectors in the base library.<br><code>int topK</code>: Number of nearest neighbors returned by retrieval.<br><code>const std::vector&lt;int&gt;&amp; deviceList</code>: Device-side device ID list.</td></tr>
 <tr><td width="210" align="center" valign="middle">Output</td><td valign="middle">None</td></tr>
 <tr><td width="210" align="center" valign="middle">Returns</td><td valign="middle"><code>APP_ERROR</code>: 0 indicates success, and a non-zero value indicates failure.</td></tr>
-<tr><td width="210" align="center" valign="middle">Constraints</td><td valign="middle"><code>dim</code> ∈ {64, 128, 256, 512, 1024, 1536, 3072}.<br><code>graphDegree</code> ∈ {64, 128}.<br><code>dataNum</code> ∈ (1, 1e9], subject to available host and device memory.<br><code>topK</code> ∈ {32,64,128,256,512,1024}, topK≤dataNum.<br><code>deviceList</code> currently supports only one device.<br>Before calling other APIs, you must call <code>Init</code> for initialization.</td></tr>
+<tr><td width="210" align="center" valign="middle">Constraints</td><td valign="middle"><code>dim</code> ∈ {64, 128, 256, 512, 1024, 1536, 3072}.<br><code>graphDegree</code> ∈ {64, 128}.<br><code>graphDegree &lt; dataNum &lt;= 1e9</code>, subject to available host and device memory.<br><code>topK</code> ∈ {32,64,128,256,512,1024}, topK≤dataNum.<br><code>deviceList</code> currently supports only one device.<br>Before calling other APIs, you must call <code>Init</code> for initialization.</td></tr>
 </tbody></table>
 
 ## Add<a name="en-us_TOPIC_0000002513317666"></a>
@@ -56,7 +77,7 @@
 
 ### Device memory requirements
 
-Let N=dataNum, D=dim and G=graphDegree. Major persistent device buffers require approximately `4ND` bytes for FP32 vectors, `4NG` bytes for the graph, `N*(6*ceil(D/8)+16)` bytes for base quantization codes, and `64*ceil(N/32)*4` bytes for visited state. QuantizeData creates the base codes.
+Let N=dataNum, D=dim and G=graphDegree. Major persistent device buffers require approximately `4ND` bytes for FP32 vectors, `4NG` bytes for the graph, `N*(6*ceil(D/8)+16)` bytes for base quantization codes, and `64*ceil(N/32)*4` bytes for visited state. Train/Add create the base codes in unified mode; legacy mode creates them in QuantizeData.
 
 Visited state requires about 8 MB at N=1,000,000 and 8 GB (7.45 GiB) at N=1,000,000,000. The numeric Init limit does not guarantee that the dataset fits. Choose the dataset size using available memory, including query buffers, workspace and temporary peak allocations.
 
@@ -86,4 +107,4 @@ Visited state requires about 8 MB at N=1,000,000 and 8 GB (7.45 GiB) at N=1,000,
 <tr><td width="210" align="center" valign="middle">Constraints</td><td valign="middle">Before calling <code>Search</code>, you must call <code>Init</code>, <code>Add</code>, and <code>QuantizeData</code>.<br><code>topK</code> must be the same as the <code>topK</code> set in <code>Init</code>.<br><code>n</code> ∈ (0, 4096].<br><code>topK</code> ∈ {32,64,128,256,512,1024}, topK≤dataNum.</td></tr>
 </tbody></table>
 
-TopK supports exactly {32,64,128,256,512,1024} and must not exceed dataNum. Search uses RaBitQ distances without FP32 reranking. Internal capacities 64/128/256 use bitonic sorting, and 512/1024 use radix selection and sorting. Init and Search must use the same TopK, with matching OM files. Rebuild the Host library, reinstall the operator package and regenerate search OM files after updating.
+TopK supports exactly {32,64,128,256,512,1024} and must not exceed dataNum. Search uses RaBitQ distances without FP32 reranking. Internal capacities 64/128/256 use bitonic sorting, and 512/1024 use radix selection and sorting. Legacy Init fixes TopK; unified Init allows a different k on each Search. Matching static OM files are required in both modes. Rebuild the Host library, reinstall the operator package and regenerate search OM files after updating.
