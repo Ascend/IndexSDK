@@ -17,8 +17,10 @@
  */
 
 #include <algorithm>
+#include <limits>
 #include <numeric>
 #include <set>
+#include <utility>
 #include <vector>
 
 #include "gtest/gtest.h"
@@ -149,13 +151,18 @@ struct RunResult
     vector<int64_t> outlabels;
 };
 
-// Run the kernel once under a given layout. slotOverride, when non-empty, replaces the plan AFTER the grid has
-// been staged from the correct one -- that is what turns an injected slot into a genuine host/kernel
-// disagreement rather than just differently-arranged data. declaredDim1Extra of -1 declares the row width as 0,
-// which is what resetL2TopkOp actually emits (the op is built per searchBatchSizes entry at init time, before
-// the probe result that determines maxBlocksPerQ exists); >= 0 declares maxBlocksPerQ plus that much.
+// Run the kernel once under a given layout. slotOverride, when non-empty,
+// replaces the plan AFTER the grid has been staged from the correct one -- that
+// is what turns an injected slot into a genuine host/kernel disagreement rather
+// than just differently-arranged data. declaredDim1Extra of -1 declares the row
+// width as 0, which is what resetL2TopkOp actually emits (the op is built per
+// searchBatchSizes entry at init time, before the probe result that determines
+// maxBlocksPerQ exists); >= 0 declares maxBlocksPerQ plus that much. Optional
+// path flags ride the QUERY_NUM attribute, just as they do in the production
+// host. Zero preserves the historical heap path used by existing layout tests.
 RunResult RunLayout(const vector<LogicalData> &logical, const vector<int64_t> &blockNumPerQ, int64_t k, int64_t asc,
-                    int64_t layoutMode, int64_t group, const vector<int64_t> &slotOverride, int64_t declaredDim1Extra)
+                    int64_t layoutMode, int64_t group, const vector<int64_t> &slotOverride, int64_t declaredDim1Extra,
+                    int64_t pathFlags = 0)
 {
     const int64_t nq = static_cast<int64_t>(blockNumPerQ.size());
     const int64_t totalBlock = accumulate(blockNumPerQ.begin(), blockNumPerQ.end(), static_cast<int64_t>(0));
@@ -192,7 +199,7 @@ RunResult RunLayout(const vector<LogicalData> &logical, const vector<int64_t> &b
     attrs[TOPK_IVF_RABITQ_ATTR_ASC_IDX] = asc;
     attrs[TOPK_IVF_RABITQ_ATTR_K_IDX] = k;
     attrs[TOPK_IVF_RABITQ_ATTR_BURST_LEN_IDX] = BURST_LEN;
-    attrs[TOPK_IVF_RABITQ_ATTR_QUERY_NUM_IDX] = nq;
+    attrs[TOPK_IVF_RABITQ_ATTR_QUERY_NUM_IDX] = nq | pathFlags;
     attrs[TOPK_IVF_RABITQ_ATTR_CORE_NUM_IDX] = CORE_NUM;
     attrs[TOPK_IVF_RABITQ_ATTR_SEL_MODE_IDX] = static_cast<int64_t>(RABITQ_ID_FILTER_NONE);
     attrs[TOPK_IVF_RABITQ_ATTR_LAYOUT_MODE_IDX] = layoutMode;
@@ -339,6 +346,111 @@ TEST_F(TopkIvfRabitqLayoutTest, GroupedMatchesLegacy)
             ASSERT_EQ(grouped.status, static_cast<uint32_t>(KERNEL_STATUS_OK)) << "asc=" << asc << " group=" << group;
             EXPECT_EQ(grouped.outdists, legacy.outdists) << "asc=" << asc << " group=" << group;
             EXPECT_EQ(grouped.outlabels, legacy.outlabels) << "asc=" << asc << " group=" << group;
+        }
+    }
+}
+
+// Check against an independent full sort, not just layout equivalence: both
+// layouts could otherwise agree on a truncated or incorrectly reordered result
+// at the new maximum k. The ragged second query checks the full sentinel tail
+// without growing the staged grid or duplicating the large candidate set.
+TEST_F(TopkIvfRabitqLayoutTest, K65536MatchesCpuSortAndPadsShortQuery)
+{
+    const int64_t k = 65536;
+    const vector<int64_t> blockNumPerQ = {35, 1};
+    ASSERT_GT(blockNumPerQ[0] * BLOCK_SIZE, k);
+    ASSERT_LT(blockNumPerQ[1] * BLOCK_SIZE, k);
+    vector<LogicalData> logical = MakeBatch(blockNumPerQ, 65536u);
+    for (size_t q = 0; q < logical.size(); ++q)
+    {
+        const int64_t candidateCount = blockNumPerQ[q] * BLOCK_SIZE;
+        for (int64_t b = 0; b < blockNumPerQ[q]; ++b)
+        {
+            for (int64_t j = 0; j < BLOCK_SIZE; ++j)
+            {
+                const int64_t ordinal = b * BLOCK_SIZE + j;
+                // 4051 is coprime to both 35*2048 and 2048, so these are unique,
+                // exactly representable floats, permuted across all blocks. Later
+                // blocks contain winners in both directions. MakeBatch's labels stay
+                // distinct and within uint32_t, as required by the reservoir.
+                const int64_t rank = (ordinal * 4051 + 1234) % candidateCount;
+                logical[q].blocks[static_cast<size_t>(b)][static_cast<size_t>(j)] =
+                    static_cast<float>(rank + 1) / 1024.0f;
+            }
+        }
+    }
+
+    const int64_t ascModes[] = {1, 0};
+    const int64_t pathFlags[] = {0, TOPK_IVF_RABITQ_PACKED_SORT_FLAG, TOPK_IVF_RABITQ_RESERVOIR_FLAG,
+                                 TOPK_IVF_RABITQ_RESERVOIR_FLAG | TOPK_IVF_RABITQ_PACKED_SORT_FLAG};
+    const int64_t layouts[] = {RABITQ_LAYOUT_LEGACY, RABITQ_LAYOUT_GROUPED};
+    for (const int64_t asc : ascModes)
+    {
+        vector<vector<pair<float, int64_t>>> expected(logical.size());
+        for (size_t q = 0; q < logical.size(); ++q)
+        {
+            expected[q].reserve(static_cast<size_t>(blockNumPerQ[q] * BLOCK_SIZE));
+            for (size_t b = 0; b < logical[q].blocks.size(); ++b)
+            {
+                for (size_t j = 0; j < logical[q].blocks[b].size(); ++j)
+                {
+                    expected[q].emplace_back(logical[q].blocks[b][j], logical[q].labels[b][j]);
+                }
+            }
+            // No heap/reservoir code or production sort keys participate in this CPU
+            // oracle.
+            sort(expected[q].begin(), expected[q].end(),
+                 [asc](const pair<float, int64_t> &a, const pair<float, int64_t> &b)
+                 { return asc != 0 ? a.first < b.first : a.first > b.first; });
+            for (size_t i = 1; i < expected[q].size(); ++i)
+            {
+                ASSERT_NE(expected[q][i - 1].first, expected[q][i].first)
+                    << "oracle distances must be unique: q=" << q << " i=" << i;
+            }
+        }
+        const float padding = asc != 0 ? numeric_limits<float>::max() : numeric_limits<float>::lowest();
+        for (const int64_t flags : pathFlags)
+        {
+            for (const int64_t layout : layouts)
+            {
+                SCOPED_TRACE(testing::Message()
+                             << "k=" << k << " asc=" << asc << " flags=" << flags << " layout=" << layout);
+                const RunResult result =
+                    RunLayout(logical, blockNumPerQ, k, asc, layout, 2, vector<int64_t>(), 0, flags);
+                ASSERT_EQ(result.status, static_cast<uint32_t>(KERNEL_STATUS_OK));
+                const size_t outputSize = logical.size() * static_cast<size_t>(k);
+                ASSERT_EQ(result.outdists.size(), outputSize);
+                ASSERT_EQ(result.outlabels.size(), outputSize);
+                for (size_t q = 0; q < logical.size(); ++q)
+                {
+                    const size_t validCount = min(expected[q].size(), static_cast<size_t>(k));
+                    for (size_t i = 0; i < static_cast<size_t>(k); ++i)
+                    {
+                        const size_t offset = q * static_cast<size_t>(k) + i;
+                        const float expectedDist = i < validCount ? expected[q][i].first : padding;
+                        const int64_t expectedLabel = i < validCount ? expected[q][i].second : -1;
+                        // Exact comparisons are safe: the kernel only selects/copies these
+                        // finite floats. Checking both fields at every rank pins membership
+                        // and distance-label association, including the entire
+                        // 65,536-element row and the short query's sentinel tail.
+                        ASSERT_EQ(result.outdists[offset], expectedDist) << "q=" << q << " i=" << i;
+                        ASSERT_EQ(result.outlabels[offset], expectedLabel) << "q=" << q << " i=" << i;
+                        if (i > 0)
+                        {
+                            if (asc != 0)
+                            {
+                                ASSERT_LE(result.outdists[offset - 1], result.outdists[offset])
+                                    << "q=" << q << " i=" << i;
+                            }
+                            else
+                            {
+                                ASSERT_GE(result.outdists[offset - 1], result.outdists[offset])
+                                    << "q=" << q << " i=" << i;
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

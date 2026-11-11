@@ -182,7 +182,7 @@ AscendIndex作为特征检索组件中的大部分检索的Index的基类，向�
 <tr><td width="140" align="center" valign="middle">输入</td><td valign="middle"><strong><code>idx_t n</code></strong>：查询的特征向量的条数。<br><strong><code>const float *x</code></strong>：特征向量数据。<br><strong><code>idx_t k</code></strong>：需要返回的最相似的结果个数。<br><strong><code>const SearchParameters *params：</code></strong>Faiss的可选参数，默认为“nullptr”，暂不支持该参数。</td></tr>
 <tr><td width="140" align="center" valign="middle">输出</td><td valign="middle"><strong><code>float *distances</code></strong>：查询向量与距离最近的前“k”个向量间的距离值。当有效的检索结果不足“k”个时，剩余无效距离用65504或-65504填充（因metric而异）。<br><strong><code>idx_t *labels</code></strong>：查询的距离最近的前“k”个向量的ID。当有效的检索结果不足“k”个时，剩余无效label用-1填充。</td></tr>
 <tr><td width="140" align="center" valign="middle">返回值</td><td valign="middle">无</td></tr>
-<tr><td width="140" align="center" valign="middle">约束说明</td><td valign="middle">查询的特征向量数据“x”的长度应该为dims * <strong><code>n</code></strong>，“distances”以及“labels”的长度应该为<strong><code>k</code></strong> * <strong><code>n</code></strong>，否则可能会出现越界读写的情况，引起程序的崩溃。其中，“n”的取值范围：0 &lt; n &lt; 1e9；“k”通常不允许超过4096。</td></tr>
+<tr><td width="140" align="center" valign="middle">约束说明</td><td valign="middle">查询的特征向量数据“x”的长度应该为dims * <strong><code>n</code></strong>，“distances”以及“labels”的长度应该为<strong><code>k</code></strong> * <strong><code>n</code></strong>，否则可能会出现越界读写的情况，引起程序的崩溃。其中，“n”的取值范围：0 &lt; n &lt; 1e9；“k”的取值范围：0 &lt; k &lt;= 65536。具体子类的独立约束仍适用。</td></tr>
 <tr><td width="140" align="center" valign="middle">注意事项</td><td valign="middle">使用小库暴搜算法的场景中，如果在底库和batch数较大时出现性能下降现象，需要增大AscendIndexConfig中的“resources”参数值（暴搜算法默认值为128MB）。</td></tr>
 </tbody></table>
 
@@ -194,6 +194,6 @@ AscendIndex作为特征检索组件中的大部分检索的Index的基类，向�
 <tr><td width="140" align="center" valign="middle">输入</td><td valign="middle"><strong><code>idx_t n</code></strong>：查询的特征向量的条数。<br><strong><code>const uint16_t *x</code></strong>：特征向量数据。<br><strong><code>idx_t k</code></strong>：需要返回的最相似的结果个数。</td></tr>
 <tr><td width="140" align="center" valign="middle">输出</td><td valign="middle"><strong><code>float *distances</code></strong>：查询向量与距离最近的前“k”个向量间的距离值。当有效的检索结果不足“k”个时，剩余无效距离用65504或-65504填充（因metric而异）。<br><strong><code>idx_t *labels</code></strong>：查询的距离最近的前“k”个向量的ID。当有效的检索结果不足“k”个时，剩余无效label用-1填充。</td></tr>
 <tr><td width="140" align="center" valign="middle">返回值</td><td valign="middle">无</td></tr>
-<tr><td width="140" align="center" valign="middle">约束说明</td><td valign="middle">查询的特征向量数据“x”的长度应该为dims * n，“distances”以及“labels”的长度应该为k * n，否则可能会出现越界读写的情况，引起程序的崩溃。其中，“n”的取值范围：0 &lt; n &lt; 1e9；“k”通常不允许超过4096。</td></tr>
+<tr><td width="140" align="center" valign="middle">约束说明</td><td valign="middle">查询的特征向量数据“x”的长度应该为dims * n，“distances”以及“labels”的长度应该为k * n，否则可能会出现越界读写的情况，引起程序的崩溃。其中，“n”的取值范围：0 &lt; n &lt; 1e9；“k”的取值范围：0 &lt; k &lt;= 65536。具体子类的独立约束仍适用。</td></tr>
 <tr><td width="140" align="center" valign="middle">注意事项</td><td valign="middle">使用小库暴搜算法的场景中，如果在底库和batch数较大时出现性能下降现象，需要增大AscendIndexConfig中的“resources”参数值（暴搜算法默认值为128MB）。</td></tr>
 </tbody></table>

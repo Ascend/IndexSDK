@@ -11,7 +11,7 @@ AscendIndexIVFRaBitQ需要使用对应的AscendIndexIVFRaBitQConfig执行对应�
 <tr><td align="center" valign="middle">useRandomOrthogonalMatrix</td><td width="80" align="center" valign="middle">bool</td><td valign="middle">是否使用随机正交矩阵，默认为true。</td></tr>
 <tr><td align="center" valign="middle">needRefine</td><td width="80" align="center" valign="middle">bool</td><td valign="middle">是否需要精排，默认为false。</td></tr>
 <tr><td align="center" valign="middle">matrixSeed</td><td width="80" align="center" valign="middle">int</td><td valign="middle">生成随机正交矩阵的随机种子，默认为12345。</td></tr>
-<tr><td align="center" valign="middle">refineAlpha</td><td width="80" align="center" valign="middle">float</td><td valign="middle">精排相关参数，检索时原本需要检索前k个，需要精排则检索前k * refineAlpha个，再从中取topk。<br>该值默认为2，设置得越大，召回率越高，检索效率越低。</td></tr>
+<tr><td align="center" valign="middle">refineAlpha</td><td width="80" align="center" valign="middle">float</td><td valign="middle">精排候选数量倍率，默认为2，仅在needRefine=true时生效；使用有限且 &gt;= 1 的值。检索时先以float计算k * refineAlpha，保留该乘积的浮点舍入，校验乘积有限且位于[k, INT_MAX]内，再转换为int向零取整得到候选数量；不满足条件时搜索报错，构造函数不执行此校验。内部候选数量可超过65536，再从中返回最终k个结果；例如k=65536、refineAlpha=2对应131072个候选。<br>增大该值通常有助于提高召回率，但会增加候选缓冲区的内存需求和检索耗时，需保证内存充足。</td></tr>
 </tbody></table>
 
 ## AscendIndexIVFRaBitQConfig<a name="section6579185362314"></a>
@@ -57,7 +57,7 @@ AscendIndexIVFRaBitQ需要使用对应的AscendIndexIVFRaBitQConfig执行对应�
 <table><tbody>
 <tr><td width="250" align="center" valign="middle">API定义</td><td valign="middle"><strong><code>inline AscendIndexIVFRaBitQConfig(std::vector&lt;int&gt; devices, bool useRandomOrthogonalMatrix_, bool needRefine_, int matrixSeed_, float alpha_, int64_t resourceSize = IVF_DEFAULT_MEM);</code></strong></td></tr>
 <tr><td width="250" align="center" valign="middle">功能描述</td><td valign="middle">AscendIndexIVFRaBitQConfig的构造函数，生成AscendIndexIVFRaBitQConfig，此时根据输入参数执行初始化。</td></tr>
-<tr><td width="250" align="center" valign="middle">输入</td><td valign="middle"><strong><code>std::vector&lt;int&gt; devices</code></strong>：Device侧设备ID。<br><strong><code>bool useRandomOrthogonalMatrix_</code></strong>：是否使用随机正交矩阵。<br><strong><code>bool needRefine_</code></strong>：是否需要精排。<br><strong><code>int matrixSeed_</code></strong>：生成随机正交矩阵的随机种子。<br><strong><code>float alpha_</code></strong>：精排相关参数。<br><strong><code>int resourceSize</code></strong>：设备侧预置的内存池大小，单位为Byte，计算过程中存储中间结果的内存空间，用于避免计算过程中动态申请内存造成性能波动。默认参数为头文件中的“IVF_DEFAULT_MEM”。该参数通过底库大小和search的batch数共同确定，在底库大于或等于1000万且batch数大于或等于16时建议设置1024MB。</td></tr>
+<tr><td width="250" align="center" valign="middle">输入</td><td valign="middle"><strong><code>std::vector&lt;int&gt; devices</code></strong>：Device侧设备ID。<br><strong><code>bool useRandomOrthogonalMatrix_</code></strong>：是否使用随机正交矩阵。<br><strong><code>bool needRefine_</code></strong>：是否需要精排。<br><strong><code>int matrixSeed_</code></strong>：生成随机正交矩阵的随机种子。<br><strong><code>float alpha_</code></strong>：精排候选数量倍率，使用有限且 &gt;= 1 的值；needRefine_=true时，在搜索阶段按refineAlpha成员说明校验候选乘积。<br><strong><code>int resourceSize</code></strong>：设备侧预置的内存池大小，单位为Byte，计算过程中存储中间结果的内存空间，用于避免计算过程中动态申请内存造成性能波动。默认参数为头文件中的“IVF_DEFAULT_MEM”。该参数通过底库大小和search的batch数共同确定，在底库大于或等于1000万且batch数大于或等于16时建议设置1024MB。</td></tr>
 <tr><td width="250" align="center" valign="middle">输出</td><td valign="middle">无</td></tr>
 <tr><td width="250" align="center" valign="middle">返回值</td><td valign="middle">无</td></tr>
 <tr><td width="250" align="center" valign="middle">约束说明</td><td valign="middle">● “devices”需要为合法有效不重复的设备ID，最大数量为64。<br>● “resourceSize”配置的值不超过4 * 1024MB（4 * 1024 * 1024 * 1024字节），当设置为“-1”时，Device侧昇腾AI处理器资源配置为默认值128MB。</td></tr>

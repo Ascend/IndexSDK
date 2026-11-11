@@ -69,7 +69,7 @@ AscendIndexInt8作为特征检索组件中的采用INT8特征向量的Index的�
 <tr><td width="140" align="center" valign="middle">输入</td><td valign="middle"><strong><code>idx_t n</code></strong>：查询的特征向量的条数。<br><strong><code>const int8_t *x</code></strong>：特征向量数据。<br><strong><code>idx_t k</code></strong>：需要返回的最相似的结果个数。</td></tr>
 <tr><td width="140" align="center" valign="middle">输出</td><td valign="middle"><strong><code>idx_t *labels</code></strong>：查询的距离最近的前“k”个向量的ID。</td></tr>
 <tr><td width="140" align="center" valign="middle">返回值</td><td valign="middle">无。</td></tr>
-<tr><td width="140" align="center" valign="middle">约束说明</td><td valign="middle">● 查询的特征向量数据“x”的长度应符合dims * <strong><code>n</code></strong>，“labels”的长度应符合<strong><code>k</code></strong> * <strong><code>n</code></strong>，否则可能会出现越界读写的情况，引起程序的崩溃。<br>● 此处“n”大于0且小于1e9。<br>● 此处“k”大于0且小于等于4096。<br>● 此处<strong><code>n</code></strong> * <strong><code>k</code></strong>小于1e10。</td></tr>
+<tr><td width="140" align="center" valign="middle">约束说明</td><td valign="middle">● 查询的特征向量数据“x”的长度应符合dims * <strong><code>n</code></strong>，“labels”的长度应符合<strong><code>k</code></strong> * <strong><code>n</code></strong>，否则可能会出现越界读写的情况，引起程序的崩溃。<br>● 此处“n”大于0且小于1e9。<br>● 此处“k”大于0且小于等于65536。<br>● 此处<strong><code>n</code></strong> * <strong><code>k</code></strong>小于1e10。</td></tr>
 </tbody></table>
 
 ## AscendIndexInt8接口<a name="ZH-CN_TOPIC_0000001506614993"></a>
@@ -234,7 +234,7 @@ AscendIndexInt8作为特征检索组件中的采用INT8特征向量的Index的�
 <tr><td width="140" align="center" valign="middle">输入</td><td valign="middle"><strong><code>idx_t n</code></strong>：查询的特征向量的条数。<br><strong><code>const int8_t *x</code></strong>：特征向量数据。<br><strong><code>idx_t k</code></strong>：需要返回的最相似的结果个数。</td></tr>
 <tr><td width="140" align="center" valign="middle">输出</td><td valign="middle"><strong><code>float *distances</code></strong>：查询向量与距离最近的前“k”个向量间的距离值。当有效的检索结果不足“k”个时，剩余无效距离用65504或-65504填充（因metric而异）。<br><strong><code>idx_t *labels</code></strong>：查询的距离最近的前“k”个向量的ID。当有效的检索结果不足“k”个时，剩余无效label用-1填充。</td></tr>
 <tr><td width="140" align="center" valign="middle">返回值</td><td valign="middle">无。</td></tr>
-<tr><td width="140" align="center" valign="middle">约束说明</td><td valign="middle">● 查询的特征向量数据“x”的长度应该为dims * <strong><code>n</code></strong>，“distances”以及“labels”的长度应该为k * <strong><code>n</code></strong>，否则可能会出现越界读写的情况，引起程序的崩溃。<br>● 此处“n”大于0且小于1e9。<br>● 此处“k”大于0且小于等于4096。</td></tr>
+<tr><td width="140" align="center" valign="middle">约束说明</td><td valign="middle">● 查询的特征向量数据“x”的长度应该为dims * <strong><code>n</code></strong>，“distances”以及“labels”的长度应该为k * <strong><code>n</code></strong>，否则可能会出现越界读写的情况，引起程序的崩溃。<br>● 此处“n”大于0且小于1e9。<br>● 此处“k”大于0且小于等于65536。</td></tr>
 </tbody></table>
 
 <a name="table88671631181418"></a>
@@ -245,7 +245,7 @@ AscendIndexInt8作为特征检索组件中的采用INT8特征向量的Index的�
 <tr><td width="140" align="center" valign="middle">输入</td><td valign="middle"><strong><code>idx_t n</code></strong>：查询的特征向量的条数。<br><strong><code>const char *x</code></strong>：特征向量数据。<br><strong><code>idx_t k</code></strong>：需要返回的最相似的结果个数。</td></tr>
 <tr><td width="140" align="center" valign="middle">输出</td><td valign="middle"><strong><code>float *distances</code></strong>：查询向量与距离最近的前“k”个向量间的距离值。<br><strong><code>idx_t *labels</code></strong>：查询的距离最近的前“k”个向量的ID。</td></tr>
 <tr><td width="140" align="center" valign="middle">返回值</td><td valign="middle">无。</td></tr>
-<tr><td width="140" align="center" valign="middle">约束说明</td><td valign="middle">● 查询的特征向量数据“x”的长度应该为dims * <strong><code>n</code></strong>，“distances”以及“labels”的长度应该为k * <strong><code>n</code></strong>，否则可能会出现越界读写的情况，引起程序的崩溃。<br>● 此处“n”大于0且小于1e9。<br>● 此处“k”大于0且小于等于4096。</td></tr>
+<tr><td width="140" align="center" valign="middle">约束说明</td><td valign="middle">● 查询的特征向量数据“x”的长度应该为dims * <strong><code>n</code></strong>，“distances”以及“labels”的长度应该为k * <strong><code>n</code></strong>，否则可能会出现越界读写的情况，引起程序的崩溃。<br>● 此处“n”大于0且小于1e9。<br>● 此处“k”大于0且小于等于65536。</td></tr>
 </tbody></table>
 
 ## train接口<a name="ZH-CN_TOPIC_0000001456534956"></a>

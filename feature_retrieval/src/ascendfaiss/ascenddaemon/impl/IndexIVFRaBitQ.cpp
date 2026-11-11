@@ -2490,8 +2490,9 @@ APP_ERROR IndexIVFRaBitQ::searchWithBatch(int n, const float *x, int k, float *d
         APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, ret, "ivfrabitq L2 search failed! %d", ret);
         return APP_ERR_OK;
     }
-    std::vector<float> topkdist(n * k, 0);
-    std::vector<idx_t> topklabel(n * k, 0);
+    const size_t resultCount = static_cast<size_t>(n) * static_cast<size_t>(k);
+    std::vector<float> topkdist(resultCount, 0);
+    std::vector<idx_t> topklabel(resultCount, 0);
     ret = searchImplL2(rotateQueries, queryL2, queriesLut, l1TopNprobeIndicesHost, l1TopNprobeDistsHost, k,
                        topkdist.data(), topklabel.data(), idFilter);
     APPERR_RETURN_IF_NOT_FMT(ret == APP_ERR_OK, ret, "ivfrabitq L2 search failed! %d", ret);
@@ -2834,8 +2835,9 @@ void IndexIVFRaBitQ::refine(int n, const float *x, int k, float *distances, idx_
 {
     fvec_L2sqr_by_idx(topkdist, x, srcIndexes, topklabel, dims, n, k);
 
-    std::fill_n(labels, n * k, 0xffffffffffffffff);  // 0xffffffffffffffff为无效label
-    std::fill_n(distances, n * k, 0x7f7fffff);       // 小端排序模式初始化为0x7f7fffff，即最大值
+    const size_t resultCount = static_cast<size_t>(n) * static_cast<size_t>(k);
+    std::fill_n(labels, resultCount, 0xffffffffffffffff);  // 0xffffffffffffffff为无效label
+    std::fill_n(distances, resultCount, 0x7f7fffff);       // 小端排序模式初始化为0x7f7fffff，即最大值
     auto cmp = [](float a, float b) -> bool { return a > b; };
 #pragma omp parallel for
     for (int64_t i = 0; i < n; ++i)

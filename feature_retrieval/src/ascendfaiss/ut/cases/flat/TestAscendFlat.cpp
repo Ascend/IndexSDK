@@ -37,7 +37,6 @@ using namespace std;
 namespace
 {
 const int64_t MAX_N = 1e9;
-const int64_t MAX_K = 4096;
 struct CheckInitItem
 {
     size_t dim;
@@ -662,50 +661,45 @@ void TestSearchWithMasksInvliadNK(faiss::ascend::AscendIndexFlat &index, const s
 {
     int64_t batch = 128;
     int64_t k = 10;
-    std::string msg = "";
-    try
+    std::string msg;
+    EXPECT_EQ(faiss::ascend::MAX_K, 65536);
+    for (int64_t n : {int64_t{0}, MAX_N})
     {
-        int64_t n = 0;
-        index.search_with_masks(n, data.data(), k, dist.data(), label.data(), mask.data());
+        msg.clear();
+        EXPECT_THROW(
+            {
+                try
+                {
+                    index.search_with_masks(n, data.data(), k, dist.data(), label.data(), mask.data());
+                }
+                catch (const std::exception &e)
+                {
+                    msg = e.what();
+                    throw;
+                }
+            },
+            std::exception);
+        EXPECT_TRUE(msg.find("n must be > 0 and < ") != std::string::npos);
     }
-    catch (std::exception &e)
-    {
-        msg = e.what();
-    }
-    EXPECT_TRUE(msg.find("n must be > 0 and < ") != std::string::npos);
 
-    try
+    for (int64_t topk : {int64_t{0}, static_cast<int64_t>(faiss::ascend::MAX_K) + 1})
     {
-        int64_t n = MAX_N;
-        index.search_with_masks(n, data.data(), k, dist.data(), label.data(), mask.data());
+        msg.clear();
+        EXPECT_THROW(
+            {
+                try
+                {
+                    index.search_with_masks(batch, data.data(), topk, dist.data(), label.data(), mask.data());
+                }
+                catch (const std::exception &e)
+                {
+                    msg = e.what();
+                    throw;
+                }
+            },
+            std::exception);
+        EXPECT_TRUE(msg.find("k must be > 0 and <= " + std::to_string(faiss::ascend::MAX_K)) != std::string::npos);
     }
-    catch (std::exception &e)
-    {
-        msg = e.what();
-    }
-    EXPECT_TRUE(msg.find("n must be > 0 and < ") != std::string::npos);
-
-    try
-    {
-        int64_t topk = 0;
-        index.search_with_masks(batch, data.data(), topk, dist.data(), label.data(), mask.data());
-    }
-    catch (std::exception &e)
-    {
-        msg = e.what();
-    }
-    EXPECT_TRUE(msg.find("k must be > 0 and <= ") != std::string::npos);
-
-    try
-    {
-        int64_t topk = MAX_K + 1;
-        index.search_with_masks(batch, data.data(), topk, dist.data(), label.data(), mask.data());
-    }
-    catch (std::exception &e)
-    {
-        msg = e.what();
-    }
-    EXPECT_TRUE(msg.find("k must be > 0 and <= ") != std::string::npos);
 }
 
 template <typename T>
