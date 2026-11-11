@@ -209,7 +209,6 @@ size_t AscendIndexImpl::removeImpl(const IDSelector &sel)
 {
     APP_LOG_INFO("AscendIndex removeImpl operation started.\n");
     size_t deviceCnt = indexConfig.deviceList.size();
-    uint32_t removeCnt = 0;
 
     // 1. remove vector from device, and removeMaps save the id(not index) of pre-removing
     std::vector<std::vector<ascend_idx_t>> removeMaps(deviceCnt, std::vector<ascend_idx_t>());
@@ -224,30 +223,35 @@ size_t AscendIndexImpl::removeImpl(const IDSelector &sel)
         }
     }
 
+    size_t plannedRemoveCnt = 0;
+    for (const auto &positions : removeMaps)
+    {
+        plannedRemoveCnt += positions.size();
+    }
+    const size_t logicalRemoveCnt = getLogicalRemoveCount(plannedRemoveCnt);
+    FAISS_THROW_IF_NOT_FMT(this->intf_->ntotal >= logicalRemoveCnt,
+                           "removeCnt should be in range [0, %ld], actual=%zu.", this->intf_->ntotal, logicalRemoveCnt);
+
     // 2. remove the vector in the device
-#pragma omp parallel for reduction(+ : removeCnt) num_threads(deviceCnt)
+#pragma omp parallel for num_threads(deviceCnt)
     for (size_t i = 0; i < deviceCnt; i++)
     {
         if (removeMaps[i].size() == 0)
         {
             continue;
         }
-        uint32_t removeCnt_tmp = 0;
         int deviceId = indexConfig.deviceList[i];
         auto pIndex = getActualIndex(deviceId);
         ::ascend::IDSelectorBatch batch(removeMaps[i].size(), removeMaps[i].data());
-        removeCnt_tmp = pIndex->removeIds(batch);
-        removeCnt += removeCnt_tmp;
+        pIndex->removeIds(batch);
     }
 
     // 3. remove the index save in the host
     removeIdx(removeMaps);
 
-    FAISS_THROW_IF_NOT_FMT(this->intf_->ntotal >= removeCnt, "removeCnt should be in range [0, %ld], actual=%d.",
-                           this->intf_->ntotal, removeCnt);
-    this->intf_->ntotal -= static_cast<faiss::idx_t>(removeCnt);
+    this->intf_->ntotal -= static_cast<faiss::idx_t>(logicalRemoveCnt);
     APP_LOG_INFO("AscendIndex removeImpl operation finished.\n");
-    return static_cast<size_t>(removeCnt);
+    return logicalRemoveCnt;
 }
 
 void AscendIndexImpl::removeIdx(std::vector<std::vector<ascend_idx_t>> &removeMaps)
