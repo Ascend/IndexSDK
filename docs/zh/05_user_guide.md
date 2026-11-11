@@ -154,7 +154,7 @@
 <tr><td valign="middle"><a href="./api/02_approximate_retrieval/14_AscendIndexIVFFlat.md#ascendindexivfflat">AscendIndexIVFFlat</a></td><td valign="middle">● 特征类型：FP32<br>● 特征维度：128<br>● 距离类型：IP<br>● 计算精度：中<br>● Device内存占用：中<br>● 适应场景：适用于亿级底库（大库容），对性能要求较高，对精度损失有容忍的近似检索场景。<br>● 仅支持Atlas A2推理系列产品, Atlas A3推理系列产品和Ascend 950PR系列产品</td><td valign="middle">● <a href="#aicpu">AICPU</a><br>● <a href="#ivfflat">IVFFLAT</a></td><td width="100" align="center" valign="middle"><a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexIVFFlat.cpp">链接</a></td></tr>
 <tr><td valign="middle"><a href="./api/02_approximate_retrieval/15_AscendIndexIVFPQ.md#ascendindexivfpq">AscendIndexIVFPQ</a></td><td valign="middle">● 特征类型：FP32<br>● 特征维度：128<br>● 距离类型：L2<br>● 计算精度：中（近似检索）<br>● Device内存占用：低（基于PQ编码压缩向量）<br>● 适应场景：适用于亿级底库（大库容），对吞吐和时延要求较高，可接受一定精度损失的近似检索场景。<br>● 仅支持Ascend 950PR系列产品</td><td valign="middle">● <a href="#aicpu">AICPU</a><br>● <a href="#ivfpq">IVFPQ</a></td><td width="100" align="center" valign="middle"><a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexIVFPQ.cpp">链接</a></td></tr>
 <tr><td valign="middle"><a href="./api/02_approximate_retrieval/16_AscendIndexIVFRaBitQ.md#ascendindexivfrabitq">AscendIndexIVFRaBitQ</a></td><td valign="middle">● 特征类型：FP32<br>● 特征维度：128<br>● 距离类型：L2 &amp; IP<br>● 计算精度：中<br>● Device内存占用：低（压缩特征）<br>● 适应场景：适用于亿级底库（大库容），对性能要求较高，对精度损失有容忍的近似检索场景。<br>● 仅支持Atlas A2推理系列产品, Atlas A3推理系列产品 和Ascend 950PR系列产品</td><td valign="middle">● <a href="#aicpu">AICPU</a><br>● <a href="#ivfrabitq">IVFRaBitQ</a></td><td width="100" align="center" valign="middle"><a href="https://gitcode.com/Ascend/mindsdk-referenceapps/blob/master/IndexSDK/TestAscendIndexIVFRabitQ.cpp">链接</a></td></tr>
-<tr><td valign="middle"><a href="./api/02_approximate_retrieval/18_AscendIndexCagra.md#ascendindexcagra">AscendIndexCagra</a></td><td valign="middle">● 特征类型：FP32<br>● 特征维度：64, 128, 256, 512<br>● 距离类型：L2<br>● 计算精度：中<br>● Device内存占用：低（RabitQ量化压缩）<br>● 适应场景：基于图检索的近似最近邻搜索，适用于亿级底库（大库容），对性能要求较高，对精度损失有容忍的近似检索场景。<br>● 仅支持Ascend 950PR系列产品</td><td valign="middle">● <a href="#cagra">Cagra</a></td><td width="100" align="center" valign="middle"><a href="../../examples/TestAscendIndexCagra.cpp">链接</a></td></tr>
+<tr><td valign="middle"><a href="./api/02_approximate_retrieval/18_AscendIndexCagra.md#ascendindexcagra">AscendIndexCagra</a></td><td valign="middle">● 特征类型：FP32<br>● 特征维度：64, 128, 256, 512<br>● 距离类型：L2<br>● 计算精度：中<br>● Device内存占用：低（RabitQ量化压缩）<br>● 适应场景：基于图检索的近似最近邻搜索，适用于亿级底库（大库容），对性能要求较高，对精度损失有容忍的近似检索场景。<br>● 仅支持Ascend 950 PR系列产品</td><td valign="middle">● <a href="#cagra">Cagra</a></td><td width="100" align="center" valign="middle"><a href="../../examples/TestAscendIndexCagra.cpp">链接</a></td></tr>
 </tbody></table>
 
 ### 属性过滤检索<a name="ZH-CN_TOPIC_0000001649689168"></a>
@@ -509,112 +509,11 @@ VSTAR检索当前只支持<term>Atlas推理系列产品</term>，涉及VSTAR业�
 
 <a name="table_cagra_op"></a>
 <table><tbody>
-<tr><td width="140" align="center" valign="middle">用法</td><td valign="middle"><strong><code>python3 cagra_generate_model.py -d &lt;dim&gt; -data_base &lt;data_base&gt; -degree &lt;degree&gt; -topK &lt;topK&gt; -p &lt;process_id&gt; -t &lt;npu_type&gt;</code></strong></td></tr>
-<tr><td width="140" align="center" valign="middle">参数名称</td><td valign="middle">&lt;dim&gt;：特征向量维度，默认值为&quot;128&quot;。<br>&lt;data_base&gt;：底库数据量，默认值为&quot;1000000&quot;。<br>&lt;degree&gt;：图度数，默认值为&quot;64&quot;。<br>&lt;topK&gt;：检索返回的最近邻个数，默认值为&quot;64&quot;。<br>&lt;process_id&gt;：批量生成算子多进程调度的进程ID，默认值为&quot;0&quot;，无需设置。<br>&lt;npu_type&gt;：硬件形态，默认值为&quot;Ascend950PR&quot;。<br>--help | -h：查询帮助信息。</td></tr>
-<tr><td width="140" align="center" valign="middle">说明</td><td valign="middle">执行此命令，用户可以得到一组算子模型文件，用户需要自行修改命令中的参数。例如对于Ascend 950PR系列产品 生成128维，底库100万，图度数64，topK 64的算子：python3 cagra_generate_model.py -d 128 -data_base 1000000 -degree 64 -topK 64 -t Ascend950PR</td></tr>
-<tr><td width="140" align="center" valign="middle">约束说明</td><td valign="middle">● 仅支持Ascend 950PR系列产品<br>● dim ∈ {64, 128, 256, 512, 1024, 1536, 3072}<br>● degree ∈ {64, 128}<br>● topK ∈ {32,64,128,256,512,1024}且topK ≤ data_base，Init、Search 和模型 top_k 属性须一致</td></tr>
+<tr><td width="140" align="center" valign="middle">用法</td><td valign="middle"><strong><code>python3 cagra_generate_model.py -d &lt;dim&gt; -data_base &lt;data_base&gt; --intermediate-degree &lt;intermediate_degree&gt; -degree &lt;graph_degree&gt; -topK &lt;topK&gt; --cores &lt;core_num&gt; -p &lt;process_id&gt; -t &lt;npu_type&gt;</code></strong></td></tr>
+<tr><td width="140" align="center" valign="middle">参数名称</td><td valign="middle">&lt;dim&gt;：特征向量维度，默认值为“128”。<br>&lt;data_base&gt;：底库向量数量，默认值为“1000000”。<br>&lt;intermediate_degree&gt;：NN-Descent中间图出度，默认值为“128”。<br>&lt;graph_degree&gt;：最终图出度，默认值为“64”。<br>&lt;topK&gt;：每条查询返回的最近邻个数，默认值为“64”。<br>&lt;core_num&gt;：AI Core数量，默认值为“56”，当前仅支持56。<br>&lt;process_id&gt;：模型生成进程ID，默认值为“0”。<br>&lt;npu_type&gt;：硬件形态，默认值为“Ascend950PR”。<br>--help | -h：查询帮助信息。</td></tr>
+<tr><td width="140" align="center" valign="middle">说明</td><td valign="middle">执行此命令，在当前目录的op_models中生成六个构图算子模型及当前TopK的七档检索分页模型。例如生成128维、底库100万、中间图出度128、最终图出度64、TopK为32的模型：python3 cagra_generate_model.py -d 128 -data_base 1000000 --intermediate-degree 128 -degree 64 -topK 32 -t Ascend950PR</td></tr>
+<tr><td width="140" align="center" valign="middle">约束说明</td><td valign="middle">● 仅支持Ascend 950 PR系列产品。<br>● dim ∈ {64, 128, 256, 512, 1024, 1536, 3072}。<br>● graph_degree ∈ {64, 128}，graph_degree ≤ intermediate_degree ≤ 128，且intermediate_degree &lt; data_base ≤ 1000000000。<br>● topK ∈ {32, 64, 128, 256, 512, 1024}，且topK ≤ data_base。<br>● 生成模型的N、D、M、G及TopK须与运行参数一致。</td></tr>
 </tbody></table>
-
-##### Cagra NPU 构图算子模型<a name="cagra-npu-build"></a>
-
-`cagra_build_generate_model.py` 用于生成 Ascend 950 上的六个 CAGRA SIMT 构图算子模型。
-
-<a name="table_cagra_npu_build"></a>
-<table><tbody>
-<tr><td width="140" align="center" valign="middle">用法</td><td valign="middle"><strong><code>python3 cagra_build_generate_model.py --cores &lt;core_num&gt; -n &lt;data_size&gt; -d &lt;dim&gt; -i &lt;intermediate_degree&gt; -graph &lt;graph_degree&gt; -p &lt;process_id&gt; -t &lt;npu_type&gt;</code></strong></td></tr>
-<tr><td width="140" align="center" valign="middle">参数名称</td><td valign="middle">&lt;core_num&gt;：AI Core 数量，Ascend 950 当前必须为&quot;56&quot;。<br>&lt;data_size&gt;：底库向量数量 N，默认值为&quot;10000&quot;。<br>&lt;dim&gt;：FP32 向量维度 D，默认值为&quot;128&quot;。<br>&lt;intermediate_degree&gt;：NN-Descent 中间图出度 M，默认值为&quot;128&quot;。<br>&lt;graph_degree&gt;：最终 CAGRA 图出度 G，默认值为&quot;64&quot;。<br>&lt;process_id&gt;：模型生成进程 ID，默认值为&quot;0&quot;。<br>&lt;npu_type&gt;：ATC 目标硬件，使用&quot;Ascend950PR&quot;；&quot;Ascend950&quot;作为兼容别名。<br>--help | -h：查询帮助信息。</td></tr>
-<tr><td width="140" align="center" valign="middle">说明</td><td valign="middle">执行命令后，在当前目录的 <code>op_models</code> 中生成构图 OM。模型使用静态 shape，生成模型时的 N、D、M、G 必须与运行时完全一致。<br><br>例如，生成 100 万条 128 维向量、M=128、G=64 的构图模型：<br><strong><code>python3 cagra_build_generate_model.py --cores 56 -n 1000000 -d 128 -i 128 -graph 64 -t Ascend950PR</code></strong></td></tr>
-<tr><td width="140" align="center" valign="middle">约束说明</td><td valign="middle">● 仅支持 Ascend 950 系列产品和单卡构图。<br>● 2 ≤ data_size ≤ 2147483647，实际规模受 Host 和 Device 内存限制。<br>● 支持 1 ≤ dim ≤ 3072，已验证 dim ∈ {64, 128, 256, 384, 512, 1024, 1536, 2048, 3072}。<br>● graph_degree ∈ {64,128}，graph_degree ≤ intermediate_degree ≤ 128，并且 intermediate_degree &lt; data_size。<br>● 构图仅支持有限 FP32 输入和 L2 距离，输入数据不能包含 NaN、正无穷或负无穷。<br>● 构图命令没有 topK 参数；topK 只影响检索。</td></tr>
-</tbody></table>
-
-构图模型生成后，设置模型目录，并通过公共 C++ 接口构图：
-
-```bash
-export MX_INDEX_MODELPATH=$(realpath op_models)
-```
-
-```cpp
-#include "index/AscendCagraGraphBuilder.h"
-
-faiss::ascend::AscendCagraGraphBuilder builder;
-std::vector<int> devices{deviceId};
-int ret = builder.Init(128, 64, dataNum, devices);
-
-faiss::ascend::AscendCagraGraphBuildConfig config;
-config.intermediateDegree = 128;
-config.maxIterations = 20;
-config.terminationThreshold = 0.0001F;
-config.guaranteeConnectivity = true;
-
-std::vector<uint32_t> graph(static_cast<size_t>(dataNum) * 64);
-ret = builder.Build(baseData, graph.data(), config);
-```
-
-`Build` 输出行优先的 `uint32_t[dataNum][graphDegree]` 邻接矩阵；`BuildToFile` 可直接写入二进制图文件。
-
-接口、配置及约束分别见[AscendCagraGraphBuilder](./api/02_approximate_retrieval/19_AscendCagraGraphBuilder.md)和[AscendCagraGraphBuildConfig](./api/02_approximate_retrieval/20_AscendCagraGraphBuildConfig.md)。`AscendIndexCagra::Add`不会自动构图。
-
-##### SIFT1M构图、精度与性能测试
-
-[examples/TestAscendIndexCagra.cpp](../../examples/TestAscendIndexCagra.cpp)只保留`TestAscendIndexCagra.Sift1M`一个用例，复用原TestAscendCagraScale的批量读取、构图生命周期及两段检索计时流程。原随机图QPS用例已移除。
-
-SIFT1M默认规格：N=1000000、D=128、M=128、G=64、TopK=32、内部候选数64、停止阈值0.0001、开启连通性保障。数据目录需包含`sift_base.fvecs`和`sift_query.fvecs`，不做额外归一化。查询GT与旧Scale程序一致，由CPU IndexFlatL2计算，无需ivecs文件。
-
-| 环境变量 | 默认值 | 作用 |
-| --- | --- | --- |
-| CAGRA_SIFT_DIR | 无 | SIFT数据目录；未设置时跳过该用例 |
-| CAGRA_DEVICE_ID | 0 | 设备ID |
-| CAGRA_DATA_NUM | 1000000 | 读取的底库条数，须大于128；修改后需生成匹配的OM |
-| CAGRA_TOPK | 32 | 返回数量，取值{32,64,128,256,512,1024}，且不超过N；修改后需生成匹配的检索OM |
-| CAGRA_QUERY_NUM | 100 | 查询数，取值1至4096；兼容CAGRA_SIFT_NQ |
-| CAGRA_MAX_ITERATIONS | 20 | 最大构图轮数，取值1至1000 |
-| CAGRA_GRAPH_ACCURACY_SAMPLES | 0 | 均匀抽样图行数，0跳过额外图精度评估；兼容CAGRA_GRAPH_SAMPLES |
-| CAGRA_SEARCH_WARMUPS / CAGRA_SEARCH_LOOPS | 3 / 20 | 两段查询各自预热/正式次数；兼容CAGRA_WARMUP / CAGRA_REPEAT |
-| CAGRA_VERBOSE | 1 | 1输出构图阶段、迭代及收敛日志；0关闭额外统计 |
-| CAGRA_RUN_CPU_GT | 1 | 0跳过查询及图抽样精确GT，只调试检索运行和结果合法性，不评估Recall |
-
-运行前准备匹配N、D、M、G和TopK的构图、检索OM，Host库、算子包与OM使用相互匹配的版本。以下命令从源码根目录执行，先加载对应CANN环境：
-
-在源码`feature_retrieval/src/ascendfaiss/ops`目录执行`bash build.sh Ascend950`，安装生成的`build_out/custom_opp_$(uname -m).run`，设置`ASCEND_CUSTOM_OPP_PATH="$ASCEND_OPP_PATH/vendors/mxIndex"`，再进入`../tools`目录。源码随算子包安装，生成OM时进行kernel编译。
-
-在tools目录生成六个构图OM和七档检索分页OM；已有完全匹配的六个构图OM可继续复用：
-
-```bash
-python3 cagra_build_generate_model.py --cores 56 \
-  -n 1000000 -d 128 -i 128 -graph 64 -p 0 -t Ascend950PR
-python3 cagra_generate_model.py \
-  -data_base 1000000 -d 128 -degree 64 -topK 32 -p 0 -t Ascend950PR
-export MX_INDEX_MODELPATH="$PWD/op_models"
-```
-
-从IndexSDK源码根目录编译并运行，安装路径按实际环境设置。将`/path/to/sift`替换为实际数据目录，`CAGRA_DEVICE_ID`按设备编号调整：
-
-```bash
-cmake -S examples -B build-cagra-example \
-  -DMXINDEX_HOME="$INDEXSDK_HOME" -DFAISS_HOME="$FAISS_HOME" \
-  -DTOOLKIT_HOME="$CANN_HOME" -DOPENBLAS="$OPENBLAS_HOME" -DGTEST_HOME="$GTEST_HOME"
-cmake --build build-cagra-example --target TestAscendIndexCagra -j8
-set -o pipefail
-CAGRA_SIFT_DIR=/path/to/sift CAGRA_DEVICE_ID=4 \
-  CAGRA_DATA_NUM=1000000 CAGRA_QUERY_NUM=100 \
-  CAGRA_GRAPH_ACCURACY_SAMPLES=0 CAGRA_MAX_ITERATIONS=20 \
-  CAGRA_SEARCH_WARMUPS=3 CAGRA_SEARCH_LOOPS=20 \
-  ./build-cagra-example/TestAscendIndexCagra \
-  --gtest_filter=TestAscendIndexCagra.Sift1M --gtest_color=no \
-  2>&1 | tee cagra_indexsdk_sift1m.log
-```
-
-运行前按安装指导设置IndexSDK/CANN动态库路径，不能加载UT的AscendCLMock库。修改CAGRA_TOPK后，生成对应-topK的检索OM；实际可运行的检索规格以所加载SDK和算子版本为准。
-
-日志提供以下结果：
-
-- `build_performance`：与旧Scale程序一致，对公开Build计时并报告vectors/s；不包含Init、数据加载、外部图校验或GT计算。构图对象在进入GT和检索阶段前析构，释放其资源。
-- `graph_accuracy`：图前缀Recall@1/10/32和整行degree coverage@1/10/32，使用CPU IndexFlatL2对抽样节点求精确邻居并排除自身。两种图指标分开报告。
-- `search_compare`：NPU原始RaBitQ检索的Recall@1/10/32及结果合法性。`search_timing scope=search_only`记录预先量化后的Search耗时/QPS；`scope=query_prepare_plus_search`记录QuantizeQueries+Search的完整查询耗时/QPS。首次底库量化和结果检查在对应检索计时之外。
-
-构图后有`scale_phase cpu_exact_ground_truth start`提示；CPU精确GT可能耗时较长，完成后输出`ground_truth`及`scale_phase npu_search start`，不会跳过Search。用例校验数据格式、图结构和最终检索结果；通过表示功能检查成功，Recall/QPS记录实测值，不设置本RFC未规定的门槛。正式构图性能需保留收敛摘要。
-
-检索排障时可设置`CAGRA_RUN_CPU_GT=0`跳过全部CPU精确GT；此时日志明确输出`recall=not_evaluated`，仍检查图结构、检索返回码、ID范围/唯一性和距离排序。正式精度测试需恢复为1。该开关不关闭检索必需的底库和查询量化。
 
 ##### Cagra CPU构图脚本<a name="section_cagra_build"></a>
 

@@ -176,11 +176,9 @@ SET(ASCENDFAISS_SRC
     ${ASCEND_PROJECT_HOME}/ascendhost/src/impl/HeteroBlockGroupMgrImpl.cpp
     ${CMAKE_CURRENT_LIST_DIR}/../ascendhost/src/impl/AscendIndexClusterImpl.cpp
     ${CMAKE_CURRENT_LIST_DIR}/../ascendhost/src/impl/AscendIndexILFlatImpl.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/../ascendhost/src/impl/AscendCagraGraphBuilderImpl.cpp
     ${CMAKE_CURRENT_LIST_DIR}/../ascendhost/src/impl/AscendIndexCagraImpl.cpp
     ${CMAKE_CURRENT_LIST_DIR}/../ascendhost/src/index/AscendIndexCluster.cpp
     ${CMAKE_CURRENT_LIST_DIR}/../ascendhost/src/index/AscendIndexILFlat.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/../ascendhost/src/index/AscendCagraGraphBuilder.cpp
     ${CMAKE_CURRENT_LIST_DIR}/../ascendhost/src/index/AscendIndexCagra.cpp
     ${ASCEND_PROJECT_HOME}/ascendhost/src/index/IndexFlatIPAicpu.cpp
     ${ASCEND_PROJECT_HOME}/ascendhost/src/index/IndexFlatL2Aicpu.cpp
@@ -284,7 +282,6 @@ SET(TEST_SRC_FILES TestAscendIndexUTBinaryFlat.cpp
                    TestAscendIndexUTIVFSQ.cpp
                    TestAscendIndexUTIVFSQT.cpp
                    TestAscendIndexUTSQ.cpp
-                   TestAscendCagraGraphBuilder.cpp
                    TestAscendIndexUTCagra.cpp
                    TestAscendIndexUTTS.cpp)
 

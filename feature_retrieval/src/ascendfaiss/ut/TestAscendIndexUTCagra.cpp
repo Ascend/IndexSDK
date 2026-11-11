@@ -19,14 +19,18 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <iostream>
+#include <limits>
 #include <random>
+#include <string>
 #include <vector>
 
-#include "AscendIndexCagra.h"
+#include "ascendhost/include/impl/AscendIndexCagraImpl.h"
+#include "ascendhost/include/index/AscendIndexCagra.h"
 #include "common/ErrorCode.h"
-#include "impl/AscendIndexCagraImpl.h"
 using namespace testing;
 using namespace std;
 namespace faiss
@@ -184,6 +188,96 @@ TEST(TestCagraSearchUT, RejectsUnsupportedSearchSpecification)
     }
     AscendIndexCagra index;
     EXPECT_EQ(index.Init(128, 64, 128, 512, {0}), ::ascend::APP_ERR_INVALID_PARAM);
+}
+
+TEST(TestCagraUnifiedUT, DefaultsAndEmptyState)
+{
+    AscendIndexCagraConfig config;
+    EXPECT_EQ(config.graphDegree, 64U);
+    EXPECT_EQ(config.intermediateDegree, 128U);
+    EXPECT_EQ(config.maxIterations, 20U);
+    EXPECT_FLOAT_EQ(config.terminationThreshold, 0.0001F);
+    EXPECT_FALSE(config.verbose);
+    EXPECT_TRUE(config.guaranteeConnectivity);
+    AscendIndexCagra index;
+    EXPECT_FALSE(index.IsTrained());
+    EXPECT_EQ(index.GetSize(), 0);
+    std::vector<uint32_t> graph{123};
+    EXPECT_EQ(index.GetKnnGraph(graph), ::ascend::APP_ERR_INDEX_NOT_INIT);
+    EXPECT_EQ(graph, std::vector<uint32_t>({123}));
+    EXPECT_EQ(index.Reset(), ::ascend::APP_ERR_OK);
+    EXPECT_EQ(index.Train(129, nullptr), ::ascend::APP_ERR_INVALID_PARAM);
+}
+
+TEST(TestCagraUnifiedUT, ValidatesDimensionsAndBuildConfigurationBeforeDeviceAccess)
+{
+    for (int dim : {64, 128, 256, 512, 1024, 1536, 3072})
+    {
+        AscendIndexCagra index;
+        ASSERT_EQ(index.Init(dim, {0}), ::ascend::APP_ERR_OK);
+        EXPECT_FALSE(index.IsTrained());
+        EXPECT_EQ(index.Init(dim, {0}), ::ascend::APP_ERR_INVALID_PARAM);
+    }
+    for (int dim : {0, 100, 3073})
+    {
+        AscendIndexCagra index;
+        EXPECT_EQ(index.Init(dim, {0}), ::ascend::APP_ERR_INVALID_PARAM);
+    }
+    for (uint32_t degree : {0U, 32U, 96U, 256U, 512U})
+    {
+        AscendIndexCagra index;
+        AscendIndexCagraConfig config;
+        config.graphDegree = degree;
+        EXPECT_EQ(index.Init(128, {0}, config), ::ascend::APP_ERR_INVALID_PARAM);
+    }
+    AscendIndexCagra index;
+    AscendIndexCagraConfig config;
+    config.intermediateDegree = 63;
+    EXPECT_EQ(index.Init(128, {0}, config), ::ascend::APP_ERR_INVALID_PARAM);
+    config.intermediateDegree = 129;
+    EXPECT_EQ(index.Init(128, {0}, config), ::ascend::APP_ERR_INVALID_PARAM);
+    config.intermediateDegree = 128;
+    config.maxIterations = 0;
+    EXPECT_EQ(index.Init(128, {0}, config), ::ascend::APP_ERR_INVALID_PARAM);
+    config.maxIterations = 20;
+    for (float threshold : {-0.1F, 1.1F, std::numeric_limits<float>::infinity()})
+    {
+        config.terminationThreshold = threshold;
+        EXPECT_EQ(index.Init(128, {0}, config), ::ascend::APP_ERR_INVALID_PARAM);
+    }
+    config.terminationThreshold = std::numeric_limits<float>::quiet_NaN();
+    EXPECT_EQ(index.Init(128, {0}, config), ::ascend::APP_ERR_INVALID_PARAM);
+    EXPECT_EQ(index.Init(128, {-1}), ::ascend::APP_ERR_INVALID_PARAM);
+    EXPECT_EQ(index.Init(128, {}), ::ascend::APP_ERR_INVALID_PARAM);
+    EXPECT_EQ(index.Init(128, {0, 1}), ::ascend::APP_ERR_INVALID_PARAM);
+}
+
+TEST(TestCagraUnifiedUT, InvalidTrainingLeavesAnEmptyReusableIndex)
+{
+    AscendIndexCagra index;
+    ASSERT_EQ(index.Init(64, {0}), ::ascend::APP_ERR_OK);
+    std::vector<float> data(129 * 64, 0.0F);
+    EXPECT_EQ(index.Train(128, data.data()), ::ascend::APP_ERR_INVALID_PARAM);
+    data[0] = std::numeric_limits<float>::infinity();
+    EXPECT_EQ(index.Add(129, data.data()), ::ascend::APP_ERR_INVALID_PARAM);
+    EXPECT_FALSE(index.IsTrained());
+    EXPECT_EQ(index.GetSize(), 0);
+    ASSERT_EQ(index.Reset(), ::ascend::APP_ERR_OK);
+    EXPECT_EQ(index.GetSize(), 0);
+}
+
+TEST(TestCagraUnifiedUT, GraphExportValidatesPathAndTrainingState)
+{
+    AscendIndexCagra index;
+    EXPECT_EQ(index.SaveGraphToFile(""), ::ascend::APP_ERR_INVALID_PARAM);
+    EXPECT_EQ(index.SaveGraphToFile(std::string("graph\0.bin", 10)), ::ascend::APP_ERR_INVALID_PARAM);
+    EXPECT_EQ(index.SaveGraphToFile("graph.bin"), ::ascend::APP_ERR_INDEX_NOT_INIT);
+    ASSERT_EQ(index.Init(64, {0}), ::ascend::APP_ERR_OK);
+    EXPECT_EQ(index.SaveGraphToFile("graph.bin"), ::ascend::APP_ERR_INDEX_NOT_INIT);
+    ASSERT_EQ(index.Reset(), ::ascend::APP_ERR_OK);
+    EXPECT_EQ(index.SaveGraphToFile("graph.bin"), ::ascend::APP_ERR_INDEX_NOT_INIT);
+    EXPECT_FALSE(index.IsTrained());
+    EXPECT_EQ(index.GetSize(), 0);
 }
 
 TEST(TestCagraSearchUT, Search)

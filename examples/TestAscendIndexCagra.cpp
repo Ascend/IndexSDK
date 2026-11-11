@@ -16,13 +16,18 @@
  * -------------------------------------------------------------------------
  */
 
-// Reuses the core I/O, build lifecycle and search timing from TestAscendCagraScale.
-// Run this one SIFT1M end-to-end test; no standalone random-graph QPS test.
-#if __has_include(<faiss/ascend/AscendCagraGraphBuilder.h>)
-#include <faiss/ascend/AscendCagraGraphBuilder.h>
+// SIFT1M end-to-end example using Init/Train/Search on a single index.
+// Prepare graph-build and search models together from feature_retrieval/src/ascendfaiss/tools:
+//   python3 cagra_generate_model.py -data_base 1000000 -d 128 -degree 64 -topK 32 -t Ascend950PR
+//   export MX_INDEX_MODELPATH="$PWD/op_models"
+// Run this binary with matching N/D/M/G/TopK and a SIFT directory:
+//   export CAGRA_SIFT_DIR=/path/to/sift CAGRA_DEVICE_ID=0
+//   ./TestAscendIndexCagra --gtest_filter=TestAscendIndexCagra.Sift1M
+// Train builds the graph and quantizes the base; Add(n,data) is an alternative to Train.
+// Search quantizes queries internally. No separate Builder or QuantizeData/QuantizeQueries call is needed.
+#if __has_include(<faiss/ascend/AscendIndexCagra.h>)
 #include <faiss/ascend/AscendIndexCagra.h>
 #else
-#include "index/AscendCagraGraphBuilder.h"
 #include "index/AscendIndexCagra.h"
 #endif
 #include <faiss/IndexFlat.h>
@@ -39,6 +44,7 @@
 #include <iostream>
 #include <limits>
 #include <numeric>
+#include <random>
 #include <stdexcept>
 #include <string>
 #include <unordered_set>
@@ -115,17 +121,18 @@ int GetCompatibleEnvInt(const char *legacyName, const char *alias, int fallback,
     return GetEnvInt(value != nullptr && value[0] != '\0' ? legacyName : alias, fallback, minimum, maximum);
 }
 
+bool IsSupportedTopK(int topK)
+{
+    return topK == 32 || topK == 64 || topK == 128 || topK == 256 || topK == 512 || topK == 1024;
+}
+
 Config ReadConfig()
 {
     Config config;
     config.deviceId = GetEnvInt("CAGRA_DEVICE_ID", 0, 0, 1024);
     config.dataNum = GetEnvInt("CAGRA_DATA_NUM", 1000000, 129, std::numeric_limits<int>::max());
     config.topK = GetEnvInt("CAGRA_TOPK", 32, 1, std::min(1024, config.dataNum));
-    if (config.topK != 32 && config.topK != 64 && config.topK != 128 && config.topK != 256 && config.topK != 512 &&
-        config.topK != 1024)
-    {
-        throw std::runtime_error("CAGRA_TOPK must be in {32,64,128,256,512,1024}");
-    }
+    if (!IsSupportedTopK(config.topK)) throw std::runtime_error("CAGRA_TOPK must be in {32,64,128,256,512,1024}");
     config.queryNum = GetCompatibleEnvInt("CAGRA_QUERY_NUM", "CAGRA_SIFT_NQ", 100, 1, 4096);
     config.graphAccuracySamples =
         GetCompatibleEnvInt("CAGRA_GRAPH_ACCURACY_SAMPLES", "CAGRA_GRAPH_SAMPLES", 0, 0, config.dataNum);
@@ -260,6 +267,8 @@ struct GraphDiagnostics
 
 GraphDiagnostics ValidateAndAnalyzeGraph(const Config &config, const std::vector<uint32_t> &graph)
 {
+    if (graph.size() != static_cast<size_t>(config.dataNum) * config.graphDegree)
+        throw std::runtime_error("graph size must equal dataNum * graphDegree");
     const auto start = Clock::now();
     DisjointSet components(config.dataNum);
     std::vector<uint32_t> indegrees(config.dataNum, 0);
@@ -324,16 +333,20 @@ ExactReferences BuildExactReferences(const Config &config, const std::vector<flo
                                      const std::vector<float> &queries)
 {
     ExactReferences result;
+    std::cout << "ground_truth phase=index_add start N=" << config.dataNum << " D=" << config.dim << std::endl;
     faiss::IndexFlatL2 exactIndex(config.dim);
     auto start = Clock::now();
     exactIndex.add(config.dataNum, base.data());
     result.indexAddMs = ElapsedMs(start, Clock::now());
+    std::cout << "ground_truth phase=index_add done elapsed_ms=" << result.indexAddMs << std::endl;
 
+    std::cout << "ground_truth phase=query_search start Q=" << config.queryNum << " TopK=" << config.topK << std::endl;
     std::vector<float> queryDistances(static_cast<size_t>(config.queryNum) * config.topK);
     std::vector<faiss::idx_t> queryLabels(static_cast<size_t>(config.queryNum) * config.topK);
     start = Clock::now();
     exactIndex.search(config.queryNum, queries.data(), config.topK, queryDistances.data(), queryLabels.data());
     result.queryGroundTruthMs = ElapsedMs(start, Clock::now());
+    std::cout << "ground_truth phase=query_search done elapsed_ms=" << result.queryGroundTruthMs << std::endl;
     result.queryGroundTruth.resize(queryLabels.size());
     std::transform(queryLabels.begin(), queryLabels.end(), result.queryGroundTruth.begin(),
                    [](faiss::idx_t label) { return static_cast<uint32_t>(label); });
@@ -356,12 +369,15 @@ ExactReferences BuildExactReferences(const Config &config, const std::vector<flo
 
     result.graphGroundTruthWidth = std::min(32, config.dataNum - 1);
     const int candidates = result.graphGroundTruthWidth + 1;
+    std::cout << "ground_truth phase=graph_sample_search start samples=" << config.graphAccuracySamples
+              << " TopK=" << candidates << std::endl;
     std::vector<float> sampleDistances(static_cast<size_t>(config.graphAccuracySamples) * candidates);
     std::vector<faiss::idx_t> sampleLabels(static_cast<size_t>(config.graphAccuracySamples) * candidates);
     start = Clock::now();
     exactIndex.search(config.graphAccuracySamples, sampleVectors.data(), candidates, sampleDistances.data(),
                       sampleLabels.data());
     result.graphGroundTruthMs = ElapsedMs(start, Clock::now());
+    std::cout << "ground_truth phase=graph_sample_search done elapsed_ms=" << result.graphGroundTruthMs << std::endl;
     result.graphGroundTruth.resize(static_cast<size_t>(config.graphAccuracySamples) * result.graphGroundTruthWidth);
     for (int sample = 0; sample < config.graphAccuracySamples; ++sample)
     {
@@ -436,6 +452,8 @@ SearchDiagnostics AnalyzeSearch(const Config &config, const std::vector<uint32_t
 double GraphNeighborRecallAtK(const Config &config, const ExactReferences &reference,
                               const std::vector<uint32_t> &graph, int k, bool scanFullDegree)
 {
+    if (graph.size() != static_cast<size_t>(config.dataNum) * config.graphDegree)
+        throw std::runtime_error("graph size must equal dataNum * graphDegree");
     uint64_t hits = 0;
     const int graphRanks = scanFullDegree ? config.graphDegree : k;
     for (int sample = 0; sample < config.graphAccuracySamples; ++sample)
@@ -455,51 +473,20 @@ double GraphNeighborRecallAtK(const Config &config, const ExactReferences &refer
 struct SearchResult
 {
     std::vector<uint32_t> labels;
-    double initMs = 0.0;
-    double addMs = 0.0;
-    double quantizeMs = 0.0;
     double warmupMs = 0.0;
     double averageSearchMs = 0.0;
     double qps = 0.0;
-    double averageQueryPrepareMs = 0.0;
-    double averageEndToEndMs = 0.0;
-    double endToEndQps = 0.0;
 };
 
-SearchResult RunNpuSearch(const Config &config, const std::vector<float> &base, const std::vector<float> &queries,
-                          const std::vector<uint32_t> &graph)
+SearchResult RunNpuSearch(const Config &config, const std::vector<float> &queries,
+                          faiss::ascend::AscendIndexCagra &index)
 {
     SearchResult result;
-    faiss::ascend::AscendIndexCagra index;
+    int ret = 0;
+    std::vector<float> distances(static_cast<size_t>(config.queryNum) * config.topK,
+                                 std::numeric_limits<float>::quiet_NaN());
+    result.labels.assign(static_cast<size_t>(config.queryNum) * config.topK, std::numeric_limits<uint32_t>::max());
     auto start = Clock::now();
-    int ret = index.Init(config.dim, config.graphDegree, config.dataNum, config.topK, {config.deviceId});
-    result.initMs = ElapsedMs(start, Clock::now());
-    if (ret != 0)
-    {
-        throw std::runtime_error("index.Init failed: " + std::to_string(ret));
-    }
-
-    // The public master API requires a non-null N*2 hash input.
-    std::vector<uint32_t> hash(static_cast<size_t>(config.dataNum) * 2, 0);
-    start = Clock::now();
-    ret = index.Add(graph.data(), hash.data(), base.data());
-    result.addMs = ElapsedMs(start, Clock::now());
-    if (ret != 0)
-    {
-        throw std::runtime_error("index.Add failed: " + std::to_string(ret));
-    }
-
-    start = Clock::now();
-    ret = index.QuantizeData(config.queryNum, queries.data(), config.dataNum, base.data());
-    result.quantizeMs = ElapsedMs(start, Clock::now());
-    if (ret != 0)
-    {
-        throw std::runtime_error("index.QuantizeData failed: " + std::to_string(ret));
-    }
-
-    std::vector<float> distances(static_cast<size_t>(config.queryNum) * config.topK);
-    result.labels.resize(static_cast<size_t>(config.queryNum) * config.topK);
-    start = Clock::now();
     for (int loop = 0; loop < config.searchWarmups; ++loop)
     {
         ret = index.Search(config.queryNum, queries.data(), config.topK, distances.data(), result.labels.data());
@@ -520,47 +507,9 @@ SearchResult RunNpuSearch(const Config &config, const std::vector<float> &base, 
         }
     }
     const double searchMs = ElapsedMs(start, Clock::now());
+    if (searchMs <= 0) throw std::runtime_error("non-positive measured search interval");
     result.averageSearchMs = searchMs / config.searchLoops;
     result.qps = 1000.0 * config.queryNum * config.searchLoops / searchMs;
-
-    for (int loop = 0; loop < config.searchWarmups; ++loop)
-    {
-        ret = index.QuantizeQueries(config.queryNum, queries.data());
-        if (ret != 0)
-        {
-            throw std::runtime_error("index.QuantizeQueries warmup failed: " + std::to_string(ret));
-        }
-        ret = index.Search(config.queryNum, queries.data(), config.topK, distances.data(), result.labels.data());
-        if (ret != 0)
-        {
-            throw std::runtime_error("index.Search end-to-end warmup failed: " + std::to_string(ret));
-        }
-    }
-    double queryPrepareMs = 0.0;
-    start = Clock::now();
-    for (int loop = 0; loop < config.searchLoops; ++loop)
-    {
-        const auto prepareStart = Clock::now();
-        ret = index.QuantizeQueries(config.queryNum, queries.data());
-        queryPrepareMs += ElapsedMs(prepareStart, Clock::now());
-        if (ret != 0)
-        {
-            throw std::runtime_error("index.QuantizeQueries failed: " + std::to_string(ret));
-        }
-        ret = index.Search(config.queryNum, queries.data(), config.topK, distances.data(), result.labels.data());
-        if (ret != 0)
-        {
-            throw std::runtime_error("index.Search end-to-end failed: " + std::to_string(ret));
-        }
-    }
-    const double endToEndMs = ElapsedMs(start, Clock::now());
-    result.averageQueryPrepareMs = queryPrepareMs / config.searchLoops;
-    result.averageEndToEndMs = endToEndMs / config.searchLoops;
-    result.endToEndQps = 1000.0 * config.queryNum * config.searchLoops / endToEndMs;
-    if (searchMs <= 0 || endToEndMs <= 0)
-    {
-        throw std::runtime_error("non-positive measured search interval");
-    }
     const SearchDiagnostics diagnostics = AnalyzeSearch(config, result.labels);
     if (diagnostics.validRatio != 1.0 || diagnostics.uniqueRatio != 1.0)
     {
@@ -582,15 +531,16 @@ SearchResult RunNpuSearch(const Config &config, const std::vector<float> &base, 
 
 void RunSift1M(const Config &config)
 {
-    std::cout << std::fixed << std::setprecision(4) << "CAGRA scale: N=" << config.dataNum << " D=" << config.dim
-              << " M=" << config.intermediateDegree << " G=" << config.graphDegree << " Q=" << config.queryNum
-              << " topK=" << config.topK << " device=" << config.deviceId
+    std::cout << std::fixed << std::setprecision(4) << "IndexSDK CAGRA SIFT1M N=" << config.dataNum
+              << " D=" << config.dim << " M=" << config.intermediateDegree << " G=" << config.graphDegree
+              << " Q=" << config.queryNum << " topK=" << config.topK << " device=" << config.deviceId
               << " graph_samples=" << config.graphAccuracySamples << " max_iterations=" << config.maxIterations
               << " warmup=" << config.searchWarmups << " repeat=" << config.searchLoops
-              << " run_npu_search=1 gt=" << (config.runCpuGroundTruth ? "CPU_IndexFlatL2" : "skipped") << std::endl;
+              << " api=Init/Train/Search gt=" << (config.runCpuGroundTruth ? "CPU_IndexFlatL2" : "skipped")
+              << std::endl;
     const char *modelPath = std::getenv("MX_INDEX_MODELPATH");
     std::cout << "MX_INDEX_MODELPATH=" << (modelPath == nullptr ? "<unset>" : modelPath) << std::endl;
-    std::cout << "scale_phase data_loading start" << std::endl;
+    std::cout << "cagra_phase data_loading start" << std::endl;
     auto start = Clock::now();
     const auto base = ReadFvecs(JoinPath(config.siftDir, "sift_base.fvecs"), config.dim, config.dataNum);
     const auto queries = ReadFvecs(JoinPath(config.siftDir, "sift_query.fvecs"), config.dim, config.queryNum);
@@ -599,34 +549,28 @@ void RunSift1M(const Config &config)
     {
         throw std::runtime_error("SIFT input contains non-finite values");
     }
-    std::cout << "scale_phase data_generation_ms=" << ElapsedMs(start, Clock::now()) << std::endl;
-    std::vector<uint32_t> graph(static_cast<size_t>(config.dataNum) * config.graphDegree);
-    double buildMs = 0.0;
-    std::cout << "scale_phase npu_build start" << std::endl;
-    // As in the legacy Scale benchmark, release build resources before search.
-    {
-        faiss::ascend::AscendCagraGraphBuilder builder;
-        int ret = builder.Init(config.dim, config.graphDegree, config.dataNum, {config.deviceId});
-        if (ret != 0)
-        {
-            throw std::runtime_error("builder.Init failed: " + std::to_string(ret));
-        }
-        faiss::ascend::AscendCagraGraphBuildConfig buildConfig;
-        buildConfig.intermediateDegree = config.intermediateDegree;
-        buildConfig.maxIterations = config.maxIterations;
-        buildConfig.terminationThreshold = config.terminationThreshold;
-        buildConfig.guaranteeConnectivity = config.guaranteeConnectivity;
-        buildConfig.verbose = config.verbose;
-        start = Clock::now();
-        ret = builder.Build(base.data(), graph.data(), buildConfig);
-        buildMs = ElapsedMs(start, Clock::now());
-        if (ret != 0)
-        {
-            throw std::runtime_error("builder.Build failed: " + std::to_string(ret));
-        }
-    }
-    std::cout << "build_performance build_ms=" << buildMs << " build_s=" << buildMs / 1000.0
-              << " vectors_per_s=" << 1000.0 * config.dataNum / buildMs << std::endl;
+    std::cout << "cagra_phase data_loading done elapsed_ms=" << ElapsedMs(start, Clock::now()) << std::endl;
+    std::cout << "cagra_phase train start" << std::endl;
+    faiss::ascend::AscendIndexCagra index;
+    faiss::ascend::AscendIndexCagraConfig buildConfig;
+    buildConfig.graphDegree = config.graphDegree;
+    buildConfig.intermediateDegree = config.intermediateDegree;
+    buildConfig.maxIterations = config.maxIterations;
+    buildConfig.terminationThreshold = config.terminationThreshold;
+    buildConfig.guaranteeConnectivity = config.guaranteeConnectivity;
+    buildConfig.verbose = config.verbose;
+    int ret = index.Init(config.dim, {config.deviceId}, buildConfig);
+    if (ret != 0) throw std::runtime_error("index.Init failed: " + std::to_string(ret));
+    start = Clock::now();
+    ret = index.Train(config.dataNum, base.data());
+    const double trainMs = ElapsedMs(start, Clock::now());
+    if (ret != 0) throw std::runtime_error("index.Train failed: " + std::to_string(ret));
+    std::cout << "cagra_phase train done" << std::endl;
+    std::vector<uint32_t> graph;
+    if (index.GetKnnGraph(graph) != 0) throw std::runtime_error("index.GetKnnGraph failed");
+    std::cout << "train_performance train_total_ms=" << trainMs
+              << " scope=graph_build_plus_load_plus_base_quantization vectors_per_s="
+              << 1000.0 * config.dataNum / trainMs << std::endl;
     const auto graphDiagnostics = ValidateAndAnalyzeGraph(config, graph);
     std::cout << "graph_validation edges=" << graph.size() << " invalid=0 self_loops=0 duplicate_rows=0"
               << " weak_components=" << graphDiagnostics.weakComponents
@@ -635,7 +579,7 @@ void RunSift1M(const Config &config)
     ExactReferences exact;
     if (config.runCpuGroundTruth)
     {
-        std::cout << "scale_phase cpu_exact_ground_truth start" << std::endl;
+        std::cout << "cagra_phase cpu_exact_ground_truth start" << std::endl;
         exact = BuildExactReferences(config, base, queries);
         std::cout << "ground_truth exact_index_add_ms=" << exact.indexAddMs
                   << " query_gt_ms=" << exact.queryGroundTruthMs << " graph_sample_gt_ms=" << exact.graphGroundTruthMs
@@ -643,7 +587,7 @@ void RunSift1M(const Config &config)
     }
     else
     {
-        std::cout << "scale_phase cpu_exact_ground_truth skipped reason=CAGRA_RUN_CPU_GT=0" << std::endl;
+        std::cout << "cagra_phase cpu_exact_ground_truth skipped reason=CAGRA_RUN_CPU_GT=0" << std::endl;
     }
     if (config.runCpuGroundTruth && config.graphAccuracySamples > 0)
     {
@@ -658,19 +602,27 @@ void RunSift1M(const Config &config)
         }
         std::cout << std::endl;
     }
-    std::cout << "scale_phase npu_search start" << std::endl;
-    const auto search = RunNpuSearch(config, base, queries, graph);
+    std::cout << "cagra_phase search start" << std::endl;
+    const auto search = RunNpuSearch(config, queries, index);
     const auto diagnostics = AnalyzeSearch(config, search.labels);
-    std::cout << "search_prepare graph=npu_builder init_ms=" << search.initMs << " add_ms=" << search.addMs
-              << " quantize_ms=" << search.quantizeMs << " warmup_total_ms=" << search.warmupMs << std::endl;
-    std::cout << "search_compare graph=npu_builder searcher=npu_rabitq average_batch_ms=" << search.averageSearchMs
-              << " qps=" << search.qps;
+    std::cout << "cagra_phase search done" << std::endl;
+    std::cout << "search_warmup warmup_total_ms=" << search.warmupMs << std::endl;
+    std::cout << "search_performance scope=query_quantization_plus_search average_batch_ms=" << search.averageSearchMs
+              << " qps=" << search.qps << " topK=" << config.topK << " checked_results=" << search.labels.size();
     if (config.runCpuGroundTruth)
     {
         for (const int k : {1, 10, 32})
         {
-            std::cout << " recall@" << k << '='
-                      << RecallAtK(exact.queryGroundTruth, search.labels, config.queryNum, config.topK, k);
+            if (k <= config.topK)
+            {
+                std::cout << " recall@" << k << '='
+                          << RecallAtK(exact.queryGroundTruth, search.labels, config.queryNum, config.topK, k);
+            }
+        }
+        if (config.topK != 1 && config.topK != 10 && config.topK != 32)
+        {
+            std::cout << " recall@" << config.topK << '='
+                      << RecallAtK(exact.queryGroundTruth, search.labels, config.queryNum, config.topK, config.topK);
         }
     }
     else
@@ -678,13 +630,59 @@ void RunSift1M(const Config &config)
         std::cout << " recall=not_evaluated";
     }
     std::cout << " valid_ratio=" << diagnostics.validRatio << " unique_ratio=" << diagnostics.uniqueRatio << std::endl;
-    std::cout << "search_timing graph=npu_builder scope=search_only average_batch_ms=" << search.averageSearchMs
-              << " qps=" << search.qps << std::endl;
-    std::cout << "search_timing graph=npu_builder scope=query_prepare_plus_search query_prepare_ms="
-              << search.averageQueryPrepareMs << " average_batch_ms=" << search.averageEndToEndMs
-              << " qps=" << search.endToEndQps << std::endl;
     std::cout << "PASS: SIFT1M NPU build, quantization and search completed"
               << (config.runCpuGroundTruth ? "" : " (Recall not evaluated)") << std::endl;
+}
+
+TEST(TestAscendIndexCagra, RejectsInvalidGraphSize)
+{
+    Config config;
+    config.dataNum = 129;
+    const size_t expected = static_cast<size_t>(config.dataNum) * config.graphDegree;
+    for (size_t edges : {size_t{0}, expected - 1, expected + 1})
+    {
+        const std::vector<uint32_t> graph(edges);
+        EXPECT_THROW(ValidateAndAnalyzeGraph(config, graph), std::runtime_error);
+        EXPECT_THROW(GraphNeighborRecallAtK(config, ExactReferences{}, graph, 1, false), std::runtime_error);
+    }
+}
+
+TEST(TestAscendIndexCagra, CpuExactGroundTruth)
+{
+    // Exercise the linked CPU Faiss/BLAS independently, without initializing an NPU index.
+    Config config;
+    config.dataNum = 1024;
+    std::mt19937 rng(42);
+    std::uniform_real_distribution<float> random(0.0F, 1.0F);
+    std::vector<float> base(static_cast<size_t>(config.dataNum) * config.dim);
+    for (auto &value : base) value = random(rng);
+    for (const int queryNum : {1, 100})
+    {
+        config.queryNum = queryNum;
+        config.graphAccuracySamples = queryNum == 1 ? 0 : 100;
+        std::vector<float> queries(base.begin(), base.begin() + static_cast<size_t>(queryNum) * config.dim);
+        const auto reference = BuildExactReferences(config, base, queries);
+        ASSERT_EQ(reference.queryGroundTruth.size(), static_cast<size_t>(queryNum) * config.topK);
+        for (int query = 0; query < queryNum; ++query)
+        {
+            EXPECT_EQ(reference.queryGroundTruth[static_cast<size_t>(query) * config.topK],
+                      static_cast<uint32_t>(query));
+        }
+        ASSERT_EQ(reference.graphGroundTruth.size(),
+                  static_cast<size_t>(config.graphAccuracySamples) * reference.graphGroundTruthWidth);
+        for (int sample = 0; sample < config.graphAccuracySamples; ++sample)
+        {
+            const auto first =
+                reference.graphGroundTruth.begin() + static_cast<size_t>(sample) * reference.graphGroundTruthWidth;
+            std::unordered_set<uint32_t> seen;
+            for (int rank = 0; rank < reference.graphGroundTruthWidth; ++rank)
+            {
+                EXPECT_LT(first[rank], static_cast<uint32_t>(config.dataNum));
+                EXPECT_NE(first[rank], reference.graphSampleRows[sample]);
+                EXPECT_TRUE(seen.insert(first[rank]).second);
+            }
+        }
+    }
 }
 
 TEST(TestAscendIndexCagra, FullTopKDoesNotChangeGraphGroundTruthWidth)
@@ -742,6 +740,93 @@ TEST(TestAscendIndexCagra, Sift1M)
         FAIL() << error.what();
     }
 }
+TEST(TestAscendIndexCagra, UnifiedLifecycle)
+{
+    using faiss::ascend::AscendIndexCagra;
+    using faiss::ascend::AscendIndexCagraConfig;
+    const char *enabled = std::getenv("CAGRA_RUN_UNIFIED_UT");
+    if (enabled == nullptr || std::string(enabled) != "1")
+    {
+        GTEST_SKIP() << "Set CAGRA_RUN_UNIFIED_UT=1 after generating matching build/search models";
+    }
+    auto envInt = [](const char *name, int fallback)
+    {
+        const char *value = std::getenv(name);
+        return value == nullptr ? fallback : std::stoi(value);
+    };
+    const int dim = envInt("CAGRA_TEST_DIM", 128);
+    const int count = envInt("CAGRA_TEST_N", 10000);
+    const int topk = envInt("CAGRA_TEST_TOPK", 32);
+    const int secondTopk = envInt("CAGRA_TEST_SECOND_TOPK", 0);
+    ASSERT_GT(count, 128);
+    ASSERT_GT(topk, 0);
+    ASSERT_LE(topk, std::min(1024, count));
+    ASSERT_TRUE(IsSupportedTopK(topk));
+    ASSERT_TRUE(secondTopk == 0 || (IsSupportedTopK(secondTopk) && secondTopk <= count));
+    AscendIndexCagraConfig config;
+    config.graphDegree = envInt("CAGRA_TEST_GRAPH_DEGREE", 64);
+    AscendIndexCagra index;
+    ASSERT_EQ(index.Init(dim, {envInt("CAGRA_DEVICE_ID", 0)}, config), 0);
+    std::mt19937 rng(42);
+    std::uniform_real_distribution<float> random(0.0F, 1.0F);
+    std::vector<float> data(static_cast<size_t>(count) * dim);
+    for (auto &v : data) v = random(rng);
+    ASSERT_EQ(index.Train(count, data.data()), 0);
+    EXPECT_TRUE(index.IsTrained());
+    EXPECT_EQ(index.GetSize(), count);
+    std::vector<uint32_t> graph;
+    ASSERT_EQ(index.GetKnnGraph(graph), 0);
+    EXPECT_EQ(graph.size(), static_cast<size_t>(count) * config.graphDegree);
+    // Optional artifact for file export validation; keep the file for inspection.
+    const char *graphFile = std::getenv("CAGRA_TEST_GRAPH_FILE");
+    if (graphFile != nullptr && graphFile[0] != '\0')
+    {
+        ASSERT_EQ(index.SaveGraphToFile(graphFile), 0);
+        std::ifstream input(graphFile, std::ios::binary | std::ios::ate);
+        ASSERT_TRUE(input.is_open());
+        ASSERT_EQ(input.tellg(), static_cast<std::streamoff>(graph.size() * sizeof(uint32_t)));
+        input.seekg(0);
+        std::vector<uint32_t> saved(graph.size());
+        ASSERT_TRUE(input.read(reinterpret_cast<char *>(saved.data()), saved.size() * sizeof(uint32_t)));
+        EXPECT_EQ(saved, graph);
+    }
+    auto checkSearch = [&](int k)
+    {
+        constexpr int queries = 100;  // Exercises 64+32+4 query pagination.
+        std::vector<float> distances(queries * k, std::numeric_limits<float>::quiet_NaN());
+        std::vector<uint32_t> labels(queries * k, std::numeric_limits<uint32_t>::max());
+        ASSERT_EQ(index.Search(queries, data.data(), k, distances.data(), labels.data()), 0);
+        for (int q = 0; q < queries; ++q)
+        {
+            std::vector<uint32_t> row(labels.begin() + q * k, labels.begin() + (q + 1) * k);
+            for (int rank = 0; rank < k; ++rank)
+            {
+                ASSERT_TRUE(row[rank] < static_cast<uint32_t>(count));
+                ASSERT_TRUE(std::isfinite(distances[q * k + rank]));
+                if (rank > 0) ASSERT_LE(distances[q * k + rank - 1], distances[q * k + rank]);
+            }
+            std::sort(row.begin(), row.end());
+            ASSERT_EQ(std::adjacent_find(row.begin(), row.end()), row.end());
+        }
+        std::cout << "topk_validation topK=" << k << " queries=" << queries << " checked_results=" << labels.size()
+                  << " valid_unique_finite_sorted=true" << std::endl;
+    };
+    checkSearch(topk);
+    if (secondTopk > 0 && secondTopk <= std::min(1024, count))
+    {
+        checkSearch(secondTopk);
+        checkSearch(topk);  // Switch back on the same trained index before Reset.
+    }
+    EXPECT_NE(index.Add(count, data.data()), 0);
+    EXPECT_TRUE(index.IsTrained());
+    EXPECT_EQ(index.GetSize(), count);
+    ASSERT_EQ(index.Reset(), 0);
+    EXPECT_FALSE(index.IsTrained());
+    EXPECT_EQ(index.GetSize(), 0);
+    ASSERT_EQ(index.Add(count, data.data()), 0);  // Add(n,data) also builds and quantizes after Reset.
+    checkSearch(topk);
+}
+
 }  // namespace
 
 int main(int argc, char **argv)
