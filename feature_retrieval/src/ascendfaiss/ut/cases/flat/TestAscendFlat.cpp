@@ -20,9 +20,12 @@
 #include <gtest/gtest.h>
 
 #include <mockcpp/mockcpp.hpp>
+#include <thread>
 
 #include "acl.h"
+#include "ascend/impl/AscendIndexFlatImpl.h"
 #include "ascenddaemon/impl/Index.h"
+#include "ascenddaemon/utils/AscendUtils.h"
 #include "common/utils/SocUtils.h"
 #include "faiss/IndexFlat.h"
 #include "faiss/ascend/AscendCloner.h"
@@ -819,6 +822,296 @@ TEST_P(TestAscendIndexFlatUT, searchWithMasks)
 {
     CheckItem item = GetParam();
     testSearchWithmask(item);
+}
+
+TEST_F(TestAscendIndexFlatUT, selectorToMaskSharedByBatch)
+{
+    const int dim = 64;
+    const int ntotal = 64;
+    const int batch = 3;
+    std::vector<float> base(static_cast<size_t>(ntotal) * dim);
+    for (size_t i = 0; i < base.size(); ++i)
+    {
+        base[i] = static_cast<float>((i * 17 + 3) % 101) / 101.0f;
+    }
+    std::vector<faiss::idx_t> ids(ntotal);
+    for (int i = 0; i < ntotal; ++i) ids[i] = 1000 + i * 7;
+    faiss::ascend::AscendIndexFlat index(dim, faiss::METRIC_INNER_PRODUCT, faiss::ascend::AscendIndexFlatConfig({0}));
+    index.add_with_ids(ntotal, base.data(), ids.data());
+    auto &impl = dynamic_cast<faiss::ascend::AscendIndexFlatImpl &>(index.GetIndexImplBase());
+
+    auto verify = [&](const faiss::IDSelector &selector)
+    {
+        std::vector<faiss::idx_t> currentIds;
+        index.getIdxMap(0, currentIds);
+        size_t maskSize = (currentIds.size() + 7) / 8;
+        std::vector<uint8_t> mask(batch * maskSize, 0);
+        for (size_t pos = 0; pos < currentIds.size(); ++pos)
+        {
+            if (selector.is_member(currentIds[pos]))
+            {
+                for (int q = 0; q < batch; ++q)
+                {
+                    mask[q * maskSize + pos / 8] |= static_cast<uint8_t>(1u << (pos % 8));
+                }
+            }
+        }
+        // AscendCLMock does not compute filtered search results; verify the mask directly.
+        std::vector<uint8_t> actualMask;
+        impl.selectorToMask(&selector, batch, actualMask);
+        EXPECT_EQ(actualMask, mask);
+    };
+
+    faiss::IDSelectorRange range(ids[10], ids[30]);
+    verify(range);
+    std::vector<faiss::idx_t> selected = {ids[3], ids[17], ids[29], ids[42], ids[57]};
+    faiss::IDSelectorBatch selectedBatch(selected.size(), selected.data());
+    verify(selectedBatch);
+    std::vector<uint8_t> bitmap((ids.back() + 8) / 8, 0);
+    for (auto id : selected) bitmap[id / 8] |= uint8_t(1u << (id % 8));
+    faiss::IDSelectorBitmap selectedBitmap(bitmap.size(), bitmap.data());
+    verify(selectedBitmap);
+    faiss::IDSelectorRange removed(ids[17], ids[17] + 1);
+    ASSERT_EQ(index.remove_ids(removed), 1u);
+    verify(range);
+    verify(selectedBatch);
+    verify(selectedBitmap);
+}
+
+TEST_F(TestAscendIndexFlatUT, bitmapMaskFastPath)
+{
+    const int dim = 64;
+    const int ntotal = 19;
+    const int batch = 3;
+    faiss::ascend::AscendIndexFlat index(dim, faiss::METRIC_INNER_PRODUCT, faiss::ascend::AscendIndexFlatConfig({0}));
+    auto &impl = dynamic_cast<faiss::ascend::AscendIndexFlatImpl &>(index.GetIndexImplBase());
+    std::vector<float> base(ntotal * dim, 0.5f);
+    std::vector<uint16_t> queryFp16(batch * dim, faiss::ascend::fp16(0.5f).data);
+    auto verify = [&](const std::vector<uint8_t> &bitmap)
+    {
+        faiss::IDSelectorBitmap selector(bitmap.size(), bitmap.data());
+        std::vector<faiss::idx_t> ids;
+        index.getIdxMap(0, ids);
+        size_t maskSize = (ids.size() + 7) / 8;
+        std::vector<uint8_t> expected(batch * maskSize, 0), actual;
+        for (size_t p = 0; p < ids.size(); ++p)
+        {
+            if (selector.is_member(ids[p]))
+            {
+                for (int q = 0; q < batch; ++q)
+                {
+                    expected[q * maskSize + p / 8] |= uint8_t(1u << (p % 8));
+                }
+            }
+        }
+        impl.selectorToMask(&selector, batch, actual);
+        EXPECT_EQ(actual, expected);
+        std::vector<float> expectedDist(batch * 3), actualDist(batch * 3);
+        std::vector<faiss::idx_t> expectedIds(batch * 3), actualIds(batch * 3);
+        index.search_with_masks(batch, base.data(), 3, expectedDist.data(), expectedIds.data(), expected.data());
+        index.search_with_selector(batch, base.data(), 3, actualDist.data(), actualIds.data(), &selector);
+        EXPECT_EQ(actualDist, expectedDist);
+        EXPECT_EQ(actualIds, expectedIds);
+        index.search_with_selector(batch, queryFp16.data(), 3, actualDist.data(), actualIds.data(), &selector);
+        EXPECT_EQ(actualDist, expectedDist);
+        EXPECT_EQ(actualIds, expectedIds);
+    };
+    index.add(8, base.data());
+    index.add(ntotal - 8, base.data() + 8 * dim);
+    EXPECT_TRUE(impl.identityIds);
+    verify({0x55, 0xaa, 0xff});  // Non-byte-aligned base: clear unused tail bits.
+    verify({0xff});              // Short bitmap: missing IDs are excluded.
+    verify({});
+    verify({0xff, 0xff, 0xff, 0xff});
+    faiss::IDSelectorRange removed(3, 4);
+    ASSERT_EQ(index.remove_ids(removed), 1u);
+    EXPECT_FALSE(impl.identityIds);
+    verify({0x55, 0xaa, 0xff});
+
+    index.reset();
+    index.add(ntotal, base.data());
+    EXPECT_TRUE(impl.identityIds);
+    verify({0x55, 0xaa, 0xff});
+    // Removing only the last entry preserves the identity mapping.
+    faiss::IDSelectorRange tail(ntotal - 1, ntotal);
+    ASSERT_EQ(index.remove_ids(tail), 1u);
+    EXPECT_TRUE(impl.identityIds);
+    verify({0xff, 0xff, 0xff});
+
+    faiss::IndexFlatIP cpuIndex(dim);
+    cpuIndex.add(ntotal, base.data());
+    index.copyFrom(&cpuIndex);
+    EXPECT_TRUE(impl.identityIds);
+    verify({0x55, 0xaa, 0xff});
+    faiss::IndexFlatIP mappedIndex(dim);
+    faiss::IndexIDMap cpuMap(&mappedIndex);
+    std::vector<faiss::idx_t> reverseIds(ntotal);
+    for (int i = 0; i < ntotal; ++i) reverseIds[i] = ntotal - 1 - i;
+    cpuMap.add_with_ids(ntotal, base.data(), reverseIds.data());
+    index.copyFrom(&cpuMap);
+    EXPECT_FALSE(impl.identityIds);
+    verify({0x55, 0xaa, 0xff});
+}
+
+TEST(TestAscendIndexFlatReplicaUT, sharedBaseAndSelectorSearch)
+{
+    if (!::ascend::AscendMultiThreadManager::IsMultiThreadMode())
+    {
+        printf("skip replica test: set MX_INDEX_MULTITHREAD=1 before startup\n");
+        return;
+    }
+    uint32_t deviceCount = 0;
+    ASSERT_EQ(aclrtGetDeviceCount(&deviceCount), ACL_SUCCESS);
+    if (deviceCount < 2)
+    {
+        printf("skip replica test: two devices are required\n");
+        return;
+    }
+
+    const int dim = 64;
+    const int ntotal = 64;
+    const int batch = 3;
+    const int k = 3;
+    std::vector<float> base(static_cast<size_t>(ntotal) * dim);
+    for (size_t i = 0; i < base.size(); ++i) base[i] = static_cast<float>((i * 17 + 3) % 101) / 101.0f;
+    std::vector<faiss::idx_t> ids(ntotal);
+    for (int i = 0; i < ntotal; ++i) ids[i] = 1000 + i * 7;
+    faiss::ascend::AscendIndexFlatConfig replicaConfig({0, 1}, faiss::ascend::FLAT_DEFAULT_MEM, false);
+    faiss::ascend::AscendIndexFlat replicas(dim, faiss::METRIC_INNER_PRODUCT, replicaConfig);
+    replicas.add_with_ids(ntotal, base.data(), ids.data());
+    EXPECT_EQ(replicas.ntotal, ntotal);
+    for (int device : {0, 1})
+    {
+        EXPECT_EQ(replicas.getBaseSize(device), static_cast<size_t>(ntotal));
+        std::vector<faiss::idx_t> actualIds;
+        replicas.getIdxMap(device, actualIds);
+        EXPECT_EQ(actualIds, ids);
+    }
+
+    faiss::ascend::AscendIndexFlat sharded(dim, faiss::METRIC_INNER_PRODUCT,
+                                           faiss::ascend::AscendIndexFlatConfig({0, 1}));
+    sharded.add_with_ids(ntotal, base.data(), ids.data());
+    EXPECT_EQ(sharded.getBaseSize(0) + sharded.getBaseSize(1), static_cast<size_t>(ntotal));
+
+    faiss::ascend::AscendIndexFlat reference(dim, faiss::METRIC_INNER_PRODUCT,
+                                             faiss::ascend::AscendIndexFlatConfig({0}));
+    reference.add_with_ids(ntotal, base.data(), ids.data());
+    std::vector<float> expectedDist(batch * k), actualDist(batch * k);
+    std::vector<faiss::idx_t> expectedIds(batch * k), actualIds(batch * k);
+    std::vector<faiss::idx_t> selected = {ids[3], ids[17], ids[29], ids[42], ids[57]};
+    faiss::IDSelectorBatch selectedBatch(selected.size(), selected.data());
+    faiss::IDSelectorRange range(ids[10], ids[30]);
+    std::vector<uint8_t> bitmap((ids.back() + 8) / 8, 0);
+    for (auto id : selected) bitmap[id / 8] |= uint8_t(1u << (id % 8));
+    faiss::IDSelectorBitmap selectedBitmap(bitmap.size(), bitmap.data());
+    for (const faiss::IDSelector *sel :
+         {static_cast<const faiss::IDSelector *>(&range), static_cast<const faiss::IDSelector *>(&selectedBatch),
+          static_cast<const faiss::IDSelector *>(&selectedBitmap)})
+    {
+        reference.search_with_selector(batch, base.data(), k, expectedDist.data(), expectedIds.data(), sel);
+        for (int i = 0; i < 4; ++i)
+        {
+            replicas.search_with_selector(batch, base.data(), k, actualDist.data(), actualIds.data(), sel);
+            EXPECT_EQ(actualDist, expectedDist);
+            EXPECT_EQ(actualIds, expectedIds);
+        }
+    }
+
+    const size_t maskSize = (ntotal + 7) / 8;
+    std::vector<uint8_t> mask(batch * maskSize, 0);
+    for (int pos = 0; pos < ntotal; ++pos)
+    {
+        if (range.is_member(ids[pos]))
+        {
+            for (int q = 0; q < batch; ++q) mask[q * maskSize + pos / 8] |= uint8_t(1u << (pos % 8));
+        }
+    }
+    reference.search_with_masks(batch, base.data(), k, expectedDist.data(), expectedIds.data(), mask.data());
+    for (int i = 0; i < 2; ++i)
+    {
+        replicas.search_with_masks(batch, base.data(), k, actualDist.data(), actualIds.data(), mask.data());
+        EXPECT_EQ(actualDist, expectedDist);
+        EXPECT_EQ(actualIds, expectedIds);
+    }
+
+    faiss::IndexFlatIP cpuIndex(dim);
+    faiss::IndexIDMap cpuMap(&cpuIndex);
+    replicas.copyTo(&cpuMap);
+    EXPECT_EQ(cpuMap.ntotal, ntotal);
+    EXPECT_EQ(cpuMap.id_map, ids);
+    EXPECT_EQ(cpuIndex.codes.size(), static_cast<size_t>(ntotal) * dim * sizeof(float));
+    faiss::ascend::AscendIndexFlat copied(&cpuMap, replicaConfig);
+    for (int device : {0, 1}) EXPECT_EQ(copied.getBaseSize(device), static_cast<size_t>(ntotal));
+
+    reference.search(batch, base.data(), k, expectedDist.data(), expectedIds.data());
+    replicas.search(batch, base.data(), k, actualDist.data(), actualIds.data());
+    EXPECT_EQ(actualDist, expectedDist);
+    EXPECT_EQ(actualIds, expectedIds);
+
+    std::vector<uint16_t> queryFp16(static_cast<size_t>(batch) * dim);
+    std::transform(base.begin(), base.begin() + queryFp16.size(), queryFp16.begin(),
+                   [](float value) { return faiss::ascend::fp16(value).data; });
+    reference.search_with_selector(batch, queryFp16.data(), k, expectedDist.data(), expectedIds.data(), &range);
+    replicas.search_with_selector(batch, queryFp16.data(), k, actualDist.data(), actualIds.data(), &range);
+    EXPECT_EQ(actualDist, expectedDist);
+    EXPECT_EQ(actualIds, expectedIds);
+
+    std::vector<float> concurrentDist[2] = {std::vector<float>(batch * k), std::vector<float>(batch * k)};
+    std::vector<faiss::idx_t> concurrentIds[2] = {std::vector<faiss::idx_t>(batch * k),
+                                                  std::vector<faiss::idx_t>(batch * k)};
+    reference.search_with_selector(batch, base.data(), k, expectedDist.data(), expectedIds.data(), &range);
+    std::thread workers[2];
+    for (int i = 0; i < 2; ++i)
+    {
+        workers[i] = std::thread(
+            [&, i] {
+                replicas.search_with_selector(batch, base.data(), k, concurrentDist[i].data(), concurrentIds[i].data(),
+                                              &range);
+            });
+    }
+    for (auto &worker : workers) worker.join();
+    for (int i = 0; i < 2; ++i)
+    {
+        EXPECT_EQ(concurrentDist[i], expectedDist);
+        EXPECT_EQ(concurrentIds[i], expectedIds);
+    }
+
+    faiss::IDSelectorRange removed(ids[17], ids[17] + 1);
+    EXPECT_EQ(replicas.remove_ids(removed), 1u);
+    EXPECT_EQ(reference.remove_ids(removed), 1u);
+    EXPECT_EQ(replicas.ntotal, ntotal - 1);
+    std::vector<faiss::idx_t> remainingIds;
+    replicas.getIdxMap(0, remainingIds);
+    for (int device : {0, 1})
+    {
+        EXPECT_EQ(replicas.getBaseSize(device), static_cast<size_t>(ntotal - 1));
+        std::vector<faiss::idx_t> actualIds;
+        replicas.getIdxMap(device, actualIds);
+        EXPECT_EQ(actualIds, remainingIds);
+    }
+    reference.search_with_selector(batch, base.data(), k, expectedDist.data(), expectedIds.data(), &selectedBatch);
+    replicas.search_with_selector(batch, base.data(), k, actualDist.data(), actualIds.data(), &selectedBatch);
+    EXPECT_EQ(actualDist, expectedDist);
+    EXPECT_EQ(actualIds, expectedIds);
+    reference.search_with_selector(batch, base.data(), k, expectedDist.data(), expectedIds.data(), &selectedBitmap);
+    replicas.search_with_selector(batch, base.data(), k, actualDist.data(), actualIds.data(), &selectedBitmap);
+    EXPECT_EQ(actualDist, expectedDist);
+    EXPECT_EQ(actualIds, expectedIds);
+    replicas.reset();
+    EXPECT_EQ(replicas.ntotal, 0);
+    for (int device : {0, 1}) EXPECT_EQ(replicas.getBaseSize(device), 0u);
+    reference.reset();
+    reference.add(ntotal, base.data());
+    replicas.add(ntotal, base.data());
+    std::vector<uint8_t> identityBitmap((ntotal + 7) / 8, 0x55);
+    faiss::IDSelectorBitmap identitySelector(identityBitmap.size(), identityBitmap.data());
+    reference.search_with_selector(batch, base.data(), k, expectedDist.data(), expectedIds.data(), &identitySelector);
+    for (int i = 0; i < 2; ++i)
+    {
+        replicas.search_with_selector(batch, base.data(), k, actualDist.data(), actualIds.data(), &identitySelector);
+        EXPECT_EQ(actualDist, expectedDist);
+        EXPECT_EQ(actualIds, expectedIds);
+    }
 }
 
 TEST_P(TestAscendIndexFlatUT, onlineOp)
