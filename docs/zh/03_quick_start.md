@@ -33,10 +33,10 @@
 
    | 服务器型号 | 拉取命令 |
    |---------|---------|
-   | Atlas推理系列产品 | `docker pull swr.cn-south-1.myhuaweicloud.com/ascendhub/indexsdk:26.1.0-cann9.1.0-310p-ubuntu22.04-py3.12` |
-   | Atlas 800I A3超节点服务器 | `docker pull swr.cn-south-1.myhuaweicloud.com/ascendhub/indexsdk:26.1.0-cann9.1.0-a3-ubuntu22.04-py3.12` |
-   | Atlas 800I A2推理服务器 | `docker pull swr.cn-south-1.myhuaweicloud.com/ascendhub/indexsdk:26.1.0-cann9.1.0-910b-ubuntu22.04-py3.12` |
-   | Ascend 950PR系列产品 | `docker pull swr.cn-south-1.myhuaweicloud.com/ascendhub/indexsdk:26.1.0-cann9.1.0-950-ubuntu22.04-py3.12` |
+   | Atlas推理系列产品 | `docker pull swr.cn-south-1.myhuaweicloud.com/ascendhub/indexsdk:26.2.0-cann9.2.0-310p-ubuntu22.04-py3.12` |
+   | Atlas 800I A3超节点服务器 | `docker pull swr.cn-south-1.myhuaweicloud.com/ascendhub/indexsdk:26.2.0-cann9.2.0-a3-ubuntu22.04-py3.12` |
+   | Atlas 800I A2推理服务器 | `docker pull swr.cn-south-1.myhuaweicloud.com/ascendhub/indexsdk:26.2.0-cann9.2.0-910b-ubuntu22.04-py3.12` |
+   | Ascend 950PR系列产品 | `docker pull swr.cn-south-1.myhuaweicloud.com/ascendhub/indexsdk:26.2.0-cann9.2.0-950-ubuntu22.04-py3.12` |
 
 ### 1.2 环境预检查
 
@@ -51,7 +51,7 @@
 
 - 驱动与工具链挂载：将宿主机上的驱动文件和工具链目录（如 /usr/local/Ascend/driver 和 /usr/local/bin/npu-smi）以只读方式挂载到容器中，保证容器内的运行环境与宿主机一致。以下样例代码中，/dev/davinci0 表示挂载0号设备。
 
-- 说明：-ti 后接对应的镜像标签，例如：-ti swr.cn-south-1.myhuaweicloud.com/ascendhub/indexsdk:26.1.0-cann9.1.0-910b-ubuntu22.04-py3.12
+- 说明：-ti 后接对应的镜像标签，例如：-ti swr.cn-south-1.myhuaweicloud.com/ascendhub/indexsdk:26.2.0-cann9.2.0-910b-ubuntu22.04-py3.12
 
 ```bash
 docker run \
@@ -65,16 +65,20 @@ docker run \
     -v /usr/local/Ascend/driver/lib64/:/usr/local/Ascend/driver/lib64/:ro \
     -v /usr/local/Ascend/driver/version.info:/usr/local/Ascend/driver/version.info:ro \
     -v /etc/ascend_install.info:/etc/ascend_install.info:ro \
-    -it swr.cn-south-1.myhuaweicloud.com/ascendhub/indexsdk:26.1.0-cann9.1.0-910b-ubuntu22.04-py3.12 bash
+    -it swr.cn-south-1.myhuaweicloud.com/ascendhub/indexsdk:26.2.0-cann9.2.0-910b-ubuntu22.04-py3.12 bash
 
 ```
 
 ### 2.2 容器中执行npu-smi info命令检查驱动是否挂载正常
 
 ```bash
-# 将驱动库目录追加到动态库搜索路径，末尾必须保留 :$LD_LIBRARY_PATH 以保留镜像已有的库路径
-export LD_LIBRARY_PATH=/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:$LD_LIBRARY_PATH
 npu-smi info #正常显示npu卡信息无报错
+
+python3 -V # 正常显示python3版本号无报错并且版本和镜像标签中的一致 Python 3.12.15
+
+# 如果不一致，需要配置如下环境变量
+export LD_LIBRARY_PATH=/usr/local/python3.12.15/lib:$LD_LIBRARY_PATH
+export PATH=/usr/local/python3.12.15/bin:$PATH
 ```
 
 ## 步骤 3：算子生成

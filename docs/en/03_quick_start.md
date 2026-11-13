@@ -33,10 +33,10 @@ Before you start, ensure that the following requirements are met:
 
    | Chip Model | Pull Command |
    | ---------- | ------------ |
-   | Atlas inference products | `docker pull swr.cn-south-1.myhuaweicloud.com/ascendhub/indexsdk:26.1.0-cann9.1.0-310p-ubuntu22.04-py3.12` |
-   | Atlas 800I A3 | `docker pull swr.cn-south-1.myhuaweicloud.com/ascendhub/indexsdk:26.1.0-cann9.1.0-a3-ubuntu22.04-py3.12` |
-   | Atlas 800I A2 | `docker pull swr.cn-south-1.myhuaweicloud.com/ascendhub/indexsdk:26.1.0-cann9.1.0-910b-ubuntu22.04-py3.12` |
-   | Atlas 950PR products | `docker pull swr.cn-south-1.myhuaweicloud.com/ascendhub/indexsdk:26.1.0-cann9.1.0-950-ubuntu22.04-py3.12` |
+   | Atlas inference products | `docker pull swr.cn-south-1.myhuaweicloud.com/ascendhub/indexsdk:26.2.0-cann9.2.0-310p-ubuntu22.04-py3.12` |
+   | Atlas 800I A3 | `docker pull swr.cn-south-1.myhuaweicloud.com/ascendhub/indexsdk:26.2.0-cann9.2.0-a3-ubuntu22.04-py3.12` |
+   | Atlas 800I A2 | `docker pull swr.cn-south-1.myhuaweicloud.com/ascendhub/indexsdk:26.2.0-cann9.2.0-910b-ubuntu22.04-py3.12` |
+   | Atlas 950PR products | `docker pull swr.cn-south-1.myhuaweicloud.com/ascendhub/indexsdk:26.2.0-cann9.2.0-950-ubuntu22.04-py3.12` |
 
 ### 1.2 Performing Environment Prechecks
 
@@ -51,7 +51,7 @@ Before you start, ensure that the following requirements are met:
 
 - **Driver and toolchain mounting**: Mount the driver files and toolchain directories on the host, such as `/usr/local/Ascend/driver` and `/usr/local/bin/npu-smi`, to the container in read-only mode to ensure that the runtime environment in the container is consistent with that on the host. In the following example, `/dev/davinci0` indicates that device 0 is mounted.
 
-- **Description**: Append the corresponding image tag to `-it`. For example: `-it swr.cn-south-1.myhuaweicloud.com/ascendhub/indexsdk:26.1.0-cann9.1.0-910b-ubuntu22.04-py3.12`
+- **Description**: Append the corresponding image tag to `-it`. For example: `-it swr.cn-south-1.myhuaweicloud.com/ascendhub/indexsdk:26.2.0-cann9.2.0-910b-ubuntu22.04-py3.12`
 
 ```bash
 docker run \
@@ -65,17 +65,20 @@ docker run \
     -v /usr/local/Ascend/driver/lib64/:/usr/local/Ascend/driver/lib64/:ro \
     -v /usr/local/Ascend/driver/version.info:/usr/local/Ascend/driver/version.info:ro \
     -v /etc/ascend_install.info:/etc/ascend_install.info:ro \
-    -it swr.cn-south-1.myhuaweicloud.com/ascendhub/indexsdk:26.1.0-cann9.1.0-910b-ubuntu22.04-py3.12 bash
+    -it swr.cn-south-1.myhuaweicloud.com/ascendhub/indexsdk:26.2.0-cann9.2.0-910b-ubuntu22.04-py3.12 bash
 
 ```
 
 ### 2.2 Checking Whether the Driver Is Properly Mounted in the Container
 
 ```bash
-
-export LD_LIBRARY_PATH=/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:$LD_LIBRARY_PATH
-
 npu-smi info # NPU information is displayed without errors.
+
+python3 -V # The Python 3 version is displayed without errors, and it matches the version in the image tag: Python 3.12.15
+
+# If the version does not match, configure the following environment variables:
+export LD_LIBRARY_PATH=/usr/local/python3.12.15/lib:$LD_LIBRARY_PATH
+export PATH=/usr/local/python3.12.15/bin:$PATH
 ```
 
 ## Step 3: Generating Operators
