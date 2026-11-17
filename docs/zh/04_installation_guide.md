@@ -399,7 +399,7 @@ bash build/build.sh
 - 如需在同一个 run 包中同时提供 Faiss 1.10.x 和 Faiss 1.14.1 两套业务动态库，可执行 `MULTI_FAISS_PACKAGE=ON DEFAULT_FAISS_ABI=faiss1.10 bash build/build.sh` 构建多版本 run 包。该包安装时可通过 `--faiss-version` 选择安装后激活的 Faiss ABI 版本；如未指定，默认激活构建时 `DEFAULT_FAISS_ABI` 指定的版本。
 - 构建脚本默认从 `/usr/local/faiss1.10.0` 和 `/usr/local/faiss1.14.1` 查找已安装的 Faiss。如 Faiss 安装在其他路径，需通过环境变量 `FAISS_110_HOME` 或 `FAISS_114_HOME` 指定实际安装路径，例如 `FAISS_114_HOME=/usr/local/faiss/faiss1.14.1 bash build/build.sh`。
 
-生成的 run 包在 `build/output` 目录下：`Ascend-mindxsdk-mxindex_{version}_linux-{arch}.run`，执行相应安装命令即可完成安装。
+生成的 run 包在 `build/output` 目录下：`Ascend-mindxsdk-mxindex_{version}_linux-{arch}.run`，参考[离线安装](#离线安装)步骤完成安装，注意设置环境变量LD_LIBRARY_PATH。
 
 ## 升级
 
@@ -423,7 +423,7 @@ bash build/build.sh
 <tr><td width="270" valign="middle">--faiss-version=*&lt;version&gt;*</td><td valign="middle">（可选）多版本 run 包用于选择升级后激活的 Faiss ABI 版本；单版本 run 包用于校验用户选择和包内版本是否一致。支持“1.10”、“1.10.0”、“faiss1.10”、“1.14”、“1.14.1”和“faiss1.14”等取值，默认值为包内默认版本。如果升级后需要继续使用 IVFRaBitQ/RaBitQ 特性，请使用 Faiss 1.14.1 版本 run 包，或在多版本 run 包中指定“--faiss-version=1.14”。单版本 run 包无需设置该参数，如果设置为包内不包含的版本，升级会报错退出。</td></tr>
 </tbody></table>
 
-命令执行后返回如下信息，则表示特征检索包升级成功。
+命令执行后返回如下信息，则表示特征检索包升级成功，注意参考[离线安装](#离线安装)设置环境变量LD_LIBRARY_PATH。
 
 ```bash
 Upgrade package successfully.
