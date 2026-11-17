@@ -397,7 +397,7 @@ bash build/build.sh
 - To provide both the Faiss 1.10.x and Faiss 1.14.1 business shared libraries in the same run package, run `MULTI_FAISS_PACKAGE=ON DEFAULT_FAISS_ABI=faiss1.10 bash build/build.sh` to build a multi-version run package. During installation, use `--faiss-version` to select the Faiss ABI version to activate. If this parameter is not specified, the version specified by `DEFAULT_FAISS_ABI` during the build is activated by default.
 - The build script looks for installed Faiss under `/usr/local/faiss1.10.0` and `/usr/local/faiss1.14.1` by default. If Faiss is installed in another location, set the environment variable `FAISS_110_HOME` or `FAISS_114_HOME` to the actual installation path, for example `FAISS_114_HOME=/usr/local/faiss/faiss1.14.1 bash build/build.sh`.
 
-The generated run package is located in the `build/output` directory: `Ascend-mindxsdk-mxindex_{version}_linux-{arch}.run`. Run the corresponding installation command to complete the installation.
+The generated run package is located in the `build/output` directory: `Ascend-mindxsdk-mxindex_{version}_linux-{arch}.run`. To complete the installation, follow the steps in [Offline Installation](#offline-installation) and make sure to set the `LD_LIBRARY_PATH` environment variable.
 
 ## Upgrade
 
@@ -421,7 +421,7 @@ Use the following command to upgrade the feature retrieval package. For command-
 <tr><td width="270" valign="middle">--faiss-version=*&lt;version&gt;*</td><td valign="middle">Optional. Select the default activated Faiss ABI version after upgrade. Supported values include <code>1.10</code>, <code>1.10.0</code>, <code>faiss1.10</code>, <code>1.14</code>, <code>1.14.1</code>, and <code>faiss1.14</code>. The default value is <code>1.10</code>. If you need to continue using IVFRaBitQ/RaBitQ after the upgrade, specify <code>--faiss-version=1.14</code>.</td></tr>
 </tbody></table>
 
-If the following information is returned, the feature retrieval package has been upgraded successfully.
+If the following information is returned, the feature retrieval package has been upgraded successfully. Make sure to set the `LD_LIBRARY_PATH` environment variable as described in [Offline Installation](#offline-installation).
 
 ```bash
 Upgrade package successfully.
