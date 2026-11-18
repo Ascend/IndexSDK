@@ -1311,17 +1311,17 @@ void TSInt8FlatCos::addWithIdsImpl(int n, const int8_t *x)
 
 void TSInt8FlatCos::queryVectorByIdx(int64_t idx, uint8_t *dis) const
 {
-    if (faiss::ascend::SocUtils::GetInstance().IsAscend910B())
+    // 底库排布由 add 路径决定：ZZ 码格式由 TransdataShaped 写入分形排布，
+    // 其余（910B/910_93 的 PURE_DEVICE）为连续 ND 排布，需按对应方式读取。
+    bool isShapedBase = faiss::ascend::SocUtils::GetInstance().IsZZCodeFormat();
+    if (!isShapedBase)
     {
         size_t total = static_cast<size_t>(idx);
         size_t offsetInBlock = total % static_cast<size_t>(this->codeBlockSize);
         size_t blockIdx = total / static_cast<size_t>(this->codeBlockSize);
 
-        int disOffset = 0;
-        int srcOffset = offsetInBlock * code_size;
-        std::vector<uint8_t> xb(this->code_size);
-
-        auto ret = aclrtMemcpy(xb.data(), this->code_size * sizeof(uint8_t), baseShaped[blockIdx]->data() + srcOffset,
+        auto ret = aclrtMemcpy(dis, this->code_size * sizeof(uint8_t),
+                               baseShaped[blockIdx]->data() + offsetInBlock * code_size,
                                this->code_size * sizeof(uint8_t), ACL_MEMCPY_DEVICE_TO_HOST);
         FAISS_THROW_IF_NOT_MSG(ret == ACL_SUCCESS, "Failed to copy to host");
     }
