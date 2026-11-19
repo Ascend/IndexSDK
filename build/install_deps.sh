@@ -146,7 +146,7 @@ function install_ut_deps()
     if [ ! -d "${TOP_DIR}/mockcpp" ]; then
         cd "${TOP_DIR}"
         git clone -b v2.7.x-h3 https://gitcode.com/cann-src-third-party/mockcpp.git mockcpp_patch
-        git clone -b v2.7 https://gitee.com/sinojelly/mockcpp.git
+        git clone -b ascend_mindsdk_mockcpp_master https://gitcode.com/Ascend/mockcpp.git
     fi
     CMAKELISTS="${TOP_DIR}/mockcpp/CMakeLists.txt"
     if [ ! -f "$CMAKELISTS" ]; then
