@@ -1,0 +1,18 @@
++ bash /workspace/meetup-indexsdk/IndexSDK/build/output/Ascend-mindxsdk-mxindex__linux-aarch64.run --install --quiet --install-path=/workspace/meetup-indexsdk/install --platform=910B
+[mxIndex] [20261120-07:24:37] [user: ] [localhost] [INFO] LogFile /root/log/mxIndex/deployment.log
+[mxIndex] [20261120-07:24:37] [user: ] [localhost] [INFO] start to run
+
+[mxIndex] [20261120-07:24:38] [user: ] [localhost] [INFO] Install package successfully
+/workspace/meetup-indexsdk/install/mxIndex-
++ sdk=/workspace/meetup-indexsdk/install/mxIndex
++ test -s /workspace/meetup-indexsdk/install/mxIndex/host/lib/libascendfaiss.so
++ readlink -f /workspace/meetup-indexsdk/install/mxIndex
++ cp -an /usr/local/Ascend/cann-9.2.0/opp/vendors/mxIndex /usr/local/Ascend/cann-9.2.0/opp/vendors/config.ini /workspace/meetup-indexsdk/opp-before-install/
++ cd /workspace/meetup-indexsdk/install/mxIndex/ops
++ bash ./custom_opp_aarch64.run
+Verifying archive integrity...     0%    30%  All good.
+Uncompressing version:1.0   60%    90%  100%   SHA256 checksums are OK.     0%    30%    60%    90%  100%
+[mxIndex] [20261120-07:24:38] [user: root] [localhost] [INFO] start install ops ...
+[mxIndex] [20261120-07:24:38] [user: root] [localhost] [INFO] no need to upgrade ops framework files
+[mxIndex] [20261120-07:24:38] [user: root] [localhost] [INFO] no need to upgrade ops op_api files
+[mxIndex] [20261120-07:24:38] [user: root] [localhost] [INFO] Install package successfully

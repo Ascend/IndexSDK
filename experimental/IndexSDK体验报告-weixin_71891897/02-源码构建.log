@@ -1,0 +1,30 @@
+# 以下是运行日志的摘录，保留首尾与关键报错或完成标记。
+99c64b7d04f29f6a056e7c795424f64236b8e389
++ git rev-parse HEAD
++ sed -i 's/^OPTION(BUILD_ASCENDDEVICE.*/OPTION(BUILD_ASCENDDEVICE "Build ascenddevice" OFF)/; /^[[:space:]]*ASCEND_MINIOS_HOME[[:space:]]*$/s/ASCEND_MINIOS_HOME/# ASCEND_MINIOS_HOME/' feature_retrieval/src/ascendfaiss/CMakeLists.txt
++ sed -i -E 's/make -j( |$)/make -j12\1/' feature_retrieval/build/build.sh vstar_great_impl/mix-index/publish_union.sh
++ git diff --stat
+ feature_retrieval/build/build.sh                 | 2 +-
+ feature_retrieval/src/ascendfaiss/CMakeLists.txt | 4 ++--
+ vstar_great_impl/mix-index/publish_union.sh      | 2 +-
+...
+sed: can't read /workspace/meetup-indexsdk/IndexSDK/feature_retrieval/build/../../../ci/config/config.ini: No such file or directory
+...
+sed: can't read /workspace/meetup-indexsdk/IndexSDK/build/../../ci/config/config.ini: No such file or directory
+sed: can't read /workspace/meetup-indexsdk/IndexSDK/build/../../ci/config/config.ini: No such file or directory
+dos2unix: converting file install.sh to Unix format...
+Header is 698 lines long
+./Ascend-featureretrieval__gcc7.3.0-linux-aarch64-Ascend950.tar.gz
+./agreement.conf
+./help.info
+./install.sh
+./version.info
+skipping crc at user request
+SHA256: 21a56a63f6d913124d2cf4b8a54b4f09bc92905d3e0f3f800349a60a905a4b3a
+Skipping md5sum at user request
+
+Self-extractable archive "Ascend-mindxsdk-mxindex__linux-aarch64.run" successfully created.
+package complete!
+output: /workspace/meetup-indexsdk/IndexSDK/build/output/Ascend-mindxsdk-mxindex__linux-aarch64.run
+-rwxr-xr-x. 1 root root 23M Nov 20 07:22 build/output/Ascend-mindxsdk-mxindex__linux-aarch64.run
++ ls -lh build/output/Ascend-mindxsdk-mxindex__linux-aarch64.run

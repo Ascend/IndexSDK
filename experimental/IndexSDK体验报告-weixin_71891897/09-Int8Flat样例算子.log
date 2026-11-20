@@ -1,0 +1,24 @@
+已停止生成无关分块规格的编译任务。
++ python3 /workspace/meetup-indexsdk/install/mxIndex/tools/int8flat_generate_model.py -d 256 -t 910B3 -code 262144 -pool 2
+ATC start working now, please wait for a moment.
+ATC start working now, please wait for a moment.
+...
+ATC run success, welcome to the next use.
+
+ATC start working now, please wait for a moment.
+...
+ATC run success, welcome to the next use.
+
+ATC start working now, please wait for a moment.
+...
+ATC run success, welcome to the next use.
+
+...
+ATC run success, welcome to the next use.
+
+++ find op_models -maxdepth 1 -name '*_AscendcDistInt8FlatL2_*.om' -print -quit
+63
++ test -n op_models/0_AscendcDistInt8FlatL2_2_2_128_256_4_2_128_32768_2_2_16384_8_16_32_3_2_262144_8_2_40_8_1_2_128_262144_1_2_128_8192_7_2_40_16.om
++ find op_models -maxdepth 1 -name '*.om'
++ wc -l
++ cp -a op_models/. /workspace/meetup-indexsdk/models/

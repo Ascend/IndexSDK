@@ -1,0 +1,39 @@
+# 以下是运行日志的摘录，保留首尾与关键报错或完成标记。
++ python3 aicpu_generate_model.py -t 910B3
+ATC start working now, please wait for a moment.
+...
+ATC run success, welcome to the next use.
+
++ python3 flat_generate_model.py -d 512 -t 910B3 -pool 4
+ATC start working now, please wait for a moment.
+ATC start working now, please wait for a moment.
+...
+/usr/local/Ascend/ascend-toolkit/latest/bin/atc: line 22: 29716 Killed                  ${PKG_PATH}/bin/atc.bin "$@"
+/usr/local/Ascend/ascend-toolkit/latest/bin/atc: line 22: 29715 Killed                  ${PKG_PATH}/bin/atc.bin "$@"
+...
+ATC run success, welcome to the next use.
+...
+ATC run success, welcome to the next use.
+...
+multiprocessing.pool.RemoteTraceback:
+...
+Traceback (most recent call last):
+...
+RuntimeError: Failed to generate op models.
+"""
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/workspace/meetup-indexsdk/install/mxIndex-/tools/flat_generate_model.py", line 764, in <module>
+    generate_flat_offline_model()
+  File "/workspace/meetup-indexsdk/install/mxIndex-/tools/flat_generate_model.py", line 760, in generate_flat_offline_model
+    utils.run_generate_model_task(args, map_args)
+  File "/workspace/meetup-indexsdk/install/mxIndex-/tools/common.py", line 239, in run_generate_model_task
+    pool.starmap(atc_model, map_args)
+  File "/usr/local/python3.12.15/lib/python3.12/multiprocessing/pool.py", line 375, in starmap
+    return self._map_async(func, iterable, starmapstar, chunksize).get()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/python3.12.15/lib/python3.12/multiprocessing/pool.py", line 774, in get
+    raise self._value
+RuntimeError: Failed to generate op models.
