@@ -1,0 +1,39 @@
+++ find /workspace/meetup-indexsdk/models -maxdepth 1 -name '*_AscendcDistInt8FlatL2_*.om'
+++ wc -l
++ test 28 -eq 28
++ timeout 240 stdbuf -oL -eL /workspace/meetup-indexsdk/samples/int8-build/TestAscendIndexInt8Flat --gtest_color=no
+[==========] Running 2 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 2 tests from TestAscendIndexInt8Flat
+[ RUN      ] TestAscendIndexInt8Flat.QPS
+generate data
+add data
+AscendIndexInt8::add: adding 0:262136 / 1000000
+AscendIndexInt8::add: adding 262136:524272 / 1000000
+AscendIndexInt8::add: adding 524272:786408 / 1000000
+AscendIndexInt8::add: adding 786408:1000000 / 1000000
+case[0]: base:1000000, dim:256, search num:8, QPS:5653.2616
+case[1]: base:1000000, dim:256, search num:16, QPS:9923.6826
+case[2]: base:1000000, dim:256, search num:32, QPS:16821.7870
+case[3]: base:1000000, dim:256, search num:64, QPS:22707.8533
+case[4]: base:1000000, dim:256, search num:128, QPS:22899.6724
+case[5]: base:1000000, dim:256, search num:256, QPS:22592.2910
+[       OK ] TestAscendIndexInt8Flat.QPS (3289 ms)
+[ RUN      ] TestAscendIndexInt8Flat.Acc
+generate data
+add data
+AscendIndexInt8::add: adding 0:262136 / 1000000
+AscendIndexInt8::add: adding 262136:524272 / 1000000
+AscendIndexInt8::add: adding 524272:786408 / 1000000
+AscendIndexInt8::add: adding 786408:1000000 / 1000000
+add finish
+search start
+search finish
+search compute distance by cpu
+Recall 100: @1 = 100.00, @10 = 100.00, @100 = 100.00
+[       OK ] TestAscendIndexInt8Flat.Acc (3067 ms)
+[----------] 2 tests from TestAscendIndexInt8Flat (6357 ms total)
+
+[----------] Global test environment tear-down
+[==========] 2 tests from 1 test suite ran. (6357 ms total)
+[  PASSED  ] 2 tests.

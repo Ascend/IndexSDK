@@ -1,0 +1,12 @@
++ timeout 600 atc --singleop=./config/distance_flat_l2_op_pid0.json --soc_version=Ascend910B3 --output=op_models --log=error
+ATC start working now, please wait for a moment.
+...
+ATC run success, welcome to the next use.
+
+++ find op_models -maxdepth 1 -name '*_DistanceFlatL2_*.om'
+++ wc -l
++ test 16 -eq 16
++ cp -a op_models/. /workspace/meetup-indexsdk/models/
+154
++ wc -l
++ find /workspace/meetup-indexsdk/models -maxdepth 1 -name '*.om'

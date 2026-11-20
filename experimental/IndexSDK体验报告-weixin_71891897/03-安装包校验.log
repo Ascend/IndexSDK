@@ -1,0 +1,12 @@
+-rwxr-xr-x. 1 root root 23M Nov 20 07:22 build/output/Ascend-mindxsdk-mxindex__linux-aarch64.run
+Makeself logfile: /root/log/makeself/makeself.log
+Verifying archive integrity...     0%    18%    36%    54%    72%  All good.
+Verifying archive integrity...   90%  100%   SHA256 checksums are OK.     0%    18%    36%    54%    72%    90%  100%   SHA256 checksums are OK. All good.
+Uncompressing ASCEND INDEX SDK RUN PACKAGE     0%    18%    36%    54%    72%    90%  100%
+[mxIndex] [20261120-07:22:25] [user: ] [localhost] [INFO] LogFile /root/log/mxIndex/deployment.log
+[mxIndex] [20261120-07:22:25] [user: ] [localhost] [INFO] start to run
+[mxIndex] [20261120-07:22:25] [user: root] [localhost] [INFO] Check successfully, exit with 0
+--- SHA256 ---
+349fae748c0fa7418432a585bf58c4a77948313de6e1432c7ec9a297e9740fc2  build/output/Ascend-mindxsdk-mxindex__linux-aarch64.run
+--- 910B payload ---
+-rw-r----- root/root   7156961 2026-11-20 07:22 ./Ascend-featureretrieval__gcc7.3.0-linux-aarch64-910B.tar.gz
