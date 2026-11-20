@@ -1,0 +1,33 @@
++ g++ --std=c++11 -fPIC -fPIE -fstack-protector-all -Wall -D_FORTIFY_SOURCE=2 -O3 -Wl,-z,relro,-z,now,-z,noexecstack -s -pie -o /workspace/meetup-indexsdk/samples/flat-demo /workspace/meetup-indexsdk/samples/flat-demo.cpp -I/workspace/meetup-indexsdk/install/mxIndex/include -I/usr/local/faiss/include -I/usr/local/Ascend/driver/include -I/opt/OpenBLAS/include -L/workspace/meetup-indexsdk/install/mxIndex/host/lib -L/usr/local/faiss/lib -L/usr/local/Ascend/driver/lib64 -L/usr/local/Ascend/driver/lib64/driver -L/opt/OpenBLAS/lib -L/usr/local/Ascend/cann/lib64 -lfaiss -lascendfaiss -lopenblas -lc_sec -lascendcl -lascend_hal -lascendsearch -lock_hmm
++ cmake -S /workspace/meetup-indexsdk/IndexSDK/examples -B /workspace/meetup-indexsdk/samples/int8-build -DMXINDEX_HOME=/workspace/meetup-indexsdk/install/mxIndex -DFAISS_HOME=/usr/local/faiss1.10.0
+-- The C compiler identification is GNU 11.4.0
+-- The CXX compiler identification is GNU 11.4.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/cc - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/c++ - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+-- Key Configurations:
+   MXINDEX_HOME is /workspace/meetup-indexsdk/install/mxIndex
+   FAISS_HOME is /usr/local/faiss1.10.0
+   GTEST_HOME is /usr/local/gtest
+   DRIVER_HOME is /usr/local/Ascend/driver
+   OPENBLAS is /opt/OpenBLAS
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Success
+-- Found Threads: TRUE
+-- Configuring done
+-- Generating done
+-- Build files have been written to: /workspace/meetup-indexsdk/samples/int8-build
+[ 50%] Building CXX object CMakeFiles/TestAscendIndexInt8Flat.dir/TestAscendIndexInt8Flat.cpp.o
++ cmake --build /workspace/meetup-indexsdk/samples/int8-build --target TestAscendIndexInt8Flat --parallel 4
+[100%] Linking CXX executable TestAscendIndexInt8Flat
+[100%] Built target TestAscendIndexInt8Flat
+	libascendfaiss.so => /workspace/meetup-indexsdk/install/mxIndex/host/lib/libascendfaiss.so (0x0000ffff8a350000)
++ ldd /workspace/meetup-indexsdk/samples/int8-build/TestAscendIndexInt8Flat
++ grep libascendfaiss

@@ -1,0 +1,8 @@
+Welcome to Ubuntu 22.04.5 LTS (GNU/Linux 5.10.0-216.0.0.115.oe2203sp4.aarch64 aarch64)
+
+root@8486552794fc:/workspace# cd /workspace/meetup-indexsdk
+root@8486552794fc:/workspace/meetup-indexsdk# pwd
+/workspace/meetup-indexsdk
+root@8486552794fc:/workspace/meetup-indexsdk# grep -F 'PASSED' acceptance.txt
+[  PASSED  ] 2 tests.
+root@8486552794fc:/workspace/meetup-indexsdk#
