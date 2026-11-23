@@ -75,7 +75,7 @@ jobs:
           git clone -b v2.5.0.x https://gitcode.com/cann-src-third-party/makeself.git makeself_patch
           git clone -b release-2.5.0 https://gitcode.com/gh_mirrors/ma/makeself.git
           git clone -b v2.7.x-h3 https://gitcode.com/cann-src-third-party/mockcpp.git mockcpp_patch
-          git clone -b ascend_mindsdk_mockcpp_master https://gitcode.com/Ascend/mockcpp.git mockcpp
+          git clone -b v2.7 https://gitcode.com/Ascend/mockcpp.git mockcpp
           git clone -b release-1.11.0 https://gitcode.com/GitHub_Trending/go/googletest.git googletest
 
           # platform dependency
