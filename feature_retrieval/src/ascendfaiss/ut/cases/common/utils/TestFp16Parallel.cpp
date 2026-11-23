@@ -1,6 +1,5 @@
 /*
- * This file is part of the IndexSDK project.
- * Copyright (c) 2026 Huawei Technologies Co.,Ltd.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All Rights Reserved.
  * Licensed under Mulan PSL v2: http://license.coscl.org.cn/MulanPSL2
  */
 

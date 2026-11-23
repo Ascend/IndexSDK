@@ -53,8 +53,8 @@
 3,&emsp;  请将如下声明文本放入每个源文件的头部注释中。
 
 ```bash
-Copyright (c) Huawei Technologies Co., Ltd. [Year of First Publication]-[Year of Latest Update]. All Rights Reserved.
-IndexSDK is licensed under Mulan PSL v2.
+Copyright (c) [Year] [name of copyright holder]
+[Software Name] is licensed under Mulan PSL v2.
 You can use this software according to the terms and conditions of the Mulan PSL v2.
 You may obtain a copy of Mulan PSL v2 at:
          http://license.coscl.org.cn/MulanPSL2
@@ -64,7 +64,7 @@ MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 See the Mulan PSL v2 for more details.
 ```
 
-注意： 模板中的\[Year of First Publication\]、\[Year of Latest Update\]需要更改为贡献者首次创建年份和最近更新年份
+注意： 模板中的\[Year\]需要更改为贡献者首次创建年份和最近更新年份
 
 ## Mulan Permissive Software License，Version 2<a name="section18273540143715"></a>
 
@@ -123,8 +123,8 @@ To apply the Mulan PSL v2 to your work, for easy identification by recipients, y
 &emsp;&emsp;iii. Attach the statement to the appropriate annotated syntax at the beginning of each source file.
 
 ```bash
-Copyright (c) Huawei Technologies Co., Ltd. [Year of First Publication]-[Year of Latest Update]. All Rights Reserved.
-IndexSDK is licensed under Mulan PSL v2.
+Copyright (c) [Year] [name of copyright holder]
+[Software Name] is licensed under Mulan PSL v2.
 You can use this software according to the terms and conditions of the Mulan PSL v2.
 You may obtain a copy of Mulan PSL v2 at:
          http://license.coscl.org.cn/MulanPSL2

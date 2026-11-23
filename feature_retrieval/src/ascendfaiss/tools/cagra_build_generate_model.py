@@ -2,8 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 -------------------------------------------------------------------------
-This file is part of the IndexSDK project.
-Copyright (c) 2026 Huawei Technologies Co.,Ltd.
+Copyright (c) Huawei Technologies Co., Ltd. 2026. All Rights Reserved.
 
 IndexSDK is licensed under Mulan PSL v2.
 -------------------------------------------------------------------------
