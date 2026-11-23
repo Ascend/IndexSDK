@@ -1,0 +1,34 @@
+diff --git a/include/mockcpp/ProcStub.h b/include/mockcpp/ProcStub.h
+index 1f23844..2465adc 100644
+--- a/include/mockcpp/ProcStub.h
++++ b/include/mockcpp/ProcStub.h
+@@ -79,13 +79,13 @@ struct ProcStub<R(DECL_ARGS(n))> : public ProcStubBase \
+     { \
+         SIMPLE_REPEAT(n, MOCKCPP_CHECK_AND_ASSIGN_PARAMETER); \
+  \
++        static thread_local Any result; \
+         result = func(DECL_PARAMS(n)); \
+         return result; \
+     } \
+  \
+ private: \
+     Func func; \
+-    Any result; \
+ }; \
+ template <typename R DECL_TEMPLATE_ARGS(n)> \
+ Stub* invoke(R(*f)(DECL_ARGS(n)), const char* name = 0) \
+@@ -139,13 +139,13 @@ struct ProcStub<R(DECL_VARDIC_ARGS(n) ...)> : public ProcStubBase \
+     { \
+         SIMPLE_REPEAT(n, MOCKCPP_CHECK_AND_ASSIGN_PARAMETER); \
+  \
++        static thread_local Any result; \
+         result = func(DECL_PARAMS(n)); \
+         return result; \
+     } \
+  \
+ private: \
+     Func func; \
+-    Any result; \
+ }; \
+ template <typename R DECL_TEMPLATE_ARGS(n)> \
+ Stub* invoke(R(*f)(DECL_VARDIC_ARGS(n) ...), const char* name = 0) \

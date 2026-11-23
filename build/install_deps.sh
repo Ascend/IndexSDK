@@ -146,17 +146,34 @@ function install_ut_deps()
     if [ ! -d "${TOP_DIR}/mockcpp" ]; then
         cd "${TOP_DIR}"
         git clone -b v2.7.x-h3 https://gitcode.com/cann-src-third-party/mockcpp.git mockcpp_patch
-        git clone -b ascend_mindsdk_mockcpp_master https://gitcode.com/Ascend/mockcpp.git
+        git clone -b v2.7 https://gitcode.com/Ascend/mockcpp.git
     fi
     CMAKELISTS="${TOP_DIR}/mockcpp/CMakeLists.txt"
     if [ ! -f "$CMAKELISTS" ]; then
         echo "[INSTALL_ERROR]: $CMAKELISTS not found!"
         exit 1
     fi
+
     if grep -q '_GLIBCXX_USE_CXX11_ABI=1' "$CMAKELISTS"; then
         echo "[INSTALL_INFO] mockcpp patch already applied, _GLIBCXX_USE_CXX11_ABI already set to 1."
     else
-        cd "${TOP_DIR}/mockcpp" && patch -p1 < ../mockcpp_patch/mockcpp-2.7_py3-h3.patch
+        # The CI workflow pre-clones mockcpp into this very path, so the clone above is skipped and
+        # the branch actually used is decided outside this file. Force the tree onto tag v2.7, the
+        # only base the mockcpp_patch set applies to: ascend_mindsdk_mockcpp_master has no
+        # MOCKER_CPP / MOCKER_CPP_VIRTUAL (needed by the UTs) and every hunk of the h3 patch is
+        # rejected on it, while v2.7 applies cleanly.
+        git -C "${TOP_DIR}/mockcpp" fetch --tags --force origin >/dev/null 2>&1 || true
+        git -C "${TOP_DIR}/mockcpp" checkout -f v2.7
+        echo "[INSTALL_INFO] mockcpp source after align: commit=$(git -C "${TOP_DIR}/mockcpp" rev-parse --short HEAD 2>/dev/null)"
+        cd "${TOP_DIR}/mockcpp"
+        # tag v2.7 is the base the mockcpp_patch set is made for. It does not provide
+        # MOCKER_CPP / MOCKER_CPP_VIRTUAL (include/mockcpp/mokc.h) nor the ProcStub.h member-method
+        # support, and the IndexSDK UTs depend on both, so it must be applied first.
+        patch -p1 < ../mockcpp_patch/mockcpp-2.7_py3-h3.patch
+        # tag v2.7 also lacks the mockcpp memory leak fix (issues/199, ProcStub.h), which only
+        # exists on Ascend/mockcpp ascend_mindsdk_mockcpp_master. That branch cannot be used as the
+        # source here (it dropped MOCKER_CPP), so the fix is stacked as a standalone patch on top.
+        patch -p1 < "${CUR_DIR}/mockcpp_patch/mockcpp-mindsdk-leakfix.patch"
         sed -i '/target_compile_definitions(mockcpp PRIVATE/,/)/s/_GLIBCXX_USE_CXX11_ABI=0/_GLIBCXX_USE_CXX11_ABI=1/' "$CMAKELISTS"
         echo "[INSTALL_INFO] successfully updated _GLIBCXX_USE_CXX11_ABI from 0 to 1 in $CMAKELISTS"
     fi
