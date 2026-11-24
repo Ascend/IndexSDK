@@ -29,14 +29,18 @@
 #include <algorithm>
 #include <atomic>
 #include <cfloat>
+#include <climits>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <cerrno>
 #include <iostream>
 #include <numeric>
 #include <random>
+#include <stdexcept>
+#include <string>
 #include <sstream>
 #include <thread>
 
@@ -71,18 +75,17 @@ inline void AssertEqual(const std::vector<float> &gt, const std::vector<float> &
 
 void computeRecall(recallMap &recMap, int j)
 {
-    recMap[RECMAP_KEY_100]++;
-    switch (j)
+    if (j < RECMAP_KEY_100)
     {
-        case 0:
-            recMap[RECMAP_KEY_1]++;
-            recMap[RECMAP_KEY_10]++;
-            break;
-        case 1 ... 9:  // case 1到9
-            recMap[RECMAP_KEY_10]++;
-            break;
-        default:
-            break;
+        recMap[RECMAP_KEY_100]++;
+    }
+    if (j < RECMAP_KEY_10)
+    {
+        recMap[RECMAP_KEY_10]++;
+    }
+    if (j == 0)
+    {
+        recMap[RECMAP_KEY_1]++;
     }
 }
 
@@ -155,10 +158,138 @@ void Norm(float *data, size_t n, int dim)
     }
 }
 
-TEST(TestAscendIndexFlat, QPS)
+int ReadEnvInt(const char *name, int defaultValue)
+{
+    const char *raw = std::getenv(name);
+    if (raw == nullptr || *raw == '\0')
+    {
+        return defaultValue;
+    }
+    errno = 0;
+    char *end = nullptr;
+    long value = std::strtol(raw, &end, 10);
+    if (errno != 0 || end == raw || *end != '\0' || value < 1 || value > INT_MAX)
+    {
+        throw std::invalid_argument(std::string("invalid positive integer in ") + name + ": " + raw);
+    }
+    return static_cast<int>(value);
+}
+
+int ReadEnvNonNegativeInt(const char *name, int defaultValue)
+{
+    const char *raw = std::getenv(name);
+    if (raw == nullptr || *raw == '\0')
+    {
+        return defaultValue;
+    }
+    errno = 0;
+    char *end = nullptr;
+    long value = std::strtol(raw, &end, 10);
+    if (errno != 0 || end == raw || *end != '\0' || value < 0 || value > INT_MAX)
+    {
+        throw std::invalid_argument(std::string("invalid non-negative integer in ") + name + ": " + raw);
+    }
+    return static_cast<int>(value);
+}
+
+size_t ReadEnvSize(const char *name, size_t defaultValue)
+{
+    const char *raw = std::getenv(name);
+    if (raw == nullptr || *raw == '\0')
+    {
+        return defaultValue;
+    }
+    const char *p = raw;
+    while (*p == ' ' || *p == '\t')
+    {
+        ++p;
+    }
+    if (*p == '-')
+    {
+        throw std::invalid_argument(std::string("invalid positive size in ") + name + ": " + raw);
+    }
+    errno = 0;
+    char *end = nullptr;
+    unsigned long long value = std::strtoull(p, &end, 10);
+    if (errno != 0 || end == p || *end != '\0' || value == 0 || value > SIZE_MAX)
+    {
+        throw std::invalid_argument(std::string("invalid positive size in ") + name + ": " + raw);
+    }
+    return static_cast<size_t>(value);
+}
+
+// The benchmark wrapper supplies these variables so the same example can
+// cover both acceptance scenarios without maintaining a second test binary.
+struct FlatBenchConfig
 {
     int dim = 256;
-    size_t ntotal = 1000000;
+    size_t base = 1000000;
+    int topk = 100;
+    int queryNum = 8;
+    int warmup = 10;
+    int loops = 100;
+    int device = 0;
+    int64_t resourceSize = static_cast<int64_t>(1024) * 1024 * 1500;
+    faiss::MetricType metric = faiss::METRIC_L2;
+};
+
+FlatBenchConfig ReadBenchConfig()
+{
+    FlatBenchConfig config;
+    config.dim = ReadEnvInt("ASCEND_FLAT_DIM", config.dim);
+    config.base = ReadEnvSize("ASCEND_FLAT_BASE", config.base);
+    config.topk = ReadEnvInt("ASCEND_FLAT_TOPK", config.topk);
+    config.queryNum = ReadEnvInt("ASCEND_FLAT_QUERY_NUM", config.queryNum);
+    config.warmup = ReadEnvInt("ASCEND_FLAT_WARMUP", config.warmup);
+    config.loops = ReadEnvInt("ASCEND_FLAT_LOOPS", config.loops);
+    config.device = ReadEnvNonNegativeInt("ASCEND_FLAT_DEVICE", config.device);
+    size_t resourceSize = ReadEnvSize(
+        "ASCEND_FLAT_RESOURCE_SIZE", static_cast<size_t>(config.resourceSize));
+    if (resourceSize > static_cast<size_t>(INT64_MAX))
+    {
+        throw std::invalid_argument("ASCEND_FLAT_RESOURCE_SIZE exceeds INT64_MAX");
+    }
+    config.resourceSize = static_cast<int64_t>(resourceSize);
+    const char *metric = std::getenv("ASCEND_FLAT_METRIC");
+    if (metric != nullptr && std::strcmp(metric, "IP") == 0)
+    {
+        config.metric = faiss::METRIC_INNER_PRODUCT;
+    }
+    else if (metric != nullptr && std::strcmp(metric, "L2") != 0)
+    {
+        throw std::invalid_argument(std::string("ASCEND_FLAT_METRIC must be L2 or IP, got: ") + metric);
+    }
+    if (config.base > SIZE_MAX / static_cast<size_t>(config.dim))
+    {
+        throw std::overflow_error("ASCEND_FLAT_BASE * ASCEND_FLAT_DIM overflows size_t");
+    }
+    if (static_cast<size_t>(config.topk) > config.base)
+    {
+        throw std::invalid_argument("ASCEND_FLAT_TOPK cannot exceed ASCEND_FLAT_BASE");
+    }
+    if (static_cast<size_t>(config.queryNum) > config.base)
+    {
+        throw std::invalid_argument("ASCEND_FLAT_QUERY_NUM cannot exceed ASCEND_FLAT_BASE");
+    }
+    return config;
+}
+
+const char *MetricName(faiss::MetricType metric)
+{
+    return metric == faiss::METRIC_INNER_PRODUCT ? "IP" : "L2";
+}
+
+bool ShouldNormalize()
+{
+    const char *raw = std::getenv("ASCEND_FLAT_NORMALIZE");
+    return raw == nullptr || std::strcmp(raw, "0") != 0;
+}
+
+TEST(TestAscendIndexFlat, QPS)
+{
+    FlatBenchConfig config = ReadBenchConfig();
+    int dim = config.dim;
+    size_t ntotal = config.base;
     size_t maxSize = ntotal * dim;
     try
     {
@@ -167,13 +298,14 @@ TEST(TestAscendIndexFlat, QPS)
         {
             data[i] = 1.0 * FastRand() / FAST_RAND_MAX;
         }
+        if (ShouldNormalize())
+        {
+            Norm(data.data(), ntotal, dim);
+        }
 
-        faiss::ascend::AscendIndexFlatConfig conf({0}, 1024 * 1024 * 1500);
-        faiss::ascend::AscendIndexFlat index(dim, faiss::METRIC_L2, conf);
+        faiss::ascend::AscendIndexFlatConfig conf({config.device}, config.resourceSize);
+        faiss::ascend::AscendIndexFlat index(dim, config.metric, conf);
         index.verbose = true;
-
-        // 标准化
-        Norm(data.data(), ntotal, dim);
 
         index.add(ntotal, data.data());
         {
@@ -186,19 +318,30 @@ TEST(TestAscendIndexFlat, QPS)
             EXPECT_EQ(getTotal, ntotal);
         }
 
-        int warmUpTimes = 10;
-        std::vector<float> distw(127 * 10, 0);
-        std::vector<faiss::idx_t> labelw(127 * 10, 0);
-        for (int i = 0; i < warmUpTimes; i++)
+        const bool benchmarkQueryConfigured = std::getenv("ASCEND_FLAT_QUERY_NUM") != nullptr;
+        const bool benchmarkTopkConfigured = std::getenv("ASCEND_FLAT_TOPK") != nullptr;
+        const int warmupQuery = benchmarkQueryConfigured ? config.queryNum : 127;
+        const int warmupTopk = benchmarkTopkConfigured ? config.topk : 10;
+        std::vector<float> distw(warmupQuery * warmupTopk, 0);
+        std::vector<faiss::idx_t> labelw(warmupQuery * warmupTopk, 0);
+        for (int i = 0; i < config.warmup; i++)
         {
-            index.search(127, data.data(), 10, distw.data(), labelw.data());
+            index.search(warmupQuery, data.data(), warmupTopk, distw.data(), labelw.data());
         }
 
-        std::vector<int> searchNum = {8, 16, 32, 64, 128, 256};
+        std::vector<int> searchNum;
+        if (benchmarkQueryConfigured)
+        {
+            searchNum = {config.queryNum};
+        }
+        else
+        {
+            searchNum = {8, 16, 32, 64, 128, 256};
+        }
         for (size_t n = 0; n < searchNum.size(); n++)
         {
-            int k = 10;
-            int loopTimes = 100;
+            int k = benchmarkTopkConfigured ? config.topk : 10;
+            int loopTimes = config.loops;
             std::vector<float> dist(searchNum[n] * k, 0);
             std::vector<faiss::idx_t> label(searchNum[n] * k, 0);
             double ts = GetMillisecs();
@@ -207,8 +350,10 @@ TEST(TestAscendIndexFlat, QPS)
                 index.search(searchNum[n], data.data(), k, dist.data(), label.data());
             }
             double te = GetMillisecs();
-            printf("case[%zu]: base:%zu, dim:%d, search num:%d, QPS:%.4f\n", n, ntotal, dim, searchNum[n],
-                   MILLI_SECOND * searchNum[n] * loopTimes / (te - ts));
+            double duration = te - ts;
+            printf("flat, metric:%s, base:%zu, dim:%d, searchnum:%d, topk:%d, duration_ms:%.3lf, QPS:%.4f\n",
+                   MetricName(config.metric), ntotal, dim, searchNum[n], k, duration,
+                   duration > 0 ? MILLI_SECOND * searchNum[n] * loopTimes / duration : 0.0);
         }
     }
     catch (std::exception &e)
@@ -714,12 +859,13 @@ TEST(TestAscendIndexFlat, ReplicaSlowPathFilterQPS)
 
 TEST(TestAscendIndexFlat, Acc)
 {
-    int dim = 256;
-    size_t ntotal = 1000000;
+    FlatBenchConfig config = ReadBenchConfig();
+    int dim = config.dim;
+    size_t ntotal = config.base;
     size_t maxSize = ntotal * dim;
-    faiss::MetricType type = faiss::METRIC_L2;
-    int topk = 100;
-    int queryNum = 8;
+    faiss::MetricType type = config.metric;
+    int topk = config.topk;
+    int queryNum = config.queryNum;
     printf("generate data\n");
     std::vector<float> data(maxSize);
     try
@@ -728,17 +874,23 @@ TEST(TestAscendIndexFlat, Acc)
         {
             data[i] = 1.0 * FastRand() / FAST_RAND_MAX;
         }
-        faiss::ascend::AscendIndexFlatConfig conf({0}, 1024 * 1024 * 1500);
-        faiss::ascend::AscendIndexFlat index(dim, faiss::METRIC_L2, conf);
+        faiss::ascend::AscendIndexFlatConfig conf({config.device}, config.resourceSize);
+        faiss::ascend::AscendIndexFlat index(dim, config.metric, conf);
         index.verbose = true;
 
-        // 标准化
-        Norm(data.data(), ntotal, dim);
+        if (ShouldNormalize())
+        {
+            Norm(data.data(), ntotal, dim);
+        }
 
         index.add(ntotal, data.data());
         printf("start search by npu\n");
         std::vector<float> dist(queryNum * topk, 0);
         std::vector<faiss::idx_t> label(queryNum * topk, 0);
+        for (int i = 0; i < config.warmup; i++)
+        {
+            index.search(queryNum, data.data(), topk, dist.data(), label.data());
+        }
         index.search(queryNum, data.data(), topk, dist.data(), label.data());
 
         printf("start add by cpu\n");
@@ -749,7 +901,8 @@ TEST(TestAscendIndexFlat, Acc)
         printf("start search by cpu\n");
         faissIndex.search(queryNum, data.data(), topk, cpuDist.data(), cpuLabel.data());
         recallMap top = calRecall(label, cpuLabel.data(), queryNum);
-        printf("Recall %d: @1 = %.2f, @10 = %.2f, @100 = %.2f \n", topk, top[RECMAP_KEY_1], top[RECMAP_KEY_10],
+        printf("Recall %d, metric:%s, base:%zu, dim:%d, searchnum:%d: @1 = %.2f, @10 = %.2f, @100 = %.2f \n",
+               topk, MetricName(config.metric), ntotal, dim, queryNum, top[RECMAP_KEY_1], top[RECMAP_KEY_10],
                top[RECMAP_KEY_100]);
     }
     catch (std::exception &e)

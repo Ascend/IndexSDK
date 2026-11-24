@@ -44,6 +44,17 @@ Tag 遵循以下格式：
 | `26.2.0-cann9.2.0-a3-openeuler24.03-py3.12`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/Dockerfile.a3.openeuler)         | toolkit + Index SDK |
 | `26.2.0-cann9.2.0-950-openeuler24.03-py3.12`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/Dockerfile.950.openeuler)         | toolkit + Index SDK |
 
+### 2.3 CANN 9.1.0 + IndexSDK 26.1.0 Milvus 镜像
+
+Milvus 镜像以已发布的 `v2.5.19-ascend-arm` 运行时为基础，覆盖目标
+CANN 9.1.0 工具包，并安装 IndexSDK 26.1.0 aarch64 软件包。Dockerfile
+和构建说明位于 [`docker/milvus`](./milvus/)。
+
+| 标签 | Dockerfile | 目标硬件 |
+| --- | --- | --- |
+| `v2.5.19-ascend-26.1.0-cann9.1.0-910b-ubuntu22.04-py3.12` | [`Dockerfile.ubuntu`](./milvus/Dockerfile.ubuntu) | A2 / 910B |
+| `v2.5.19-ascend-26.1.0-cann9.1.0-a3-ubuntu22.04-py3.12` | [`Dockerfile.ubuntu`](./milvus/Dockerfile.ubuntu)（`--build-arg CANN_VARIANT=a3 --build-arg PLATFORM=A3 --build-arg HARDWARE=A3`） | A3 |
+
 ## 3.快速开始
 
 ### 3.1 前置要求

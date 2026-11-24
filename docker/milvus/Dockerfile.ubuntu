@@ -1,0 +1,80 @@
+# Milvus on Ascend, parameterised by platform.
+#
+# This single file replaces the previous Dockerfile.910b.ubuntu and
+# Dockerfile.a3.ubuntu, which were identical apart from four lines.  Review
+# comments on PR #427 (2026-09-04, three separate occasions) asked for the
+# duplication to go away so that a change to ENV, RUN or LABEL cannot land in
+# one platform and be forgotten in the other.
+#
+# Build A2 / 910B (the defaults):
+#   docker build -f Dockerfile.ubuntu -t <tag> .
+#
+# Build A3:
+#   docker build -f Dockerfile.ubuntu \
+#     --build-arg CANN_VARIANT=a3 --build-arg PLATFORM=A3 --build-arg HARDWARE=A3 \
+#     -t <tag> .
+
+ARG MILVUS_IMAGE_TAG=v2.5.19-ascend-arm
+ARG CANN_VERSION=9.1.0
+# 910b for A2, a3 for A3.  Selects the CANN base image below.
+ARG CANN_VARIANT=910b
+
+FROM swr.cn-south-1.myhuaweicloud.com/ascendhub/milvus:${MILVUS_IMAGE_TAG} AS milvus_runtime
+
+FROM swr.cn-south-1.myhuaweicloud.com/ascendhub/cann:${CANN_VERSION}-${CANN_VARIANT}-ubuntu22.04-py3.12 AS cann_runtime
+
+FROM milvus_runtime
+
+# ARGs declared before the first FROM are only visible to the FROM lines.  They
+# have to be re-declared inside the stage before LABEL, RUN or ENV can use them.
+ARG MILVUS_VERSION=v2.5.19
+ARG CANN_VERSION=9.1.0
+ARG CANN_VARIANT=910b
+ARG INDEXSDK_VERSION=26.1.0
+# Passed to the IndexSDK installer; 910B for A2, A3 for A3.
+ARG PLATFORM=910B
+# Human-readable hardware name used in the OCI labels only.
+ARG HARDWARE=A2/910B
+
+LABEL org.opencontainers.image.title="Milvus on Ascend ${HARDWARE}" \
+      org.opencontainers.image.description="Milvus with CANN ${CANN_VERSION} and IndexSDK ${INDEXSDK_VERSION} for Ascend ${HARDWARE}." \
+      org.opencontainers.image.version="${MILVUS_VERSION}-ascend-${INDEXSDK_VERSION}-cann${CANN_VERSION}-${CANN_VARIANT}-ubuntu22.04-py3.12" \
+      org.opencontainers.image.source="https://gitcode.com/Ascend/IndexSDK" \
+      org.opencontainers.image.base.name="swr.cn-south-1.myhuaweicloud.com/ascendhub/milvus:v2.5.19-ascend-arm"
+
+ARG INDEXSDK_PACKAGE=Ascend-mindxsdk-mxindex_${INDEXSDK_VERSION}_linux-aarch64.run
+
+# Keep the Milvus runtime image (which contains its native dependencies) and
+# replace its toolkit with the selected CANN ${CANN_VERSION} toolkit.
+COPY --from=cann_runtime /usr/local/Ascend /usr/local/Ascend
+COPY ${INDEXSDK_PACKAGE} /tmp/${INDEXSDK_PACKAGE}
+
+# Declare Ascend paths before RUN so custom_opp_aarch64.run sees ASCEND_OPP_PATH.
+# Keep the base image's library directories, deduplicated and without trailing ':'.
+ENV ASCEND_HOME_PATH=/usr/local/Ascend/ascend-toolkit/latest \
+    PATH=/home/milvus/bin:$PATH \
+    ASCEND_TOOLKIT_HOME=/usr/local/Ascend/ascend-toolkit/latest \
+    TOOLCHAIN_HOME=/usr/local/Ascend/ascend-toolkit/latest/toolkit \
+    ASCEND_OPP_PATH=/usr/local/Ascend/ascend-toolkit/latest/opp \
+    ASCEND_AICPU_PATH=/usr/local/Ascend/ascend-toolkit/latest \
+    MX_INDEX_MODELPATH=/home/Ascend/modelpath \
+    LD_LIBRARY_PATH=/usr/local/Ascend/mxIndex/host/lib:/home/milvus/lib:/usr/local/Ascend/ascend-toolkit/latest/lib64:/usr/local/Ascend/ascend-toolkit/latest/lib64/plugin/opskernel:/usr/local/Ascend/ascend-toolkit/latest/lib64/plugin/nnengine:/usr/local/Ascend/nnal/atb/latest/atb/cxx_abi_0/lib:/usr/local/Ascend/nnal/atb/latest/atb/cxx_abi_0/examples:/usr/local/Ascend/nnal/atb/latest/atb/cxx_abi_0/tests/atbopstest:/usr/local/Ascend/ascend-toolkit/latest/tools/aml/lib64:/usr/local/Ascend/ascend-toolkit/latest/tools/aml/lib64/plugin:/usr/local/Ascend/ascend-toolkit/latest/opp/built-in/op_impl/ai_core/tbe/op_tiling:/usr/local/Ascend/driver/lib64/common/:/usr/local/Ascend/driver/lib64/driver/ \
+    PYTHONPATH=/usr/local/Ascend/ascend-toolkit/latest/python/site-packages:/usr/local/Ascend/ascend-toolkit/latest/opp/built-in/op_impl/ai_core/tbe
+
+RUN if [ -f /usr/local/Ascend/mxIndex/script/uninstall.sh ]; then \
+        bash /usr/local/Ascend/mxIndex/script/uninstall.sh; \
+    fi && \
+    rm -rf /usr/local/Ascend/mxIndex && \
+    mkdir -p /tmp/indexsdk-installer && \
+    chmod 550 /tmp/${INDEXSDK_PACKAGE} && \
+    TMPDIR=/tmp/indexsdk-installer bash /tmp/${INDEXSDK_PACKAGE} --install --platform=${PLATFORM} --quiet && \
+    cd /usr/local/Ascend/mxIndex/ops && \
+    TMPDIR=/tmp/indexsdk-installer bash ./custom_opp_aarch64.run --quiet && \
+    mkdir -p /home/Ascend/modelpath && \
+    rm -f /tmp/${INDEXSDK_PACKAGE} /usr/local/Ascend/mxIndex/ops/custom_opp_aarch64.run && \
+    rm -rf /tmp/indexsdk-installer
+
+# The base image already runs as root; explicit declaration keeps the runtime identity auditable.
+# Switching to non-root requires a confirmed NPU device-node permission model first.
+USER root
+WORKDIR /home/milvus

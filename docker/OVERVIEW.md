@@ -45,6 +45,17 @@ All images of the CANN 9.2.0 + 26.2.0 Index SDK are listed below. For all tags o
 | `26.2.0-cann9.2.0-a3-openeuler24.03-py3.12`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/Dockerfile.a3.openeuler)         | toolkit + Index SDK |
 | `26.2.0-cann9.2.0-950-openeuler24.03-py3.12`    | [Dockerfile](https://gitcode.com/Ascend/IndexSDK/tree/master/docker/Dockerfile.950.openeuler)         | toolkit + Index SDK |
 
+### 2.3 CANN 9.1.0 + IndexSDK 26.1.0 Milvus images
+
+The Milvus images keep the published `v2.5.19-ascend-arm` runtime, then
+overlay the target CANN 9.1.0 toolkit and install the IndexSDK 26.1.0 aarch64
+package. Dockerfiles and build instructions are in [`docker/milvus`](./milvus/).
+
+| Tag | Dockerfile | Target |
+| --- | --- | --- |
+| `v2.5.19-ascend-26.1.0-cann9.1.0-910b-ubuntu22.04-py3.12` | [`Dockerfile.ubuntu`](./milvus/Dockerfile.ubuntu) | A2 / 910B |
+| `v2.5.19-ascend-26.1.0-cann9.1.0-a3-ubuntu22.04-py3.12` | [`Dockerfile.ubuntu`](./milvus/Dockerfile.ubuntu) (`--build-arg CANN_VARIANT=a3 --build-arg PLATFORM=A3 --build-arg HARDWARE=A3`) | A3 |
+
 ## 3.Quick Start
 
 ### 3.1 Prerequisites
