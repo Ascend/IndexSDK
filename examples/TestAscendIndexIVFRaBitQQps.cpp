@@ -41,10 +41,14 @@
  *       例如在上方命令追加 --qps-mode sustain --duration 60。
  * 精排：--refine none 测粗排；npu 使用 SDK 精排，cpu 使用本工具的 Host 精排。
  *       npu/cpu 均需 --src-bin；原文为无文件头的 float32 [ntotal, dim] 数据。
+ *       --npu-k 是粗排阶段 NPU 输出的 k，--candidate-topk 是精排最终输出的 k。
+ *       cpu 档会用 --npu-k 列表 × --candidate-topk 列表跑二维矩阵，每个组合单独计算召回与 QPS。
+ *       例如 --npu-k 2000,5000 --candidate-topk 100,300 会测试 4 种粗排/精排组合。
+ *       none 档在 --npu-k 给出多值时按其列表扫描 NPU 输出 k，否则沿用 --candidate-topk。
  *       原文存在时用其建库，不存在时建库阶段生成并保存；加载索引时精排原文必须存在。
- *       npu 精排不支持进程内 nprobe/候选 TopK 矩阵；--npu-k 控制 CPU 精排候选数，
- *       SDK 精排的候选扩展由 --refine-alpha 控制（默认按 npu-k / candidate-topk 计算）。
- * 参数：--nprobe 和 --candidate-topk 可用逗号列表；2-bit dim<=512，4-bit dim<=256，均为 L2。
+ *       npu 精排不支持进程内 nprobe/候选 TopK/npu-k 矩阵；SDK 精排的候选扩展由 --refine-alpha
+ *       控制（默认按最大 npu-k / 最大 candidate-topk 计算）。
+ * 参数：--nprobe、--candidate-topk 和 --npu-k 可用逗号列表；2-bit dim<=512，4-bit dim<=256，均为 L2。
  * 复用：加载已有索引时必须提供匹配的 --gt-path；--rebuild 1 强制重建索引。
  *       同一底库可用 --reuse-gt 1 复用 GT，但 ntotal、dim、seed、原文和召回参数须保持一致。
  * 大库：5 亿底库可设 --ntotal 500000000 --nlist 32768；同时调整模型、资源及分块大小。
@@ -52,6 +56,7 @@
 
 #include <faiss/IndexFlat.h>
 #include <faiss/IndexIVFRaBitQ.h>
+#include <faiss/ascend/AscendIndexFlat.h>
 #include <faiss/ascend/AscendIndexIVFRaBitQ.h>
 #include <faiss/index_io.h>
 #include <fcntl.h>
@@ -113,6 +118,14 @@ enum class RefineMode
     Cpu = 2
 };
 
+// 建库 / 训练 / GT 数据来源：随机生成、float32 src-bin、开源 uint8 u8bin（如 SIFT1B base.1B.u8bin）
+enum class DataSrc
+{
+    Generate = 0,
+    SrcBin = 1,
+    BaseBin = 2
+};
+
 std::vector<int> g_devices = {0};
 int g_dim = kDefaultDim;
 size_t g_ntotal = kDefaultNtotal;
@@ -121,7 +134,10 @@ int g_nprobe = kDefaultNprobe;
 int g_k = kDefaultK;
 std::vector<int> g_nprobes = {kDefaultNprobe};
 std::vector<int> g_candidateTopks = {kDefaultK};
+// 粗排阶段 NPU 输出的 k 列表；cpu 档与 g_candidateTopks 组成二维矩阵。
 int g_npuK = kDefaultNpuK;
+std::vector<int> g_npuKs = {kDefaultNpuK};
+bool g_npuKExplicit = false;
 int g_quantBits = 1;
 int g_recallK = 0;
 int g_warmup = kDefaultWarmup;
@@ -146,6 +162,12 @@ std::string g_gtPath;
 std::string g_csvPath;
 int g_rebuild = 0;
 int g_reuseGt = 0;
+// 开源数据集（SIFT1B 等 fbin 格式：int32 n、int32 d、uint8 向量行优先）路径
+std::string g_baseBin;
+std::string g_queryBin;
+// 1=用 NPU Flat(L2) 暴搜生成 GT（可脱离索引重建单独生成）；0=建库时 host 暴搜
+int g_gtNpu = 0;
+uint64_t g_gtSignature = 0;
 
 const int kValidNlists[] = {1024, 2048, 4096, 8192, 10048, 16384, 32768};
 const int kValidDims[] = {64, 128, 256, 384, 512, 768, 1024};
@@ -162,10 +184,11 @@ void PrintUsage(const char *prog)
 {
     printf(
         "Usage: %s [--devices 0] [--dim 128] [--ntotal 500000000] [--nlist 32768] [--nprobe 200,400]\n"
-        "  [--candidate-topk 300,512] [--target-topk 100] [--npu-k 5000] [--quant-bits 1]\n"
+        "  [--candidate-topk 300,512] [--target-topk 100] [--npu-k 2000,5000] [--quant-bits 1]\n"
         "  [--nq 1,8,16,32] [--recall-nq 100] [--warmup 5] [--loops 20]\n"
         "  [--resource-mb 4096] [--add-chunk 1000000] [--index-path ./ivfrabitq.index]\n"
         "  [--src-bin path] [--gt-path path] [--rebuild 0] [--reuse-gt 0] [--csv path]\n"
+        "  [--base-bin path] [--query-bin path] [--gt-npu 0]\n"
         "  [--seed 5678] [--use-kmeans-pp 1] [--niter 10] [--train-mode replica|slice]\n"
         "  [--search-mode shard|replica] [--qps-mode wait|sustain] [--duration 60] [gtest flags]\n",
         prog);
@@ -173,7 +196,11 @@ void PrintUsage(const char *prog)
     printf("  npu:  search k with SDK refine (needs --src-bin for srcIndexes)\n");
     printf("  cpu:  NPU coarse search k=npu-k, host-side refine on --src-bin (mmap, multi-thread)\n");
     printf("  Existing --src-bin is raw headerless float32 input in row-major [ntotal, dim] layout.\n");
-    printf("  Comma-separated --nprobe/--candidate-topk run a matrix after one index build/load.\n");
+    printf("  --base-bin reads an open-source uint8 u8bin dataset (e.g. SIFT1B base.1B.u8bin: int32 n, int32 d,\n");
+    printf("        uint8 row-major); --query-bin is the matching query u8bin (e.g. query.public.10K.u8bin).\n");
+    printf("  u8bin train/base/query/GT all use float32(u8)/255, without per-vector normalization.\n");
+    printf("  --gt-npu 1 builds chunked NPU Flat L2 reference GT (FP16 precision); default is host FP32.\n");
+    printf("  Comma-separated --nprobe/--candidate-topk/--npu-k run a matrix after one index build/load.\n");
     printf("  If --index-path exists and --rebuild=0, skip train/add and load the index.\n");
     printf(
         "  --reuse-gt 1: reuse an existing GT file while rebuilding an index; only use with identical data "
@@ -184,6 +211,8 @@ void PrintUsage(const char *prog)
     printf("  --qps-mode wait: stop-and-wait, --loops batches (default).\n");
     printf("  --qps-mode sustain: back-to-back search for --duration seconds (default 60).\n");
     printf("  --candidate-topk: approximate candidates returned by RaBitQ (--k is a legacy alias).\n");
+    printf("  --npu-k: coarse-stage NPU output k. In cpu refine it is scanned together with\n");
+    printf("           --candidate-topk (final k) to form a 2-D matrix; npu refine keeps it single-valued.\n");
     printf("  --target-topk: exact GT cutoff; candidate coverage equals Recall@target after exact rerank\n");
     printf("                 (--recall-k is a legacy alias).\n");
     printf("  Multi-bit POC: A3 L2, 2-bit dim <= 512, 4-bit dim <= 256, refine=none.\n");
@@ -297,7 +326,6 @@ bool ParseCli(int *argc, char **argv)
 {
     const std::unordered_map<std::string, int *> integers = {{"--dim", &g_dim},
                                                              {"--nlist", &g_nlist},
-                                                             {"--npu-k", &g_npuK},
                                                              {"--quant-bits", &g_quantBits},
                                                              {"--recall-k", &g_recallK},
                                                              {"--target-topk", &g_recallK},
@@ -312,12 +340,14 @@ bool ParseCli(int *argc, char **argv)
                                                              {"--niter", &g_niter},
                                                              {"--use-kmeans-pp", &g_useKmeansPp}};
     const std::unordered_map<std::string, std::string *> strings = {
-        {"--index-path", &g_indexPath}, {"--src-bin", &g_srcBin}, {"--gt-path", &g_gtPath}, {"--csv", &g_csvPath}};
+        {"--index-path", &g_indexPath}, {"--src-bin", &g_srcBin},   {"--gt-path", &g_gtPath},
+        {"--csv", &g_csvPath},          {"--base-bin", &g_baseBin}, {"--query-bin", &g_queryBin}};
     const std::unordered_map<std::string, std::vector<int> *> lists = {{"--devices", &g_devices},
                                                                        {"--nq", &g_nq},
                                                                        {"--nprobe", &g_nprobes},
                                                                        {"--k", &g_candidateTopks},
-                                                                       {"--candidate-topk", &g_candidateTopks}};
+                                                                       {"--candidate-topk", &g_candidateTopks},
+                                                                       {"--npu-k", &g_npuKs}};
     std::vector<char *> kept{argv[0]};
     for (int i = 1; i < *argc; ++i)
     {
@@ -340,7 +370,7 @@ bool ParseCli(int *argc, char **argv)
         const bool isMode = flag == "--train-mode" || flag == "--search-mode" || flag == "--qps-mode";
         if (integer == integers.end() && string == strings.end() && list == lists.end() && !isMode &&
             flag != "--refine" && flag != "--refine-alpha" && flag != "--ntotal" && flag != "--seed" &&
-            flag != "--attach-src")
+            flag != "--attach-src" && flag != "--gt-npu")
         {
             printf("unknown argument: %s\n", argument.c_str());
             PrintUsage(argv[0]);
@@ -366,6 +396,11 @@ bool ParseCli(int *argc, char **argv)
             }
             g_nprobe = g_nprobes.front();
             g_k = g_candidateTopks.front();
+            g_npuK = g_npuKs.front();
+            if (flag == "--npu-k")
+            {
+                g_npuKExplicit = true;
+            }
         }
         else if (flag == "--refine")
         {
@@ -422,7 +457,7 @@ bool ParseCli(int *argc, char **argv)
         {
             long number = 0;
             if (!ParseLong(value.c_str(), number) || number < 0 || number > INT_MAX ||
-                (flag == "--attach-src" && number > 1))
+                (flag == "--attach-src" && number > 1) || (flag == "--gt-npu" && number > 1))
             {
                 printf("invalid value for %s: %s\n", flag.c_str(), value.c_str());
                 return false;
@@ -434,6 +469,10 @@ bool ParseCli(int *argc, char **argv)
             else if (flag == "--attach-src")
             {
                 g_attachSrc = static_cast<int>(number);
+            }
+            else if (flag == "--gt-npu")
+            {
+                g_gtNpu = static_cast<int>(number);
             }
             else
             {
@@ -449,6 +488,11 @@ bool ParseCli(int *argc, char **argv)
 
 bool ValidateCli()
 {
+    if (!g_baseBin.empty() && g_queryBin.empty())
+    {
+        printf("--base-bin requires the matching --query-bin; random queries are not used\n");
+        return false;
+    }
     if (g_devices.empty())
     {
         printf("devices must not be empty\n");
@@ -470,7 +514,7 @@ bool ValidateCli()
         return false;
     }
     if (std::any_of(g_candidateTopks.begin(), g_candidateTopks.end(), [](int value) { return value <= 0; }) ||
-        g_npuK <= 0)
+        std::any_of(g_npuKs.begin(), g_npuKs.end(), [](int value) { return value <= 0; }))
     {
         printf("k and npu-k must be > 0\n");
         return false;
@@ -483,6 +527,11 @@ bool ValidateCli()
     if (g_recallK == 0)
     {
         g_recallK = *std::min_element(g_candidateTopks.begin(), g_candidateTopks.end());
+    }
+    if (g_ntotal < static_cast<size_t>(g_nlist) || g_recallK < 0 || g_ntotal < static_cast<size_t>(g_recallK))
+    {
+        printf("ntotal must be >= nlist and target-topk\n");
+        return false;
     }
     const int minCandidateTopk = *std::min_element(g_candidateTopks.begin(), g_candidateTopks.end());
     const int maxCandidateTopk = *std::max_element(g_candidateTopks.begin(), g_candidateTopks.end());
@@ -503,14 +552,16 @@ bool ValidateCli()
     }
     // multi-bit + npu 精排可用：SDK refine 用原文（srcIndexes）重排，与 quantBits 无关；
     // multi-bit 的真实约束（L2、dim 上限）由 Impl 层校验。
-    if (HasMode(RefineMode::Npu) && (g_nprobes.size() > 1 || g_candidateTopks.size() > 1))
+    if (HasMode(RefineMode::Npu) && (g_nprobes.size() > 1 || g_candidateTopks.size() > 1 || g_npuKs.size() > 1))
     {
-        printf("npu refine does not support an in-process nprobe/TopK matrix; use --refine none\n");
+        printf("npu refine does not support an in-process nprobe/TopK/npu-k matrix; use --refine none or cpu\n");
         return false;
     }
-    if (g_npuK < maxCandidateTopk)
+    const int minNpuK = *std::min_element(g_npuKs.begin(), g_npuKs.end());
+    const int maxNpuK = *std::max_element(g_npuKs.begin(), g_npuKs.end());
+    if (minNpuK < maxCandidateTopk)
     {
-        printf("npu-k (%d) must be >= maximum candidate-topk (%d)\n", g_npuK, maxCandidateTopk);
+        printf("every npu-k (minimum %d) must be >= maximum candidate-topk (%d)\n", minNpuK, maxCandidateTopk);
         return false;
     }
     if (g_addChunk <= 0 || g_recallNq <= 0 || g_loops <= 0)
@@ -553,9 +604,9 @@ bool ValidateCli()
         printf("cpu refine requires --src-bin\n");
         return false;
     }
-    if (HasMode(RefineMode::Cpu) && g_npuK > 5000)
+    if (HasMode(RefineMode::Cpu) && maxNpuK > 5000)
     {
-        printf("cpu refine requires --npu-k <= 5000 (NPU coarse search MAX_K)\n");
+        printf("cpu refine requires every --npu-k <= 5000 (NPU coarse search MAX_K); got max %d\n", maxNpuK);
         return false;
     }
     // --src-bin 与 refine 档位解耦：存在则读取复用，不存在则建库时落盘；仅 npu 档加载时强依赖（见 LoadSrcBin）
@@ -566,8 +617,8 @@ bool ValidateCli()
     }
     if (g_refineAlpha < 0.0f)
     {
-        // 矩阵模式下 candidate-topk 有多个取值，用最大值计算默认 alpha，避免候选扩展被低估
-        g_refineAlpha = static_cast<float>(g_npuK) / static_cast<float>(maxCandidateTopk);
+        // 矩阵模式下 candidate-topk / npu-k 均有多个取值，分别用最大值计算默认 alpha，避免候选扩展被低估
+        g_refineAlpha = static_cast<float>(maxNpuK) / static_cast<float>(maxCandidateTopk);
     }
     if (g_niter <= 0 || g_niter > 65536)
     {
@@ -586,10 +637,6 @@ bool ValidateCli()
     if (g_searchReplica != 0 && g_devices.size() <= 1)
     {
         printf("search-mode=replica with one device is equivalent to single-card search\n");
-    }
-    if (g_searchReplica != 0 && g_trainSlice != 0)
-    {
-        printf("search-mode=replica builds on device0 only; train-mode=slice falls back to replica train\n");
     }
     return true;
 }
@@ -681,7 +728,7 @@ void HeapToSorted(std::vector<DistId> &heap)
     {
         return;
     }
-    std::sort_heap(heap.begin(), heap.end());
+    std::sort(heap.begin(), heap.end());
 }
 
 void UpdateGt(std::vector<std::vector<DistId>> &gt, const float *queries, int recallNq, const float *chunk,
@@ -758,6 +805,338 @@ class BaseBinWriter
 
 bool FileExists(const std::string &path) { return access(path.c_str(), F_OK) == 0; }
 
+bool SaveGt(const std::string &path, const std::vector<std::vector<DistId>> &gt);
+size_t TrainNum();
+bool BuildGtOnHost(const std::string &path, std::vector<std::vector<DistId>> &gt, DataSrc dataSrc,
+                   const float *queries);
+
+// u8bin（SIFT1B 等）uint8 原始值域 0~255，直接转 float 后 FP16 距离计算会溢出（255^2*128 > 65504），
+// 统一除以 255 压到 [0,1]；均匀缩放不改变 L2 排序，召回结果与未缩放一致
+inline float U8ToF32(uint8_t v) { return static_cast<float>(v) * (1.0f / 255.0f); }
+
+// 当前建库 / 训练 / GT 使用的实际数据来源：base-bin > src-bin > 随机生成
+DataSrc ResolveDataSrc()
+{
+    if (!g_baseBin.empty())
+    {
+        return DataSrc::BaseBin;
+    }
+    if (!g_srcBin.empty() && FileExists(g_srcBin))
+    {
+        return DataSrc::SrcBin;
+    }
+    return DataSrc::Generate;
+}
+
+// 校验 fbin 头（int32 n、int32 d），n 取实际文件大小，dim 必须与 --dim 一致
+bool ValidateBaseBin(const std::string &path)
+{
+    struct stat info;
+    if (stat(path.c_str(), &info) != 0)
+    {
+        printf("failed to stat --base-bin %s: %s\n", path.c_str(), std::strerror(errno));
+        return false;
+    }
+    FILE *fp = std::fopen(path.c_str(), "rb");
+    if (fp == nullptr)
+    {
+        printf("failed to open --base-bin %s\n", path.c_str());
+        return false;
+    }
+    int32_t header[2] = {0, 0};
+    const bool headerOk = std::fread(header, sizeof(int32_t), 2, fp) == 2;
+    std::fclose(fp);
+    if (!headerOk)
+    {
+        printf("--base-bin %s is too small to hold an fbin header\n", path.c_str());
+        return false;
+    }
+    const int32_t n = header[0];
+    const int32_t d = header[1];
+    if (n <= 0 || d <= 0)
+    {
+        printf("--base-bin %s has invalid fbin header n=%d d=%d\n", path.c_str(), n, d);
+        return false;
+    }
+    if (d != g_dim)
+    {
+        printf("--base-bin dim=%d does not match --dim %d\n", d, g_dim);
+        return false;
+    }
+    if (static_cast<size_t>(n) < g_ntotal)
+    {
+        printf("--base-bin has only %d vectors, less than --ntotal %zu\n", n, g_ntotal);
+        return false;
+    }
+    const uint64_t expected =
+        sizeof(int32_t) * 2ULL + static_cast<uint64_t>(n) * static_cast<uint64_t>(d) * sizeof(uint8_t);
+    const uint64_t actual = static_cast<uint64_t>(info.st_size);
+    if (actual != expected)
+    {
+        printf("--base-bin %s size mismatch: bytes=%llu expected=%llu (n=%d d=%d)\n", path.c_str(),
+               static_cast<unsigned long long>(actual), static_cast<unsigned long long>(expected), n, d);
+        return false;
+    }
+    printf("use --base-bin %s header_n=%d dim=%d bytes=%llu (ntotal=%zu)\n", path.c_str(), n, d,
+           static_cast<unsigned long long>(actual), g_ntotal);
+    return true;
+}
+
+// 读取 fbin 查询文件（int32 n、int32 d、uint8 行优先），uint8 转 float 后返回
+// nqIn/out：调用方传入请求条数（如 recallNq）；nqReadOut 返回文件实际条数（<= 请求值）。
+bool LoadQueriesFromFbin(const std::string &path, size_t requestNq, std::vector<float> &queries, size_t &nqReadOut)
+{
+    nqReadOut = 0;
+    FILE *fp = std::fopen(path.c_str(), "rb");
+    if (fp == nullptr)
+    {
+        printf("failed to open query u8bin %s\n", path.c_str());
+        return false;
+    }
+    int32_t header[2] = {0, 0};
+    if (std::fread(header, sizeof(int32_t), 2, fp) != 2)
+    {
+        printf("failed to read fbin header from %s\n", path.c_str());
+        std::fclose(fp);
+        return false;
+    }
+    const int32_t n = header[0];
+    const int32_t d = header[1];
+    if (n <= 0 || d != g_dim)
+    {
+        printf("query u8bin %s header mismatch: n=%d d=%d expected dim=%d\n", path.c_str(), n, d, g_dim);
+        std::fclose(fp);
+        return false;
+    }
+    struct stat info;
+    const uint64_t expected = 8ULL + static_cast<uint64_t>(n) * static_cast<uint64_t>(d);
+    if (fstat(fileno(fp), &info) != 0 || static_cast<uint64_t>(info.st_size) != expected)
+    {
+        printf("query u8bin size mismatch: %s (expected %llu bytes)\n", path.c_str(),
+               static_cast<unsigned long long>(expected));
+        std::fclose(fp);
+        return false;
+    }
+    const size_t nq = std::min(static_cast<size_t>(n), requestNq);
+    if (nq == 0)
+    {
+        std::fclose(fp);
+        return true;
+    }
+    queries.assign(nq * static_cast<size_t>(d), 0.0f);
+    std::vector<uint8_t> row(static_cast<size_t>(d));
+    for (size_t q = 0; q < nq; ++q)
+    {
+        if (std::fread(row.data(), sizeof(uint8_t), row.size(), fp) != row.size())
+        {
+            printf("short read in query u8bin %s at query %zu\n", path.c_str(), q);
+            std::fclose(fp);
+            return false;
+        }
+        float *out = queries.data() + q * static_cast<size_t>(d);
+        for (int j = 0; j < d; ++j)
+        {
+            out[j] = U8ToF32(row[static_cast<size_t>(j)]);
+        }
+    }
+    std::fclose(fp);
+    nqReadOut = nq;
+    printf("loaded %zu queries from %s (file has %d, dim=%d)\n", nq, path.c_str(), n, d);
+    return true;
+}
+
+// 用 NPU Flat（L2 度量，FP32 转 FP16 暴搜）为 queries 生成 TopK GT。
+// 底库从 resolveDataSrc 指向的来源分块读取；g_recallK 截断后按 SaveGt 格式落盘。
+bool BuildGtOnNpu(const std::string &path, std::vector<std::vector<DistId>> &gt, DataSrc dataSrc, const float *queries)
+{
+    const size_t dim = static_cast<size_t>(g_dim);
+    const size_t k = static_cast<size_t>(g_recallK);
+    if (g_recallNq <= 0 || k == 0)
+    {
+        printf("gt-npu: recall-nq and target-topk must be > 0\n");
+        return false;
+    }
+    std::unique_ptr<FILE, decltype(&std::fclose)> input(nullptr, &std::fclose);
+    if (dataSrc != DataSrc::Generate)
+    {
+        input.reset(std::fopen(dataSrc == DataSrc::BaseBin ? g_baseBin.c_str() : g_srcBin.c_str(), "rb"));
+        if (!input)
+        {
+            printf("gt-npu: failed to open source file for read\n");
+            return false;
+        }
+    }
+    gt.assign(static_cast<size_t>(g_recallNq), {});
+    for (auto &heap : gt)
+    {
+        heap.reserve(k);
+    }
+    const size_t nqRead = static_cast<size_t>(g_recallNq);
+    try
+    {
+        faiss::ascend::AscendIndexFlatL2 flat(g_dim,
+                                              faiss::ascend::AscendIndexFlatConfig(g_devices, 1024LL * 1024 * 512));
+        const size_t chunk = std::max(static_cast<size_t>(g_addChunk), static_cast<size_t>(100000));
+        std::vector<float> buf;
+        std::vector<float> dist(nqRead * k);
+        std::vector<faiss::idx_t> label(nqRead * k);
+        size_t read = 0;
+        const double t0 = GetMillisecs();
+        while (read < g_ntotal)
+        {
+            const size_t n = std::min(chunk, g_ntotal - read);
+            buf.resize(n * dim);
+            if (input)
+            {
+                if (dataSrc == DataSrc::BaseBin)
+                {
+                    const size_t skip = sizeof(int32_t) * 2ULL + read * dim;
+                    if (fseeko(input.get(), static_cast<off_t>(skip), SEEK_SET) != 0)
+                    {
+                        throw std::runtime_error("gt-npu: failed to seek base-bin");
+                    }
+                    std::vector<uint8_t> raw(n * dim);
+                    if (std::fread(raw.data(), sizeof(uint8_t), raw.size(), input.get()) != raw.size())
+                    {
+                        throw std::runtime_error("gt-npu: short read in base-bin");
+                    }
+                    for (size_t i = 0; i < n * dim; ++i)
+                    {
+                        buf[i] = U8ToF32(raw[i]);
+                    }
+                }
+                else
+                {
+                    if (std::fread(buf.data(), sizeof(float), buf.size(), input.get()) != buf.size())
+                    {
+                        throw std::runtime_error("gt-npu: short read in src-bin");
+                    }
+                }
+            }
+            else
+            {
+                FillRange(buf.data(), read, n, g_dim, g_seed);
+            }
+            flat.reset();
+            flat.add(static_cast<faiss::idx_t>(n), buf.data());
+            const int chunkK = static_cast<int>(std::min(n, k));
+            flat.search(static_cast<faiss::idx_t>(nqRead), queries, chunkK, dist.data(), label.data());
+            for (size_t q = 0; q < nqRead; ++q)
+            {
+                for (int j = 0; j < chunkK; ++j)
+                {
+                    const size_t pos = q * static_cast<size_t>(chunkK) + static_cast<size_t>(j);
+                    if (label[pos] >= 0 && static_cast<size_t>(label[pos]) < n)
+                    {
+                        HeapPush(gt[q], g_recallK, dist[pos], static_cast<faiss::idx_t>(read) + label[pos]);
+                    }
+                }
+            }
+            read += n;
+            const double ms = GetMillisecs() - t0;
+            printf("gt-npu add progress %zu / %zu (%.1f vec/s)\n", read, g_ntotal,
+                   ms > 0.0 ? (read * 1000.0 / ms) : 0.0);
+            fflush(stdout);
+        }
+    }
+    catch (const std::exception &e)
+    {
+        printf("gt-npu failed: %s; falling back to host brute-force gt\n", e.what());
+        return BuildGtOnHost(path, gt, dataSrc, queries);
+    }
+    for (auto &heap : gt)
+    {
+        HeapToSorted(heap);
+    }
+    if (!path.empty())
+    {
+        return SaveGt(path, gt);
+    }
+    printf("gt-npu built in-memory gt queries=%zu k=%zu\n", nqRead, k);
+    return true;
+}
+
+// Host 多线程暴搜生成 GT：与 gt-npu 同一数据源与读取逻辑，NPU Flat 不可用时兜底
+bool BuildGtOnHost(const std::string &path, std::vector<std::vector<DistId>> &gt, DataSrc dataSrc, const float *queries)
+{
+    const size_t dim = static_cast<size_t>(g_dim);
+    const size_t k = static_cast<size_t>(g_recallK);
+    const size_t nqRead = static_cast<size_t>(g_recallNq);
+    std::unique_ptr<FILE, decltype(&std::fclose)> input(nullptr, &std::fclose);
+    if (dataSrc != DataSrc::Generate)
+    {
+        input.reset(std::fopen(dataSrc == DataSrc::BaseBin ? g_baseBin.c_str() : g_srcBin.c_str(), "rb"));
+        if (!input)
+        {
+            printf("gt-host: failed to open source file for read\n");
+            return false;
+        }
+    }
+    gt.assign(static_cast<size_t>(g_recallNq), {});
+    for (auto &heap : gt)
+    {
+        heap.reserve(k);
+    }
+    const size_t chunk = std::max(static_cast<size_t>(g_addChunk), static_cast<size_t>(100000));
+    std::vector<float> buf;
+    size_t read = 0;
+    const double t0 = GetMillisecs();
+    while (read < g_ntotal)
+    {
+        const size_t n = std::min(chunk, g_ntotal - read);
+        buf.resize(n * dim);
+        if (input)
+        {
+            if (dataSrc == DataSrc::BaseBin)
+            {
+                const size_t skip = sizeof(int32_t) * 2ULL + read * dim;
+                if (fseeko(input.get(), static_cast<off_t>(skip), SEEK_SET) != 0)
+                {
+                    printf("gt-host: failed to seek base-bin\n");
+                    return false;
+                }
+                std::vector<uint8_t> raw(n * dim);
+                if (std::fread(raw.data(), sizeof(uint8_t), raw.size(), input.get()) != raw.size())
+                {
+                    printf("gt-host: short read in base-bin\n");
+                    return false;
+                }
+                for (size_t i = 0; i < n * dim; ++i)
+                {
+                    buf[i] = U8ToF32(raw[i]);
+                }
+            }
+            else
+            {
+                if (std::fread(buf.data(), sizeof(float), buf.size(), input.get()) != buf.size())
+                {
+                    printf("gt-host: short read in src-bin\n");
+                    return false;
+                }
+            }
+        }
+        else
+        {
+            FillRange(buf.data(), read, n, g_dim, g_seed);
+        }
+        UpdateGt(gt, queries, static_cast<int>(nqRead), buf.data(), read, n, g_dim, static_cast<int>(k));
+        read += n;
+        const double ms = GetMillisecs() - t0;
+        printf("gt-host progress %zu / %zu (%.1f vec/s)\n", read, g_ntotal, ms > 0.0 ? (read * 1000.0 / ms) : 0.0);
+        fflush(stdout);
+    }
+    for (auto &heap : gt)
+    {
+        HeapToSorted(heap);
+    }
+    if (!path.empty())
+    {
+        return SaveGt(path, gt);
+    }
+    printf("gt-host built in-memory gt queries=%zu k=%zu\n", nqRead, k);
+    return true;
+}
+
 bool ValidateSrcBin(const std::string &path)
 {
     struct stat info;
@@ -799,6 +1178,45 @@ bool LoadTrainFromSrcBin(const std::string &path, size_t trainNum, std::vector<f
     return true;
 }
 
+// 从 fbin（int32 n、int32 d、uint8 行优先）读取前 trainNum 条向量做训练，uint8 转 float
+bool LoadTrainFromFbin(const std::string &path, size_t trainNum, std::vector<float> &train)
+{
+    train.resize(trainNum * static_cast<size_t>(g_dim));
+    FILE *fp = std::fopen(path.c_str(), "rb");
+    if (fp == nullptr)
+    {
+        printf("failed to open --base-bin for train: %s\n", path.c_str());
+        return false;
+    }
+    int32_t header[2] = {0, 0};
+    if (std::fread(header, sizeof(int32_t), 2, fp) != 2)
+    {
+        printf("failed to read fbin header from %s\n", path.c_str());
+        std::fclose(fp);
+        return false;
+    }
+    if (header[0] <= 0 || header[1] != g_dim || static_cast<size_t>(header[0]) < trainNum)
+    {
+        printf("--base-bin has only %d vectors, need %zu for train\n", header[0], trainNum);
+        std::fclose(fp);
+        return false;
+    }
+    std::vector<uint8_t> raw(train.size());
+    const size_t got = std::fread(raw.data(), sizeof(uint8_t), raw.size(), fp);
+    std::fclose(fp);
+    if (got != raw.size())
+    {
+        printf("failed to read train vectors from --base-bin: got=%zu expected=%zu\n", got, raw.size());
+        return false;
+    }
+    for (size_t i = 0; i < train.size(); ++i)
+    {
+        train[i] = U8ToF32(raw[i]);
+    }
+    printf("loaded %zu train vectors from base-bin %s\n", trainNum, path.c_str());
+    return true;
+}
+
 void SaveIndex(const faiss::ascend::AscendIndexIVFRaBitQ &index, const std::string &path)
 {
     faiss::IndexFlatL2 quantizer(g_dim);
@@ -832,6 +1250,38 @@ void LoadIndex(faiss::ascend::AscendIndexIVFRaBitQ &index, const std::string &pa
     fflush(stdout);
 }
 
+// Cache identity includes the query contents, conversion version and source file identity.
+// This avoids scanning the full 128 GB source just to validate a cache; it is not a content checksum.
+uint64_t GtSignature(DataSrc source, const float *queries)
+{
+    uint64_t hash = 14695981039346656037ULL;
+    auto append = [&](const void *data, size_t n)
+    {
+        const auto *bytes = static_cast<const uint8_t *>(data);
+        for (size_t i = 0; i < n; ++i)
+        {
+            hash = (hash ^ bytes[i]) * 1099511628211ULL;
+        }
+    };
+    const uint64_t config[] = {2,      static_cast<uint64_t>(source), static_cast<uint64_t>(g_dim), g_ntotal,
+                               g_seed, static_cast<uint64_t>(g_gtNpu)};
+    append(config, sizeof(config));
+    append(queries, static_cast<size_t>(g_recallNq) * g_dim * sizeof(float));
+    const std::string &path = source == DataSrc::BaseBin ? g_baseBin : g_srcBin;
+    if (source != DataSrc::Generate)
+    {
+        struct stat info;
+        if (stat(path.c_str(), &info) != 0)
+        {
+            throw std::runtime_error("failed to stat GT source: " + path);
+        }
+        append(path.data(), path.size());
+        append(&info.st_size, sizeof(info.st_size));
+        append(&info.st_mtime, sizeof(info.st_mtime));
+    }
+    return hash;
+}
+
 bool SaveGt(const std::string &path, const std::vector<std::vector<DistId>> &gt)
 {
     FILE *fp = std::fopen(path.c_str(), "wb");
@@ -840,11 +1290,11 @@ bool SaveGt(const std::string &path, const std::vector<std::vector<DistId>> &gt)
         printf("failed to open --gt-path for write: %s\n", path.c_str());
         return false;
     }
-    const int32_t magic = 0x47545251;
+    const int32_t magic = 0x47545232;
     const int32_t nq = static_cast<int32_t>(gt.size());
     const int32_t k = g_recallK;
     if (std::fwrite(&magic, sizeof(magic), 1, fp) != 1 || std::fwrite(&nq, sizeof(nq), 1, fp) != 1 ||
-        std::fwrite(&k, sizeof(k), 1, fp) != 1)
+        std::fwrite(&k, sizeof(k), 1, fp) != 1 || std::fwrite(&g_gtSignature, sizeof(g_gtSignature), 1, fp) != 1)
     {
         std::fclose(fp);
         return false;
@@ -881,12 +1331,17 @@ bool LoadGt(const std::string &path, std::vector<std::vector<DistId>> &gt)
         printf("failed to open --gt-path for read: %s\n", path.c_str());
         return false;
     }
+    uint64_t signature = 0;
     int32_t magic = 0;
     int32_t nq = 0;
     int32_t k = 0;
-    if (std::fread(&magic, sizeof(magic), 1, fp) != 1 || magic != 0x47545251 ||
-        std::fread(&nq, sizeof(nq), 1, fp) != 1 || std::fread(&k, sizeof(k), 1, fp) != 1)
+    if (std::fread(&magic, sizeof(magic), 1, fp) != 1 || magic != 0x47545232 ||
+        std::fread(&nq, sizeof(nq), 1, fp) != 1 || std::fread(&k, sizeof(k), 1, fp) != 1 ||
+        std::fread(&signature, sizeof(signature), 1, fp) != 1 || signature != g_gtSignature)
     {
+        printf(
+            "GT cache is outdated or has a different dataset/query/conversion. "
+            "Regenerate with --rebuild 1 --reuse-gt 0.\n");
         std::fclose(fp);
         return false;
     }
@@ -900,7 +1355,7 @@ bool LoadGt(const std::string &path, std::vector<std::vector<DistId>> &gt)
     for (int32_t q = 0; q < nq; ++q)
     {
         int32_t n = 0;
-        if (std::fread(&n, sizeof(n), 1, fp) != 1 || n < 0 || n > k)
+        if (std::fread(&n, sizeof(n), 1, fp) != 1 || n != k)
         {
             printf("gt file corrupt at query %d: n=%d (k=%d)\n", q, n, k);
             std::fclose(fp);
@@ -913,6 +1368,12 @@ bool LoadGt(const std::string &path, std::vector<std::vector<DistId>> &gt)
             if (std::fread(&item.first, sizeof(float), 1, fp) != 1 ||
                 std::fread(&item.second, sizeof(faiss::idx_t), 1, fp) != 1)
             {
+                std::fclose(fp);
+                return false;
+            }
+            if (!std::isfinite(item.first) || item.second < 0 || static_cast<uint64_t>(item.second) >= g_ntotal)
+            {
+                printf("invalid GT distance/ID at query %d position %d\n", q, i);
                 std::fclose(fp);
                 return false;
             }
@@ -1091,19 +1552,10 @@ const char *SearchModeName() { return (g_searchReplica != 0) ? "replica" : "shar
 
 const char *QpsModeName() { return (g_qpsSustain != 0) ? "sustain" : "wait"; }
 
-std::vector<int> BuildDevices()
-{
-    if (g_searchReplica != 0)
-    {
-        return {g_devices[0]};
-    }
-    return g_devices;
-}
-
 bool HostRamEnoughForNpu()
 {
     // attach 模式共享 src 向量；深拷贝模式还需计入加载时的 src 向量
-    const int copies = (g_attachSrc != 0) ? 1 : SearchReplicaCount() + 1;
+    const int copies = (g_attachSrc != 0) ? 1 : 2;
     const double needGb = static_cast<double>(g_ntotal) * static_cast<double>(g_dim) * sizeof(float) /
                           (1024.0 * 1024.0 * 1024.0) * static_cast<double>(copies);
     const long availKb = MemAvailableKb();
@@ -1142,6 +1594,8 @@ std::unique_ptr<faiss::ascend::AscendIndexIVFRaBitQ> MakeIndex(bool needRefine, 
     conf.niter = g_niter;
     conf.cp.niter = g_niter;
     conf.quantBits = g_quantBits;
+    conf.storageMode = (g_searchReplica != 0) ? faiss::ascend::AscendIndexIVFRaBitQConfig::StorageMode::Replica
+                                              : faiss::ascend::AscendIndexIVFRaBitQConfig::StorageMode::Shard;
     conf.trainMode = (g_trainSlice != 0) ? faiss::ascend::AscendIndexIVFRaBitQConfig::TrainMode::Slice
                                          : faiss::ascend::AscendIndexIVFRaBitQConfig::TrainMode::Replica;
     auto index = std::unique_ptr<faiss::ascend::AscendIndexIVFRaBitQ>(
@@ -1153,78 +1607,26 @@ std::unique_ptr<faiss::ascend::AscendIndexIVFRaBitQ> MakeIndex(bool needRefine, 
 
 std::unique_ptr<faiss::ascend::AscendIndexIVFRaBitQ> MakeIndex(bool needRefine)
 {
-    return MakeIndex(needRefine, BuildDevices());
+    return MakeIndex(needRefine, g_devices);
 }
 
 using IndexPtr = std::unique_ptr<faiss::ascend::AscendIndexIVFRaBitQ>;
 
-void LoadReplicaCopies(std::vector<IndexPtr> &replicas, bool needRefine, const float *src)
+// Storage replication and query distribution are handled inside the multi-device index.
+void LoadSearchIndex(std::vector<IndexPtr> &indexes, bool needRefine, const float *src)
 {
-    replicas.clear();
-    if (g_searchReplica == 0)
+    indexes.clear();
+    indexes.push_back(MakeIndex(needRefine));
+    LoadIndex(*indexes.back(), g_indexPath);
+    if (src == nullptr) return;
+    if (g_attachSrc != 0)
     {
-        replicas.push_back(MakeIndex(needRefine, g_devices));
-        LoadIndex(*replicas.back(), g_indexPath);
-        if (src != nullptr)
-        {
-            if (g_attachSrc != 0)
-            {
-                replicas.back()->attachRefineSources(src, static_cast<faiss::idx_t>(g_ntotal));
-            }
-            else
-            {
-                replicas.back()->loadRefineSources(src, static_cast<faiss::idx_t>(g_ntotal));
-            }
-        }
-        return;
+        indexes.back()->attachRefineSources(src, static_cast<faiss::idx_t>(g_ntotal));
     }
-    for (int deviceId : g_devices)
+    else
     {
-        replicas.push_back(MakeIndex(needRefine, {deviceId}));
-        LoadIndex(*replicas.back(), g_indexPath);
-        if (src != nullptr)
-        {
-            if (g_attachSrc != 0)
-            {
-                // 零拷贝共享同一份 src，replica 不再各拷贝一份（src 由调用方保证生命周期）
-                replicas.back()->attachRefineSources(src, static_cast<faiss::idx_t>(g_ntotal));
-            }
-            else
-            {
-                replicas.back()->loadRefineSources(src, static_cast<faiss::idx_t>(g_ntotal));
-            }
-        }
+        indexes.back()->loadRefineSources(src, static_cast<faiss::idx_t>(g_ntotal));
     }
-    printf("search-mode=replica loaded %zu full-index copies (attach-src=%d)\n", replicas.size(), g_attachSrc);
-    fflush(stdout);
-}
-
-void PromotePrimaryToReplicas(IndexPtr primary, std::vector<IndexPtr> &replicas, bool needRefine, const float *src)
-{
-    replicas.clear();
-    replicas.push_back(std::move(primary));
-    if (g_searchReplica == 0 || g_devices.size() <= 1)
-    {
-        return;
-    }
-    for (size_t i = 1; i < g_devices.size(); ++i)
-    {
-        replicas.push_back(MakeIndex(needRefine, {g_devices[i]}));
-        LoadIndex(*replicas.back(), g_indexPath);
-        if (src != nullptr)
-        {
-            if (g_attachSrc != 0)
-            {
-                replicas.back()->attachRefineSources(src, static_cast<faiss::idx_t>(g_ntotal));
-            }
-            else
-            {
-                replicas.back()->loadRefineSources(src, static_cast<faiss::idx_t>(g_ntotal));
-            }
-        }
-    }
-    printf("search-mode=replica loaded %zu full-index copies\n", replicas.size());
-    fflush(stdout);
 }
 
 void AddChunk(faiss::ascend::AscendIndexIVFRaBitQ &index, const float *x, size_t startId, size_t n)
@@ -1237,6 +1639,7 @@ void AddChunk(faiss::ascend::AscendIndexIVFRaBitQ &index, const float *x, size_t
 struct StreamAddOptions
 {
     bool readSrc = false;
+    bool readFbin = false;  // 从 --base-bin（uint8 u8bin）分块读取
     bool updateGt = false;
     BaseBinWriter *writer = nullptr;
 };
@@ -1249,17 +1652,19 @@ void StreamAdd(faiss::ascend::AscendIndexIVFRaBitQ &index, const float *train, s
         throw std::runtime_error("updateGt requires GT storage and queries");
     }
     std::unique_ptr<FILE, decltype(&std::fclose)> input(nullptr, &std::fclose);
-    if (opt.readSrc)
+    if (opt.readSrc || opt.readFbin)
     {
-        input.reset(std::fopen(g_srcBin.c_str(), "rb"));
+        input.reset(std::fopen(opt.readFbin ? g_baseBin.c_str() : g_srcBin.c_str(), "rb"));
         if (!input)
         {
-            throw std::runtime_error("failed to open --src-bin for add");
+            throw std::runtime_error("failed to open source bin for add");
         }
-        const uint64_t trainBytes = static_cast<uint64_t>(trainNum) * static_cast<uint64_t>(g_dim) * sizeof(float);
-        if (fseeko(input.get(), static_cast<off_t>(trainBytes), SEEK_SET) != 0)
+        // 训练向量取自数据源前 trainNum 条，add 从其后继续
+        const uint64_t skip = opt.readFbin ? sizeof(int32_t) * 2ULL + static_cast<uint64_t>(trainNum) * g_dim
+                                           : static_cast<uint64_t>(trainNum) * g_dim * sizeof(float);
+        if (fseeko(input.get(), static_cast<off_t>(skip), SEEK_SET) != 0)
         {
-            throw std::runtime_error("failed to seek --src-bin after train vectors");
+            throw std::runtime_error("failed to seek source bin after train vectors");
         }
     }
     const size_t chunk = static_cast<size_t>(g_addChunk);
@@ -1293,9 +1698,24 @@ void StreamAdd(faiss::ascend::AscendIndexIVFRaBitQ &index, const float *train, s
         buf.resize(n * static_cast<size_t>(g_dim));
         if (input)
         {
-            if (std::fread(buf.data(), sizeof(float), buf.size(), input.get()) != buf.size())
+            if (opt.readFbin)
             {
-                throw std::runtime_error("short read while streaming --src-bin");
+                std::vector<uint8_t> raw(buf.size());
+                if (std::fread(raw.data(), sizeof(uint8_t), raw.size(), input.get()) != raw.size())
+                {
+                    throw std::runtime_error("short read while streaming base-bin");
+                }
+                for (size_t i = 0; i < buf.size(); ++i)
+                {
+                    buf[i] = U8ToF32(raw[i]);
+                }
+            }
+            else
+            {
+                if (std::fread(buf.data(), sizeof(float), buf.size(), input.get()) != buf.size())
+                {
+                    throw std::runtime_error("short read while streaming --src-bin");
+                }
             }
         }
         else
@@ -1358,56 +1778,11 @@ void WriteCsvRow(FILE *fp, const BenchRow &row)
 
 void SearchNpu(std::vector<IndexPtr> &indexes, int nq, int k, const float *query, float *dist, faiss::idx_t *label)
 {
-    if (indexes.empty())
+    if (indexes.size() != 1)
     {
-        throw std::runtime_error("search indexes empty");
+        throw std::runtime_error("expected one multi-device search index");
     }
-    if (indexes.size() == 1 || nq <= 1)
-    {
-        indexes[0]->search(nq, query, k, dist, label);
-        return;
-    }
-    const int nRep = static_cast<int>(indexes.size());
-    const int base = nq / nRep;
-    const int rem = nq % nRep;
-    std::vector<std::thread> workers;
-    std::vector<std::exception_ptr> errors(static_cast<size_t>(nRep));
-    int offset = 0;
-    for (int i = 0; i < nRep; ++i)
-    {
-        const int nqi = base + (i < rem ? 1 : 0);
-        const int qOff = offset;
-        offset += nqi;
-        if (nqi <= 0)
-        {
-            continue;
-        }
-        workers.emplace_back(
-            [&, i, nqi, qOff]()
-            {
-                try
-                {
-                    const size_t qStride = static_cast<size_t>(qOff) * static_cast<size_t>(g_dim);
-                    const size_t rStride = static_cast<size_t>(qOff) * static_cast<size_t>(k);
-                    indexes[static_cast<size_t>(i)]->search(nqi, query + qStride, k, dist + rStride, label + rStride);
-                }
-                catch (...)
-                {
-                    errors[static_cast<size_t>(i)] = std::current_exception();
-                }
-            });
-    }
-    for (auto &worker : workers)
-    {
-        worker.join();
-    }
-    for (auto &err : errors)
-    {
-        if (err)
-        {
-            std::rethrow_exception(err);
-        }
-    }
+    indexes.front()->search(nq, query, k, dist, label);
 }
 
 double TimeLoops(int loops, const std::function<void()> &fn, long long *batchesOut)
@@ -1665,26 +2040,62 @@ TEST(TestAscendIndexIVFRaBitQ, LargeScaleQpsRecall)
         const size_t trainNum = TrainNum();
         const int maxNq = std::max(*std::max_element(g_nq.begin(), g_nq.end()), g_recallNq);
         const bool loadExisting = (g_rebuild == 0) && FileExists(g_indexPath);
+        const DataSrc dataSrc = ResolveDataSrc();
+        const bool useBaseBin = dataSrc == DataSrc::BaseBin;
+        if (useBaseBin)
+        {
+            ASSERT_TRUE(ValidateBaseBin(g_baseBin));
+        }
+        else if (dataSrc == DataSrc::SrcBin)
+        {
+            ASSERT_TRUE(ValidateSrcBin(g_srcBin));
+        }
         printf(
             "IVFRaBitQ QPS recall: devices=%s dim=%d ntotal=%zu nlist=%d nprobe=%d quant_bits=%d candidate_topk=%d "
             "target_topk=%d npu_k=%d "
             "refine-alpha=%.6f trainNum=%zu recall_nq=%d resource_mb=%d niter=%d train-mode=%s "
-            "search-mode=%s qps-mode=%s replicas=%d duration=%d loops=%d index=%s load=%d reuse_gt=%d\n",
+            "search-mode=%s qps-mode=%s replicas=%d duration=%d loops=%d index=%s load=%d reuse_gt=%d "
+            "data_src=%s gt_npu=%d\n",
             DevicesJson().c_str(), g_dim, g_ntotal, g_nlist, g_nprobe, g_quantBits, g_k, g_recallK, g_npuK,
             g_refineAlpha, trainNum, g_recallNq, g_resourceMb, g_niter, g_trainSlice != 0 ? "slice" : "replica",
             SearchModeName(), QpsModeName(), SearchReplicaCount(), g_durationSec, g_loops, g_indexPath.c_str(),
-            loadExisting ? 1 : 0, g_reuseGt);
+            loadExisting ? 1 : 0, g_reuseGt,
+            useBaseBin                   ? "base-bin"
+            : dataSrc == DataSrc::SrcBin ? "src-bin"
+                                         : "generate",
+            g_gtNpu);
         fflush(stdout);
 
-        printf("generate query\n");
-        std::vector<float> queries(static_cast<size_t>(maxNq) * static_cast<size_t>(g_dim));
-        FillRange(queries.data(), 0, static_cast<size_t>(maxNq), g_dim, kQuerySeed);
+        // 查询向量：提供 --query-bin（SIFT1B query.public.10K.u8bin）时读取真实查询，否则随机生成
+        std::vector<float> queries;
+        if (!g_queryBin.empty())
+        {
+            size_t nqRead = 0;
+            ASSERT_TRUE(LoadQueriesFromFbin(g_queryBin, static_cast<size_t>(maxNq), queries, nqRead));
+            if (nqRead < static_cast<size_t>(maxNq))
+            {
+                FAIL() << "query-bin only has " << nqRead << " queries, need " << maxNq;
+            }
+        }
+        else
+        {
+            queries.resize(static_cast<size_t>(maxNq) * static_cast<size_t>(g_dim));
+            FillRange(queries.data(), 0, static_cast<size_t>(maxNq), g_dim, kQuerySeed);
+        }
 
+        g_gtSignature = GtSignature(dataSrc, queries.data());
         std::vector<std::vector<DistId>> gt(static_cast<size_t>(g_recallNq));
         bool gtReady = false;
         if (!g_gtPath.empty() && FileExists(g_gtPath) && (g_rebuild == 0 || g_reuseGt != 0))
         {
             ASSERT_TRUE(LoadGt(g_gtPath, gt));
+            gtReady = true;
+        }
+        // 独立生成 GT：用 NPU Flat(L2) 暴搜，可先于索引建库单独执行（--gt-npu 1）
+        if (!gtReady && (g_gtNpu != 0 || loadExisting))
+        {
+            ASSERT_TRUE(g_gtNpu != 0 ? BuildGtOnNpu(g_gtPath, gt, dataSrc, queries.data())
+                                     : BuildGtOnHost(g_gtPath, gt, dataSrc, queries.data()));
             gtReady = true;
         }
 
@@ -1696,11 +2107,14 @@ TEST(TestAscendIndexIVFRaBitQ, LargeScaleQpsRecall)
         }
         else
         {
-            const bool useSrcInput = !g_srcBin.empty() && FileExists(g_srcBin);
+            const bool useSrcInput = dataSrc != DataSrc::Generate;
             std::vector<float> train(trainNum * static_cast<size_t>(g_dim));
-            if (useSrcInput)
+            if (useBaseBin)
             {
-                ASSERT_TRUE(ValidateSrcBin(g_srcBin));
+                ASSERT_TRUE(LoadTrainFromFbin(g_baseBin, trainNum, train));
+            }
+            else if (useSrcInput)
+            {
                 ASSERT_TRUE(LoadTrainFromSrcBin(g_srcBin, trainNum, train));
             }
             else
@@ -1713,14 +2127,27 @@ TEST(TestAscendIndexIVFRaBitQ, LargeScaleQpsRecall)
             stored->train(static_cast<faiss::idx_t>(trainNum), train.data());
             BaseBinWriter writer;
             StreamAddOptions opt;
-            opt.readSrc = useSrcInput;
+            opt.readSrc = dataSrc == DataSrc::SrcBin;
+            opt.readFbin = useBaseBin;
             opt.updateGt = !gtReady;
-            if (!useSrcInput && !g_srcBin.empty())
+            // 精排（npu/cpu）与加载复用都依赖 float32 原文 --src-bin：
+            // base-bin 建库时若 src-bin 不存在，顺带把 uint8→float 转换后的数据落盘一份；
+            // src-bin 输入本身已存在，无需重写。
+            const bool writeSrc = !g_srcBin.empty() && !opt.readSrc && !FileExists(g_srcBin);
+            if (!g_srcBin.empty() && !writeSrc && useBaseBin && FileExists(g_srcBin))
+            {
+                printf(
+                    "warning: --src-bin exists and will be reused for refine; make sure it was converted from the "
+                    "same --base-bin dataset\n");
+            }
+            if (writeSrc)
             {
                 ASSERT_TRUE(writer.Open(g_srcBin, g_ntotal, g_dim));
                 opt.writer = &writer;
             }
-            printf("start add %s needRefine=false\n", useSrcInput ? "from existing src-bin" : "generated vectors");
+            printf("start add %s needRefine=false\n", useBaseBin    ? "from base-bin (sift1b)"
+                                                      : useSrcInput ? "from existing src-bin"
+                                                                    : "generated vectors");
             StreamAdd(*stored, train.data(), trainNum, &gt, queries.data(), opt);
             writer.Close();
             if (!gtReady)
@@ -1741,7 +2168,7 @@ TEST(TestAscendIndexIVFRaBitQ, LargeScaleQpsRecall)
         ASSERT_EQ(static_cast<size_t>(stored->ntotal), g_ntotal);
 
         std::vector<IndexPtr> searchers;
-        PromotePrimaryToReplicas(std::move(stored), searchers, false, nullptr);
+        searchers.push_back(std::move(stored));
 
         std::vector<BenchRow> rows;
         FILE *csv = nullptr;
@@ -1756,6 +2183,8 @@ TEST(TestAscendIndexIVFRaBitQ, LargeScaleQpsRecall)
 
         if (HasMode(RefineMode::None))
         {
+            // 无精排时 NPU 输出 k 就是最终 k：--npu-k 给出多值时扫它，否则沿用 --candidate-topk（兼容旧命令）。
+            const std::vector<int> &noneKs = (g_npuKExplicit && g_npuKs.size() > 1) ? g_npuKs : g_candidateTopks;
             for (int nprobe : g_nprobes)
             {
                 g_nprobe = nprobe;
@@ -1763,11 +2192,14 @@ TEST(TestAscendIndexIVFRaBitQ, LargeScaleQpsRecall)
                 {
                     index->setNumProbes(g_nprobe);
                 }
-                for (int candidateTopk : g_candidateTopks)
+                for (int npuK : noneKs)
                 {
-                    g_k = candidateTopk;
-                    printf("measure matrix quant_bits=%d nprobe=%d candidate_topk=%d target_topk=%d recall_nq=%d\n",
-                           g_quantBits, g_nprobe, g_k, g_recallK, g_recallNq);
+                    g_k = npuK;
+                    g_npuK = npuK;
+                    printf(
+                        "measure matrix refine=none quant_bits=%d nprobe=%d npu_k=%d candidate_topk=%d target_topk=%d "
+                        "recall_nq=%d\n",
+                        g_quantBits, g_nprobe, g_npuK, g_k, g_recallK, g_recallNq);
                     const RecallReport recNone = RecallSearch(searchers, queries.data(), gt, true);
                     for (int nq : g_nq)
                     {
@@ -1790,17 +2222,27 @@ TEST(TestAscendIndexIVFRaBitQ, LargeScaleQpsRecall)
                 // 复用 needRefine=false 索引（与 none 档同库），粗排 k=npu-k 回传 Host 后本地精排。
                 // 必须在 npu 档之前跑：npu 块会 searchers.clear() 并重建 needRefine=true 索引。
                 MmapSrc src(g_srcBin, g_ntotal, g_dim);
-                printf("measure recall cpu, recall_nq=%d npu_k=%d\n", g_recallNq, g_npuK);
-                const RecallReport recCpu = RecallCpuRefine(searchers, queries.data(), src, gt);
-                for (int nq : g_nq)
+                // 粗排 NPU 输出 k × 精排最终 k 二维矩阵，每个组合单独算召回再测 QPS。
+                for (int npuK : g_npuKs)
                 {
-                    BenchRow row = BenchCpuRefine(searchers, nq, queries.data(), src, recCpu);
-                    PrintRow(row);
-                    if (csv != nullptr)
+                    g_npuK = npuK;
+                    for (int candidateTopk : g_candidateTopks)
                     {
-                        WriteCsvRow(csv, row);
+                        g_k = candidateTopk;
+                        printf("measure recall cpu, nprobe=%d recall_nq=%d npu_k=%d candidate_topk=%d target_topk=%d\n",
+                               g_nprobe, g_recallNq, g_npuK, g_k, g_recallK);
+                        const RecallReport recCpu = RecallCpuRefine(searchers, queries.data(), src, gt);
+                        for (int nq : g_nq)
+                        {
+                            BenchRow row = BenchCpuRefine(searchers, nq, queries.data(), src, recCpu);
+                            PrintRow(row);
+                            if (csv != nullptr)
+                            {
+                                WriteCsvRow(csv, row);
+                            }
+                            rows.push_back(std::move(row));
+                        }
                     }
-                    rows.push_back(std::move(row));
                 }
             }
             catch (std::exception &e)
@@ -1831,7 +2273,7 @@ TEST(TestAscendIndexIVFRaBitQ, LargeScaleQpsRecall)
                        static_cast<int>(g_k * g_refineAlpha));
                 std::vector<float> src;
                 ASSERT_TRUE(LoadSrcBin(g_srcBin, src));
-                LoadReplicaCopies(searchers, true, src.data());
+                LoadSearchIndex(searchers, true, src.data());
                 printf("measure recall npu, recall_nq=%d\n", g_recallNq);
                 const RecallReport recNpu = RecallSearch(searchers, queries.data(), gt, false);
                 for (int nq : g_nq)
