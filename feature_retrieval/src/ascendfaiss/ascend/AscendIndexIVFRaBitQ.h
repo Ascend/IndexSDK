@@ -93,6 +93,15 @@ struct AscendIndexIVFRaBitQConfig : public AscendIndexIVFConfig
         Slice = 1
     };
     TrainMode trainMode = TrainMode::Replica;
+
+    // Independent of TrainMode: replicas keep the complete database on every device
+    // and split searches by query; shards split each inverted list across devices.
+    enum class StorageMode
+    {
+        Shard = 0,
+        Replica = 1
+    };
+    StorageMode storageMode = StorageMode::Shard;
     // Device bytes that superseded list data may occupy before writes are rejected. 0 means the
     // daemon's default.
     size_t retiredMemoryHighWatermark;
@@ -114,8 +123,8 @@ class AscendIndexIVFRaBitQ : public AscendIndexIVF
 
     void train(idx_t n, const float* x) override;
 
-    // Overridden to take a read lock instead of the base class' write lock, so an add can run
-    // alongside a search. The using-declarations keep the inherited uint16_t overloads visible.
+    // Sharded adds can overlap searches through device snapshots. Replica and refine writes
+    // exclude searches. The using-declarations keep the inherited uint16_t overloads visible.
     using AscendIndexIVF::add;
     using AscendIndexIVF::add_with_ids;
     void add(idx_t n, const float* x) override;
