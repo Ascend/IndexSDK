@@ -29,32 +29,27 @@ void Genarate(std::vector<float> &addnVec, std::vector<uint32_t> &ids, int ntota
     int offset = 128;
     std::vector<float> normBase(ntotal);
     auto seed = time(nullptr);
-    if (seed < 0)
-    {
+    if (seed < 0) {
         std::cerr << "Error: Invalid seed value." << std::endl;
         return;
     }
     std::default_random_engine e(seed);
     std::uniform_real_distribution<float> rCode(0.0f, 1.0f);
 
-    if (dim == 0)
-    {
+    if (dim == 0) {
         std::cerr << "Error: Invalid dim value." << std::endl;
         return;
     }
-    for (uint32_t i = 0; i < ntotal * static_cast<uint32_t>(dim); i++)
-    {
+    for (uint32_t i = 0; i < ntotal * static_cast<uint32_t>(dim); i++) {
         addnVec[i] = static_cast<int8_t>(maxValue * rCode(e) - offset);
         size_t baseIdx = i / dim;
         normBase[baseIdx] += addnVec[i] * addnVec[i];
-        if ((i + 1) % dim == 0)
-        {
+        if ((i + 1) % dim == 0) {
             normBase[baseIdx] = sqrt(normBase[baseIdx]);
         }
     }
 
-    for (uint32_t i = 0; i < ntotal * static_cast<uint32_t>(dim); i++)
-    {
+    for (uint32_t i = 0; i < ntotal * static_cast<uint32_t>(dim); i++) {
         addnVec[i] /= normBase[i / dim];
     }
 
@@ -69,10 +64,9 @@ int main(int argc, char **argv)
     int64_t resourceSize = static_cast<int64_t>(2) * static_cast<int64_t>(1024 * 1024 * 1024);
     auto meticType = faiss::MetricType::METRIC_INNER_PRODUCT;
     faiss::ascend::AscendIndexCluster index;
-    std::vector<int> deciveList = {0};
+    std::vector<int> deciveList = { 0 };
     auto ret = index.Init(dim, capacity, meticType, deciveList, resourceSize);
-    if (ret != 0)
-    {
+    if (ret != 0) {
         printf("[ERROR] Init fail ret = %d \r\n", ret);
         index.Finalize();
         return 1;
@@ -83,8 +77,7 @@ int main(int argc, char **argv)
     Genarate(addVec, ids, ntotal, dim);
 
     ret = index.AddFeatures(ntotal, addVec.data(), ids.data());
-    if (ret != 0)
-    {
+    if (ret != 0) {
         printf("[ERROR] AddFeatures fail ret = %d \r\n", ret);
         index.Finalize();
         return 1;
@@ -95,8 +88,7 @@ int main(int argc, char **argv)
     uint32_t codeStartIdx = 0;
     uint32_t codeNum = 1000;
     float threshold = 0.75;
-    try
-    {
+    try {
         std::vector<uint32_t> queryIdArr(nq);
         std::iota(queryIdArr.begin(), queryIdArr.end(), start);
 
@@ -104,28 +96,24 @@ int main(int argc, char **argv)
         std::vector<std::vector<uint32_t>> resIdx(nq);
 
         ret = index.ComputeDistanceByThreshold(queryIdArr, codeStartIdx, codeNum, threshold, true, resDist, resIdx);
-        if (ret != 0)
-        {
+        if (ret != 0) {
             printf("[ERROR] ComputeDistanceByThreshold fail ret = %d \r\n", ret);
             index.Finalize();
             return 1;
         }
 
-        for (uint32_t i = 0; i < nq; i++)
-        {
+        for (uint32_t i = 0; i < nq; i++) {
             uint32_t len = resDist[i].size();
             printf("queryFeature(%d/%d), %u feature dist greater than the threshold:\r\n", i, nq, len);
-            for (uint32_t j = 0; j < len; j++)
-            {
+            for (uint32_t j = 0; j < len; j++) {
                 printf("   id: %u, dist: %.4lf\r\n", resIdx[i][j], resDist[i][j]);
             }
         }
 
         index.Finalize();
-    }
-    catch (std::exception &e)
-    {
+    } catch (std::exception &e) {
         index.Finalize();
         printf("%s\n", e.what());
+        return -1;
     }
 }

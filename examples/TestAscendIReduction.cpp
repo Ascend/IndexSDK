@@ -20,14 +20,14 @@
 #include <faiss/ascend/custom/IReduction.h>
 #include <faiss/index_io.h>
 
+#include <cstdlib>
 #include <fstream>
 #include <random>
 #include <vector>
 
 // 请在第36行导入对应的NN降维模型
 
-namespace
-{
+namespace {
 int g_dimin = 256;
 int g_dimout = 64;
 std::string g_nnom;
@@ -36,7 +36,7 @@ faiss::MetricType MetricType = g_metricTypeName == "L2" ? faiss::METRIC_L2 : fai
 
 void ReadModel()
 {
-    std::string modelPath = "./";  // 导入对应的NN降维模型
+    std::string modelPath = "./"; // 导入对应的NN降维模型
     std::ifstream istrm(modelPath.c_str(), std::ios::binary);
     std::stringstream buffer;
     buffer << istrm.rdbuf();
@@ -46,15 +46,13 @@ void ReadModel()
 
 void TestSampleNNInfer()
 {
-    std::vector<int> deviceList = {0};
+    std::vector<int> deviceList = { 0 };
     int ntotal = 100000;
     int maxSize = ntotal * g_dimin;
     std::vector<float> data(maxSize);
     std::vector<float> outputData(ntotal * g_dimout);
-    try
-    {
-        for (int i = 0; i < maxSize; i++)
-        {
+    try {
+        for (int i = 0; i < maxSize; i++) {
             data[i] = drand48();
         }
 
@@ -65,24 +63,21 @@ void TestSampleNNInfer()
         dimInfer.infer(ntotal, reinterpret_cast<char *>(data.data()), reinterpret_cast<char *>(outputData.data()));
 
         std::cout << "TestSampleNNInfer end " << std::endl;
-    }
-    catch (std::exception &e)
-    {
+    } catch (std::exception &e) {
         printf("%s\n", e.what());
+        std::exit(EXIT_FAILURE);
     }
 }
 
 void TestSampleNNReduce()
 {
-    std::vector<int> deviceList = {0};
+    std::vector<int> deviceList = { 0 };
     int ntotal = 100000;
     int maxSize = ntotal * g_dimin;
     std::vector<float> data(maxSize);
     std::vector<float> outputData(ntotal * g_dimout);
-    try
-    {
-        for (int i = 0; i < maxSize; i++)
-        {
+    try {
+        for (int i = 0; i < maxSize; i++) {
             data[i] = drand48();
         }
 
@@ -96,24 +91,21 @@ void TestSampleNNReduce()
         reduction->reduce(ntotal, data.data(), outputData.data());
 
         std::cout << "TestSampleNNReduce end " << std::endl;
-    }
-    catch (std::exception &e)
-    {
+    } catch (std::exception &e) {
         printf("%s\n", e.what());
+        std::exit(EXIT_FAILURE);
     }
 }
 
 void TestSamplePcarReduce()
 {
-    std::vector<int> deviceList = {0};
+    std::vector<int> deviceList = { 0 };
     int ntotal = 100000;
     int maxSize = ntotal * g_dimin;
     std::vector<float> data(maxSize);
     std::vector<float> outputData(ntotal * g_dimout);
-    try
-    {
-        for (int i = 0; i < maxSize; i++)
-        {
+    try {
+        for (int i = 0; i < maxSize; i++) {
             data[i] = drand48();
         }
 
@@ -126,13 +118,12 @@ void TestSamplePcarReduce()
         reduction->reduce(ntotal, data.data(), outputData.data());
 
         std::cout << "TestSamplePcarReduce end " << std::endl;
-    }
-    catch (std::exception &e)
-    {
+    } catch (std::exception &e) {
         printf("%s\n", e.what());
+        std::exit(EXIT_FAILURE);
     }
 }
-}  // namespace
+} // namespace
 
 int main(int argc, char **argv)
 {

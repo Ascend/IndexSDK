@@ -34,10 +34,10 @@
 
 const int K = 1;
 const int SEARCH_NUM = 10;
-const std::vector<int> DEVICE{0};
+const std::vector<int> DEVICE{ 0 };
 inline double GetMillisecs()
 {
-    struct timeval tv = {0, 0};
+    struct timeval tv = { 0, 0 };
     gettimeofday(&tv, nullptr);
     return tv.tv_sec * 1e3 + tv.tv_usec * 1e-3;
 }
@@ -45,19 +45,15 @@ inline double GetMillisecs()
 void PrintSearch(const std::vector<float> &dist, const std::vector<faiss::idx_t> &label)
 {
     printf("I=\n");
-    for (int i = 0; i < SEARCH_NUM; i++)
-    {
-        for (int j = 0; j < K; j++)
-        {
+    for (int i = 0; i < SEARCH_NUM; i++) {
+        for (int j = 0; j < K; j++) {
             printf("%5ld ", label[i * K + j]);
         }
         printf("\n");
     }
     printf("D=\n");
-    for (int i = 0; i < SEARCH_NUM; i++)
-    {
-        for (int j = 0; j < K; j++)
-        {
+    for (int i = 0; i < SEARCH_NUM; i++) {
+        for (int j = 0; j < K; j++) {
             printf("%5f ", dist[i * K + j]);
         }
         printf("\n");
@@ -71,8 +67,7 @@ void Generate(size_t ntotal, std::vector<int8_t> &data, int seed = 5678)
     std::default_random_engine e(seed);
     std::uniform_real_distribution<float> rCode(0.0f, 1.0f);
     data.resize(ntotal);
-    for (size_t i = 0; i < ntotal; ++i)
-    {
+    for (size_t i = 0; i < ntotal; ++i) {
         data[i] = static_cast<int8_t>(maxValue * rCode(e) - offset);
     }
 }
@@ -91,16 +86,14 @@ size_t RemoveImpl(faiss::IndexIDMap *cpuIDMap, std::vector<size_t> &removes)
 {
     auto cpuSQ = dynamic_cast<faiss::IndexScalarQuantizer *>(cpuIDMap->index);
     std::sort(removes.rbegin(), removes.rend());
-    for (auto const &pos : removes)
-    {
+    for (auto const &pos : removes) {
         size_t lastIdx = cpuIDMap->id_map.size() - 1;
         cpuIDMap->id_map[pos] = cpuIDMap->id_map[lastIdx];
         cpuIDMap->id_map.pop_back();
 
         size_t curCodeIdx = static_cast<size_t>(pos) * static_cast<size_t>(cpuIDMap->index->d);
         size_t lastCodeIdx = lastIdx * static_cast<size_t>(cpuIDMap->index->d);
-        for (int i = 0; i < cpuIDMap->index->d; i++)
-        {
+        for (int i = 0; i < cpuIDMap->index->d; i++) {
             cpuSQ->codes[curCodeIdx + i] = cpuSQ->codes[lastCodeIdx + i];
         }
         cpuSQ->codes.resize(lastCodeIdx);
@@ -109,15 +102,12 @@ size_t RemoveImpl(faiss::IndexIDMap *cpuIDMap, std::vector<size_t> &removes)
     return removes.size();
 }
 
-void GetRemoveIDS(faiss::IndexIDMap *cpuIDMap, const std::unordered_set<faiss::idx_t> &idSet,
-                  std::vector<size_t> &removes)
+void GetRemoveIDS(
+    faiss::IndexIDMap *cpuIDMap, const std::unordered_set<faiss::idx_t> &idSet, std::vector<size_t> &removes)
 {
-    for (auto it = idSet.begin(); it != idSet.end(); it++)
-    {
-        for (size_t i = 0; i < cpuIDMap->id_map.size(); i++)
-        {
-            if (cpuIDMap->id_map[i] == *it)
-            {
+    for (auto it = idSet.begin(); it != idSet.end(); it++) {
+        for (size_t i = 0; i < cpuIDMap->id_map.size(); i++) {
+            if (cpuIDMap->id_map[i] == *it) {
                 removes.push_back(i);
                 break;
             }
@@ -128,21 +118,15 @@ void GetRemoveIDS(faiss::IndexIDMap *cpuIDMap, const std::unordered_set<faiss::i
 size_t CpuIndexRemove(faiss::IndexIDMap *cpuIDMap, const faiss::IDSelector &sel)
 {
     std::vector<size_t> removes;
-    if (auto rangeSel = dynamic_cast<const faiss::IDSelectorBatch *>(&sel))
-    {
+    if (auto rangeSel = dynamic_cast<const faiss::IDSelectorBatch *>(&sel)) {
         GetRemoveIDS(cpuIDMap, rangeSel->set, removes);
-    }
-    else if (auto rangeSel = dynamic_cast<const faiss::IDSelectorRange *>(&sel))
-    {
+    } else if (auto rangeSel = dynamic_cast<const faiss::IDSelectorRange *>(&sel)) {
         std::unordered_set<faiss::idx_t> idSet;
-        for (auto idx = rangeSel->imin; idx < rangeSel->imax; ++idx)
-        {
+        for (auto idx = rangeSel->imin; idx < rangeSel->imax; ++idx) {
             idSet.insert(idx);
         }
         GetRemoveIDS(cpuIDMap, idSet, removes);
-    }
-    else
-    {
+    } else {
         printf("not support type\n");
         return 0;
     }
@@ -154,8 +138,7 @@ void CheckResult(faiss::ascend::AscendIndexInt8Flat &ascendIndex, faiss::ascend:
     size_t baseSize1 = 0;
     std::vector<int8_t> codes1;
     std::vector<faiss::idx_t> idx1;
-    for (auto const &deviceId : DEVICE)
-    {
+    for (auto const &deviceId : DEVICE) {
         std::vector<int8_t> codes;
         std::vector<faiss::idx_t> idx;
         ascendIndex.getBase(deviceId, codes);
@@ -168,8 +151,7 @@ void CheckResult(faiss::ascend::AscendIndexInt8Flat &ascendIndex, faiss::ascend:
     size_t baseSize2 = 0;
     std::vector<int8_t> codes2;
     std::vector<faiss::idx_t> idx2;
-    for (auto const &deviceId : DEVICE)
-    {
+    for (auto const &deviceId : DEVICE) {
         std::vector<int8_t> codes;
         std::vector<faiss::idx_t> idx;
         newAscendIndex->getBase(deviceId, codes);
@@ -179,28 +161,23 @@ void CheckResult(faiss::ascend::AscendIndexInt8Flat &ascendIndex, faiss::ascend:
         baseSize2 += newAscendIndex->getBaseSize(deviceId);
     }
     printf("baseSize1:%ld, baseSize2:%ld\n", baseSize1, baseSize2);
-    if (baseSize1 != baseSize2)
-    {
+    if (baseSize1 != baseSize2) {
         printf("baseSize not equal!!!!!: %ld vs %ld\n", baseSize1, baseSize2);
     }
-    for (size_t i = 0; i < codes1.size(); i++)
-    {
-        if (codes1[i] != codes2[i])
-        {
+    for (size_t i = 0; i < codes1.size(); i++) {
+        if (codes1[i] != codes2[i]) {
             printf("codes[%ld] not equal!!!!!: %d vs %d\n", i, codes1[i], codes2[i]);
         }
     }
-    for (size_t i = 0; i < idx1.size(); i++)
-    {
-        if (idx1[i] != idx2[i])
-        {
+    for (size_t i = 0; i < idx1.size(); i++) {
+        if (idx1[i] != idx2[i]) {
             printf("idx[%ld] not equal!!!!!: %ld vs %ld\n", i, idx1[i], idx2[i]);
         }
     }
 }
 
 void DelRangeAndSearch(faiss::ascend::AscendIndexInt8Flat &ascendIndex, faiss::IndexIDMap *cpuIDMap,
-                       std::vector<int8_t> &base, std::vector<float> &dist, std::vector<faiss::idx_t> &label)
+    std::vector<int8_t> &base, std::vector<float> &dist, std::vector<faiss::idx_t> &label)
 {
     int delRangeMin = 6;
     int delRangeMax = 10;
@@ -216,7 +193,7 @@ void DelRangeAndSearch(faiss::ascend::AscendIndexInt8Flat &ascendIndex, faiss::I
 }
 
 void AddAndSearch(faiss::ascend::AscendIndexInt8Flat &ascendIndex, faiss::IndexIDMap *cpuIDMap,
-                  std::vector<float> &dist, std::vector<faiss::idx_t> &label, int dim)
+    std::vector<float> &dist, std::vector<faiss::idx_t> &label, int dim)
 {
     std::vector<int8_t> base2(static_cast<size_t>(dim) * SEARCH_NUM);
     int seed = 1234;
@@ -232,7 +209,7 @@ void AddAndSearch(faiss::ascend::AscendIndexInt8Flat &ascendIndex, faiss::IndexI
 
     // ascend index查找底库最后10个
     ascendIndex.search(SEARCH_NUM, base2.data(), K, dist.data(), label.data());
-    std::vector<faiss::idx_t> delBatches = {1000001, 1000003, 1000005, 1000007, 1000009};
+    std::vector<faiss::idx_t> delBatches = { 1000001, 1000003, 1000005, 1000007, 1000009 };
     faiss::IDSelectorBatch del2(delBatches.size(), delBatches.data());
     // ascend index delete
     auto removeCnt = ascendIndex.remove_ids(del2);
@@ -245,7 +222,7 @@ void AddAndSearch(faiss::ascend::AscendIndexInt8Flat &ascendIndex, faiss::IndexI
 }
 
 void LoadAndSearch(faiss::ascend::AscendIndexInt8Flat &ascendIndex, faiss::IndexIDMap *cpuIDMap,
-                   std::vector<int8_t> &base, std::vector<float> &dist, std::vector<faiss::idx_t> &label)
+    std::vector<int8_t> &base, std::vector<float> &dist, std::vector<faiss::idx_t> &label)
 {
     double t1 = GetMillisecs();
     const char *fileName = "int8flat.faiss";
@@ -269,8 +246,7 @@ void LoadAndSearch(faiss::ascend::AscendIndexInt8Flat &ascendIndex, faiss::Index
 
 int main(int argc, char **argv)
 {
-    try
-    {
+    try {
         int64_t resourceSize = 2 * static_cast<int64_t>(1024 * 1024 * 1024);
         faiss::ascend::AscendIndexInt8FlatConfig conf(DEVICE, resourceSize);
         int dim = 512;
@@ -322,10 +298,9 @@ int main(int argc, char **argv)
         LoadAndSearch(ascendIndex, cpuIDMap, base, dist, label);
         delete cpuSQ;
         delete cpuIDMap;
-    }
-    catch (std::exception &e)
-    {
+    } catch (std::exception &e) {
         printf("Exception caught:%s!\n", e.what());
+        return -1;
     }
 
     return 0;

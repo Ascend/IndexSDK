@@ -23,6 +23,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <iostream>
 #include <memory>
 #include <numeric>
@@ -31,8 +32,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace
-{
+namespace {
 using recallMap = std::unordered_map<int, float>;
 const int RECMAP_KEY_1 = 1;
 const int RECMAP_KEY_10 = 10;
@@ -48,55 +48,47 @@ const int DIM_OUT = 64;
 void computeRecall(recallMap &recMap, int j)
 {
     recMap[RECMAP_KEY_100]++;
-    switch (j)
-    {
+    switch (j) {
         case 0:
             recMap[RECMAP_KEY_1]++;
             recMap[RECMAP_KEY_10]++;
             break;
-        case 1 ... 9:  // case 1到9
+        case 1 ... 9: // case 1到9
             recMap[RECMAP_KEY_10]++;
             break;
-        default:
-            break;
+        default: break;
     }
 }
 
-template <class T>
-recallMap calRecallNomal(std::vector<T> label, int64_t *gt, int shape)
+template <class T> recallMap calRecallNomal(std::vector<T> label, int64_t *gt, int shape)
 {
     recallMap recMap;
     recMap[RECMAP_KEY_1] = 0;
     recMap[RECMAP_KEY_10] = 0;
     recMap[RECMAP_KEY_100] = 0;
-    if (shape <= 0)
-    {
+    if (shape <= 0) {
         std::cerr << "Error: Invalid shape value." << std::endl;
         return recMap;
     }
     int k = label.size() / shape;
-    for (int i = 0; i < shape; i++)
-    {
-        for (int j = 0; j < k; j++)
-        {
-            if (gt[i * k] == label[i * k + j])
-            {
+    for (int i = 0; i < shape; i++) {
+        for (int j = 0; j < k; j++) {
+            if (gt[i * k] == label[i * k + j]) {
                 computeRecall(recMap, j);
                 break;
             }
         }
     }
-    recMap[RECMAP_KEY_1] = recMap[RECMAP_KEY_1] / shape * 100;  // recMap[1]的百分比 这里的100代表的是百分比的计算因子
-    recMap[RECMAP_KEY_10] =
-        recMap[RECMAP_KEY_10] / shape * 100;  // recMap[10]的百分比 这里的100代表的是百分比的计算因子
+    recMap[RECMAP_KEY_1] = recMap[RECMAP_KEY_1] / shape * 100; // recMap[1]的百分比 这里的100代表的是百分比的计算因子
+    recMap[RECMAP_KEY_10] = recMap[RECMAP_KEY_10] / shape * 100; // recMap[10]的百分比 这里的100代表的是百分比的计算因子
     recMap[RECMAP_KEY_100] =
-        recMap[RECMAP_KEY_100] / shape * 100;  // recMap[100]的百分比 这里的100代表的是百分比的计算因子
+        recMap[RECMAP_KEY_100] / shape * 100; // recMap[100]的百分比 这里的100代表的是百分比的计算因子
     return recMap;
 }
 
 inline double GetMillisecs()
 {
-    struct timeval tv = {0, 0};
+    struct timeval tv = { 0, 0 };
     gettimeofday(&tv, nullptr);
     return tv.tv_sec * 1e3 + tv.tv_usec * 1e-3;
 }
@@ -116,8 +108,7 @@ void GeneratorRandomIndex(size_t ntotal, size_t &idx)
     std::uniform_int_distribution<size_t> dis(0, ntotal - 1);
     idx = dis(generator);
 }
-struct dataFloat
-{
+struct dataFloat {
     dataFloat(std::vector<float> &base, std::vector<float> &learn, std::vector<float> &query, std::vector<int64_t> &gt)
         : base(base), learn(learn), query(query), gt(gt) {};
     std::vector<float> &base;
@@ -127,7 +118,7 @@ struct dataFloat
 };
 
 void DataProccess(int searchNum, int topk, dataFloat data, faiss::ascend::AscendIndexIVFSQT &index,
-                  std::vector<faiss::idx_t> &labelTopk)
+    std::vector<faiss::idx_t> &labelTopk)
 {
     int flatK = 1;
     double searchStart = GetMillisecs();
@@ -139,31 +130,25 @@ void DataProccess(int searchNum, int topk, dataFloat data, faiss::ascend::Ascend
 
     int cpuNum = 48;
     auto cpuSearchFunctor = [searchNum, topk, flatK, &distanceTopk, &labelTopk, &distanceFlat, &labelRet, &data](
-                                int cpuIdx, int start, int end)
-    {
-        for (int qId = start; qId < std::min(end, searchNum); qId++)
-        {
+                                int cpuIdx, int start, int end) {
+        for (int qId = start; qId < std::min(end, searchNum); qId++) {
             cpu_set_t cpuset;
             CPU_ZERO(&cpuset);
             CPU_SET(cpuIdx, &cpuset);
             float max = 0;
             size_t offset = 0;
-            for (size_t topkId = 0; topkId < static_cast<size_t>(topk); topkId++)
-            {
+            for (size_t topkId = 0; topkId < static_cast<size_t>(topk); topkId++) {
                 bool isValid = false;
-                if (labelTopk[qId * topk + topkId] == -1)
-                {
+                if (labelTopk[qId * topk + topkId] == -1) {
                     continue;
                 }
-                for (size_t dimId = 0; dimId < static_cast<size_t>(DIM_IN); dimId++)
-                {
+                for (size_t dimId = 0; dimId < static_cast<size_t>(DIM_IN); dimId++) {
                     // 计算IP距离
                     distanceTopk[qId * topk + topkId] +=
                         data.query[qId * DIM_IN + dimId] * data.base[labelTopk[qId * topk + topkId] * DIM_IN + dimId];
                     isValid = true;
                 }
-                if (isValid && max < distanceTopk[qId * topk + topkId])
-                {
+                if (isValid && max < distanceTopk[qId * topk + topkId]) {
                     max = distanceTopk[qId * topk + topkId];
                     offset = topkId;
                 }
@@ -173,24 +158,22 @@ void DataProccess(int searchNum, int topk, dataFloat data, faiss::ascend::Ascend
         }
     };
     std::thread threads[cpuNum];
-    int block = (searchNum + cpuNum - 1) / cpuNum;  // div up
-    for (int i = 0; i < cpuNum; i++)
-    {
+    int block = (searchNum + cpuNum - 1) / cpuNum; // div up
+    for (int i = 0; i < cpuNum; i++) {
         threads[i] = std::thread(cpuSearchFunctor, i, i * block, (i + 1) * block);
     }
-    for (int i = 0; i < cpuNum; i++)
-    {
+    for (int i = 0; i < cpuNum; i++) {
         threads[i].join();
     }
     double cpuSearchEnd = GetMillisecs();
     recallMap recall = calRecallNomal(labelRet, data.gt.data(), searchNum);
     // QPS = 并发线程数 * (1000 / 平均耗时ms)
     printf("searchNum = %d, r1 = %.2f, r10 = %.2f, r100 = %.2f, qps = %lf\n", searchNum, recall[RECMAP_KEY_1],
-           recall[RECMAP_KEY_10], recall[RECMAP_KEY_100], MILLI_SECOND * searchNum / (cpuSearchEnd - searchStart));
+        recall[RECMAP_KEY_10], recall[RECMAP_KEY_100], MILLI_SECOND * searchNum / (cpuSearchEnd - searchStart));
 }
 
 void SearchProccess(faiss::ascend::AscendIndexIVFSQT &index, size_t ntotal, std::vector<float> &base,
-                    std::vector<float> &learn, dataFloat dataBaseFloat)
+    std::vector<float> &learn, dataFloat dataBaseFloat)
 {
     int fuzzyK = 3;
     float threshold = 1.6;
@@ -236,34 +219,28 @@ void TestIVFSQT(int niter, int ncentroids)
     size_t learnNum = ntotal / 10;
     int gtNum = 100;
     int centroid = 256;
-    try
-    {
+    try {
         // resource size 1024 * 1024 * 1024 = 1GB
-        faiss::ascend::AscendIndexIVFSQTConfig conf({0}, static_cast<int64_t>(1024 * 1024 * 1024));
+        faiss::ascend::AscendIndexIVFSQTConfig conf({ 0 }, static_cast<int64_t>(1024 * 1024 * 1024));
         conf.cp.niter = niter;
         conf.useKmeansPP = true;
         conf.cp.max_points_per_centroid = centroid;
         faiss::ascend::AscendIndexIVFSQT index(DIM_IN, DIM_OUT, ncentroids,
-                                               faiss::ScalarQuantizer::QuantizerType::QT_8bit,
-                                               faiss::METRIC_INNER_PRODUCT, conf);
+            faiss::ScalarQuantizer::QuantizerType::QT_8bit, faiss::METRIC_INNER_PRODUCT, conf);
         std::vector<int8_t> baseInt8(ntotal * DIM_IN);
-        for (size_t i = 0; i < ntotal * DIM_IN; i++)
-        {
+        for (size_t i = 0; i < ntotal * DIM_IN; i++) {
             baseInt8[i] = RandomInt8();
         }
         std::vector<int8_t> learnInt8(learnNum * DIM_IN);
-        for (size_t i = 0; i < learnNum * DIM_IN; i++)
-        {
+        for (size_t i = 0; i < learnNum * DIM_IN; i++) {
             learnInt8[i] = RandomInt8();
         }
         std::vector<int8_t> queryInt8(queryNum * DIM_IN);
         std::vector<int64_t> gt(queryNum * gtNum, 0);
-        for (size_t q = 0; q < queryNum; q++)
-        {
+        for (size_t q = 0; q < queryNum; q++) {
             size_t idx;
             GeneratorRandomIndex(ntotal, idx);
-            for (size_t d = 0; d < DIM_IN; d++)
-            {
+            for (size_t d = 0; d < DIM_IN; d++) {
                 queryInt8[q * DIM_IN + d] = baseInt8[idx * DIM_IN + d];
             }
             gt[q * gtNum] = static_cast<int64_t>(idx);
@@ -271,34 +248,30 @@ void TestIVFSQT(int niter, int ncentroids)
         // int8 to float，除以128.0是为了将其映射到-1.0到1.0的区间内。
         float intToFloat = 128.0;
         std::vector<float> base(ntotal * DIM_IN);
-        for (size_t i = 0; i < ntotal * DIM_IN; i++)
-        {
+        for (size_t i = 0; i < ntotal * DIM_IN; i++) {
             base[i] = static_cast<float>(baseInt8[i]) / intToFloat;
         }
         std::vector<float> query(queryNum * DIM_IN);
-        for (size_t i = 0; i < queryNum * DIM_IN; i++)
-        {
+        for (size_t i = 0; i < queryNum * DIM_IN; i++) {
             query[i] = static_cast<float>(queryInt8[i]) / intToFloat;
         }
         std::vector<float> learn(learnNum * DIM_IN);
-        for (size_t i = 0; i < learnNum * DIM_IN; i++)
-        {
+        for (size_t i = 0; i < learnNum * DIM_IN; i++) {
             learn[i] = static_cast<float>(learnInt8[i]) / intToFloat;
         }
         dataFloat dataBaseFloat(base, learn, query, gt);
         SearchProccess(index, ntotal, base, learn, dataBaseFloat);
-    }
-    catch (std::exception &e)
-    {
+    } catch (std::exception &e) {
         printf("%s\n", e.what());
+        std::exit(EXIT_FAILURE);
     }
 }
 
-}  // namespace
+} // namespace
 
 int main(int argc, char **argv)
 {
-    int ncentroids = 16384;  // 分桶的数目
+    int ncentroids = 16384; // 分桶的数目
     int niter = 16;
     printf("Start Test\n");
     TestIVFSQT(niter, ncentroids);

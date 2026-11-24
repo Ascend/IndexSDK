@@ -46,8 +46,7 @@
 
 #include "acl/acl.h"
 
-namespace
-{
+namespace {
 unsigned int g_seed;
 const int FAST_RAND_MAX = 0x7FFF;
 const int RECMAP_KEY_1 = 1;
@@ -57,7 +56,7 @@ const int MILLI_SECOND = 1000;
 using recallMap = std::unordered_map<int, float>;
 inline double GetMillisecs()
 {
-    struct timeval tv = {0, 0};
+    struct timeval tv = { 0, 0 };
     gettimeofday(&tv, nullptr);
     return tv.tv_sec * 1e3 + tv.tv_usec * 1e-3;
 }
@@ -66,8 +65,7 @@ inline void AssertEqual(const std::vector<float> &gt, const std::vector<float> &
 {
     const float epson = 1e-3;
     ASSERT_EQ(gt.size(), data.size());
-    for (size_t i = 0; i < gt.size(); i++)
-    {
+    for (size_t i = 0; i < gt.size(); i++) {
         ASSERT_TRUE(fabs(gt[i] - data[i]) <= epson)
             << "i: " << i << " gt: " << gt[i] << " data: " << data[i] << std::endl;
     }
@@ -75,16 +73,13 @@ inline void AssertEqual(const std::vector<float> &gt, const std::vector<float> &
 
 void computeRecall(recallMap &recMap, int j)
 {
-    if (j < RECMAP_KEY_100)
-    {
+    if (j < RECMAP_KEY_100) {
         recMap[RECMAP_KEY_100]++;
     }
-    if (j < RECMAP_KEY_10)
-    {
+    if (j < RECMAP_KEY_10) {
         recMap[RECMAP_KEY_10]++;
     }
-    if (j == 0)
-    {
+    if (j == 0) {
         recMap[RECMAP_KEY_1]++;
     }
 }
@@ -95,33 +90,27 @@ recallMap calRecall(std::vector<faiss::idx_t> label, int64_t *gt, int queryNum)
     map[RECMAP_KEY_1] = 0;
     map[RECMAP_KEY_10] = 0;
     map[RECMAP_KEY_100] = 0;
-    if (queryNum == 0)
-    {
+    if (queryNum == 0) {
         std::cerr << "Error: Invalid queryNum value." << std::endl;
         return map;
     }
     int k = label.size() / queryNum;
 
-    for (int i = 0; i < queryNum; i++)
-    {
+    for (int i = 0; i < queryNum; i++) {
         std::set<int> labelSet(label.begin() + i * k, label.begin() + i * k + k);
-        if (labelSet.size() != static_cast<size_t>(k))
-        {
+        if (labelSet.size() != static_cast<size_t>(k)) {
             printf("current query have duplicated labels!!! \n");
         }
-        for (int j = 0; j < k; j++)
-        {
-            if (gt[i * k] == label[i * k + j])
-            {
+        for (int j = 0; j < k; j++) {
+            if (gt[i * k] == label[i * k + j]) {
                 computeRecall(map, j);
                 break;
             }
         }
     }
-    map[RECMAP_KEY_1] = map[RECMAP_KEY_1] / queryNum * 100;  // recMap[1]的百分比 这里的100代表的是百分比的计算因子
-    map[RECMAP_KEY_10] = map[RECMAP_KEY_10] / queryNum * 100;  // recMap[10]的百分比 这里的100代表的是百分比的计算因子
-    map[RECMAP_KEY_100] =
-        map[RECMAP_KEY_100] / queryNum * 100;  // recMap[100]的百分比 这里的100代表的是百分比的计算因子
+    map[RECMAP_KEY_1] = map[RECMAP_KEY_1] / queryNum * 100; // recMap[1]的百分比 这里的100代表的是百分比的计算因子
+    map[RECMAP_KEY_10] = map[RECMAP_KEY_10] / queryNum * 100; // recMap[10]的百分比 这里的100代表的是百分比的计算因子
+    map[RECMAP_KEY_100] = map[RECMAP_KEY_100] / queryNum * 100; // recMap[100]的百分比 这里的100代表的是百分比的计算因子
     return map;
 }
 
@@ -139,20 +128,16 @@ inline int FastRand(void)
 void Norm(float *data, size_t n, int dim)
 {
 #pragma omp parallel for if (n > 100)
-    for (size_t i = 0; i < n; ++i)
-    {
+    for (size_t i = 0; i < n; ++i) {
         float l2norm = 0;
-        for (int j = 0; j < dim; ++j)
-        {
+        for (int j = 0; j < dim; ++j) {
             l2norm += data[i * dim + j] * data[i * dim + j];
         }
         l2norm = std::sqrt(l2norm);
-        if (fabs(l2norm) < FLT_EPSILON)
-        {
+        if (fabs(l2norm) < FLT_EPSILON) {
             std::cerr << "Error: Invalid l2norm value." << std::endl;
         }
-        for (int j = 0; j < dim; ++j)
-        {
+        for (int j = 0; j < dim; ++j) {
             data[i * dim + j] = data[i * dim + j] / l2norm;
         }
     }
@@ -161,15 +146,13 @@ void Norm(float *data, size_t n, int dim)
 int ReadEnvInt(const char *name, int defaultValue)
 {
     const char *raw = std::getenv(name);
-    if (raw == nullptr || *raw == '\0')
-    {
+    if (raw == nullptr || *raw == '\0') {
         return defaultValue;
     }
     errno = 0;
     char *end = nullptr;
     long value = std::strtol(raw, &end, 10);
-    if (errno != 0 || end == raw || *end != '\0' || value < 1 || value > INT_MAX)
-    {
+    if (errno != 0 || end == raw || *end != '\0' || value < 1 || value > INT_MAX) {
         throw std::invalid_argument(std::string("invalid positive integer in ") + name + ": " + raw);
     }
     return static_cast<int>(value);
@@ -178,15 +161,13 @@ int ReadEnvInt(const char *name, int defaultValue)
 int ReadEnvNonNegativeInt(const char *name, int defaultValue)
 {
     const char *raw = std::getenv(name);
-    if (raw == nullptr || *raw == '\0')
-    {
+    if (raw == nullptr || *raw == '\0') {
         return defaultValue;
     }
     errno = 0;
     char *end = nullptr;
     long value = std::strtol(raw, &end, 10);
-    if (errno != 0 || end == raw || *end != '\0' || value < 0 || value > INT_MAX)
-    {
+    if (errno != 0 || end == raw || *end != '\0' || value < 0 || value > INT_MAX) {
         throw std::invalid_argument(std::string("invalid non-negative integer in ") + name + ": " + raw);
     }
     return static_cast<int>(value);
@@ -195,24 +176,20 @@ int ReadEnvNonNegativeInt(const char *name, int defaultValue)
 size_t ReadEnvSize(const char *name, size_t defaultValue)
 {
     const char *raw = std::getenv(name);
-    if (raw == nullptr || *raw == '\0')
-    {
+    if (raw == nullptr || *raw == '\0') {
         return defaultValue;
     }
     const char *p = raw;
-    while (*p == ' ' || *p == '\t')
-    {
+    while (*p == ' ' || *p == '\t') {
         ++p;
     }
-    if (*p == '-')
-    {
+    if (*p == '-') {
         throw std::invalid_argument(std::string("invalid positive size in ") + name + ": " + raw);
     }
     errno = 0;
     char *end = nullptr;
     unsigned long long value = std::strtoull(p, &end, 10);
-    if (errno != 0 || end == p || *end != '\0' || value == 0 || value > SIZE_MAX)
-    {
+    if (errno != 0 || end == p || *end != '\0' || value == 0 || value > SIZE_MAX) {
         throw std::invalid_argument(std::string("invalid positive size in ") + name + ": " + raw);
     }
     return static_cast<size_t>(value);
@@ -220,8 +197,7 @@ size_t ReadEnvSize(const char *name, size_t defaultValue)
 
 // The benchmark wrapper supplies these variables so the same example can
 // cover both acceptance scenarios without maintaining a second test binary.
-struct FlatBenchConfig
-{
+struct FlatBenchConfig {
     int dim = 256;
     size_t base = 1000000;
     int topk = 100;
@@ -243,41 +219,30 @@ FlatBenchConfig ReadBenchConfig()
     config.warmup = ReadEnvInt("ASCEND_FLAT_WARMUP", config.warmup);
     config.loops = ReadEnvInt("ASCEND_FLAT_LOOPS", config.loops);
     config.device = ReadEnvNonNegativeInt("ASCEND_FLAT_DEVICE", config.device);
-    size_t resourceSize = ReadEnvSize(
-        "ASCEND_FLAT_RESOURCE_SIZE", static_cast<size_t>(config.resourceSize));
-    if (resourceSize > static_cast<size_t>(INT64_MAX))
-    {
+    size_t resourceSize = ReadEnvSize("ASCEND_FLAT_RESOURCE_SIZE", static_cast<size_t>(config.resourceSize));
+    if (resourceSize > static_cast<size_t>(INT64_MAX)) {
         throw std::invalid_argument("ASCEND_FLAT_RESOURCE_SIZE exceeds INT64_MAX");
     }
     config.resourceSize = static_cast<int64_t>(resourceSize);
     const char *metric = std::getenv("ASCEND_FLAT_METRIC");
-    if (metric != nullptr && std::strcmp(metric, "IP") == 0)
-    {
+    if (metric != nullptr && std::strcmp(metric, "IP") == 0) {
         config.metric = faiss::METRIC_INNER_PRODUCT;
-    }
-    else if (metric != nullptr && std::strcmp(metric, "L2") != 0)
-    {
+    } else if (metric != nullptr && std::strcmp(metric, "L2") != 0) {
         throw std::invalid_argument(std::string("ASCEND_FLAT_METRIC must be L2 or IP, got: ") + metric);
     }
-    if (config.base > SIZE_MAX / static_cast<size_t>(config.dim))
-    {
+    if (config.base > SIZE_MAX / static_cast<size_t>(config.dim)) {
         throw std::overflow_error("ASCEND_FLAT_BASE * ASCEND_FLAT_DIM overflows size_t");
     }
-    if (static_cast<size_t>(config.topk) > config.base)
-    {
+    if (static_cast<size_t>(config.topk) > config.base) {
         throw std::invalid_argument("ASCEND_FLAT_TOPK cannot exceed ASCEND_FLAT_BASE");
     }
-    if (static_cast<size_t>(config.queryNum) > config.base)
-    {
+    if (static_cast<size_t>(config.queryNum) > config.base) {
         throw std::invalid_argument("ASCEND_FLAT_QUERY_NUM cannot exceed ASCEND_FLAT_BASE");
     }
     return config;
 }
 
-const char *MetricName(faiss::MetricType metric)
-{
-    return metric == faiss::METRIC_INNER_PRODUCT ? "IP" : "L2";
-}
+const char *MetricName(faiss::MetricType metric) { return metric == faiss::METRIC_INNER_PRODUCT ? "IP" : "L2"; }
 
 bool ShouldNormalize()
 {
@@ -291,27 +256,23 @@ TEST(TestAscendIndexFlat, QPS)
     int dim = config.dim;
     size_t ntotal = config.base;
     size_t maxSize = ntotal * dim;
-    try
-    {
+    try {
         std::vector<float> data(maxSize);
-        for (size_t i = 0; i < maxSize; i++)
-        {
+        for (size_t i = 0; i < maxSize; i++) {
             data[i] = 1.0 * FastRand() / FAST_RAND_MAX;
         }
-        if (ShouldNormalize())
-        {
+        if (ShouldNormalize()) {
             Norm(data.data(), ntotal, dim);
         }
 
-        faiss::ascend::AscendIndexFlatConfig conf({config.device}, config.resourceSize);
+        faiss::ascend::AscendIndexFlatConfig conf({ config.device }, config.resourceSize);
         faiss::ascend::AscendIndexFlat index(dim, config.metric, conf);
         index.verbose = true;
 
         index.add(ntotal, data.data());
         {
             size_t getTotal = 0;
-            for (size_t i = 0; i < conf.deviceList.size(); i++)
-            {
+            for (size_t i = 0; i < conf.deviceList.size(); i++) {
                 size_t tmpTotal = index.getBaseSize(conf.deviceList[i]);
                 getTotal += tmpTotal;
             }
@@ -324,41 +285,33 @@ TEST(TestAscendIndexFlat, QPS)
         const int warmupTopk = benchmarkTopkConfigured ? config.topk : 10;
         std::vector<float> distw(warmupQuery * warmupTopk, 0);
         std::vector<faiss::idx_t> labelw(warmupQuery * warmupTopk, 0);
-        for (int i = 0; i < config.warmup; i++)
-        {
+        for (int i = 0; i < config.warmup; i++) {
             index.search(warmupQuery, data.data(), warmupTopk, distw.data(), labelw.data());
         }
 
         std::vector<int> searchNum;
-        if (benchmarkQueryConfigured)
-        {
-            searchNum = {config.queryNum};
+        if (benchmarkQueryConfigured) {
+            searchNum = { config.queryNum };
+        } else {
+            searchNum = { 8, 16, 32, 64, 128, 256 };
         }
-        else
-        {
-            searchNum = {8, 16, 32, 64, 128, 256};
-        }
-        for (size_t n = 0; n < searchNum.size(); n++)
-        {
+        for (size_t n = 0; n < searchNum.size(); n++) {
             int k = benchmarkTopkConfigured ? config.topk : 10;
             int loopTimes = config.loops;
             std::vector<float> dist(searchNum[n] * k, 0);
             std::vector<faiss::idx_t> label(searchNum[n] * k, 0);
             double ts = GetMillisecs();
-            for (int i = 0; i < loopTimes; i++)
-            {
+            for (int i = 0; i < loopTimes; i++) {
                 index.search(searchNum[n], data.data(), k, dist.data(), label.data());
             }
             double te = GetMillisecs();
             double duration = te - ts;
             printf("flat, metric:%s, base:%zu, dim:%d, searchnum:%d, topk:%d, duration_ms:%.3lf, QPS:%.4f\n",
-                   MetricName(config.metric), ntotal, dim, searchNum[n], k, duration,
-                   duration > 0 ? MILLI_SECOND * searchNum[n] * loopTimes / duration : 0.0);
+                MetricName(config.metric), ntotal, dim, searchNum[n], k, duration,
+                duration > 0 ? MILLI_SECOND * searchNum[n] * loopTimes / duration : 0.0);
         }
-    }
-    catch (std::exception &e)
-    {
-        printf("%s\n", e.what());
+    } catch (std::exception &e) {
+        FAIL() << e.what();
     }
 }
 
@@ -371,21 +324,20 @@ TEST(TestAscendIndexFlat, FilterQPS)
     constexpr int k = 30;
     constexpr int repeat = 3;
     constexpr double targetPerDie = 100000.0 / 16;
-    const int batches[] = {32, 48};
-    const int passPercents[] = {100, 50, 1};
+    const int batches[] = { 32, 48 };
+    const int passPercents[] = { 100, 50, 1 };
     using Clock = std::chrono::steady_clock;
     auto millis = [](Clock::duration duration) { return std::chrono::duration<double, std::milli>(duration).count(); };
 
     std::vector<float> base(static_cast<size_t>(ntotal) * dim);
     uint32_t state = 1;
-    for (float &value : base)
-    {
+    for (float &value : base) {
         state ^= state << 13;
         state ^= state >> 17;
         state ^= state << 5;
         value = static_cast<float>(state & 0xffff) / 65535.0f - 0.5f;
     }
-    faiss::ascend::AscendIndexFlatConfig config({0});
+    faiss::ascend::AscendIndexFlatConfig config({ 0 });
     faiss::ascend::AscendIndexFlat index(dim, faiss::METRIC_INNER_PRODUCT, config);
     index.add(ntotal, base.data());
     std::vector<faiss::idx_t> ids;
@@ -393,54 +345,42 @@ TEST(TestAscendIndexFlat, FilterQPS)
     ASSERT_EQ(ids.size(), static_cast<size_t>(ntotal));
     const size_t maskBytes = (ntotal + 7) / 8;
 
-    auto makeMasks = [&](int batch, const faiss::IDSelectorBitmap &selector, std::vector<uint8_t> &masks)
-    {
+    auto makeMasks = [&](int batch, const faiss::IDSelectorBitmap &selector, std::vector<uint8_t> &masks) {
         std::fill(masks.begin(), masks.end(), 0);
-        for (int pos = 0; pos < ntotal; ++pos)
-        {
-            if (selector.is_member(ids[pos]))
-            {
+        for (int pos = 0; pos < ntotal; ++pos) {
+            if (selector.is_member(ids[pos])) {
                 masks[pos / 8] |= uint8_t(1u << (pos % 8));
             }
         }
-        for (int q = 1; q < batch; ++q)
-        {
+        for (int q = 1; q < batch; ++q) {
             std::copy_n(masks.begin(), maskBytes, masks.begin() + static_cast<size_t>(q) * maskBytes);
         }
     };
 
-    struct Result
-    {
+    struct Result {
         double qps;
         double callMs;
     };
     auto measure = [&](int batch, int mode, const faiss::IDSelectorBitmap &selector, const float *queries,
-                       std::vector<float> &distances, std::vector<faiss::idx_t> &labels, std::vector<uint8_t> &masks)
-    {
+                       std::vector<float> &distances, std::vector<faiss::idx_t> &labels, std::vector<uint8_t> &masks) {
         std::vector<Result> results;
-        if (mode == 1) makeMasks(batch, selector, masks);
-        for (int run = 0; run < repeat; ++run)
-        {
+        if (mode == 1)
+            makeMasks(batch, selector, masks);
+        for (int run = 0; run < repeat; ++run) {
             int calls = 0;
             const auto begin = Clock::now();
-            do
-            {
-                if (mode == 0)
-                {
+            do {
+                if (mode == 0) {
                     index.search(batch, queries, k, distances.data(), labels.data());
-                }
-                else if (mode == 1)
-                {
+                } else if (mode == 1) {
                     index.search_with_masks(batch, queries, k, distances.data(), labels.data(), masks.data());
-                }
-                else
-                {
+                } else {
                     index.search_with_selector(batch, queries, k, distances.data(), labels.data(), &selector);
                 }
                 ++calls;
             } while (Clock::now() - begin < std::chrono::seconds(2));
             const double elapsedMs = millis(Clock::now() - begin);
-            results.push_back({1000.0 * calls * batch / elapsedMs, elapsedMs / calls});
+            results.push_back({ 1000.0 * calls * batch / elapsedMs, elapsedMs / calls });
         }
         std::sort(results.begin(), results.end(), [](const Result &a, const Result &b) { return a.qps < b.qps; });
         return results[repeat / 2];
@@ -448,8 +388,7 @@ TEST(TestAscendIndexFlat, FilterQPS)
 
     printf("mode,selector_type,pass_percent,batch,qps,call_ms,reference_qps\n");
     int qualifiedBatch[sizeof(passPercents) / sizeof(passPercents[0])] = {};
-    for (int batch : batches)
-    {
+    for (int batch : batches) {
         std::vector<float> queries(base.begin(), base.begin() + static_cast<size_t>(batch) * dim);
         std::vector<float> distances(batch * k), plainDistances(batch * k);
         std::vector<faiss::idx_t> labels(batch * k), plainLabels(batch * k);
@@ -464,13 +403,11 @@ TEST(TestAscendIndexFlat, FilterQPS)
 
         const Result plain = measure(batch, 0, all, queries.data(), distances, labels, masks);
         printf("plain,none,100,%d,%.1f,%.6f,%.1f\n", batch, plain.qps, plain.callMs, targetPerDie);
-        for (size_t p = 0; p < sizeof(passPercents) / sizeof(passPercents[0]); ++p)
-        {
+        for (size_t p = 0; p < sizeof(passPercents) / sizeof(passPercents[0]); ++p) {
             const int passPercent = passPercents[p];
             const int allowed = ntotal * passPercent / 100;
             std::vector<uint8_t> bitmap(maskBytes, 0);
-            for (int i = 0; i < allowed; ++i)
-            {
+            for (int i = 0; i < allowed; ++i) {
                 const faiss::idx_t id = ids[(static_cast<size_t>(i) * 7919) % ntotal];
                 bitmap[id / 8] |= uint8_t(1u << (id % 8));
             }
@@ -482,20 +419,21 @@ TEST(TestAscendIndexFlat, FilterQPS)
             index.search_with_selector(batch, queries.data(), k, distances.data(), labels.data(), &selectedBitmap);
             ASSERT_EQ(distances, expectedDist) << "bitmap pass=" << passPercent;
             ASSERT_EQ(labels, expectedIds) << "bitmap pass=" << passPercent;
-            for (auto id : labels) ASSERT_TRUE(selectedBitmap.is_member(id));
+            for (auto id : labels)
+                ASSERT_TRUE(selectedBitmap.is_member(id));
 
             const Result masked = measure(batch, 1, selectedBitmap, queries.data(), distances, labels, masks);
             const Result endToEnd = measure(batch, 2, selectedBitmap, queries.data(), distances, labels, masks);
             printf("mask,bitmap,%d,%d,%.1f,%.6f,%.1f\n", passPercent, batch, masked.qps, masked.callMs, targetPerDie);
             printf("idselector,bitmap,%d,%d,%.1f,%.6f,%.1f\n", passPercent, batch, endToEnd.qps, endToEnd.callMs,
-                   targetPerDie);
-            if (endToEnd.qps > targetPerDie) qualifiedBatch[p] = batch;
+                targetPerDie);
+            if (endToEnd.qps > targetPerDie)
+                qualifiedBatch[p] = batch;
         }
     }
-    for (size_t p = 0; p < sizeof(passPercents) / sizeof(passPercents[0]); ++p)
-    {
+    for (size_t p = 0; p < sizeof(passPercents) / sizeof(passPercents[0]); ++p) {
         printf("bitmap pass=%d%% single-die reference %s, batch=%d\n", passPercents[p],
-               qualifiedBatch[p] ? "met" : "not met", qualifiedBatch[p]);
+            qualifiedBatch[p] ? "met" : "not met", qualifiedBatch[p]);
     }
 }
 
@@ -509,15 +447,14 @@ TEST(TestAscendIndexFlat, SlowPathFilterQPS)
     constexpr int k = 30;
     constexpr int repeat = 3;
     constexpr double targetPerDie = 100000.0 / 16;
-    const int batches[] = {32, 48};
-    const int passPercents[] = {100, 50, 1};
+    const int batches[] = { 32, 48 };
+    const int passPercents[] = { 100, 50, 1 };
     using Clock = std::chrono::steady_clock;
     auto millis = [](Clock::duration duration) { return std::chrono::duration<double, std::milli>(duration).count(); };
 
     std::vector<float> base(static_cast<size_t>(ntotal) * dim);
     uint32_t state = 1;
-    for (float &value : base)
-    {
+    for (float &value : base) {
         state ^= state << 13;
         state ^= state >> 17;
         state ^= state << 5;
@@ -526,8 +463,9 @@ TEST(TestAscendIndexFlat, SlowPathFilterQPS)
     // Non-contiguous IDs force the remap path: idxDeviceMap[p] = ID_BASE + p * ID_STRIDE.
     constexpr faiss::idx_t idBase = 1000, idStride = 7;
     std::vector<faiss::idx_t> ids(ntotal);
-    for (int i = 0; i < ntotal; ++i) ids[i] = idBase + static_cast<faiss::idx_t>(i) * idStride;
-    faiss::ascend::AscendIndexFlatConfig config({0});
+    for (int i = 0; i < ntotal; ++i)
+        ids[i] = idBase + static_cast<faiss::idx_t>(i) * idStride;
+    faiss::ascend::AscendIndexFlatConfig config({ 0 });
     faiss::ascend::AscendIndexFlat index(dim, faiss::METRIC_INNER_PRODUCT, config);
     index.add_with_ids(ntotal, base.data(), ids.data());
     std::vector<faiss::idx_t> idxMap;
@@ -537,26 +475,22 @@ TEST(TestAscendIndexFlat, SlowPathFilterQPS)
     // Bitmap covers the largest custom ID, as a caller would size it by external ID.
     const size_t bitmapBytes = (ids.back() + 7) / 8;
 
-    struct Result
-    {
+    struct Result {
         double qps;
         double callMs;
     };
     auto measure = [&](int batch, const faiss::IDSelectorBitmap &selector, const float *queries,
-                       std::vector<float> &distances, std::vector<faiss::idx_t> &labels)
-    {
+                       std::vector<float> &distances, std::vector<faiss::idx_t> &labels) {
         std::vector<Result> results;
-        for (int run = 0; run < repeat; ++run)
-        {
+        for (int run = 0; run < repeat; ++run) {
             int calls = 0;
             const auto begin = Clock::now();
-            do
-            {
+            do {
                 index.search_with_selector(batch, queries, k, distances.data(), labels.data(), &selector);
                 ++calls;
             } while (Clock::now() - begin < std::chrono::seconds(2));
             const double elapsedMs = millis(Clock::now() - begin);
-            results.push_back({1000.0 * calls * batch / elapsedMs, elapsedMs / calls});
+            results.push_back({ 1000.0 * calls * batch / elapsedMs, elapsedMs / calls });
         }
         std::sort(results.begin(), results.end(), [](const Result &a, const Result &b) { return a.qps < b.qps; });
         return results[repeat / 2];
@@ -564,36 +498,34 @@ TEST(TestAscendIndexFlat, SlowPathFilterQPS)
 
     printf("mode,selector_type,pass_percent,batch,qps,call_ms,reference_qps\n");
     int qualifiedBatch[sizeof(passPercents) / sizeof(passPercents[0])] = {};
-    for (int batch : batches)
-    {
+    for (int batch : batches) {
         std::vector<float> queries(base.begin(), base.begin() + static_cast<size_t>(batch) * dim);
         std::vector<float> distances(batch * k);
         std::vector<faiss::idx_t> labels(batch * k);
-        for (size_t p = 0; p < sizeof(passPercents) / sizeof(passPercents[0]); ++p)
-        {
+        for (size_t p = 0; p < sizeof(passPercents) / sizeof(passPercents[0]); ++p) {
             const int passPercent = passPercents[p];
             const int allowed = ntotal * passPercent / 100;
             std::vector<uint8_t> bitmap(bitmapBytes, 0);
-            for (int i = 0; i < allowed; ++i)
-            {
+            for (int i = 0; i < allowed; ++i) {
                 const faiss::idx_t id = ids[(static_cast<size_t>(i) * 7919) % ntotal];
                 bitmap[id / 8] |= uint8_t(1u << (id % 8));
             }
             faiss::IDSelectorBitmap selectedBitmap(bitmap.size(), bitmap.data());
 
             index.search_with_selector(batch, queries.data(), k, distances.data(), labels.data(), &selectedBitmap);
-            for (auto id : labels) ASSERT_TRUE(id == -1 || selectedBitmap.is_member(id));
+            for (auto id : labels)
+                ASSERT_TRUE(id == -1 || selectedBitmap.is_member(id));
 
             const Result endToEnd = measure(batch, selectedBitmap, queries.data(), distances, labels);
             printf("idselector,bitmap,%d,%d,%.1f,%.6f,%.1f\n", passPercent, batch, endToEnd.qps, endToEnd.callMs,
-                   targetPerDie);
-            if (endToEnd.qps > targetPerDie) qualifiedBatch[p] = batch;
+                targetPerDie);
+            if (endToEnd.qps > targetPerDie)
+                qualifiedBatch[p] = batch;
         }
     }
-    for (size_t p = 0; p < sizeof(passPercents) / sizeof(passPercents[0]); ++p)
-    {
+    for (size_t p = 0; p < sizeof(passPercents) / sizeof(passPercents[0]); ++p) {
         printf("bitmap pass=%d%% single-die reference %s, batch=%d\n", passPercents[p],
-               qualifiedBatch[p] ? "met" : "not met", qualifiedBatch[p]);
+            qualifiedBatch[p] ? "met" : "not met", qualifiedBatch[p]);
     }
 }
 
@@ -602,37 +534,33 @@ TEST(TestAscendIndexFlat, ReplicaFilterQPS)
     constexpr int dim = 256;
     constexpr int ntotal = 100000;
     constexpr int k = 30;
-    const int batches[] = {32, 48};
-    const int passPercents[] = {100, 50, 1};
+    const int batches[] = { 32, 48 };
+    const int passPercents[] = { 100, 50, 1 };
     std::vector<int> devices;
-    if (const char *env = std::getenv("FLAT_REPLICA_DEVICES"))
-    {
+    if (const char *env = std::getenv("FLAT_REPLICA_DEVICES")) {
         std::stringstream stream(env);
         std::string token;
-        while (std::getline(stream, token, ',')) devices.push_back(std::stoi(token));
-    }
-    else
-    {
+        while (std::getline(stream, token, ','))
+            devices.push_back(std::stoi(token));
+    } else {
         uint32_t deviceCount = 0;
-        if (aclrtGetDeviceCount(&deviceCount) != ACL_SUCCESS || deviceCount == 0)
-        {
+        if (aclrtGetDeviceCount(&deviceCount) != ACL_SUCCESS || deviceCount == 0) {
             printf("skip replica test: no accessible Ascend devices\n");
             return;
         }
-        for (uint32_t device = 0; device < deviceCount; ++device) devices.push_back(static_cast<int>(device));
+        for (uint32_t device = 0; device < deviceCount; ++device)
+            devices.push_back(static_cast<int>(device));
     }
     ASSERT_FALSE(devices.empty());
 
-    if (std::getenv("MX_INDEX_MULTITHREAD") == nullptr)
-    {
+    if (std::getenv("MX_INDEX_MULTITHREAD") == nullptr) {
         printf("skip replica test: set MX_INDEX_MULTITHREAD=1 before startup\n");
         return;
     }
 
     std::vector<float> base(static_cast<size_t>(ntotal) * dim);
     uint32_t state = 1;
-    for (float &value : base)
-    {
+    for (float &value : base) {
         state ^= state << 13;
         state ^= state >> 17;
         state ^= state << 5;
@@ -644,8 +572,7 @@ TEST(TestAscendIndexFlat, ReplicaFilterQPS)
     std::vector<faiss::idx_t> ids;
     index.getIdxMap(devices.front(), ids);
     ASSERT_EQ(ids.size(), static_cast<size_t>(ntotal));
-    for (int device : devices)
-    {
+    for (int device : devices) {
         ASSERT_EQ(index.getBaseSize(device), static_cast<size_t>(ntotal));
         std::vector<faiss::idx_t> replicaIds;
         index.getIdxMap(device, replicaIds);
@@ -654,59 +581,54 @@ TEST(TestAscendIndexFlat, ReplicaFilterQPS)
 
     using Clock = std::chrono::steady_clock;
     printf("selector_type,pass_percent,batch,run,total_qps,target_qps\n");
-    for (int batch : batches)
-    {
+    for (int batch : batches) {
         std::vector<float> queries(base.begin(), base.begin() + static_cast<size_t>(batch) * dim);
-        for (int passPercent : passPercents)
-        {
+        for (int passPercent : passPercents) {
             const int allowed = ntotal * passPercent / 100;
             std::vector<uint8_t> bitmap((ntotal + 7) / 8, 0);
-            for (int i = 0; i < allowed; ++i)
-            {
+            for (int i = 0; i < allowed; ++i) {
                 const faiss::idx_t id = ids[(static_cast<size_t>(i) * 7919) % ntotal];
                 bitmap[id / 8] |= uint8_t(1u << (id % 8));
             }
             faiss::IDSelectorBitmap selectedBitmap(bitmap.size(), bitmap.data());
             std::vector<float> distances(batch * k);
             std::vector<faiss::idx_t> labels(batch * k);
-            for (size_t i = 0; i < devices.size(); ++i)
-            {
+            for (size_t i = 0; i < devices.size(); ++i) {
                 index.search_with_selector(batch, queries.data(), k, distances.data(), labels.data(), &selectedBitmap);
             }
-            for (auto id : labels) ASSERT_TRUE(selectedBitmap.is_member(id));
+            for (auto id : labels)
+                ASSERT_TRUE(selectedBitmap.is_member(id));
 
             std::vector<double> qpsRuns;
-            for (int run = 0; run < 3; ++run)
-            {
-                std::atomic<size_t> ready{0};
-                std::atomic<bool> start{false};
-                std::atomic<size_t> calls{0};
+            for (int run = 0; run < 3; ++run) {
+                std::atomic<size_t> ready{ 0 };
+                std::atomic<bool> start{ false };
+                std::atomic<size_t> calls{ 0 };
                 std::vector<std::thread> workers;
                 Clock::time_point deadline;
-                for (size_t worker = 0; worker < devices.size(); ++worker)
-                {
-                    workers.emplace_back(
-                        [&]
-                        {
-                            std::vector<float> dist(batch * k);
-                            std::vector<faiss::idx_t> resultIds(batch * k);
-                            ready.fetch_add(1);
-                            while (!start.load()) std::this_thread::yield();
-                            size_t localCalls = 0;
-                            do
-                            {
-                                index.search_with_selector(batch, queries.data(), k, dist.data(), resultIds.data(),
-                                                           &selectedBitmap);
-                                ++localCalls;
-                            } while (Clock::now() < deadline);
-                            calls.fetch_add(localCalls);
-                        });
+                for (size_t worker = 0; worker < devices.size(); ++worker) {
+                    workers.emplace_back([&] {
+                        std::vector<float> dist(batch * k);
+                        std::vector<faiss::idx_t> resultIds(batch * k);
+                        ready.fetch_add(1);
+                        while (!start.load())
+                            std::this_thread::yield();
+                        size_t localCalls = 0;
+                        do {
+                            index.search_with_selector(
+                                batch, queries.data(), k, dist.data(), resultIds.data(), &selectedBitmap);
+                            ++localCalls;
+                        } while (Clock::now() < deadline);
+                        calls.fetch_add(localCalls);
+                    });
                 }
-                while (ready.load() != devices.size()) std::this_thread::yield();
+                while (ready.load() != devices.size())
+                    std::this_thread::yield();
                 const auto begin = Clock::now();
                 deadline = begin + std::chrono::seconds(2);
                 start.store(true);
-                for (auto &worker : workers) worker.join();
+                for (auto &worker : workers)
+                    worker.join();
                 const auto end = Clock::now();
                 const double seconds = std::chrono::duration<double>(end - begin).count();
                 const double qps = calls.load() * batch / seconds;
@@ -715,8 +637,8 @@ TEST(TestAscendIndexFlat, ReplicaFilterQPS)
             }
             std::sort(qpsRuns.begin(), qpsRuns.end());
             printf("bitmap,%d,%d,median,%.1f,100000.0\n", passPercent, batch, qpsRuns[1]);
-            printf("target bitmap pass=%d%% batch=%d %s\n", passPercent, batch,
-                   qpsRuns[1] > 100000.0 ? "met" : "not met");
+            printf(
+                "target bitmap pass=%d%% batch=%d %s\n", passPercent, batch, qpsRuns[1] > 100000.0 ? "met" : "not met");
         }
     }
 }
@@ -730,37 +652,33 @@ TEST(TestAscendIndexFlat, ReplicaSlowPathFilterQPS)
     constexpr int dim = 256;
     constexpr int ntotal = 100000;
     constexpr int k = 30;
-    const int batches[] = {32, 48};
-    const int passPercents[] = {100, 50, 1};
+    const int batches[] = { 32, 48 };
+    const int passPercents[] = { 100, 50, 1 };
     std::vector<int> devices;
-    if (const char *env = std::getenv("FLAT_REPLICA_DEVICES"))
-    {
+    if (const char *env = std::getenv("FLAT_REPLICA_DEVICES")) {
         std::stringstream stream(env);
         std::string token;
-        while (std::getline(stream, token, ',')) devices.push_back(std::stoi(token));
-    }
-    else
-    {
+        while (std::getline(stream, token, ','))
+            devices.push_back(std::stoi(token));
+    } else {
         uint32_t deviceCount = 0;
-        if (aclrtGetDeviceCount(&deviceCount) != ACL_SUCCESS || deviceCount == 0)
-        {
+        if (aclrtGetDeviceCount(&deviceCount) != ACL_SUCCESS || deviceCount == 0) {
             printf("skip replica test: no accessible Ascend devices\n");
             return;
         }
-        for (uint32_t device = 0; device < deviceCount; ++device) devices.push_back(static_cast<int>(device));
+        for (uint32_t device = 0; device < deviceCount; ++device)
+            devices.push_back(static_cast<int>(device));
     }
     ASSERT_FALSE(devices.empty());
 
-    if (std::getenv("MX_INDEX_MULTITHREAD") == nullptr)
-    {
+    if (std::getenv("MX_INDEX_MULTITHREAD") == nullptr) {
         printf("skip replica test: set MX_INDEX_MULTITHREAD=1 before startup\n");
         return;
     }
 
     std::vector<float> base(static_cast<size_t>(ntotal) * dim);
     uint32_t state = 1;
-    for (float &value : base)
-    {
+    for (float &value : base) {
         state ^= state << 13;
         state ^= state >> 17;
         state ^= state << 5;
@@ -769,7 +687,8 @@ TEST(TestAscendIndexFlat, ReplicaSlowPathFilterQPS)
     // Non-contiguous IDs force the remap path on every replica: ID_BASE + p * ID_STRIDE.
     constexpr faiss::idx_t idBase = 1000, idStride = 7;
     std::vector<faiss::idx_t> ids(ntotal);
-    for (int i = 0; i < ntotal; ++i) ids[i] = idBase + static_cast<faiss::idx_t>(i) * idStride;
+    for (int i = 0; i < ntotal; ++i)
+        ids[i] = idBase + static_cast<faiss::idx_t>(i) * idStride;
     faiss::ascend::AscendIndexFlatConfig config(devices, faiss::ascend::FLAT_DEFAULT_MEM, false);
     faiss::ascend::AscendIndexFlat index(dim, faiss::METRIC_INNER_PRODUCT, config);
     index.add_with_ids(ntotal, base.data(), ids.data());
@@ -777,8 +696,7 @@ TEST(TestAscendIndexFlat, ReplicaSlowPathFilterQPS)
     index.getIdxMap(devices.front(), idxMap);
     ASSERT_EQ(idxMap.size(), static_cast<size_t>(ntotal));
     ASSERT_NE(idxMap.front(), 0) << "expected non-contiguous custom IDs for the slow path";
-    for (int device : devices)
-    {
+    for (int device : devices) {
         ASSERT_EQ(index.getBaseSize(device), static_cast<size_t>(ntotal));
         std::vector<faiss::idx_t> replicaIds;
         index.getIdxMap(device, replicaIds);
@@ -789,15 +707,12 @@ TEST(TestAscendIndexFlat, ReplicaSlowPathFilterQPS)
 
     using Clock = std::chrono::steady_clock;
     printf("selector_type,pass_percent,batch,run,total_qps,target_qps\n");
-    for (int batch : batches)
-    {
+    for (int batch : batches) {
         std::vector<float> queries(base.begin(), base.begin() + static_cast<size_t>(batch) * dim);
-        for (int passPercent : passPercents)
-        {
+        for (int passPercent : passPercents) {
             const int allowed = ntotal * passPercent / 100;
             std::vector<uint8_t> bitmap(bitmapBytes, 0);
-            for (int i = 0; i < allowed; ++i)
-            {
+            for (int i = 0; i < allowed; ++i) {
                 const faiss::idx_t id = ids[(static_cast<size_t>(i) * 7919) % ntotal];
                 bitmap[id / 8] |= uint8_t(1u << (id % 8));
             }
@@ -805,44 +720,42 @@ TEST(TestAscendIndexFlat, ReplicaSlowPathFilterQPS)
 
             std::vector<float> distances(batch * k);
             std::vector<faiss::idx_t> labels(batch * k);
-            for (size_t i = 0; i < devices.size(); ++i)
-            {
+            for (size_t i = 0; i < devices.size(); ++i) {
                 index.search_with_selector(batch, queries.data(), k, distances.data(), labels.data(), &selectedBitmap);
             }
-            for (auto id : labels) ASSERT_TRUE(id == -1 || selectedBitmap.is_member(id));
+            for (auto id : labels)
+                ASSERT_TRUE(id == -1 || selectedBitmap.is_member(id));
 
             std::vector<double> qpsRuns;
-            for (int run = 0; run < 3; ++run)
-            {
-                std::atomic<size_t> ready{0};
-                std::atomic<bool> start{false};
-                std::atomic<size_t> calls{0};
+            for (int run = 0; run < 3; ++run) {
+                std::atomic<size_t> ready{ 0 };
+                std::atomic<bool> start{ false };
+                std::atomic<size_t> calls{ 0 };
                 std::vector<std::thread> workers;
                 Clock::time_point deadline;
-                for (size_t worker = 0; worker < devices.size(); ++worker)
-                {
-                    workers.emplace_back(
-                        [&]
-                        {
-                            std::vector<float> dist(batch * k);
-                            std::vector<faiss::idx_t> resultIds(batch * k);
-                            ready.fetch_add(1);
-                            while (!start.load()) std::this_thread::yield();
-                            size_t localCalls = 0;
-                            do
-                            {
-                                index.search_with_selector(batch, queries.data(), k, dist.data(), resultIds.data(),
-                                                           &selectedBitmap);
-                                ++localCalls;
-                            } while (Clock::now() < deadline);
-                            calls.fetch_add(localCalls);
-                        });
+                for (size_t worker = 0; worker < devices.size(); ++worker) {
+                    workers.emplace_back([&] {
+                        std::vector<float> dist(batch * k);
+                        std::vector<faiss::idx_t> resultIds(batch * k);
+                        ready.fetch_add(1);
+                        while (!start.load())
+                            std::this_thread::yield();
+                        size_t localCalls = 0;
+                        do {
+                            index.search_with_selector(
+                                batch, queries.data(), k, dist.data(), resultIds.data(), &selectedBitmap);
+                            ++localCalls;
+                        } while (Clock::now() < deadline);
+                        calls.fetch_add(localCalls);
+                    });
                 }
-                while (ready.load() != devices.size()) std::this_thread::yield();
+                while (ready.load() != devices.size())
+                    std::this_thread::yield();
                 const auto begin = Clock::now();
                 deadline = begin + std::chrono::seconds(2);
                 start.store(true);
-                for (auto &worker : workers) worker.join();
+                for (auto &worker : workers)
+                    worker.join();
                 const auto end = Clock::now();
                 const double seconds = std::chrono::duration<double>(end - begin).count();
                 const double qps = calls.load() * batch / seconds;
@@ -851,8 +764,8 @@ TEST(TestAscendIndexFlat, ReplicaSlowPathFilterQPS)
             }
             std::sort(qpsRuns.begin(), qpsRuns.end());
             printf("bitmap,%d,%d,median,%.1f,100000.0\n", passPercent, batch, qpsRuns[1]);
-            printf("target bitmap pass=%d%% batch=%d %s\n", passPercent, batch,
-                   qpsRuns[1] > 100000.0 ? "met" : "not met");
+            printf(
+                "target bitmap pass=%d%% batch=%d %s\n", passPercent, batch, qpsRuns[1] > 100000.0 ? "met" : "not met");
         }
     }
 }
@@ -868,18 +781,15 @@ TEST(TestAscendIndexFlat, Acc)
     int queryNum = config.queryNum;
     printf("generate data\n");
     std::vector<float> data(maxSize);
-    try
-    {
-        for (size_t i = 0; i < maxSize; i++)
-        {
+    try {
+        for (size_t i = 0; i < maxSize; i++) {
             data[i] = 1.0 * FastRand() / FAST_RAND_MAX;
         }
-        faiss::ascend::AscendIndexFlatConfig conf({config.device}, config.resourceSize);
+        faiss::ascend::AscendIndexFlatConfig conf({ config.device }, config.resourceSize);
         faiss::ascend::AscendIndexFlat index(dim, config.metric, conf);
         index.verbose = true;
 
-        if (ShouldNormalize())
-        {
+        if (ShouldNormalize()) {
             Norm(data.data(), ntotal, dim);
         }
 
@@ -887,8 +797,7 @@ TEST(TestAscendIndexFlat, Acc)
         printf("start search by npu\n");
         std::vector<float> dist(queryNum * topk, 0);
         std::vector<faiss::idx_t> label(queryNum * topk, 0);
-        for (int i = 0; i < config.warmup; i++)
-        {
+        for (int i = 0; i < config.warmup; i++) {
             index.search(queryNum, data.data(), topk, dist.data(), label.data());
         }
         index.search(queryNum, data.data(), topk, dist.data(), label.data());
@@ -901,17 +810,15 @@ TEST(TestAscendIndexFlat, Acc)
         printf("start search by cpu\n");
         faissIndex.search(queryNum, data.data(), topk, cpuDist.data(), cpuLabel.data());
         recallMap top = calRecall(label, cpuLabel.data(), queryNum);
-        printf("Recall %d, metric:%s, base:%zu, dim:%d, searchnum:%d: @1 = %.2f, @10 = %.2f, @100 = %.2f \n",
-               topk, MetricName(config.metric), ntotal, dim, queryNum, top[RECMAP_KEY_1], top[RECMAP_KEY_10],
-               top[RECMAP_KEY_100]);
-    }
-    catch (std::exception &e)
-    {
-        printf("%s\n", e.what());
+        printf("Recall %d, metric:%s, base:%zu, dim:%d, searchnum:%d: @1 = %.2f, @10 = %.2f, @100 = %.2f \n", topk,
+            MetricName(config.metric), ntotal, dim, queryNum, top[RECMAP_KEY_1], top[RECMAP_KEY_10],
+            top[RECMAP_KEY_100]);
+    } catch (std::exception &e) {
+        FAIL() << e.what();
     }
 }
 
-}  // namespace
+} // namespace
 
 int main(int argc, char **argv)
 {
