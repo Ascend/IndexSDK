@@ -60,3 +60,26 @@
 <tr><td width="210" align="center" valign="middle">Returns</td><td valign="middle">None</td></tr>
 <tr><td width="210" align="center" valign="middle">Constraints</td><td valign="middle"><code>devices</code> must be valid, unique device IDs. The maximum number is 64. The configured value of <code>resourceSize</code> must not exceed <code>4 * 1024 MB</code> (<code>4 * 1024 * 1024 * 1024</code> bytes). When set to <code>-1</code>, the device-side Ascend AI Processor resource is configured to the default value of <code>128 MB</code>.</td></tr>
 </tbody></table>
+
+## Multi-device storage layout
+
+Set `storageMode` when constructing the index. It is independent of `trainMode`.
+
+| Value | Database writes | Search |
+| --- | --- | --- |
+| `StorageMode::Shard` (default) | `copyFrom`, `add` and `add_with_ids` distribute each inverted list across devices | Search all shards and merge TopK |
+| `StorageMode::Replica` | Every device receives the full database and identical appended vectors and IDs | Split query rows across devices and restore input order |
+
+```cpp
+faiss::ascend::AscendIndexIVFRaBitQConfig config({0, 1});
+config.storageMode = faiss::ascend::AscendIndexIVFRaBitQConfig::StorageMode::Replica;
+faiss::ascend::AscendIndexIVFRaBitQ index(128, faiss::METRIC_L2, 1024, config);
+index.copyFrom(cpuIndex);
+index.add(n, vectors);
+```
+
+`ntotal` counts logical vectors once. `copyTo` exports only the primary replica; the exported CPU carrier can be loaded with either layout. Device layout is not persisted in the CPU file and is selected by the destination configuration. Every device must hold the full compressed database. Host refine originals are owned or borrowed once by the index.
+
+Delete, update and reset operate on all replicas; existing refine mutation restrictions still apply. Replica mutations hold the exclusive index lock to prevent searches observing partial updates. After a device publication failure, search, export and mutations are rejected until a successful `reset` or `copyFrom` restores consistency.
+
+The QPS example's `--search-mode replica` now selects this layout for one multi-device index during training, add and import. It can be combined with `--train-mode slice`.

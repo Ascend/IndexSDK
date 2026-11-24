@@ -76,8 +76,8 @@ class AscendIndexIVFRaBitQImpl : public AscendIndexIVFImpl
     AscendIndexIVFRaBitQImpl &operator=(const AscendIndexIVFRaBitQImpl &) = delete;
     AscendIndexIVFRaBitQImpl(AscendIndexIVFRaBitQImpl &&) = delete;
     AscendIndexIVFRaBitQImpl &operator=(AscendIndexIVFRaBitQImpl &&) = delete;
-    // Takes a read lock instead of the base class' write lock: the daemon serialises writers against
-    // each other itself, so a delete no longer has to exclude in-flight searches.
+    // Sharded deletes can overlap searches; replica deletes hold the exclusive host lock
+    // until every device has published the same compaction.
     void deleteConcurrent(int n, const idx_t *ids);
     void deleteImpl(int n, const idx_t *ids);
     // Resolves the selector against the LocationTable and routes through deleteImpl. The base class
@@ -91,7 +91,7 @@ class AscendIndexIVFRaBitQImpl : public AscendIndexIVFImpl
         const std::vector<size_t> &slots, std::vector<::ascend::IndexIVFRaBitQ::MovedSlot> &movedOut,
         const ::ascend::IndexIVFRaBitQ::MoveValidator &validateMoves = ::ascend::IndexIVFRaBitQ::MoveValidator{});
     std::vector<idx_t> update(idx_t n, const float *x, const idx_t *ids);
-    // Read-locked counterpart of the base class' add_with_ids, with local duplicate-ID checks.
+    // Snapshot-aware add_with_ids with duplicate-ID checks and exclusive replica/refine writes.
     void addConcurrent(int n, const float *x, const idx_t *ids);
     void addPaged(int n, const float *x, const idx_t *ids) override;
     size_t getAddPagedSize(int n) const override;
@@ -213,6 +213,14 @@ class AscendIndexIVFRaBitQImpl : public AscendIndexIVFImpl
     void InvalidateFilterCache() const;
 
     AscendIndexIVFRaBitQConfig ivfrabitqConfig;
+
+    bool isReplica() const { return ivfrabitqConfig.storageMode == AscendIndexIVFRaBitQConfig::StorageMode::Replica; }
+    void checkReplicaReady() const;
+    void searchReplicas(int n, const float *x, int k, float *distances, idx_t *labels,
+                        const ::ascend::RabitqIdFilterHost *idFilter, int searchNprobe) const;
+    // Protected by mtx. Replica mutations exclude searches across the whole fan-out.
+    // A failed publication requires reset/copyFrom before reading or mutating again.
+    bool replicasInconsistent_ = false;
 
     static constexpr int kFilterCacheSlots = 2;
     struct FilterCacheSlot

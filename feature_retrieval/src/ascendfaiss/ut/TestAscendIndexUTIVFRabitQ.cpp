@@ -4187,4 +4187,261 @@ TEST(TestIndexIVFRaBitQCore, CompactionCopiesAllPayloadAndLeavesOldSnapshotUncha
     }
 }
 
+faiss::ascend::AscendIndexIVFRaBitQConfig MakeReplicaConfig()
+{
+    auto config = MakeConfig({1, 0});  // Logical primary need not be physical device zero.
+    config.storageMode = faiss::ascend::AscendIndexIVFRaBitQConfig::StorageMode::Replica;
+    return config;
+}
+
+void ExpectIdenticalReplicas(faiss::ascend::AscendIndexIVFRaBitQ& index)
+{
+    const auto devices = index.getDeviceList();
+    size_t total = 0;
+    for (int list = 0; list < NLIST; ++list)
+    {
+        std::vector<faiss::idx_t> primaryIds;
+        std::vector<uint8_t> primaryCodes;
+        auto* primary = index.impl_->getActualIndex(devices[0]);
+        ASSERT_EQ(primary->getListIds(list, primaryIds), ::ascend::APP_ERR_OK);
+        ASSERT_EQ(primary->getListRawCodes(list, primaryCodes), ::ascend::APP_ERR_OK);
+        total += primaryIds.size();
+        for (size_t d = 0; d < devices.size(); ++d)
+        {
+            auto* actual = index.impl_->getActualIndex(devices[d]);
+            std::vector<faiss::idx_t> ids;
+            std::vector<uint8_t> codes;
+            ASSERT_EQ(actual->getListIds(list, ids), ::ascend::APP_ERR_OK);
+            ASSERT_EQ(actual->getListRawCodes(list, codes), ::ascend::APP_ERR_OK);
+            EXPECT_EQ(ids, primaryIds);
+            EXPECT_EQ(codes, primaryCodes);
+            EXPECT_EQ(index.impl_->deviceAddNumMap[list][d], static_cast<int>(ids.size()));
+        }
+    }
+    EXPECT_EQ(total, static_cast<size_t>(index.ntotal));
+    EXPECT_EQ(CountMappedIds(*index.impl_->locationTable), total);
+    EXPECT_EQ(CountDeviceMappedIds(*index.impl_->locationTable, 0), total);
+    EXPECT_EQ(CountDeviceMappedIds(*index.impl_->locationTable, 1), 0U);
+}
+
+TEST(TestAscendIndexIVFRaBitQ, ReplicaCopyFromExportsOneLogicalDatabase)
+{
+    auto source = MakePretrainedCpuIndex();
+    faiss::ascend::AscendIndexIVFRaBitQ index(DIM, faiss::METRIC_L2, NLIST, MakeReplicaConfig());
+    ASSERT_NO_THROW(index.copyFrom(source.index.get()));
+    EXPECT_EQ(index.ntotal, source.index->ntotal);
+    ExpectIdenticalReplicas(index);
+    faiss::IndexIVFRaBitQ carrier;
+    ASSERT_NO_THROW(index.copyTo(&carrier));
+    EXPECT_EQ(carrier.ntotal, source.index->ntotal);
+    EXPECT_EQ(carrier.invlists->list_size(source.listId), source.ids.size());
+    ASSERT_NO_THROW(index.copyFrom(&carrier));
+    ExpectIdenticalReplicas(index);
+    ASSERT_NO_THROW(index.reset());
+    EXPECT_EQ(index.ntotal, 0);
+    ExpectIdenticalReplicas(index);
+}
+
+TEST(TestAscendIndexIVFRaBitQ, ReplicaIncrementalAddDeleteAndUpdateKeepSlotsAligned)
+{
+    auto source = MakePretrainedCpuIndex(false);
+    faiss::ascend::AscendIndexIVFRaBitQ index(DIM, faiss::METRIC_L2, NLIST, MakeReplicaConfig());
+    ASSERT_NO_THROW(index.copyFrom(source.index.get()));
+    auto vectors = MakePatternData(4, DIM);
+    const faiss::idx_t ids[] = {41, 42, 43, 44};
+    HostAddFaultGuard mock;
+    ASSERT_NO_THROW(index.add_with_ids(3, vectors.data(), ids));
+    ASSERT_NO_THROW(index.add(1, vectors.data() + 3 * DIM));
+    EXPECT_EQ(index.ntotal, 4);
+    ExpectIdenticalReplicas(index);
+    ExpectExceptionContains([&] { index.add_with_ids(1, vectors.data(), ids); }, "already exists");
+    ASSERT_NO_THROW(index.remove_ids(1, ids));  // Exercises tail backfill on every replica.
+    EXPECT_EQ(index.ntotal, 3);
+    ExpectIdenticalReplicas(index);
+    vectors[0] = 0.9f;  // Update moves the row to a different coarse list.
+    EXPECT_TRUE(index.update(1, vectors.data(), ids + 1).empty());
+    ExpectIdenticalReplicas(index);
+    faiss::IDSelectorRange selector(42, 44);
+    EXPECT_EQ(index.AscendIndex::remove_ids(selector), 2U);
+    EXPECT_EQ(index.ntotal, 1);
+    ExpectIdenticalReplicas(index);
+}
+
+TEST(TestAscendIndexIVFRaBitQ, ReplicaFailedAddBlocksReuseUntilReset)
+{
+    for (int failedDevice : {0, 1})
+    {
+        auto source = MakePretrainedCpuIndex(false);
+        faiss::ascend::AscendIndexIVFRaBitQ index(DIM, faiss::METRIC_L2, NLIST, MakeReplicaConfig());
+        ASSERT_NO_THROW(index.copyFrom(source.index.get()));
+        auto vectors = MakePatternData(1, DIM);
+        const faiss::idx_t id = 41;
+        HostAddFaultGuard mock;
+        failHostUploadDevice = failedDevice;
+        ExpectExceptionContains([&] { index.add_with_ids(1, vectors.data(), &id); }, "injected host upload failure");
+        EXPECT_TRUE(index.impl_->replicasInconsistent_);
+        float distance = 0;
+        faiss::idx_t label = -1;
+        ExpectExceptionContains([&] { index.search(1, vectors.data(), 1, &distance, &label); }, "reset or copyFrom");
+        ExpectExceptionContains([&] { index.add(1, vectors.data()); }, "reset or copyFrom");
+        ExpectExceptionContains([&] { index.remove_ids(1, &id); }, "reset or copyFrom");
+        ExpectExceptionContains([&] { index.update(1, vectors.data(), &id); }, "reset or copyFrom");
+        faiss::IndexIVFRaBitQ carrier;
+        ExpectExceptionContains([&] { index.copyTo(&carrier); }, "reset or copyFrom");
+        ASSERT_NO_THROW(index.reset());
+        EXPECT_FALSE(index.impl_->replicasInconsistent_);
+        failHostUploadDevice = -1;
+        ASSERT_NO_THROW(index.add_with_ids(1, vectors.data(), &id));
+        EXPECT_EQ(index.ntotal, 1);
+        ExpectIdenticalReplicas(index);
+    }
+}
+
+TEST(TestAscendIndexIVFRaBitQ, ReplicaFailedCopyFromCanBeReloaded)
+{
+    auto source = MakePretrainedCpuIndex();
+    faiss::ascend::AscendIndexIVFRaBitQ index(DIM, faiss::METRIC_L2, NLIST, MakeReplicaConfig());
+    encodedBatchCalls.assign(2, 0);
+    encodedBatchBeforeVersion.assign(2, 0);
+    encodedBatchBeforeSnapshot.assign(2, nullptr);
+    failEncodedBatchDevice = 0;
+    MOCKER_CPP(&faiss::ascend::AscendIndexIVFRaBitQImpl::indexIVFRaBitQAddEncodedBatch)
+        .stubs()
+        .will(invoke(StubEncodedHostBatch));
+    ExpectExceptionContains([&] { index.copyFrom(source.index.get()); }, "injected encoded batch failure");
+    EXPECT_TRUE(index.impl_->replicasInconsistent_);
+    GlobalMockObject::verify();
+    failEncodedBatchDevice = -1;
+    ASSERT_NO_THROW(index.copyFrom(source.index.get()));
+    EXPECT_FALSE(index.impl_->replicasInconsistent_);
+    ExpectIdenticalReplicas(index);
+}
+
+TEST(TestAscendIndexIVFRaBitQ, ReplicaFailedDeleteBlocksReuseUntilReload)
+{
+    auto source = MakePretrainedCpuIndex();
+    faiss::ascend::AscendIndexIVFRaBitQ index(DIM, faiss::METRIC_L2, NLIST, MakeReplicaConfig());
+    ASSERT_NO_THROW(index.copyFrom(source.index.get()));
+    hostDeleteCalls = 0;
+    failHostDeleteCall = 2;  // Secondary committed, primary rejects publication.
+    MOCKER_CPP(&faiss::ascend::AscendIndexIVFRaBitQImpl::deleteFromIVFRaBitQ).stubs().will(invoke(StubHostDelete));
+    ExpectExceptionContains([&] { index.remove_ids(1, source.ids.data()); }, "injected host delete failure");
+    EXPECT_TRUE(index.impl_->replicasInconsistent_);
+    GlobalMockObject::verify();
+    failHostDeleteCall = 0;
+    ASSERT_NO_THROW(index.copyFrom(source.index.get()));
+    ExpectIdenticalReplicas(index);
+}
+
+std::atomic<int> replicaQueryHits[8];
+std::atomic<int> replicaSearchCalls{0};
+int replicaExpectedK = 0;
+bool replicaExpectedRefine = false;
+
+::ascend::APP_ERROR StubReplicaSearch(::ascend::IndexIVFRaBitQ*, int n, const float* x, int k, float* distances,
+                                      ::ascend::idx_t* labels, const float* originals,
+                                      const ::ascend::RabitqIdFilterHost* filter, int nprobe)
+{
+    ++replicaSearchCalls;
+    EXPECT_EQ(k, replicaExpectedK);
+    EXPECT_EQ(originals != nullptr, replicaExpectedRefine);
+    EXPECT_EQ(nprobe, 3);
+    EXPECT_NE(filter, nullptr);
+    for (int q = 0; q < n; ++q)
+    {
+        const int row = static_cast<int>(x[static_cast<size_t>(q) * DIM]);
+        FAISS_THROW_IF_NOT(row >= 0 && row < 8);
+        ++replicaQueryHits[row];
+        for (int j = 0; j < k; ++j)
+        {
+            distances[static_cast<size_t>(q) * k + j] = static_cast<float>(row + j);
+            labels[static_cast<size_t>(q) * k + j] = row * 10 + j;
+        }
+    }
+    return ::ascend::APP_ERR_OK;
+}
+
+TEST(TestAscendIndexIVFRaBitQ, ReplicaQuerySlicesPreserveOrderFilterAndRefine)
+{
+    for (bool refine : {false, true})
+    {
+        auto source = MakePretrainedCpuIndex();
+        const faiss::idx_t ids[] = {0, 1, 2};
+        source.index->invlists->update_entries(source.listId, 0, 3, ids, source.codes.data());
+        auto config = MakeReplicaConfig();
+        config.needRefine = refine;
+        config.refineAlpha = 2;
+        faiss::ascend::AscendIndexIVFRaBitQ index(DIM, faiss::METRIC_L2, NLIST, config);
+        ASSERT_NO_THROW(index.copyFrom(source.index.get()));
+        const auto originals = MakePatternData(3, DIM);
+        if (refine) ASSERT_NO_THROW(index.attachRefineSources(originals.data(), 3));
+        MOCKER_CPP(static_cast<FilteredSearchFn>(&::ascend::IndexIVFRaBitQ::searchImpl))
+            .stubs()
+            .will(invoke(StubReplicaSearch));
+        replicaExpectedRefine = refine;
+        replicaExpectedK = refine ? 4 : 2;
+        for (int nq : {1, 3, 4})
+        {
+            replicaSearchCalls = 0;
+            for (auto& hits : replicaQueryHits) hits = 0;
+            std::vector<float> queries(static_cast<size_t>(nq) * DIM, 0);
+            for (int q = 0; q < nq; ++q) queries[static_cast<size_t>(q) * DIM] = static_cast<float>(q);
+            std::vector<float> distances(static_cast<size_t>(nq) * 2);
+            std::vector<faiss::idx_t> labels(distances.size());
+            faiss::IDSelectorRange selector(0, 100);
+            faiss::SearchParametersIVF params;
+            params.sel = &selector;
+            params.nprobe = 3;
+            ASSERT_NO_THROW(index.search(nq, queries.data(), 2, distances.data(), labels.data(), &params));
+            EXPECT_EQ(replicaSearchCalls.load(), std::min(nq, 2));
+            for (int q = 0; q < nq; ++q)
+            {
+                EXPECT_EQ(replicaQueryHits[q].load(), 1);
+                EXPECT_EQ(labels[q * 2], q * 10);
+                EXPECT_EQ(labels[q * 2 + 1], q * 10 + 1);
+                EXPECT_FLOAT_EQ(distances[q * 2], static_cast<float>(q));
+            }
+        }
+        GlobalMockObject::verify();
+    }
+}
+
+TEST(TestAscendIndexIVFRaBitQ, ReplicaMultiBitCopiesCodesWithoutDuplicateExport)
+{
+    const auto& soc = faiss::ascend::SocUtils::GetInstance();
+    if (soc.IsAscendA5() || soc.IsAscend310P()) GTEST_SKIP();
+    for (int bits : {2, 4})
+    {
+        auto config = MakeReplicaConfig();
+        config.quantBits = bits;
+        faiss::ascend::AscendIndexIVFRaBitQ source(DIM, faiss::METRIC_L2, NLIST, config);
+        auto centroids = MakePatternData(NLIST, DIM);
+        const ::ascend::Index::idx_t id = 41;
+        for (int device : {1, 0})
+        {
+            auto* actual = source.impl_->getActualIndex(device);
+            ASSERT_EQ(actual->updateCoarseCenterImpl(centroids), ::ascend::APP_ERR_OK);
+            std::vector<uint8_t> raw(actual->getCodeSize(), 0);
+            ASSERT_EQ(actual->addEncodedVectors(9, 1, raw.data(), &id), ::ascend::APP_ERR_OK);
+        }
+        source.is_trained = true;
+        source.ntotal = 1;
+        faiss::IndexIVFRaBitQ carrier;
+        ASSERT_NO_THROW(source.copyTo(&carrier));
+        EXPECT_EQ(carrier.ntotal, 1);
+        EXPECT_EQ(carrier.invlists->list_size(9), 1U);
+        faiss::ascend::AscendIndexIVFRaBitQ restored(DIM, faiss::METRIC_L2, NLIST, config);
+        ASSERT_NO_THROW(restored.copyFrom(&carrier));
+        ExpectIdenticalReplicas(restored);
+        HostAddFaultGuard mock;
+        const auto vectors = MakePatternData(2, DIM);
+        ASSERT_NO_THROW(restored.add(2, vectors.data()));
+        EXPECT_EQ(restored.ntotal, 3);
+        ExpectIdenticalReplicas(restored);
+        faiss::IndexIVFRaBitQ appended;
+        ASSERT_NO_THROW(restored.copyTo(&appended));
+        EXPECT_EQ(appended.ntotal, 3);
+    }
+}
+
 }  // namespace

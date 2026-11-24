@@ -324,8 +324,16 @@ void AscendIndexIVFRaBitQImpl::initFlatAtFp32()
     APP_LOG_INFO("AscendIndexIVFRaBitQImpl initFlatAtFp32 finished.\n");
 }
 
+void AscendIndexIVFRaBitQImpl::checkReplicaReady() const
+{
+    FAISS_THROW_IF_NOT_MSG(!isReplica() || !replicasInconsistent_,
+                           "Replica publication failed; reset or copyFrom is required before reuse");
+}
+
 void AscendIndexIVFRaBitQImpl::checkParams() const
 {
+    FAISS_THROW_IF_NOT_MSG(ivfrabitqConfig.storageMode == AscendIndexIVFRaBitQConfig::StorageMode::Shard || isReplica(),
+                           "Unsupported RaBitQ storageMode");
     FAISS_THROW_IF_NOT_MSG(this->intf_->metric_type == MetricType::METRIC_L2 ||
                                this->intf_->metric_type == MetricType::METRIC_INNER_PRODUCT,
                            "Unsupported metric type");
@@ -348,7 +356,13 @@ void AscendIndexIVFRaBitQImpl::checkParams() const
 
 std::vector<idx_t> AscendIndexIVFRaBitQImpl::update(idx_t n, const float* x, const idx_t* ids)
 {
-    auto lock = ::ascend::AscendMultiThreadManager::GetReadLock(mtx);
+    std::optional<std::unique_lock<std::shared_mutex>> exclusiveLock;
+    std::optional<std::shared_lock<std::shared_mutex>> sharedLock;
+    if (isReplica())
+        exclusiveLock = ::ascend::AscendMultiThreadManager::GetWriteLock(mtx);
+    else
+        sharedLock = ::ascend::AscendMultiThreadManager::GetReadLock(mtx);
+    checkReplicaReady();
     std::lock_guard<std::mutex> writerLock(writerMutex);
     FAISS_THROW_IF_NOT_MSG(attachedSrc_ == nullptr, "update conflicts with attached refine sources; reset first.");
     FAISS_THROW_IF_NOT_MSG(!copiedSources_ && srcIndexes.empty(),
@@ -458,6 +472,17 @@ void AscendIndexIVFRaBitQImpl::stageAdd(int n, const float* x, const idx_t* ids,
                 list.occupancy[j] = static_cast<int>(getActualIndex(indexConfig.deviceList[j])->getListLength(listId));
             }
         }
+        if (isReplica())
+        {
+            for (size_t d = 0; d < deviceCnt; ++d)
+            {
+                auto& device = list.devices[d];
+                device.codes.insert(device.codes.end(), x + i * dim, x + (i + 1) * dim);
+                device.ids.push_back(static_cast<ascend_idx_t>(ids[i]));
+                ++list.occupancy[d];
+            }
+            continue;
+        }
         size_t devIdx = 0;
         for (size_t j = 1; j < deviceCnt; ++j)
         {
@@ -504,7 +529,7 @@ void AscendIndexIVFRaBitQImpl::copyVectorToDevice(int n, AddStaging& staging)
             FAISS_THROW_IF_NOT_MSG(oldLen <= UINT32_MAX && device.ids.size() <= UINT32_MAX - oldLen,
                                    "list slots exceed Location representability");
             auto& batch = batches[d];
-            PrefillAddedLocations(batch.delta, device.ids, d, centroid.first);
+            if (!isReplica() || d == 0) PrefillAddedLocations(batch.delta, device.ids, d, centroid.first);
             if (!device.ids.empty())
             {
                 batch.reqs.push_back({centroid.first, device.ids.size(), device.codes.data(), device.ids.data()});
@@ -513,8 +538,12 @@ void AscendIndexIVFRaBitQImpl::copyVectorToDevice(int n, AddStaging& staging)
             for (ascend_idx_t id : device.ids)
             {
                 FAISS_THROW_IF_NOT_MSG(static_cast<int64_t>(id) >= 0, "id must be nonnegative");
-                FAISS_THROW_IF_NOT_MSG(seen.insert(static_cast<idx_t>(id)).second, "duplicate id within staged add");
-                pendingIds.push_back(static_cast<int64_t>(id));
+                if (!isReplica() || d == 0)
+                {
+                    FAISS_THROW_IF_NOT_MSG(seen.insert(static_cast<idx_t>(id)).second,
+                                           "duplicate id within staged add");
+                    pendingIds.push_back(static_cast<int64_t>(id));
+                }
                 ++pendingCounts[d];
             }
         }
@@ -577,7 +606,12 @@ void AscendIndexIVFRaBitQImpl::copyVectorToDevice(int n, AddStaging& staging)
         for (size_t r = 0; r < batch.reqs.size(); ++r)
         {
             const auto& req = batch.reqs[r];
-            PatchAddedSlots(batch.delta, batch.baseSlots[r], offset, req.numVecs);
+            if (isReplica())
+            {
+                const size_t expectedSlot = staging.at(req.listId).occupancy[idx] - req.numVecs;
+                FAISS_THROW_IF_NOT_MSG(batch.baseSlots[r] == expectedSlot, "Replica append slots diverged");
+            }
+            if (!isReplica() || idx == 0) PatchAddedSlots(batch.delta, batch.baseSlots[r], offset, req.numVecs);
             offset += req.numVecs;
             if (memDebug)
             {
@@ -604,6 +638,7 @@ void AscendIndexIVFRaBitQImpl::copyVectorToDevice(int n, AddStaging& staging)
         }
     };
     std::exception_ptr failure;
+    if (isReplica()) replicasInconsistent_ = true;
     try
     {
         // The shared helper must drain every enqueued future, including on failure, before locals die.
@@ -616,8 +651,10 @@ void AscendIndexIVFRaBitQImpl::copyVectorToDevice(int n, AddStaging& staging)
     idx_t published = 0;
     for (const auto& centroid : staging)
     {
-        for (const auto& device : centroid.second.devices)
+        const size_t count = isReplica() ? 1 : deviceCnt;
+        for (size_t d = 0; d < count; ++d)
         {
+            const auto& device = centroid.second.devices[d];
             if (device.published)
             {
                 published += static_cast<idx_t>(device.ids.size());
@@ -631,8 +668,9 @@ void AscendIndexIVFRaBitQImpl::copyVectorToDevice(int n, AddStaging& staging)
     }
     if (failure)
     {
-        std::rethrow_exception(failure);  // Successful devices stay published; no global rollback.
+        std::rethrow_exception(failure);  // Replica reuse stays blocked until reset/copyFrom.
     }
+    if (isReplica()) replicasInconsistent_ = false;
 
     if (memDebug)
     {
@@ -659,16 +697,18 @@ void AscendIndexIVFRaBitQImpl::addConcurrent(int n, const float* x, const idx_t*
 {
     // Refine searches borrow srcIndexes. Appending originals can reallocate it and temporarily make its
     // row count disagree with ntotal, so this mode retains the exclusive host lock across the whole add.
-    // Ordinary searches use only device snapshots and can still overlap a writer.
+    // Ordinary sharded searches use device snapshots and can still overlap a writer.
+    // Replicas exclude searches until the entire multi-device publication completes.
     std::optional<std::unique_lock<std::shared_mutex>> exclusiveLock;
     std::optional<std::shared_lock<std::shared_mutex>> sharedLock;
     sharedLock = ::ascend::AscendMultiThreadManager::GetReadLock(mtx);
-    if (ivfrabitqConfig.needRefine || copiedSources_ || !srcIndexes.empty())
+    if (isReplica() || ivfrabitqConfig.needRefine || copiedSources_ || !srcIndexes.empty())
     {
         sharedLock.reset();
         exclusiveLock = ::ascend::AscendMultiThreadManager::GetWriteLock(mtx);
     }
     std::lock_guard<std::mutex> writerLock(writerMutex);
+    checkReplicaReady();
     APP_LOG_INFO("AscendIndexIVFRaBitQImpl addConcurrent operation started.\n");
     FAISS_THROW_IF_NOT_MSG(x != nullptr, "x can not be nullptr.");
     FAISS_THROW_IF_NOT_MSG(this->intf_->is_trained, "Index not trained");
@@ -719,6 +759,7 @@ void AscendIndexIVFRaBitQImpl::addConcurrent(int n, const float* x, const idx_t*
 
 void AscendIndexIVFRaBitQImpl::addPaged(int n, const float* x, const idx_t* ids)
 {
+    checkReplicaReady();
     FAISS_THROW_IF_NOT_MSG(attachedSrc_ == nullptr, "add conflicts with attached refine sources; reset first.");
     APP_LOG_INFO("AscendIndexIVFRaBitQImpl addPaged operation started.\n");
     FAISS_THROW_IF_NOT_MSG(x != nullptr, "x cannot be nullptr");
@@ -1428,10 +1469,39 @@ void AscendIndexIVFRaBitQImpl::searchImpl(int n, const float* x, int k, float* d
     searchImplFiltered(n, x, k, distances, labels, nullptr);
 }
 
+void AscendIndexIVFRaBitQImpl::searchReplicas(int n, const float* x, int k, float* distances, idx_t* labels,
+                                              const ::ascend::RabitqIdFilterHost* idFilter, int searchNprobe) const
+{
+    const size_t devices = std::min(indexConfig.deviceList.size(), static_cast<size_t>(n));
+    const int candidateK = ivfrabitqConfig.needRefine ? static_cast<int>(k * ivfrabitqConfig.refineAlpha) : k;
+    auto searchFunctor = [&](int device)
+    {
+        const size_t begin = static_cast<size_t>(n) * device / devices;
+        const size_t end = static_cast<size_t>(n) * (device + 1) / devices;
+        const int count = static_cast<int>(end - begin);
+        std::vector<std::vector<float>> dist(1, std::vector<float>(static_cast<size_t>(count) * candidateK));
+        std::vector<std::vector<ascend_idx_t>> label(
+            1, std::vector<ascend_idx_t>(static_cast<size_t>(count) * candidateK));
+        IndexParam<float, float, ascend_idx_t> param(indexConfig.deviceList[device], count, intf_->d, candidateK);
+        param.query = x + begin * intf_->d;
+        param.distance = dist[0].data();
+        param.label = label[0].data();
+        indexSearch(param, idFilter, searchNprobe);
+        mergeSearchResult(1, dist, label, count, k, distances + begin * k, labels + begin * k);
+    };
+    CALL_PARALLEL_FUNCTOR(devices, readPool, searchFunctor);
+}
+
 void AscendIndexIVFRaBitQImpl::searchImplFiltered(int n, const float* x, int k, float* distances, idx_t* labels,
                                                   const ::ascend::RabitqIdFilterHost* idFilter, int searchNprobe) const
 {
     APP_LOG_INFO("AscendIndex searchImpl operation started: n=%d, k=%d, searchNprobe=%d.\n", n, k, searchNprobe);
+    checkReplicaReady();
+    if (isReplica())
+    {
+        searchReplicas(n, x, k, distances, labels, idFilter, searchNprobe);
+        return;
+    }
     size_t deviceCnt = indexConfig.deviceList.size();
     const int finalk = k;
     if (ivfrabitqConfig.needRefine)
@@ -1603,6 +1673,7 @@ void AscendIndexIVFRaBitQImpl::searchWithSelector(idx_t n, const float* x, idx_t
     auto lock = ::ascend::AscendMultiThreadManager::GetReadLock(mtx);
     APP_LOG_INFO("AscendIndexIVFRaBitQ searchWithSelector started: n=%ld, k=%ld, hasSel=%d, searchNprobe=%d.\n", n, k,
                  sel != nullptr ? 1 : 0, searchNprobe);
+    checkReplicaReady();
     check(n, x, k, distances, labels);
     FAISS_THROW_IF_NOT_MSG(indexes.size() > 0, "indexes.size must be >0");
 
@@ -1626,13 +1697,20 @@ void AscendIndexIVFRaBitQImpl::searchWithSelector(idx_t n, const float* x, idx_t
 
 void AscendIndexIVFRaBitQImpl::deleteConcurrent(int n, const idx_t* ids)
 {
-    auto lock = ::ascend::AscendMultiThreadManager::GetReadLock(mtx);
+    std::optional<std::unique_lock<std::shared_mutex>> exclusiveLock;
+    std::optional<std::shared_lock<std::shared_mutex>> sharedLock;
+    if (isReplica())
+        exclusiveLock = ::ascend::AscendMultiThreadManager::GetWriteLock(mtx);
+    else
+        sharedLock = ::ascend::AscendMultiThreadManager::GetReadLock(mtx);
+    checkReplicaReady();
     std::lock_guard<std::mutex> writerLock(writerMutex);
     deleteImpl(n, ids);
 }
 
 void AscendIndexIVFRaBitQImpl::deleteImpl(int n, const idx_t* ids)
 {
+    checkReplicaReady();
     FAISS_THROW_IF_NOT_MSG(attachedSrc_ == nullptr, "delete conflicts with attached refine sources; reset first.");
     FAISS_THROW_IF_NOT_MSG(!copiedSources_ && srcIndexes.empty(),
                            "delete conflicts with copied refine sources; reset first.");
@@ -1682,12 +1760,34 @@ void AscendIndexIVFRaBitQImpl::deleteImpl(int n, const idx_t* ids)
                 if (count.second) count.first->second = static_cast<int>(pIndex->getListLength(listId));
                 --count.first->second;
             }
+            std::vector<::ascend::IndexIVFRaBitQ::MovedSlot> expectedMoves;
+            if (isReplica()) expectedMoves.reserve(deleteIds.size());
+            bool haveExpectedMoves = false;
             // Construct before entering the daemon. It runs after compaction/drain, while publication
             // is still rejectable, and fills only the already allocated delta storage.
             ::ascend::IndexIVFRaBitQ::MoveValidator validateMoves =
                 [&](const std::vector<::ascend::IndexIVFRaBitQ::MovedSlot>& moves)
             {
                 FAISS_THROW_IF_NOT_MSG(moves.size() <= delta.movedIds.size(), "too many moved IDs");
+                if (isReplica())
+                {
+                    if (haveExpectedMoves)
+                    {
+                        FAISS_THROW_IF_NOT_MSG(moves.size() == expectedMoves.size(), "Replica compaction diverged");
+                        for (size_t i = 0; i < moves.size(); ++i)
+                        {
+                            FAISS_THROW_IF_NOT_MSG(moves[i].id == expectedMoves[i].id &&
+                                                       moves[i].listId == expectedMoves[i].listId &&
+                                                       moves[i].newSlot == expectedMoves[i].newSlot,
+                                                   "Replica compaction slots diverged");
+                        }
+                    }
+                    else
+                    {
+                        expectedMoves = moves;
+                        haveExpectedMoves = true;
+                    }
+                }
                 std::lock_guard<std::mutex> lock(locationMutex);
                 for (size_t i = 0; i < moves.size(); ++i)
                 {
@@ -1710,6 +1810,17 @@ void AscendIndexIVFRaBitQImpl::deleteImpl(int n, const idx_t* ids)
                 delta.movedIds.resize(moves.size());  // Shrink only, before publication.
                 locationTable->validateDelta(delta);
             };
+            if (isReplica())
+            {
+                replicasInconsistent_ = true;
+                for (size_t d = 1; d < deviceCnt; ++d)
+                {
+                    std::vector<::ascend::IndexIVFRaBitQ::MovedSlot> replicaMoves;
+                    deleteFromIVFRaBitQ(indexConfig.deviceList[d], deleteIds, listMap[devIndex], slotMap[devIndex],
+                                        replicaMoves, validateMoves);
+                    for (const auto& count : finalCounts) deviceAddNumMap[count.first][d] = count.second;
+                }
+            }
             deleteFromIVFRaBitQ(indexConfig.deviceList[devIndex], deleteIds, listMap[devIndex], slotMap[devIndex],
                                 movedOut, validateMoves);
             {
@@ -1722,6 +1833,7 @@ void AscendIndexIVFRaBitQImpl::deleteImpl(int n, const idx_t* ids)
             }
             intf_->ntotal -= static_cast<idx_t>(deleteIds.size());
             deleted += static_cast<int>(deleteIds.size());
+            if (isReplica()) replicasInconsistent_ = false;
         }
     }
     catch (...)
@@ -1818,6 +1930,7 @@ void AscendIndexIVFRaBitQImpl::threadUnsafeReset()
         FAISS_THROW_IF_NOT_FMT(ret == ACL_SUCCESS, "reader stream drain failed before reset, device=%d, ret=%d",
                                indexConfig.deviceList[d], ret);
     }
+    if (isReplica()) replicasInconsistent_ = true;
     for (size_t d = 0; d < deviceCnt; ++d)
     {
         FAISS_THROW_IF_NOT(aclrtSetDevice(indexConfig.deviceList[d]) == ACL_ERROR_NONE);
@@ -1834,7 +1947,7 @@ void AscendIndexIVFRaBitQImpl::threadUnsafeReset()
                 list[d] = 0;
             }
         }
-        intf_->ntotal -= deviceTotals[d];
+        if (!isReplica() || d == 0) intf_->ntotal -= deviceTotals[d];
         if (deviceTotals[d] != 0 &&
             (ivfrabitqConfig.needRefine || copiedSources_ || attachedSrc_ != nullptr || !srcIndexes.empty()))
         {
@@ -1850,6 +1963,7 @@ void AscendIndexIVFRaBitQImpl::threadUnsafeReset()
     refineSourcesReady_ = true;
     std::lock_guard<std::mutex> lock(locationMutex);
     locationTable->reset();
+    if (isReplica()) replicasInconsistent_ = false;
 }
 
 size_t AscendIndexIVFRaBitQImpl::getAddElementSize() const { return static_cast<size_t>(intf_->d) * sizeof(float); }
@@ -2029,6 +2143,7 @@ void AscendIndexIVFRaBitQImpl::copyFrom(const faiss::IndexIVFRaBitQ* index)
         intf_->is_trained = false;
         throw;
     }
+    if (isReplica()) replicasInconsistent_ = true;
     intf_->ntotal = 0;          // Only committed encoded publications below contribute to the loaded count.
     intf_->is_trained = false;  // Base import does not establish the RaBitQ device setup.
 
@@ -2107,6 +2222,16 @@ void AscendIndexIVFRaBitQImpl::copyFrom(const faiss::IndexIVFRaBitQ* index)
 
         for (size_t j = 0; j < listLen; ++j)
         {
+            if (isReplica())
+            {
+                for (size_t d = 0; d < deviceCnt; ++d)
+                {
+                    ++occupancy[d];
+                    perDeviceVecIndices[d].push_back(j);
+                    perDeviceIds[d].push_back(ids[j]);
+                }
+                continue;
+            }
             // Select device based on load balancing
             size_t devIdx = 0;
             for (size_t d = 1; d < deviceCnt; ++d)
@@ -2168,7 +2293,7 @@ void AscendIndexIVFRaBitQImpl::copyFrom(const faiss::IndexIVFRaBitQ* index)
                 {listId, idBuf.size(), codeBuf.data(), reinterpret_cast<const ::ascend::Index::idx_t*>(idBuf.data())});
             // All devices reset successfully; each list/device is imported once from a zero baseline.
             FAISS_THROW_IF_NOT_MSG(idBuf.size() <= UINT32_MAX, "list slots exceed Location representability");
-            PrefillAddedLocations(perDeviceDeltas[devIdx], idBuf, devIdx, listId);
+            if (!isReplica() || devIdx == 0) PrefillAddedLocations(perDeviceDeltas[devIdx], idBuf, devIdx, listId);
         }
     }
     // Finish every allocation before any encoded publication. Location blocks were reserved before reset.
@@ -2199,7 +2324,7 @@ void AscendIndexIVFRaBitQImpl::copyFrom(const faiss::IndexIVFRaBitQ* index)
         size_t offset = 0;
         for (size_t r = 0; r < reqs.size(); ++r)
         {
-            PatchAddedSlots(delta, baseSlots[r], offset, reqs[r].numVecs);
+            if (!isReplica() || devIdx == 0) PatchAddedSlots(delta, baseSlots[r], offset, reqs[r].numVecs);
             offset += reqs[r].numVecs;
         }
         {
@@ -2218,12 +2343,15 @@ void AscendIndexIVFRaBitQImpl::copyFrom(const faiss::IndexIVFRaBitQ* index)
 
     FAISS_THROW_IF_NOT_MSG(this->intf_->ntotal == index->ntotal, "Imported vector count does not match ntotal");
     this->intf_->is_trained = index->is_trained;
+    if (isReplica()) replicasInconsistent_ = false;
     APP_LOG_INFO("AscendIndexIVFRaBitQImpl copyFrom operation finished.");
 }
 
 // copy to cpu index
 void AscendIndexIVFRaBitQImpl::copyTo(faiss::IndexIVFRaBitQ* index) const
 {
+    auto lock = ::ascend::AscendMultiThreadManager::GetReadLock(mtx);
+    checkReplicaReady();
     APP_LOG_INFO("AscendIndexIVFRaBitQImpl copyTo operation started.");
 
     FAISS_THROW_IF_NOT_MSG(index != nullptr, "Output index is nullptr");
@@ -2282,7 +2410,7 @@ void AscendIndexIVFRaBitQImpl::copyTo(faiss::IndexIVFRaBitQ* index) const
 
     // copy inverted lists
     auto newInvlists = std::make_unique<faiss::ArrayInvertedLists>(nlist, carrierCodeSize);
-    size_t deviceCnt = indexConfig.deviceList.size();
+    size_t deviceCnt = isReplica() ? 1 : indexConfig.deviceList.size();
     int totalCopied = 0;
 
     for (int listId = 0; listId < nlist; ++listId)

@@ -62,3 +62,26 @@ AscendIndexIVFRaBitQ需要使用对应的AscendIndexIVFRaBitQConfig执行对应�
 <tr><td width="250" align="center" valign="middle">返回值</td><td valign="middle">无</td></tr>
 <tr><td width="250" align="center" valign="middle">约束说明</td><td valign="middle">● “devices”需要为合法有效不重复的设备ID，最大数量为64。<br>● “resourceSize”配置的值不超过4 * 1024MB（4 * 1024 * 1024 * 1024字节），当设置为“-1”时，Device侧昇腾AI处理器资源配置为默认值128MB。</td></tr>
 </tbody></table>
+
+## 多卡数据布局
+
+`storageMode` 控制底库在各卡上的存储方式，独立于训练配置 `trainMode`，在构造索引时设置。
+
+| 配置值 | 数据写入 | 查询方式 |
+| --- | --- | --- |
+| `StorageMode::Shard`（默认） | `copyFrom`、`add`、`add_with_ids` 将每个倒排桶的数据分片存储 | 各卡搜索相同查询，合并 TopK |
+| `StorageMode::Replica` | 每张卡保存完整底库，新增数据及 ID 同步写入各卡 | 按查询行拆分到各卡，结果按输入顺序回填 |
+
+```cpp
+faiss::ascend::AscendIndexIVFRaBitQConfig config({0, 1});
+config.storageMode = faiss::ascend::AscendIndexIVFRaBitQConfig::StorageMode::Replica;
+faiss::ascend::AscendIndexIVFRaBitQ index(128, faiss::METRIC_L2, 1024, config);
+index.copyFrom(cpuIndex);  // 每张卡保存完整底库
+index.add(n, vectors);    // 向所有副本追加相同数据
+```
+
+副本模式下 `ntotal` 为逻辑底库条数，不乘以卡数；`copyTo` 只导出主副本，可将导出结果加载到不同存储模式。CPU 文件不保存设备布局，重新加载时由目标索引的配置决定布局。每张卡需要容纳完整压缩底库；host 上的 refine 原文由同一索引对象持有或借用一份。
+
+删除、更新和 `reset` 同步作用于各卡，既有 refine 模式下的增删改限制保持不变。为避免搜索看到部分更新，副本写操作持有索引写锁。任一卡发布失败后，搜索、导出和增删改会拒绝执行，需通过成功的 `reset` 或 `copyFrom` 恢复一致状态。
+
+QPS 示例的 `--search-mode replica` 现在直接设置此存储布局，训练、加库和加载均使用一个多卡索引对象；可与 `--train-mode slice` 组合使用。
