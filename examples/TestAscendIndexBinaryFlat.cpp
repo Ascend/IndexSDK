@@ -28,8 +28,7 @@
 
 #include <random>
 
-namespace
-{
+namespace {
 const int BITS = 8;
 const int SEED = 1;
 const int MILLI_SECOND = 1000;
@@ -38,16 +37,14 @@ std::independent_bits_engine<std::mt19937, BITS, uint8_t> engine(SEED);
 void FeatureGenerator(std::vector<uint8_t> &features)
 {
     size_t n = features.size();
-    for (size_t i = 0; i < n; ++i)
-    {
+    for (size_t i = 0; i < n; ++i) {
         features[i] = engine();
     }
 }
 
 inline double GetMillisecs()
 {
-    struct timeval tv
-    {
+    struct timeval tv {
         0, 0
     };
     gettimeofday(&tv, nullptr);
@@ -58,49 +55,43 @@ TEST(TestAscendIndexBinaryFlat, QPS)
 {
     int dim = 256;
     size_t ntotal = 1000000;
-    std::vector<int> searchNum = {8, 16, 32, 64, 128, 256};
+    std::vector<int> searchNum = { 8, 16, 32, 64, 128, 256 };
 
-    faiss::ascend::AscendIndexBinaryFlatConfig conf({0});
+    faiss::ascend::AscendIndexBinaryFlatConfig conf({ 0 });
     faiss::ascend::AscendIndexBinaryFlat index(dim, conf);
     index.verbose = true;
 
     printf("generate data\n");
     std::vector<uint8_t> base(ntotal * index.code_size, 0);
     FeatureGenerator(base);
-    try
-    {
+    try {
         printf("add data\n");
         index.add(ntotal, base.data());
         int warmUpTimes = 10;
         std::vector<int32_t> distw(127 * 10, 0);
         std::vector<faiss::idx_t> labelw(127 * 10, 0);
-        for (int i = 0; i < warmUpTimes; i++)
-        {
+        for (int i = 0; i < warmUpTimes; i++) {
             index.search(127, base.data(), 10, distw.data(), labelw.data());
         }
 
-        for (size_t n = 0; n < searchNum.size(); n++)
-        {
+        for (size_t n = 0; n < searchNum.size(); n++) {
             int k = 128;
             int loopTimes = 10;
             std::vector<int32_t> dist(searchNum[n] * k, 0);
             std::vector<faiss::idx_t> label(searchNum[n] * k, 0);
             double ts = GetMillisecs();
-            for (int l = 0; l < loopTimes; l++)
-            {
+            for (int l = 0; l < loopTimes; l++) {
                 index.search(searchNum[n], base.data(), k, dist.data(), label.data());
             }
             double te = GetMillisecs();
             printf("case[%zu]: base:%zu, dim:%d, search num:%d, QPS:%.4f\n", n, ntotal, dim, searchNum[n],
-                   MILLI_SECOND * searchNum[n] * loopTimes / (te - ts));
+                MILLI_SECOND * searchNum[n] * loopTimes / (te - ts));
         }
-    }
-    catch (std::exception &e)
-    {
-        printf("%s\n", e.what());
+    } catch (std::exception &e) {
+        FAIL() << e.what();
     }
 }
-}  // namespace
+} // namespace
 
 int main(int argc, char **argv)
 {

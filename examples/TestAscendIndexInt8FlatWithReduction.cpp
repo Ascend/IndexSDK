@@ -29,15 +29,13 @@
 #include <iostream>
 #include <random>
 
-namespace
-{
+namespace {
 using recallMap = std::unordered_map<int, float>;
 const int SEARCH_NUM = 1;
 const int MILLI_SECOND = 1000;
 inline double GetMillisecs()
 {
-    struct timeval tv
-    {
+    struct timeval tv {
         0, 0
     };
     gettimeofday(&tv, nullptr);
@@ -46,8 +44,7 @@ inline double GetMillisecs()
 
 inline void AssertInt8Equal(size_t count, const int8_t *gt, const int8_t *data)
 {
-    for (size_t i = 0; i < count; i++)
-    {
+    for (size_t i = 0; i < count; i++) {
         ASSERT_TRUE(gt[i] == data[i]) << "i: " << i << " gt: " << int(gt[i]) << " data: " << int(data[i]) << std::endl;
     }
 }
@@ -57,8 +54,7 @@ inline void sqEncode(const faiss::ScalarQuantizer sq, const float *base, int8_t 
     int offset = 128;
     std::vector<uint8_t> queryUint8(n * sq.code_size);
     sq.compute_codes(base, queryUint8.data(), n);
-    for (size_t i = 0; i < n * sq.code_size; i++)
-    {
+    for (size_t i = 0; i < n * sq.code_size; i++) {
         baseInt8[i] = queryUint8[i] - offset;
     }
 }
@@ -70,8 +66,7 @@ void ReduceData(size_t ntotal, int dimIn, int dimOut, std::vector<int8_t> &baseI
     printf("generate data\n");
     std::vector<float> base(ntotal * dimIn);
     std::vector<float> baseOut(ntotal * dimOut);
-    for (size_t i = 0; i < ntotal * dimIn; i++)
-    {
+    for (size_t i = 0; i < ntotal * dimIn; i++) {
         base[i] = drand48();
     }
     // create Pcar IReduction
@@ -92,8 +87,7 @@ void ReduceData(size_t ntotal, int dimIn, int dimOut, std::vector<int8_t> &baseI
     std::vector<float> query(SEARCH_NUM * dimIn);
     std::vector<float> queryOut(SEARCH_NUM * dimOut);
 
-    for (int i = 0; i < SEARCH_NUM * dimIn; i++)
-    {
+    for (int i = 0; i < SEARCH_NUM * dimIn; i++) {
         query[i] = drand48();
     }
     reduction->reduce(SEARCH_NUM, query.data(), queryOut.data());
@@ -106,15 +100,14 @@ TEST(TestAscendIndexInt8Flat, QPS)
     int dimIn = 256;
     int dimOut = 64;
     size_t ntotal = 7000000;
-    try
-    {
+    try {
         std::vector<int8_t> baseInt8(ntotal * dimOut);
         std::vector<int8_t> queryInt8(SEARCH_NUM * dimOut);
 
         ReduceData(ntotal, dimIn, dimOut, baseInt8, queryInt8);
 
         // create index
-        faiss::ascend::AscendIndexInt8FlatConfig conf({0}, 1024 * 1024 * 1024);
+        faiss::ascend::AscendIndexInt8FlatConfig conf({ 0 }, 1024 * 1024 * 1024);
         faiss::ascend::AscendIndexInt8Flat index(dimOut, faiss::METRIC_INNER_PRODUCT, conf);
         index.verbose = true;
 
@@ -124,8 +117,7 @@ TEST(TestAscendIndexInt8Flat, QPS)
         int warmUpTimes = 10;
         std::vector<float> distw(127 * 10, 0);
         std::vector<faiss::idx_t> labelw(127 * 10, 0);
-        for (int i = 0; i < warmUpTimes; i++)
-        {
+        for (int i = 0; i < warmUpTimes; i++) {
             index.search(127, baseInt8.data(), 10, distw.data(), labelw.data());
         }
 
@@ -135,22 +127,19 @@ TEST(TestAscendIndexInt8Flat, QPS)
         std::vector<faiss::idx_t> label(SEARCH_NUM * k, 0);
 
         double ts = GetMillisecs();
-        for (int l = 0; l < loopTimes; l++)
-        {
+        for (int l = 0; l < loopTimes; l++) {
             // query data reduction and sq
             index.search(SEARCH_NUM, queryInt8.data(), k, dist.data(), label.data());
         }
         double te = GetMillisecs();
         printf("base:%zu, dim:%d, search num:%d, topk:%d, QPS:%.4f\n", ntotal, dimOut, SEARCH_NUM, k,
-               MILLI_SECOND * SEARCH_NUM * loopTimes / (te - ts));
-    }
-    catch (std::exception &e)
-    {
-        printf("%s\n", e.what());
+            MILLI_SECOND * SEARCH_NUM * loopTimes / (te - ts));
+    } catch (std::exception &e) {
+        FAIL() << e.what();
     }
 }
 
-}  // namespace
+} // namespace
 
 int main(int argc, char **argv)
 {
