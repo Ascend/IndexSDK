@@ -199,6 +199,7 @@ export IVFRABITQ_TOPK_LAYOUT=legacy
 # 恢复默认（group 编排，窗口宽度自动取设备 AI CPU 个数）
 unset IVFRABITQ_TOPK_LAYOUT
 ## IVFRaBitQ TopK 路径调优<a name="ivfrabitq-topk-tuning"></a>
+```
 
 AscendIndexIVFRaBitQ 的 L2（精排）TopK 提供两条可切换的实现路径，以及一个容量参数。与上文的诊断开关不同，**这三个环境变量默认开启**，即不设置任何环境变量时走的就是新路径；设为 `0` 回退到历史实现，可作为 A/B 对比的对照组。环境变量一览见《[附录](./09_appendix.md#ivfrabitq-topk-tuning-env)》。
 

@@ -27,6 +27,7 @@
 #include <cstring>
 #include <iostream>
 #include <limits>
+#include <numeric>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -475,7 +476,6 @@ IndexIVFRaBitQ::IndexIVFRaBitQ(int numList, int dim, int nprobes, const std::str
     ASCEND_THROW_IF_NOT(dim % CUBE_ALIGN == 0);
     ASCEND_THROW_IF_NOT_MSG(quantBits_ == 1 || quantBits_ == 2 || quantBits_ == 4,
                             "RaBitQ quantBits must be 1, 2, or 4");
-    ASCEND_THROW_IF_NOT_MSG(quantBits_ == 1 || metricType == "L2", "Multi-bit RaBitQ POC only supports L2");
     ASCEND_THROW_IF_NOT_MSG(quantBits_ != 2 || dim <= 512,
                             "2-bit RaBitQ POC supports dimensions up to 512 (query LUT UB limit)");
     ASCEND_THROW_IF_NOT_MSG(quantBits_ != 4 || dim <= 256,
@@ -2807,8 +2807,8 @@ float fvec_L2sqr(const float *x, const float *y, size_t d)
     return res;
 }
 
-void fvec_L2sqr_by_idx(float *__restrict dis, const float *x, const float *y, const idx_t *__restrict ids, size_t d,
-                       size_t nx, size_t ny)
+static void computeRefineScores(float *__restrict dis, const float *x, const float *y, const idx_t *__restrict ids,
+                                size_t d, size_t nx, size_t ny, bool innerProduct)
 {
 #pragma omp parallel for
     for (size_t j = 0; j < nx; j++)
@@ -2820,11 +2820,12 @@ void fvec_L2sqr_by_idx(float *__restrict dis, const float *x, const float *y, co
         {
             if (idsj[i] < 0)
             {
-                disj[i] = INFINITY;
+                disj[i] = innerProduct ? -INFINITY : INFINITY;
             }
             else
             {
-                disj[i] = fvec_L2sqr(xj, y + d * idsj[i], d);
+                const float *base = y + d * idsj[i];
+                disj[i] = innerProduct ? std::inner_product(xj, xj + d, base, 0.0f) : fvec_L2sqr(xj, base, d);
             }
         }
     }
@@ -2833,12 +2834,13 @@ void fvec_L2sqr_by_idx(float *__restrict dis, const float *x, const float *y, co
 void IndexIVFRaBitQ::refine(int n, const float *x, int k, float *distances, idx_t *labels, float *topkdist,
                             idx_t *topklabel, const float *srcIndexes)
 {
-    fvec_L2sqr_by_idx(topkdist, x, srcIndexes, topklabel, dims, n, k);
+    const bool innerProduct = metric == MetricType::METRIC_INNER_PRODUCT;
+    computeRefineScores(topkdist, x, srcIndexes, topklabel, dims, n, k, innerProduct);
 
     const size_t resultCount = static_cast<size_t>(n) * static_cast<size_t>(k);
-    std::fill_n(labels, resultCount, 0xffffffffffffffff);  // 0xffffffffffffffff为无效label
-    std::fill_n(distances, resultCount, 0x7f7fffff);       // 小端排序模式初始化为0x7f7fffff，即最大值
-    auto cmp = [](float a, float b) -> bool { return a > b; };
+    std::fill_n(labels, resultCount, -1);
+    std::fill_n(distances, resultCount, innerProduct ? -INFINITY : INFINITY);
+    auto cmp = [innerProduct](float a, float b) { return innerProduct ? a < b : a > b; };
 #pragma omp parallel for
     for (int64_t i = 0; i < n; ++i)
     {

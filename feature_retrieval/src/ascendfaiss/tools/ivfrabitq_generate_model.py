@@ -257,8 +257,6 @@ def generate_rabitq_offline_model():
     quant_bits = args.quant_bits
     if quant_bits not in {1, 2, 4}:
         raise ValueError("quant_bits must be 1, 2, or 4")
-    if quant_bits > 1 and metric != "L2":
-        raise ValueError("multi-bit RaBitQ POC only supports L2")
     if quant_bits == 2 and dim > 512:
         raise ValueError("2-bit RaBitQ POC supports dimensions up to 512 (query LUT UB limit)")
     if quant_bits == 4 and dim > 256:

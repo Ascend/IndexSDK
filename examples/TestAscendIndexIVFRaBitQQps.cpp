@@ -48,7 +48,7 @@
  *       原文存在时用其建库，不存在时建库阶段生成并保存；加载索引时精排原文必须存在。
  *       npu 精排不支持进程内 nprobe/候选 TopK/npu-k 矩阵；SDK 精排的候选扩展由 --refine-alpha
  *       控制（默认按最大 npu-k / 最大 candidate-topk 计算）。
- * 参数：--nprobe、--candidate-topk 和 --npu-k 可用逗号列表；2-bit dim<=512，4-bit dim<=256，均为 L2。
+ * 参数：--nprobe、--candidate-topk 和 --npu-k 可用逗号列表；2-bit dim<=512，4-bit dim<=256，支持 L2 和 IP。
  * 复用：加载已有索引时必须提供匹配的 --gt-path；--rebuild 1 强制重建索引。
  *       同一底库可用 --reuse-gt 1 复用 GT，但 ntotal、dim、seed、原文和召回参数须保持一致。
  * 大库：5 亿底库可设 --ntotal 500000000 --nlist 32768；同时调整模型、资源及分块大小。
@@ -139,6 +139,7 @@ int g_npuK = kDefaultNpuK;
 std::vector<int> g_npuKs = {kDefaultNpuK};
 bool g_npuKExplicit = false;
 int g_quantBits = 1;
+faiss::MetricType g_metric = faiss::METRIC_L2;
 int g_recallK = 0;
 int g_warmup = kDefaultWarmup;
 int g_loops = kDefaultLoops;
@@ -165,7 +166,7 @@ int g_reuseGt = 0;
 // 开源数据集（SIFT1B 等 fbin 格式：int32 n、int32 d、uint8 向量行优先）路径
 std::string g_baseBin;
 std::string g_queryBin;
-// 1=用 NPU Flat(L2) 暴搜生成 GT（可脱离索引重建单独生成）；0=建库时 host 暴搜
+// 1=用 NPU Flat 按所选度量暴搜生成 GT（可脱离索引重建单独生成）；0=建库时 host 暴搜
 int g_gtNpu = 0;
 uint64_t g_gtSignature = 0;
 
@@ -199,7 +200,7 @@ void PrintUsage(const char *prog)
     printf("  --base-bin reads an open-source uint8 u8bin dataset (e.g. SIFT1B base.1B.u8bin: int32 n, int32 d,\n");
     printf("        uint8 row-major); --query-bin is the matching query u8bin (e.g. query.public.10K.u8bin).\n");
     printf("  u8bin train/base/query/GT all use float32(u8)/255, without per-vector normalization.\n");
-    printf("  --gt-npu 1 builds chunked NPU Flat L2 reference GT (FP16 precision); default is host FP32.\n");
+    printf("  --gt-npu 1 builds chunked NPU Flat GT for the selected metric (FP16 precision); default is host FP32.\n");
     printf("  Comma-separated --nprobe/--candidate-topk/--npu-k run a matrix after one index build/load.\n");
     printf("  If --index-path exists and --rebuild=0, skip train/add and load the index.\n");
     printf(
@@ -215,7 +216,7 @@ void PrintUsage(const char *prog)
     printf("           --candidate-topk (final k) to form a 2-D matrix; npu refine keeps it single-valued.\n");
     printf("  --target-topk: exact GT cutoff; candidate coverage equals Recall@target after exact rerank\n");
     printf("                 (--recall-k is a legacy alias).\n");
-    printf("  Multi-bit POC: A3 L2, 2-bit dim <= 512, 4-bit dim <= 256, refine=none.\n");
+    printf("  Multi-bit POC: A3/Cube, --metric L2|IP (default L2), 2-bit dim <= 512, 4-bit dim <= 256.\n");
 }
 
 bool ParseLong(const char *text, long &out)
@@ -370,7 +371,7 @@ bool ParseCli(int *argc, char **argv)
         const bool isMode = flag == "--train-mode" || flag == "--search-mode" || flag == "--qps-mode";
         if (integer == integers.end() && string == strings.end() && list == lists.end() && !isMode &&
             flag != "--refine" && flag != "--refine-alpha" && flag != "--ntotal" && flag != "--seed" &&
-            flag != "--attach-src" && flag != "--gt-npu")
+            flag != "--attach-src" && flag != "--gt-npu" && flag != "--metric")
         {
             printf("unknown argument: %s\n", argument.c_str());
             PrintUsage(argv[0]);
@@ -409,6 +410,15 @@ bool ParseCli(int *argc, char **argv)
                 PrintUsage(argv[0]);
                 return false;
             }
+        }
+        else if (flag == "--metric")
+        {
+            if (value != "L2" && value != "IP")
+            {
+                printf("--metric must be L2 or IP\n");
+                return false;
+            }
+            g_metric = value == "IP" ? faiss::METRIC_INNER_PRODUCT : faiss::METRIC_L2;
         }
         else if (isMode)
         {
@@ -551,7 +561,7 @@ bool ValidateCli()
         return false;
     }
     // multi-bit + npu 精排可用：SDK refine 用原文（srcIndexes）重排，与 quantBits 无关；
-    // multi-bit 的真实约束（L2、dim 上限）由 Impl 层校验。
+    // multi-bit 的设备和维度限制由 Impl 层校验。
     if (HasMode(RefineMode::Npu) && (g_nprobes.size() > 1 || g_candidateTopks.size() > 1 || g_npuKs.size() > 1))
     {
         printf("npu refine does not support an in-process nprobe/TopK/npu-k matrix; use --refine none or cpu\n");
@@ -693,8 +703,12 @@ void FillRange(float *data, size_t startId, size_t n, int dim, uint32_t seed)
     }
 }
 
-float L2sqr(const float *a, const float *b, int dim)
+float ExactScore(const float *a, const float *b, int dim)
 {
+    if (g_metric == faiss::METRIC_INNER_PRODUCT)
+    {
+        return std::inner_product(a, a + dim, b, 0.0f);
+    }
     float sum = 0.0f;
     for (int i = 0; i < dim; ++i)
     {
@@ -706,19 +720,25 @@ float L2sqr(const float *a, const float *b, int dim)
 
 using DistId = std::pair<float, faiss::idx_t>;
 
+bool BetterResult(const DistId &a, const DistId &b)
+{
+    if (a.first == b.first) return a.second < b.second;
+    return g_metric == faiss::METRIC_INNER_PRODUCT ? a.first > b.first : a.first < b.first;
+}
+
 void HeapPush(std::vector<DistId> &heap, int k, float dist, faiss::idx_t id)
 {
     if (static_cast<int>(heap.size()) < k)
     {
         heap.emplace_back(dist, id);
-        std::push_heap(heap.begin(), heap.end());
+        std::push_heap(heap.begin(), heap.end(), BetterResult);
         return;
     }
-    if (dist < heap.front().first)
+    if (BetterResult({dist, id}, heap.front()))
     {
-        std::pop_heap(heap.begin(), heap.end());
+        std::pop_heap(heap.begin(), heap.end(), BetterResult);
         heap.back() = DistId(dist, id);
-        std::push_heap(heap.begin(), heap.end());
+        std::push_heap(heap.begin(), heap.end(), BetterResult);
     }
 }
 
@@ -728,7 +748,7 @@ void HeapToSorted(std::vector<DistId> &heap)
     {
         return;
     }
-    std::sort(heap.begin(), heap.end());
+    std::sort(heap.begin(), heap.end(), BetterResult);
 }
 
 void UpdateGt(std::vector<std::vector<DistId>> &gt, const float *queries, int recallNq, const float *chunk,
@@ -740,7 +760,7 @@ void UpdateGt(std::vector<std::vector<DistId>> &gt, const float *queries, int re
         const float *query = queries + static_cast<size_t>(q) * static_cast<size_t>(dim);
         for (size_t i = 0; i < n; ++i)
         {
-            const float dist = L2sqr(query, chunk + i * static_cast<size_t>(dim), dim);
+            const float dist = ExactScore(query, chunk + i * static_cast<size_t>(dim), dim);
             HeapPush(gt[static_cast<size_t>(q)], k, dist, static_cast<faiss::idx_t>(startId + i));
         }
     }
@@ -945,7 +965,7 @@ bool LoadQueriesFromFbin(const std::string &path, size_t requestNq, std::vector<
     return true;
 }
 
-// 用 NPU Flat（L2 度量，FP32 转 FP16 暴搜）为 queries 生成 TopK GT。
+// 用 NPU Flat 按所选度量为 queries 生成 TopK GT，暴搜时将 FP32 转为 FP16。
 // 底库从 resolveDataSrc 指向的来源分块读取；g_recallK 截断后按 SaveGt 格式落盘。
 bool BuildGtOnNpu(const std::string &path, std::vector<std::vector<DistId>> &gt, DataSrc dataSrc, const float *queries)
 {
@@ -974,8 +994,8 @@ bool BuildGtOnNpu(const std::string &path, std::vector<std::vector<DistId>> &gt,
     const size_t nqRead = static_cast<size_t>(g_recallNq);
     try
     {
-        faiss::ascend::AscendIndexFlatL2 flat(g_dim,
-                                              faiss::ascend::AscendIndexFlatConfig(g_devices, 1024LL * 1024 * 512));
+        faiss::ascend::AscendIndexFlat flat(g_dim, g_metric,
+                                            faiss::ascend::AscendIndexFlatConfig(g_devices, 1024LL * 1024 * 512));
         const size_t chunk = std::max(static_cast<size_t>(g_addChunk), static_cast<size_t>(100000));
         std::vector<float> buf;
         std::vector<float> dist(nqRead * k);
@@ -1219,8 +1239,7 @@ bool LoadTrainFromFbin(const std::string &path, size_t trainNum, std::vector<flo
 
 void SaveIndex(const faiss::ascend::AscendIndexIVFRaBitQ &index, const std::string &path)
 {
-    faiss::IndexFlatL2 quantizer(g_dim);
-    faiss::IndexIVFRaBitQ cpu(&quantizer, g_dim, static_cast<size_t>(g_nlist), faiss::METRIC_L2);
+    faiss::IndexIVFRaBitQ cpu;
     index.copyTo(&cpu);
     printf("write index %s ntotal=%ld quant_bits=%d code_size=%zu\n", path.c_str(), static_cast<long>(cpu.ntotal),
            g_quantBits, cpu.code_size);
@@ -1249,6 +1268,8 @@ void LoadIndex(faiss::ascend::AscendIndexIVFRaBitQ &index, const std::string &pa
            DevicesJson().c_str(), readMs, copyFromMs, GetMillisecs() - loadT0, path.c_str());
     fflush(stdout);
 }
+
+int32_t GroundTruthMagic() { return g_metric == faiss::METRIC_INNER_PRODUCT ? 0x47544932 : 0x47545232; }
 
 // Cache identity includes the query contents, conversion version and source file identity.
 // This avoids scanning the full 128 GB source just to validate a cache; it is not a content checksum.
@@ -1290,7 +1311,7 @@ bool SaveGt(const std::string &path, const std::vector<std::vector<DistId>> &gt)
         printf("failed to open --gt-path for write: %s\n", path.c_str());
         return false;
     }
-    const int32_t magic = 0x47545232;
+    const int32_t magic = GroundTruthMagic();
     const int32_t nq = static_cast<int32_t>(gt.size());
     const int32_t k = g_recallK;
     if (std::fwrite(&magic, sizeof(magic), 1, fp) != 1 || std::fwrite(&nq, sizeof(nq), 1, fp) != 1 ||
@@ -1299,9 +1320,8 @@ bool SaveGt(const std::string &path, const std::vector<std::vector<DistId>> &gt)
         std::fclose(fp);
         return false;
     }
-    for (auto heap : gt)
+    for (const auto &heap : gt)
     {
-        HeapToSorted(heap);
         const int32_t n = static_cast<int32_t>(heap.size());
         if (std::fwrite(&n, sizeof(n), 1, fp) != 1)
         {
@@ -1335,7 +1355,7 @@ bool LoadGt(const std::string &path, std::vector<std::vector<DistId>> &gt)
     int32_t magic = 0;
     int32_t nq = 0;
     int32_t k = 0;
-    if (std::fread(&magic, sizeof(magic), 1, fp) != 1 || magic != 0x47545232 ||
+    if (std::fread(&magic, sizeof(magic), 1, fp) != 1 || magic != GroundTruthMagic() ||
         std::fread(&nq, sizeof(nq), 1, fp) != 1 || std::fread(&k, sizeof(k), 1, fp) != 1 ||
         std::fread(&signature, sizeof(signature), 1, fp) != 1 || signature != g_gtSignature)
     {
@@ -1599,7 +1619,7 @@ std::unique_ptr<faiss::ascend::AscendIndexIVFRaBitQ> MakeIndex(bool needRefine, 
     conf.trainMode = (g_trainSlice != 0) ? faiss::ascend::AscendIndexIVFRaBitQConfig::TrainMode::Slice
                                          : faiss::ascend::AscendIndexIVFRaBitQConfig::TrainMode::Replica;
     auto index = std::unique_ptr<faiss::ascend::AscendIndexIVFRaBitQ>(
-        new faiss::ascend::AscendIndexIVFRaBitQ(g_dim, faiss::MetricType::METRIC_L2, g_nlist, conf));
+        new faiss::ascend::AscendIndexIVFRaBitQ(g_dim, g_metric, g_nlist, conf));
     index->verbose = true;
     index->setNumProbes(g_nprobe);
     return index;
@@ -1931,7 +1951,7 @@ class MmapSrc
     uint64_t bytes_ = 0;
 };
 
-// 单查询：从粗排候选 label 里取原文算 L2(q,v)，维护 top-finalK max-heap
+// Re-score candidates against the original vectors using the selected metric.
 void RefineOneQuery(const float *src, int dim, const float *query, const faiss::idx_t *candLabel, int candK, int finalK,
                     float *outDist, faiss::idx_t *outLabel)
 {
@@ -1945,7 +1965,7 @@ void RefineOneQuery(const float *src, int dim, const float *query, const faiss::
             continue;
         }
         const float *vec = src + static_cast<uint64_t>(id) * static_cast<uint64_t>(dim);
-        HeapPush(heap, finalK, L2sqr(query, vec, dim), id);
+        HeapPush(heap, finalK, ExactScore(query, vec, dim), id);
     }
     HeapToSorted(heap);
     const int got = static_cast<int>(heap.size());
@@ -2051,15 +2071,16 @@ TEST(TestAscendIndexIVFRaBitQ, LargeScaleQpsRecall)
             ASSERT_TRUE(ValidateSrcBin(g_srcBin));
         }
         printf(
-            "IVFRaBitQ QPS recall: devices=%s dim=%d ntotal=%zu nlist=%d nprobe=%d quant_bits=%d candidate_topk=%d "
+            "IVFRaBitQ QPS recall: metric=%s devices=%s dim=%d ntotal=%zu nlist=%d nprobe=%d quant_bits=%d "
+            "candidate_topk=%d "
             "target_topk=%d npu_k=%d "
             "refine-alpha=%.6f trainNum=%zu recall_nq=%d resource_mb=%d niter=%d train-mode=%s "
             "search-mode=%s qps-mode=%s replicas=%d duration=%d loops=%d index=%s load=%d reuse_gt=%d "
             "data_src=%s gt_npu=%d\n",
-            DevicesJson().c_str(), g_dim, g_ntotal, g_nlist, g_nprobe, g_quantBits, g_k, g_recallK, g_npuK,
-            g_refineAlpha, trainNum, g_recallNq, g_resourceMb, g_niter, g_trainSlice != 0 ? "slice" : "replica",
-            SearchModeName(), QpsModeName(), SearchReplicaCount(), g_durationSec, g_loops, g_indexPath.c_str(),
-            loadExisting ? 1 : 0, g_reuseGt,
+            g_metric == faiss::METRIC_INNER_PRODUCT ? "IP" : "L2", DevicesJson().c_str(), g_dim, g_ntotal, g_nlist,
+            g_nprobe, g_quantBits, g_k, g_recallK, g_npuK, g_refineAlpha, trainNum, g_recallNq, g_resourceMb, g_niter,
+            g_trainSlice != 0 ? "slice" : "replica", SearchModeName(), QpsModeName(), SearchReplicaCount(),
+            g_durationSec, g_loops, g_indexPath.c_str(), loadExisting ? 1 : 0, g_reuseGt,
             useBaseBin                   ? "base-bin"
             : dataSrc == DataSrc::SrcBin ? "src-bin"
                                          : "generate",
@@ -2091,7 +2112,7 @@ TEST(TestAscendIndexIVFRaBitQ, LargeScaleQpsRecall)
             ASSERT_TRUE(LoadGt(g_gtPath, gt));
             gtReady = true;
         }
-        // 独立生成 GT：用 NPU Flat(L2) 暴搜，可先于索引建库单独执行（--gt-npu 1）
+        // 独立生成 GT：用 NPU Flat 暴搜，可先于索引建库单独执行（--gt-npu 1）
         if (!gtReady && (g_gtNpu != 0 || loadExisting))
         {
             ASSERT_TRUE(g_gtNpu != 0 ? BuildGtOnNpu(g_gtPath, gt, dataSrc, queries.data())

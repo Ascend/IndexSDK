@@ -346,8 +346,6 @@ void AscendIndexIVFRaBitQImpl::checkParams() const
     FAISS_THROW_IF_NOT_MSG(
         ivfrabitqConfig.quantBits == 1 || ivfrabitqConfig.quantBits == 2 || ivfrabitqConfig.quantBits == 4,
         "RaBitQ quantBits must be 1, 2, or 4");
-    FAISS_THROW_IF_NOT_MSG(ivfrabitqConfig.quantBits == 1 || this->intf_->metric_type == MetricType::METRIC_L2,
-                           "Multi-bit RaBitQ POC only supports L2 metric");
     FAISS_THROW_IF_NOT_MSG(ivfrabitqConfig.quantBits != 2 || this->intf_->d <= 512,
                            "2-bit RaBitQ POC supports dimensions up to 512 (query LUT UB limit)");
     FAISS_THROW_IF_NOT_MSG(ivfrabitqConfig.quantBits != 4 || this->intf_->d <= 256,
