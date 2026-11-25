@@ -935,6 +935,53 @@ TEST(TestAscendIndexIVFRaBitQ, AttachedRefineSourcesValidateRowCountBeforeSearch
     EXPECT_EQ(index.ntotal, 1);
 }
 
+TEST(TestAscendIndexIVFRaBitQ, InnerProductTrainAddSearchAndRefine)
+{
+    const auto& soc = faiss::ascend::SocUtils::GetInstance();
+    if (soc.IsAscendA5() || soc.IsAscend310P()) GTEST_SKIP();
+
+    // Collinear residuals make the RaBitQ projection exact at every bit width.
+    // The largest dot product is deliberately not the closest vector in L2.
+    std::vector<float> training(NLIST * DIM, 0.0f);
+    for (int i = 0; i < NLIST; ++i) training[i * DIM] = i == 0 ? 1.0f : -1.0f;
+    std::vector<float> base(3 * DIM, 0.0f);
+    base[0] = 1.5f;
+    base[DIM] = 4.0f;
+    base[2 * DIM] = 0.5f;
+    std::vector<float> query(DIM, 0.0f);
+    query[0] = 2.0f;
+
+    for (int bits : {1, 2, 4})
+    {
+        SCOPED_TRACE(bits);
+        auto config = MakeConfig();
+        config.quantBits = bits;
+        faiss::ascend::AscendIndexIVFRaBitQ index(DIM, faiss::METRIC_INNER_PRODUCT, NLIST, config);
+        index.train(NLIST, training.data());
+        index.add(3, base.data());
+        index.setNumProbes(1);
+        std::vector<float> scores(3);
+        std::vector<faiss::idx_t> labels(3);
+        index.search(1, query.data(), 3, scores.data(), labels.data());
+        EXPECT_THAT(labels, ElementsAre(1, 0, 2));
+        EXPECT_NEAR(scores[0], 8.0f, 1e-3f);
+        EXPECT_NEAR(scores[1], 3.0f, 1e-3f);
+        EXPECT_NEAR(scores[2], 1.0f, 1e-3f);
+
+        faiss::IndexIVFRaBitQ carrier;
+        index.copyTo(&carrier);
+        config.needRefine = true;
+        config.refineAlpha = 1;
+        faiss::ascend::AscendIndexIVFRaBitQ restored(DIM, faiss::METRIC_INNER_PRODUCT, NLIST, config);
+        restored.copyFrom(&carrier);
+        restored.attachRefineSources(base.data(), 3);
+        restored.setNumProbes(1);
+        restored.search(1, query.data(), 3, scores.data(), labels.data());
+        EXPECT_THAT(labels, ElementsAre(1, 0, 2));
+        EXPECT_THAT(scores, ElementsAre(8.0f, 3.0f, 1.0f));
+    }
+}
+
 TEST(TestAscendIndexIVFRaBitQ, MultiBitCarrierRoundTripsAndRejectsInvalidLayouts)
 {
     const auto& soc = faiss::ascend::SocUtils::GetInstance();
