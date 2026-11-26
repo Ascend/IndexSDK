@@ -331,8 +331,17 @@ void TSBase::CopyAndSaveTSAttrs(int64_t n, int64_t fakeTotal, const faiss::ascen
         tmpTokenQs[i] = (static_cast<int>(tmpTokenId) / OPS_DATA_TYPE_ALIGN) * OPS_DATA_TYPE_TIMES;
         tmpTokenRs[OPS_DATA_TYPE_TIMES * i] = 1 << (tmpTokenId % OPS_DATA_TYPE_ALIGN);
         tmpTokenRs[OPS_DATA_TYPE_TIMES * i + 1] = OPS_DATA_PADDING_VAL;
+        const int64_t pos = fakeTotal + i;
         if (!enableSaveHostMemory) {
-            token2Idx[tmpTokenId].emplace(static_cast<uint32_t>(fakeTotal + i));
+            // 覆盖写：先把该位置从旧 token 的索引里摘掉，否则 token2Idx 只增不减
+            auto old = token2Idx.find(featureAttrs[pos].tokenId);
+            if (old != token2Idx.end()) {
+                old->second.erase(pos);
+                if (old->second.empty()) {
+                    token2Idx.erase(old);
+                }
+            }
+            token2Idx[tmpTokenId].emplace(pos);
         }
         featureAttrs[fakeTotal + i] = tmpAttr;
         if (extraVal != nullptr) {
