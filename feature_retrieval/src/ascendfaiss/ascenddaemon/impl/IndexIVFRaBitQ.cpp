@@ -76,11 +76,7 @@ RabitqSelectorFilterStage GetRabitqSelectorFilterStage()
     return RabitqSelectorFilterStage::AUTO;
 }
 
-bool IsRabitqL2PrefilterKernelSupported()
-{
-    const auto &soc = faiss::ascend::SocUtils::GetInstance();
-    return !soc.IsAscend310P() && !soc.IsAscendA5();
-}
+bool UseRabitqSimtDistance() { return faiss::ascend::SocUtils::GetInstance().IsAscendA5(); }
 
 float CpuL2Sq(const float *a, const float *b, int dim)
 {
@@ -480,9 +476,6 @@ IndexIVFRaBitQ::IndexIVFRaBitQ(int numList, int dim, int nprobes, const std::str
                             "2-bit RaBitQ POC supports dimensions up to 512 (query LUT UB limit)");
     ASCEND_THROW_IF_NOT_MSG(quantBits_ != 4 || dim <= 256,
                             "4-bit RaBitQ POC supports dimensions up to 256 (query LUT UB limit)");
-    ASCEND_THROW_IF_NOT_MSG(quantBits_ == 1 || (!faiss::ascend::SocUtils::GetInstance().IsAscendA5() &&
-                                                !faiss::ascend::SocUtils::GetInstance().IsAscend310P()),
-                            "Multi-bit RaBitQ POC only supports the A3/Cube distance path");
     ASCEND_THROW_IF_NOT_MSG(metricType == "L2" || metricType == "IP", "Unsupported metric type!");
     if (metricType == "L2")
     {
@@ -1668,7 +1661,8 @@ bool IndexIVFRaBitQ::l2DisOpReset(std::unique_ptr<AscendOperator> &op, int64_t b
     std::vector<int64_t> mixResultShape(
         {CORE_NUM, (IVF_RABITQ_BLOCK_SIZE + IVF_RABITQ_BURST_LEN - 1) / IVF_RABITQ_BURST_LEN * 2});
     std::vector<int64_t> flagShapeShape({CORE_NUM, 32});
-    if (faiss::ascend::SocUtils::GetInstance().IsAscendA5())
+    const bool useSimt = UseRabitqSimtDistance();
+    if (useSimt)
     {
         desc.setOpName("DistanceIVFRabitqL2FP32Simt");
     }
@@ -1702,7 +1696,7 @@ bool IndexIVFRaBitQ::l2DisOpReset(std::unique_ptr<AscendOperator> &op, int64_t b
     {
         aclopSetAttrInt(desc.opAttr, "metric_type", 1);
     }
-    if (!faiss::ascend::SocUtils::GetInstance().IsAscendA5())
+    if (!useSimt || quantBits_ != 1)
     {
         aclopSetAttrInt(desc.opAttr, "quant_bits", quantBits_);
     }
@@ -2198,8 +2192,8 @@ APP_ERROR IndexIVFRaBitQ::searchImplL2(AscendTensor<float, DIMS_2> &queries, Asc
     }
 
     const bool hasFilter = (filterMode != aicpu::RABITQ_ID_FILTER_NONE);
-    const bool canUseL2Prefilter =
-        hasFilter && requestedDistSelMode != aicpu::RABITQ_ID_FILTER_NONE && IsRabitqL2PrefilterKernelSupported();
+    const bool canUseL2Prefilter = hasFilter && requestedDistSelMode != aicpu::RABITQ_ID_FILTER_NONE &&
+                                   !faiss::ascend::SocUtils::GetInstance().IsAscend310P() && !UseRabitqSimtDistance();
     const RabitqSelectorFilterStage filterStage = GetRabitqSelectorFilterStage();
     APPERR_RETURN_IF_NOT_LOG(filterStage != RabitqSelectorFilterStage::PRE || !hasFilter || canUseL2Prefilter,
                              APP_ERR_INVALID_PARAM,

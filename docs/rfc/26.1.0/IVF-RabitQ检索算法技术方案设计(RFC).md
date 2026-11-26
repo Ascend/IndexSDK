@@ -492,7 +492,7 @@ Center/Index/Query 封装会复用同一类底层算子，通过不同 shape 区
 | 中心和查询 LUT | `MatmulAtFP32` | LUT 列数变为 `256 * quant_bits` |
 | 底库编码与因子预计算 | `IndexCodeAndPrecompute` | 新增 `quant_bits` 属性；编码输出宽度变为 `dim * quant_bits / 8` |
 | IVF-RaBitQ L2 距离 | `DistanceIVFRabitqL2FP32` | 新增 `quant_bits` 属性；压缩码和 LUT shape 随 bit 数变化 |
-| A5/SIMT L2 距离 | `DistanceIVFRabitqL2FP32Simt` | 当前只支持 1-bit |
+| A5/SIMT L2 距离 | `DistanceIVFRabitqL2FP32Simt` | 支持 1/2/4-bit |
 | L1 距离 | `DistanceFlatL2MinsAtFP32` | 不受量化位数影响 |
 | L2 TopK | AICPU TopK/调度算子；满足现有切换条件时可走 `TopkIvfRabitqAicore` | 不受编码格式影响，消费 L2 距离结果；大 TopK 路径需独立验证 |
 
@@ -734,11 +734,11 @@ bit 数必须与运行时 `AscendIndexIVFRaBitQConfig::quantBits` 完全一致�
 目标：
 
 - 保持 1-bit 默认行为和已有索引兼容；
-- 在 A3/Cube L2 路径支持 2-bit、4-bit 编码和检索；
+- 在 A5 SIMT 和其他平台的 Cube 距离路径支持 2-bit、4-bit 编码和检索；
 - 复用既有训练、入库、删除、更新和检索接口，支持 `copyTo`/`copyFrom` 和 Faiss I/O；
 - 以"达到相同精排后 Recall 时的端到端 QPS"为主要评价口径。
 
-非目标：不支持 2/4-bit 的 IP 距离、Ascend 310P/A5 SIMT 路径和 CPU 直接检索落盘对象；不改变 TopK 算子功能边界；不把原始向量纳入多 bit 索引；不承诺索引文件跨 `quantBits` 转换或混用。
+非目标：不支持 CPU 直接检索落盘对象；不改变 TopK 算子功能边界；不把原始向量纳入多 bit 索引；不承诺索引文件跨 `quantBits` 转换或混用。
 
 #### 配置与支持范围
 
@@ -751,8 +751,8 @@ struct AscendIndexIVFRaBitQConfig : public AscendIndexIVFConfig {
 
 | 项目 | 1-bit | 2-bit | 4-bit |
 | --- | --- | --- | --- |
-| 距离类型 | L2、IP（保持原能力） | L2 | L2 |
-| 当前平台 | 原有支持范围 | A3/Cube | A3/Cube |
+| 距离类型 | L2、IP | L2、IP | L2、IP |
+| 当前平台 | 原有支持范围 | A5 SIMT / 其他平台 Cube | A5 SIMT / 其他平台 Cube |
 | 当前维度 | 原有支持范围 | 64、128、256、384、512 | 64、128、256 |
 | `copyTo/copyFrom` | 支持 | 支持 | 支持 |
 
@@ -860,9 +860,7 @@ python3 ivfrabitq_generate_model.py -d 128 -c 1024 -t 910_9392 -m L2 --quant-bit
 | 条件 | 处理 |
 | --- | --- |
 | `quantBits` 不为 1、2、4 | 初始化失败 |
-| 2/4-bit 使用 IP | 初始化失败 |
 | 2-bit `dim > 512` / 4-bit `dim > 256` | 初始化失败 |
-| 2/4-bit 使用 A5/310P | 初始化失败 |
 | 文件 bit 数、码长或格式标记与配置不一致 | `copyFrom` 失败 |
 
 升级与回滚：上线初期保持默认 `quantBits=1`；2/4-bit 使用新文件名；离线模型同时保留 1/2/4-bit；发生问题时可切回原 1-bit 索引和配置；索引不存在跨 bit 原地升级，切换 bit 数必须重新编码底库。
@@ -980,7 +978,7 @@ struct AscendIndexIVFRaBitQConfig : public AscendIndexIVFConfig {
 - `needRefine`：是否启用Refine精排，高召回率场景建议启用
 - `matrixSeed`：随机种子，保证可复现性
 - `refineAlpha`：精排倍数，TopK × refineAlpha个候选进行精排
-- `quantBits`：每维量化位数，默认 1；2/4-bit 当前仅支持 A3/Cube L2 路径
+- `quantBits`：每维量化位数，默认 1；A5 的 1/2/4-bit 均使用 SIMT 距离路径
 
 #### 主要类接口
 
@@ -1067,10 +1065,10 @@ python3 ivfrabitq_generate_model.py -d 128 -c 1024 -t 910_9382 -m L2 --quant-bit
 三次生成应使用同一个 `op_models` 输出目录，不要在各次生成之间清空该目录。相关限制如下：
 
 - `quant_bits` 取值为 1、2、4，默认值为 1；
-- 2/4-bit 仅支持 L2；
+- 2/4-bit 支持 L2 和 IP；
 - 2-bit 支持 dim=64、128、256、384、512；
 - 4-bit 支持 dim=64、128、256；
-- 2/4-bit 仅支持 A3/Cube 距离路径，不支持 310P 和 Ascend950/A5 SIMT 路径；
+- A5 的 1/2/4-bit 均使用 SIMT 距离算子，其他平台使用 Cube 距离算子；
 - 修改 bit 数、dim、nlist、距离类型或升级算子输入后，都需要重新生成匹配的模型。
 
 需要在现有《IndexSDK 用户指南》中新增以下章节：

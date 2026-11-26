@@ -28,60 +28,37 @@ using namespace AscendC;
 namespace kernels
 {
 constexpr uint32_t THREAD_NUM = 1024;
-constexpr uint8_t UNROLL_FACTOR = 16;  // dim/8
+constexpr uint8_t UNROLL_FACTOR = 16;
 constexpr float IVFRABITQ_MAX_FLOAT = std::numeric_limits<float>::max();
 constexpr float IVFRABITQ_MIN_FLOAT = std::numeric_limits<float>::lowest();
 constexpr int32_t METRIC_L2 = 0;
 constexpr int32_t METRIC_INNER_PRODUCT = 1;
 
-template <uint8_t NumSubQuantizers>
-__aicore__ __simt_callee__ inline float SimtSearchTableSum(__ubuf__ float *queryLutUb, __gm__ uint8_t *codeBase,
-                                                           uint32_t taskIdx, uint32_t ksub)
+__aicore__ __simt_callee__ inline float SimtSearchTableSum(__ubuf__ float *lut, __gm__ uint8_t *code,
+                                                           uint32_t codeBytes, uint32_t columns)
 {
-    // queryLutUb: 16*256: queryPQDequeUb.GetPhyAddr();
-    // codeBase: codeBaseGm.GetPhyAddr()
-    // codeOffset: 起始code
-    // taskIdx: code index
-    // ksub:子空间中的聚类数量，正好是int8格式，共256个
-    uint8_t codeBookIndices[UNROLL_FACTOR];  // 从codeBase中读取的codebook
-    float sumDist = 0;                       // 累加的距离和
-    uint8_t codeBookIndex = 0;               // 单个codebook
-    uint8_t m = 0;
-
-    // 对循环进行展开，提高并行计算效率，一直做到 m+UNROLL_FACTOR
-#pragma unroll
-    for (; m + UNROLL_FACTOR <= NumSubQuantizers; m += UNROLL_FACTOR)
+    float sum = 0;
+    uint32_t row = 0;
+    for (; row + UNROLL_FACTOR <= codeBytes; row += UNROLL_FACTOR)
     {
 #pragma unroll
-        // 批量读取codebook，减少数据依赖
-        for (uint8_t i = 0; i < UNROLL_FACTOR; i++)
+        for (uint32_t i = 0; i < UNROLL_FACTOR; ++i)
         {
-            // 读取codebook索引，一次性读UNROLL个子空间数据，初始偏移为 codeOffset + taskIdx * NumSubQuantizers
-            codeBookIndices[i] = codeBase[taskIdx * NumSubQuantizers + m + i];
-        }
-#pragma unroll
-        // 批量访问queryPQ和累加，减少数据依赖
-        for (int i = 0; i < UNROLL_FACTOR; i++)
-        {
-            sumDist += queryLutUb[(m + i) * ksub + codeBookIndices[i]];
+            sum += lut[(row + i) * columns + code[row + i]];
         }
     }
-
-    // 处理剩余部分，从m开始
-#pragma unroll
-    for (; m < NumSubQuantizers; m++)
+    for (; row < codeBytes; ++row)
     {
-        codeBookIndex = codeBase[taskIdx * NumSubQuantizers + m];
-        sumDist += queryLutUb[m * ksub + codeBookIndex];
+        sum += lut[row * columns + code[row]];
     }
-    return sumDist;
+    return sum;
 }
 
-template <int NumSubQuantizers>
 __simt_vf__ __aicore__ LAUNCH_BOUND(THREAD_NUM) inline void SimtSearchCompute(__ubuf__ float *queryLutUb,
                                                                               __gm__ float *distResultGM,
                                                                               uint32_t codeSize,
-                                                                              __gm__ uint8_t *codeBase, uint32_t ksub)
+                                                                              __gm__ uint8_t *codeBase, uint32_t ksub,
+                                                                              uint32_t codeBytes)
 {
     uint32_t curBlockThreadIdx = static_cast<uint32_t>(Simt::GetThreadIdx<0>());  // 当前thread
     uint32_t threadCount = static_cast<uint32_t>(Simt::GetThreadNum<0>());        // thread数量
@@ -92,7 +69,7 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(THREAD_NUM) inline void SimtSearchCompute(__
     for (uint32_t taskIdx = curBlockThreadIdx + startTaskId; taskIdx < endtaskId; taskIdx += threadCount)
     {
         uint32_t dstIndex = taskIdx - startTaskId;
-        distResultGM[dstIndex] = SimtSearchTableSum<NumSubQuantizers>(queryLutUb, codeBase, taskIdx, ksub);
+        distResultGM[dstIndex] = SimtSearchTableSum(queryLutUb, codeBase + taskIdx * codeBytes, codeBytes, ksub);
     }
 
     AscendC::Simt::ThreadBarrier();
@@ -123,7 +100,7 @@ class DistanceIVFRabitqL2FP32Simt
         this->dimLength = tiling_.dimLength;  // 这个dimLength应该是原向量的dim
         this->codeBlockLength = tiling_.codeBlockLength;
         this->lutDimLength = tiling_.lutDimLength;  // lut的维度 值应该固定256
-        this->lutLength = tiling_.lutLength;        // = this->dimLength / 8
+        this->lutLength = tiling_.lutLength;        // bytes per encoded vector
 
         this->lutTileNum = tiling_.lutTileNum;
         this->lutTileLength = tiling_.lutTileLength;          // 每次处理多少lut
@@ -139,7 +116,7 @@ class DistanceIVFRabitqL2FP32Simt
             this->reduceCmpInitValue = IVFRABITQ_MIN_FLOAT;
         }
 
-        this->multiplier = static_cast<T>(2) / sqrt(static_cast<T>(this->dimLength));
+        this->multiplier = tiling_.quantBits == 1 ? static_cast<T>(2) / sqrt(static_cast<T>(this->dimLength)) : 1;
 
         queryid_gm_.SetGlobalBuffer((__gm__ uint32_t *)queryid);
         uint32_t cur_queryid = queryid_gm_.GetValue(this->blockIdx);  // 获取当前coreid对应的查询id
@@ -239,11 +216,14 @@ class DistanceIVFRabitqL2FP32Simt
             in_centroidslut_que.FreeTensor(centroidslutLocal);
         }
         PipeBarrier<PIPE_V>();
-        for (int i = 0; i < this->lutLength; i++)
+        // The last plane in each group has unit weight. Count each group once for centering.
+        const int bits = tiling_.quantBits;
+        for (int i = bits - 1; i < this->lutLength; i += bits)
         {
             this->sumQuery += querylutLocal.GetValue(i * this->lutDimLength + this->lutDimLength - 1);
         }
-        this->sumQuery = this->sumQuery / sqrt(static_cast<T>(this->dimLength)) * (T)(-1);
+        this->sumQuery = bits == 1 ? -this->sumQuery / sqrt(static_cast<T>(this->dimLength))
+                                   : -this->sumQuery * (static_cast<T>((1 << bits) - 1) / 2);
         in_querylut_que.EnQue(querylutLocal);  // 将q-c结果放入in_querylut_que
     }
 
@@ -264,9 +244,6 @@ class DistanceIVFRabitqL2FP32Simt
 
     __aicore__ inline void LookUpTableAndSumSimt()
     {
-        LocalTensor<float> distResultLocal =
-            in_centroidslut_que.AllocTensor<float>();  // 分配distResultLocal, 长度为codeTileLength
-
         LocalTensor<T> querylutLocal = in_querylut_que.DeQue<T>();  // 取出q-c LUT结果
         PipeBarrier<PIPE_ALL>();
         ProcessDistResult(querylutLocal);
@@ -279,9 +256,8 @@ class DistanceIVFRabitqL2FP32Simt
         __gm__ float *distResultGM = (__gm__ float *)this->mm_out_gm_.GetPhyAddr();
         __gm__ uint8_t *codeBase = (__gm__ uint8_t *)this->code_gm_.GetPhyAddr();
 
-        // 共 dim/8=16 个分段
-        Simt::VF_CALL<SimtSearchCompute<16>>(Simt::Dim3{THREAD_NUM, 1, 1}, queryLutUb, distResultGM,
-                                             this->actualSizeVal, codeBase, this->ksub);
+        Simt::VF_CALL<SimtSearchCompute>(Simt::Dim3{THREAD_NUM, 1, 1}, queryLutUb, distResultGM, this->actualSizeVal,
+                                         codeBase, this->ksub, static_cast<uint32_t>(this->lutLength));
         PipeBarrier<PIPE_ALL>();
     }
 
@@ -494,7 +470,6 @@ class DistanceIVFRabitqL2FP32Simt
     int32_t codeBlockLength;
     int32_t minNum;
 
-    uint32_t subSpaceNum = 16;
     uint32_t ksub = 256;
 
     int32_t metric;
