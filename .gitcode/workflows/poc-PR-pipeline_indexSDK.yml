@@ -6,7 +6,7 @@ on:
     keyword: '^rebuild_poc$'
   pull_request_comment:
     types: [ created ]
-    branches: [ 'poc_release-v26.3.0_rabitq', 'tech_v26.2.0' ]
+    branches: [ 'poc_release-v26.3.0_rabitq', 'tech_v26.2.0', 'branch_v26.0.0']
     comments: [ '^rebuild_poc$' ]
 
 env:
