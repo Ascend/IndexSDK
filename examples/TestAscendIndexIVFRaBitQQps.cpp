@@ -19,7 +19,7 @@
 /*
  * IVFRaBitQ 多比特、多卡 QPS 与召回率测试，以下命令均在仓库根目录执行。
  * 前置条件：安装配套 host/ops 库及匹配 dim、nlist、quant-bits 的算子模型；
- * A3 需要 aicpu / ivfflat / ivfrabitq 算子，编译需要 Faiss 1.14.1。
+ * 需要 aicpu / ivfflat / ivfrabitq 算子，编译需要 Faiss 1.14.1。
  *
  * 编译：bash examples/build.sh TestAscendIndexIVFRaBitQQps
  * 参数帮助：./examples/build/TestAscendIndexIVFRaBitQQps --help
@@ -216,7 +216,9 @@ void PrintUsage(const char *prog)
     printf("           --candidate-topk (final k) to form a 2-D matrix; npu refine keeps it single-valued.\n");
     printf("  --target-topk: exact GT cutoff; candidate coverage equals Recall@target after exact rerank\n");
     printf("                 (--recall-k is a legacy alias).\n");
-    printf("  Multi-bit POC: A3/Cube, --metric L2|IP (default L2), 2-bit dim <= 512, 4-bit dim <= 256.\n");
+    printf(
+        "  Multi-bit POC: SIMT on A5, Cube otherwise, --metric L2|IP (default L2), 2-bit dim <= 512, 4-bit dim <= "
+        "256.\n");
 }
 
 bool ParseLong(const char *text, long &out)

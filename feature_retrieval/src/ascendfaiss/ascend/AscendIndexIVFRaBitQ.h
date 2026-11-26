@@ -78,7 +78,7 @@ struct AscendIndexIVFRaBitQConfig : public AscendIndexIVFConfig
     float refineAlpha;
 
     // RaBitQ bits per dimension. 1 keeps the original format; 2 and 4 enable
-    // the A3/Cube bit-plane format for L2 and inner product.
+    // the bit-plane format for L2 and inner product.
     int quantBits = 1;
 
     // Coarse k-means iterations. <=0 keeps AscendIndexIVFConfig::cp.niter (default 10).

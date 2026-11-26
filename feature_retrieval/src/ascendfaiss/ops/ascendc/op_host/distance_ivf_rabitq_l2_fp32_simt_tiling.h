@@ -49,6 +49,7 @@ TILING_DATA_FIELD_DEF(int32_t, mmoutBufferSize);
 
 TILING_DATA_FIELD_DEF(int32_t, metricType);  // metric type: L2(0), IP(1)
 
+TILING_DATA_FIELD_DEF(int32_t, quantBits);
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(DistanceIVFRabitqL2FP32Simt, DistanceIVFRabitqL2FP32SimtTilingData)

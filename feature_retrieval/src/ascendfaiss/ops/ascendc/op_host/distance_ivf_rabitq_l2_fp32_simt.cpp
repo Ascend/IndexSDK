@@ -15,6 +15,8 @@
  * See the Mulan PSL v2 for more details.
  * -------------------------------------------------------------------------
  */
+#include <algorithm>
+
 #include "distance_ivf_rabitq_l2_fp32_simt_tiling.h"
 #include "register/op_def_registry.h"
 #include "tiling/platform/platform_ascendc.h"
@@ -37,53 +39,30 @@ static const uint32_t MAX_SHARE_MEM = 1024 * 216;
 namespace optiling
 {
 
-static void SetLutAndCodeTilingInfo(gert::TilingContext *context, DistanceIVFRabitqL2FP32SimtTilingData &tiling,
-                                    int32_t ubSize)
+static ge::graphStatus SetLutAndCodeTilingInfo(gert::TilingContext *context,
+                                               DistanceIVFRabitqL2FP32SimtTilingData &tiling, uint64_t ubSize)
 {
-    if (!context->GetInputTensor(0))
-    {
-        return;
-    }
-    if (!context->GetInputTensor(QUERYLUT))
-    {
-        return;
-    }
-    int32_t dimLength = tiling.get_dimLength();
-    int32_t lutLength = dimLength / 8;
-    int32_t lutDimLength = context->GetInputShape(QUERYLUT)->GetStorageShape().GetDim(1);  // 一般为固定值256
-
-    int32_t lutTotalSize = lutDimLength * lutLength * FLOAT32_BYTES;
-
-    int32_t remianSize = (ubSize * 9 / 10) - lutTotalSize;
-    int32_t lutTileNum = 0;
-    int32_t lutTileLength = 0;
-    int32_t lastLutTileLength = 0;
-
-    int32_t lut_tile_length = 64;  // 需要优化 每次搬运多少条lut，每条size为256*FLOAT32_BYTES=1KB
-    if (lutLength < lut_tile_length)
-    {
-        lutTileNum = 1;
-        lutTileLength = lutLength;
-        lastLutTileLength = lutLength;
-    }
-    else if (lutLength % lut_tile_length == 0)
-    {
-        lutTileNum = lutLength / lut_tile_length;
-        lutTileLength = lut_tile_length;
-        lastLutTileLength = lut_tile_length;
-    }
-    else
-    {
-        lutTileNum = lutLength / lut_tile_length + 1;
-        lutTileLength = lut_tile_length;
-        lastLutTileLength = lutLength % lut_tile_length;
-    }
-
-    tiling.set_lutLength(lutLength);
-    tiling.set_lutDimLength(lutDimLength);
-    tiling.set_lutTileNum(lutTileNum);
-    tiling.set_lutTileLength(lutTileLength);
-    tiling.set_lastLutTileLength(lastLutTileLength);
+    const auto *base = context->GetInputShape(BASE);
+    const auto *lut = context->GetInputShape(QUERYLUT);
+    ASCENDC_RETURN_IF_NOT(
+        base && lut && base->GetStorageShape().GetDimNum() == 2 && lut->GetStorageShape().GetDimNum() == 2,
+        ge::GRAPH_FAILED);
+    const auto codeBytes = base->GetStorageShape().GetDim(1);
+    constexpr int32_t lutColumns = 256;
+    ASCENDC_RETURN_IF_NOT(codeBytes > 0 && codeBytes <= 128 && lut->GetStorageShape().GetDim(1) == lutColumns,
+                          ge::GRAPH_FAILED);
+    // The query LUT stays resident while centroid rows are streamed through a second buffer.
+    const int32_t availableRows = std::min<uint64_t>(ubSize * 9 / 10, MAX_SHARE_MEM) / (lutColumns * FLOAT32_BYTES);
+    ASCENDC_RETURN_IF_NOT(availableRows > codeBytes, ge::GRAPH_FAILED);
+    const int32_t rows = static_cast<int32_t>(codeBytes);
+    const int32_t tileRows = std::min({rows, 64, availableRows - rows});
+    tiling.set_dimLength(rows * 8 / tiling.get_quantBits());
+    tiling.set_lutLength(rows);
+    tiling.set_lutDimLength(lutColumns);
+    tiling.set_lutTileLength(tileRows);
+    tiling.set_lutTileNum((rows + tileRows - 1) / tileRows);
+    tiling.set_lastLutTileLength((rows - 1) % tileRows + 1);
+    return ge::GRAPH_SUCCESS;
 }
 
 static void SetDistTilingInfo(gert::TilingContext *context, DistanceIVFRabitqL2FP32SimtTilingData &tiling,
@@ -124,9 +103,11 @@ static ge::graphStatus TilingFunc(gert::TilingContext *context)
     {
         return ge::GRAPH_FAILED;
     }
-    int32_t dimLength = context->GetInputShape(BASE)->GetStorageShape().GetDim(1);  // indexcode维度 存储类型为int8
-    tiling.set_dimLength(dimLength * 8);
-    SetLutAndCodeTilingInfo(context, tiling, ubSize);
+    const auto *quantBitsAttr = context->GetAttrs()->GetAttrPointer<int>(1);
+    const int quantBits = quantBitsAttr ? *quantBitsAttr : 1;
+    ASCENDC_RETURN_IF_NOT(quantBits == 1 || quantBits == 2 || quantBits == 4, ge::GRAPH_FAILED);
+    tiling.set_quantBits(quantBits);
+    ASCENDC_RETURN_IF_NOT(SetLutAndCodeTilingInfo(context, tiling, ubSize) == ge::GRAPH_SUCCESS, ge::GRAPH_FAILED);
     SetDistTilingInfo(context, tiling, ubSize);
 
     context->SetLocalMemorySize(MAX_SHARE_MEM);
@@ -307,6 +288,7 @@ class DistanceIVFRabitqL2FP32Simt : public OpDef
             .UnknownShapeFormat({ge::FORMAT_ND});
 
         this->Attr("metric_type").AttrType(REQUIRED).Int();
+        this->Attr("quant_bits").AttrType(OPTIONAL).Int(1);
         this->SetInferShape(ge::InferShape);
         this->SetInferDataType(ge::InferDataType);
 

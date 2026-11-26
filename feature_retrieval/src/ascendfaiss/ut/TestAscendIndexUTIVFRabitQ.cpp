@@ -937,9 +937,6 @@ TEST(TestAscendIndexIVFRaBitQ, AttachedRefineSourcesValidateRowCountBeforeSearch
 
 TEST(TestAscendIndexIVFRaBitQ, InnerProductTrainAddSearchAndRefine)
 {
-    const auto& soc = faiss::ascend::SocUtils::GetInstance();
-    if (soc.IsAscendA5() || soc.IsAscend310P()) GTEST_SKIP();
-
     // Collinear residuals make the RaBitQ projection exact at every bit width.
     // The largest dot product is deliberately not the closest vector in L2.
     std::vector<float> training(NLIST * DIM, 0.0f);
@@ -984,8 +981,6 @@ TEST(TestAscendIndexIVFRaBitQ, InnerProductTrainAddSearchAndRefine)
 
 TEST(TestAscendIndexIVFRaBitQ, MultiBitCarrierRoundTripsAndRejectsInvalidLayouts)
 {
-    const auto& soc = faiss::ascend::SocUtils::GetInstance();
-    if (soc.IsAscendA5() || soc.IsAscend310P()) GTEST_SKIP();
     for (int bits : {2, 4})
     {
         auto config = MakeConfig();
@@ -4455,8 +4450,6 @@ TEST(TestAscendIndexIVFRaBitQ, ReplicaQuerySlicesPreserveOrderFilterAndRefine)
 
 TEST(TestAscendIndexIVFRaBitQ, ReplicaMultiBitCopiesCodesWithoutDuplicateExport)
 {
-    const auto& soc = faiss::ascend::SocUtils::GetInstance();
-    if (soc.IsAscendA5() || soc.IsAscend310P()) GTEST_SKIP();
     for (int bits : {2, 4})
     {
         auto config = MakeReplicaConfig();

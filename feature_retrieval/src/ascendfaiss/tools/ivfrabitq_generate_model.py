@@ -28,6 +28,7 @@ _CODE_NUM = 16384 * 2
 _CODE_NUM_FLAT = 16384 * 16
 _SCAN_BIT = 8
 _LUT_NUM = 2**_SCAN_BIT
+_METRIC_IDS = {"L2": 0, "IP": 1}
 
 
 def arg_parse():
@@ -35,16 +36,26 @@ def arg_parse():
     Parse arguements to the operator model
     """
 
-    parser = argparse.ArgumentParser(description="generate distance_compute_ivf_sq8 operator model")
+    parser = argparse.ArgumentParser(description="Generate IVFRaBitQ offline operator models")
     utils.op_common_parse(parser, "--cores", 'core_num', 40, int, "Core number, 40 by default")
     utils.op_common_parse(parser, "-d", "dim", 128, int, "Number of Feature dimension")
     utils.op_common_parse(parser, "-c", "coarse_centroid_num", 16384, int, "Number of coarse centroid")
     utils.op_common_parse(parser, "-p", "process_id", 0, int, "Number of process_id")
     utils.op_common_parse(parser, "-pool", "pool_size", 10, int, "Number of pool_size")
-    utils.op_common_parse(parser, "-t", 'npu_type', "910B4", str, "NPU type, 910 series. 910B4 by default")
-    utils.op_common_parse(parser, "-m", 'metric_type', "L2", str, "Metric type, L2 or IP")
+    utils.op_common_parse(
+        parser, "-t", 'npu_type', "910B4", str, "NPU type, e.g. 910B4, 910_9392, or Ascend950PR. 910B4 by default"
+    )
+    utils.op_common_parse(parser, "-m", 'metric_type', "L2", str, "Metric: L2 (default) or IP")
     utils.op_common_parse(parser, "--quant-bits", 'quant_bits', 1, int, "RaBitQ bits per dimension: 1, 2, or 4")
     return parser.parse_args()
+
+
+def metric_model(generator, metric, model_name):
+    generator.add_attr("metric_type", "required", "int", _METRIC_IDS[metric])
+    model = generator.generate_obj()
+    # ATC's default OM name includes tensor shapes but omits operator attributes.
+    model["name"] = f"{model_name}_{metric.lower()}"
+    return model
 
 
 def generate_distance_rabitq_l2_fp32_json(core_num, list_num, dim, metric, quant_bits, file_path):
@@ -72,12 +83,9 @@ def generate_distance_rabitq_l2_fp32_json(core_num, list_num, dim, metric, quant
         generator.add_output("ND", [core_num, _CODE_NUM], "float32")
         generator.add_output("ND", [core_num, (_CODE_NUM + burst_len - 1) // burst_len * 2], "float32")
         generator.add_output("ND", [core_num, 32], "uint16")
-        if metric == "L2":
-            generator.add_attr("metric_type", "required", "int", 0)
-        elif metric == "IP":
-            generator.add_attr("metric_type", "required", "int", 1)
         generator.add_attr("quant_bits", "required", "int", quant_bits)
-        dist_rabitq_l2_obj.append(generator.generate_obj())
+        name = f"distance_rabitq_cube_core_k{core_num}_d{dim}_n{list_num}_b{quant_bits}_q{query_num}"
+        dist_rabitq_l2_obj.append(metric_model(generator, metric, name))
 
     schedule_cap = 16384
     for query_num in search_batch_sizes:
@@ -101,29 +109,27 @@ def generate_distance_rabitq_l2_fp32_json(core_num, list_num, dim, metric, quant
         generator.add_output("ND", [schedule_cap, _CODE_NUM], "float32")
         generator.add_output("ND", [schedule_cap, (_CODE_NUM + burst_len - 1) // burst_len * 2], "float32")
         generator.add_output("ND", [schedule_cap, 32], "uint16")
-        if metric == "L2":
-            generator.add_attr("metric_type", "required", "int", 0)
-        elif metric == "IP":
-            generator.add_attr("metric_type", "required", "int", 1)
         generator.add_attr("quant_bits", "required", "int", quant_bits)
-        dist_rabitq_l2_obj.append(generator.generate_obj())
+        name = f"distance_rabitq_cube_schedule_k{schedule_cap}_d{dim}_n{list_num}_b{quant_bits}_q{query_num}"
+        dist_rabitq_l2_obj.append(metric_model(generator, metric, name))
 
     utils.generate_op_config(dist_rabitq_l2_obj, file_path)
 
 
-def generate_distance_rabitq_l2_fp32_simt_json(core_num, list_num, dim, metric, file_path):
+def generate_distance_rabitq_l2_fp32_simt_json(core_num, list_num, dim, metric, file_path, quant_bits=1):
     search_batch_sizes = (64, 32, 16, 8, 4, 2, 1)
     dist_rabitq_l2_simt_obj = []
+    code_bytes = dim * quant_bits // _SCAN_BIT
     burst_len = 64
     for query_num in search_batch_sizes:
         generator = OpJsonGenerator("DistanceIVFRabitqL2FP32Simt")
         generator.add_input("ND", [query_num], "float32")
-        generator.add_input("ND", [query_num * dim // _SCAN_BIT, _LUT_NUM], "float32")
-        generator.add_input("ND", [list_num * dim // _SCAN_BIT, _LUT_NUM], "float32")
+        generator.add_input("ND", [query_num * code_bytes, _LUT_NUM], "float32")
+        generator.add_input("ND", [list_num * code_bytes, _LUT_NUM], "float32")
         generator.add_input("ND", [core_num], "uint32")
         generator.add_input("ND", [core_num], "uint32")
         generator.add_input("ND", [core_num], "float32")
-        generator.add_input("ND", [_CODE_NUM, dim // 8], "uint8")
+        generator.add_input("ND", [_CODE_NUM, code_bytes], "uint8")
         generator.add_input("ND", [core_num], "uint64")
         generator.add_input("ND", [core_num], "uint32")
         generator.add_input("ND", [_CODE_NUM], "float32")
@@ -135,17 +141,15 @@ def generate_distance_rabitq_l2_fp32_simt_json(core_num, list_num, dim, metric, 
         generator.add_output("ND", [core_num, _CODE_NUM], "float32")
         generator.add_output("ND", [core_num, (_CODE_NUM + burst_len - 1) // burst_len * 2], "float32")
         generator.add_output("ND", [core_num, 32], "uint16")
-        if metric == "L2":
-            generator.add_attr("metric_type", "required", "int", 0)
-        elif metric == "IP":
-            generator.add_attr("metric_type", "required", "int", 1)
-        dist_rabitq_l2_simt_obj.append(generator.generate_obj())
+        if quant_bits != 1:
+            generator.add_attr("quant_bits", "optional", "int", quant_bits)
+        name = f"distance_rabitq_simt_core_k{core_num}_d{dim}_n{list_num}_b{quant_bits}_q{query_num}"
+        dist_rabitq_l2_simt_obj.append(metric_model(generator, metric, name))
 
     utils.generate_op_config(dist_rabitq_l2_simt_obj, file_path)
 
 
 def generate_910b_index_code_and_precompute_json(dim, metric, quant_bits, file_path):
-    index_code_and_precompute_obj = []
     generator = OpJsonGenerator("IndexCodeAndPrecompute")
     generator.add_input("ND", [1], "int32")
     generator.add_input("ND", [_CODE_NUM, dim], "float32")
@@ -155,13 +159,9 @@ def generate_910b_index_code_and_precompute_json(dim, metric, quant_bits, file_p
     generator.add_output("ND", [_CODE_NUM, dim * quant_bits // 8], "uint8")
     generator.add_output("ND", [_CODE_NUM], "float32")
     generator.add_output("ND", [_CODE_NUM], "float32")
-    if metric == "L2":
-        generator.add_attr("metric_type", "required", "int", 0)
-    elif metric == "IP":
-        generator.add_attr("metric_type", "required", "int", 1)
     generator.add_attr("quant_bits", "required", "int", quant_bits)
-    index_code_and_precompute_obj.append(generator.generate_obj())
-    utils.generate_op_config(index_code_and_precompute_obj, file_path)
+    name = f"index_code_and_precompute_d{dim}_b{quant_bits}"
+    utils.generate_op_config([metric_model(generator, metric, name)], file_path)
 
 
 def generate_910b_matmul_at_fp32_json(list_num, dim, quant_bits, file_path):
@@ -251,8 +251,8 @@ def generate_rabitq_offline_model():
     utils.set_env()
     args = arg_parse()
     dim = args.dim
-    metric = args.metric_type
-    if metric not in {"L2", "IP"}:
+    metric = args.metric_type.upper()
+    if metric not in _METRIC_IDS:
         raise ValueError(f"not support metric: {metric}, metric should be L2 or IP")
     quant_bits = args.quant_bits
     if quant_bits not in {1, 2, 4}:
@@ -261,8 +261,6 @@ def generate_rabitq_offline_model():
         raise ValueError("2-bit RaBitQ POC supports dimensions up to 512 (query LUT UB limit)")
     if quant_bits == 4 and dim > 256:
         raise ValueError("4-bit RaBitQ POC supports dimensions up to 256 (query LUT UB limit)")
-    if quant_bits > 1 and args.npu_type == 'Ascend950PR':
-        raise ValueError("multi-bit RaBitQ POC only supports the A3/Cube path")
     process_id = args.process_id
     soc_version = utils.get_soc_version_from_npu_type(args.npu_type)
     core_num = utils.get_core_num_by_npu_type(args.core_num, args.npu_type)
@@ -279,18 +277,20 @@ def generate_rabitq_offline_model():
     generate_910b_rotate_and_l2_at_fp32_json(args.coarse_centroid_num, dim, file_path_)
     utils.atc_model(op_name_, soc_version)
 
-    if args.npu_type == 'Ascend950PR':
-        op_name_ = f"distance_rabitq_l2_fp32_simt_op_pid{process_id}"
+    if args.npu_type in {'Ascend950PR', 'Ascend950'}:
+        op_name_ = f"distance_rabitq_l2_fp32_simt_{metric.lower()}_op_pid{process_id}"
         file_path_ = os.path.join(config_path, f"{op_name_}.json")
-        generate_distance_rabitq_l2_fp32_simt_json(core_num, args.coarse_centroid_num, dim, metric, file_path_)
+        generate_distance_rabitq_l2_fp32_simt_json(
+            core_num, args.coarse_centroid_num, dim, metric, file_path_, quant_bits
+        )
         utils.atc_model(op_name_, soc_version)
     else:
-        op_name_ = f"distance_rabitq_l2_fp32_op_pid{process_id}"
+        op_name_ = f"distance_rabitq_l2_fp32_{metric.lower()}_op_pid{process_id}"
         file_path_ = os.path.join(config_path, f"{op_name_}.json")
         generate_distance_rabitq_l2_fp32_json(core_num, args.coarse_centroid_num, dim, metric, quant_bits, file_path_)
         utils.atc_model(op_name_, soc_version)
 
-    op_name_ = f"index_code_and_precompute_op_pid{process_id}"
+    op_name_ = f"index_code_and_precompute_{metric.lower()}_op_pid{process_id}"
     file_path_ = os.path.join(config_path, f"{op_name_}.json")
     generate_910b_index_code_and_precompute_json(dim, metric, quant_bits, file_path_)
     utils.atc_model(op_name_, soc_version)
