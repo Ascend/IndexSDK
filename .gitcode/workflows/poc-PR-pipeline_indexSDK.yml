@@ -1,6 +1,11 @@
 name: poc-PR-pipeline_IndexSDK
 
 on:
+  pull_request_target:
+    branches: [ 'poc_release-v26.3.0_rabitq', 'tech_v26.2.0' ]
+    types:
+      - open
+      - update
   pr_comment:
     types: [created]
     keyword: '^rebuild_poc$'
@@ -14,13 +19,6 @@ env:
   REMOTE_URL: ${{ atomgit.repositoryurl }}
   PR_ID: ${{ atomgit.event.pull_request.number }}
   org_name: "Ascend"
-
-permissions:
-  project: read
-  repository: read
-  id-token: write
-  pr: write
-  note: write
 
 stages:
   stage_0:
@@ -131,6 +129,9 @@ stages:
               SKIP: clang-tidy
 
       SCA:
+        permissions:
+          repository: read
+          id-token: write
         name: SCA
         runs-on: [ self-hosted, x86, cpu=8 ]
         container:
@@ -147,6 +148,9 @@ stages:
               project-name: MindCluster
 
       malicious-scan:
+        permissions:
+          repository: read
+          id-token: write
         name: antipoison
         runs-on: [ self-hosted, x86, cpu=8 ]
         container:
