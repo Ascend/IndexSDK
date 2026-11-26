@@ -1,6 +1,11 @@
 name: PR-pipeline_IndexSDK
 
 on:
+  pull_request_target:
+    branches: [ 'master', 'release_v26.2.0', 'branch_v26.1.0', 'branch_v26.0.0' ]
+    types:
+      - open
+      - update
   pr_comment:
     types: [created]
     keyword: '^compile$'
@@ -14,13 +19,6 @@ env:
   REMOTE_URL: ${{ atomgit.repositoryurl }}
   PR_ID: ${{ atomgit.event.pull_request.number }}
   org_name: "Ascend"
-
-permissions:
-  project: read
-  repository: read
-  id-token: write
-  pr: write
-  note: write
 
 concurrency:
   enable: true
@@ -138,6 +136,9 @@ stages:
               SKIP: clang-tidy
 
       SCA:
+        permissions:
+          repository: read
+          id-token: write
         name: SCA
         runs-on: [ self-hosted, x86, cpu=8 ]
         container:
@@ -154,6 +155,9 @@ stages:
               project-name: MindCluster
 
       malicious-scan:
+        permissions:
+          repository: read
+          id-token: write
         name: antipoison
         runs-on: [ self-hosted, x86, cpu=8 ]
         container:
