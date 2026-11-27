@@ -155,8 +155,11 @@ std::optional<std::lock_guard<std::mutex>> AscendMultiThreadManager::LockGetBase
     return std::optional<std::lock_guard<std::mutex>>(deviceMtx);
 }
 
-bool AscendOperatorManager::Init(std::string path)
+bool AscendOperatorManager::Init(std::string path) { return Init(std::move(path), nullptr); }
+
+bool AscendOperatorManager::Init(std::string path, aclError *aclStatus)
 {
+    if (aclStatus) *aclStatus = ACL_ERROR_NONE;
     static bool isInited = false;
     static std::mutex mtx;
 
@@ -190,6 +193,9 @@ bool AscendOperatorManager::Init(std::string path)
 #endif
 
     int retCode = aclopSetModelDir(path.c_str());
+    if (aclStatus) *aclStatus = retCode;
+    // Preserve the raw error and recent ACL message for status-aware callers.
+    if (aclStatus && retCode != ACL_ERROR_NONE && retCode != ACL_ERROR_REPEAT_INITIALIZE) return false;
     ASCEND_THROW_IF_NOT_FMT(retCode == ACL_ERROR_NONE || retCode == ACL_ERROR_REPEAT_INITIALIZE, "ACL error %d",
                             retCode);
     if (retCode == ACL_ERROR_REPEAT_INITIALIZE)

@@ -17,10 +17,10 @@ MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 See the Mulan PSL v2 for more details.
 -------------------------------------------------------------------------
 """
+
 import sys
 import os
 import re
-import stat
 import opdesc_parser
 import const_var
 
@@ -214,8 +214,14 @@ def {}_generalization({}, generalize_config=None):
 '''
 
 ATTR_DEFAULT = {
-    'bool': 'False', 'int': '0', 'float': '0.0', 'listInt': '[]',
-    'listFloat': '[]', 'listBool': '[]', 'listListInt': '[[]]', 'str': ''
+    'bool': 'False',
+    'int': '0',
+    'float': '0.0',
+    'listInt': '[]',
+    'listFloat': '[]',
+    'listBool': '[]',
+    'listListInt': '[[]]',
+    'str': '',
 }
 
 
@@ -229,16 +235,15 @@ class AdpBuilder(opdesc_parser.OpDesc):
     def __init__(self: any, op_type: str):
         self.argsname = []
         self.argsdefv = []
-        self.op_compile_option:str = '{}'
+        self.op_compile_option: str = '{}'
         super().__init__(op_type)
 
-
-    def write_adapt(self: any, impl_path, path: str, op_compile_option_all:list = None):
+    def write_adapt(self: any, impl_path, path: str, op_compile_option_all: list = None) -> bool:
         self._build_paradefault()
         if impl_path != "":
             src_file = os.path.join(impl_path, self.op_file + '.cpp')
             if not os.path.exists(src_file):
-                return
+                return False
         out_path = os.path.abspath(path)
         dynamic = 'dynamic'
         if self.dynamic_shape and not out_path.endswith(dynamic):
@@ -256,17 +261,16 @@ class AdpBuilder(opdesc_parser.OpDesc):
             if self.op_fmt_sel:
                 self._write_cap('op_select_format', fd)
                 self._write_cap('get_op_specific_info', fd)
-            if self.op_range_limit == 'limited' or self.op_range_limit == dynamic:
+            if self.op_range_limit in ('limited', dynamic):
                 self._write_glz(fd)
+        return True
 
-
-    def _gen_op_compile_option(self:any, op_compile_option_all:list = None):
+    def _gen_op_compile_option(self: any, op_compile_option_all: list = None):
         if op_compile_option_all is not None:
             if self.op_type in op_compile_option_all:
                 self.op_compile_option = op_compile_option_all[self.op_type]
             elif "__all__" in op_compile_option_all:
                 self.op_compile_option = op_compile_option_all["__all__"]
-
 
     def _ip_argpack(self: any, default: bool = True) -> list:
         args = []
@@ -359,10 +363,7 @@ class AdpBuilder(opdesc_parser.OpDesc):
             attrval = self.attr_val.get(attr).get('defaultValue')
             if attrval is not None:
                 optional = True
-                if type == "bool":
-                    attrval = attrval.capitalize()
-                elif type == "str":
-                    attrval = "\"" + attrval + "\""
+                # Attribute literals are formatted by _attr_argpack.
                 self.argsdefv.append(attrval)
                 continue
             if optional:
@@ -413,15 +414,38 @@ class AdpBuilder(opdesc_parser.OpDesc):
         else:
             kern_name = self.op_intf
         src = self.op_file + '.cpp'
-        fd.write(IMPL_API.format(self.op_type, pchk, self.op_intf, argsdef, kern_name, argsval,\
-                                 self.custom_compile_options, self.custom_all_compile_options, self.op_intf,\
-                                 optype_snake(self.op_type), src))
+        fd.write(
+            IMPL_API.format(
+                self.op_type,
+                pchk,
+                self.op_intf,
+                argsdef,
+                kern_name,
+                argsval,
+                self.custom_compile_options,
+                self.custom_all_compile_options,
+                self.op_intf,
+                optype_snake(self.op_type),
+                src,
+            )
+        )
         if self.op_replay_flag:
-            fd.write(REPLAY_OP_API.format(self.op_type, kern_name, self.op_file, self.op_type, self.op_file,\
-                self.op_compile_option))
+            fd.write(
+                REPLAY_OP_API.format(
+                    self.op_type, kern_name, self.op_file, self.op_type, self.op_file, self.op_compile_option
+                )
+            )
         else:
-            fd.write(COMPILE_OP_API.format(self.op_type, kern_name, self.op_type, ', '.join(self.input_name),\
-                ', '.join(self.output_name), self.op_compile_option))
+            fd.write(
+                COMPILE_OP_API.format(
+                    self.op_type,
+                    kern_name,
+                    self.op_type,
+                    ', '.join(self.input_name),
+                    ', '.join(self.output_name),
+                    self.op_compile_option,
+                )
+            )
 
     def _write_cap(self: any, cap_name: str, fd: object):
         argsdef = self._build_paralist()
@@ -437,16 +461,24 @@ class AdpBuilder(opdesc_parser.OpDesc):
         fd.write(GLZ_API.format(self.op_type, self.op_intf, argsdef, argsval, self.op_type))
 
 
-def write_scripts(cfgfile: str, cfgs: dict, dirs: dict, ops: list = None, op_compile_option:list = None):
+def write_scripts(
+    cfgfile: str, cfgs: dict, dirs: dict, ops: list = None, op_compile_option: list = None, generated: set = None
+):
     batch_lists = cfgs.get(const_var.REPLAY_BATCH).split(';')
     iterator_lists = cfgs.get(const_var.REPLAY_ITERATE).split(';')
-    file_map = {}
-    op_info = opdesc_parser.OpInfo(cfgfile, batch_lists, iterator_lists, AdpBuilder,\
-                                   ops, dirs.get(const_var.AUTO_GEN_DIR))
+    op_info = opdesc_parser.OpInfo(
+        cfgfile, batch_lists, iterator_lists, AdpBuilder, ops, dirs.get(const_var.AUTO_GEN_DIR)
+    )
     op_descs = opdesc_parser.get_op_desc(op_info)
     for op_desc in op_descs:
-        op_desc.write_adapt(dirs.get(const_var.CFG_IMPL_DIR), dirs.get(const_var.CFG_OUT_DIR), op_compile_option)
-        file_map[op_desc.op_type] = op_desc.op_file
+        if generated is not None and op_desc.op_file in generated:
+            continue
+        written = op_desc.write_adapt(
+            dirs.get(const_var.CFG_IMPL_DIR), dirs.get(const_var.CFG_OUT_DIR), op_compile_option
+        )
+        if written and generated is not None:
+            generated.add(op_desc.op_file)
+
 
 if __name__ == '__main__':
     if len(sys.argv) <= 6:
@@ -458,4 +490,6 @@ if __name__ == '__main__':
     cfg_dir[const_var.CFG_IMPL_DIR] = sys.argv[4]
     cfg_dir[const_var.CFG_OUT_DIR] = sys.argv[5]
     cfg_dir[const_var.AUTO_GEN_DIR] = sys.argv[6]
-    write_scripts(cfgfile=sys.argv[1], cfgs=rep_cfg, dirs=cfg_dir)
+    generated_files = set()
+    for config_file in sys.argv[1].split(';'):
+        write_scripts(cfgfile=config_file, cfgs=rep_cfg, dirs=cfg_dir, generated=generated_files)

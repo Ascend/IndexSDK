@@ -96,6 +96,7 @@ class AscendOperatorManager
 {
    public:
     static bool Init(std::string path);
+    static bool Init(std::string path, aclError *aclStatus);
     virtual ~AscendOperatorManager();
 
    private:

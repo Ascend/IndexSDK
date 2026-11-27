@@ -20,6 +20,7 @@
 
 #include <unistd.h>
 
+#include <algorithm>
 #include <cstdarg>
 #include <cstdlib>
 #include <cstring>
@@ -423,12 +424,19 @@ extern "C"
 
     aclTensorDesc *aclCreateTensorDesc(aclDataType dataType, int numDims, const int64_t *dims, aclFormat format)
     {
-        auto tensorDesc = new aclTensorDesc;
+        auto tensorDesc = std::make_unique<aclTensorDesc>();
         tensorDesc->dataType = dataType;
         tensorDesc->numDims = numDims;
-        tensorDesc->dims = dims;
         tensorDesc->format = format;
-        return tensorDesc;
+        if (numDims > 0 && dims != nullptr)
+        {
+            // Handles copy descriptors and can keep their shapes after the caller's array expires.
+            auto ownedDims = std::shared_ptr<int64_t[]>(new int64_t[numDims]);
+            std::copy_n(dims, numDims, ownedDims.get());
+            tensorDesc->dims = ownedDims.get();
+            tensorDesc->ownedDims = std::move(ownedDims);
+        }
+        return tensorDesc.release();
     }
 
     void aclDestroyTensorDesc(const aclTensorDesc *desc) { delete desc; }

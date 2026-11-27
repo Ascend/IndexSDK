@@ -23,10 +23,11 @@ ADD_SUBDIRECTORY(tbe)
 IF(BUILD_ASCENDC)
     MESSAGE(STATUS "OPS build with ascendc")
     ADD_SUBDIRECTORY(ascendc)
-    SET(ALL_MODULES ${OP_PROTO_TARGET} ai_core_ops_config_json ${AICPU_KERNEL_TARGET} aicpu_ops_config_json optiling_compat cust_optiling cust_op_proto_ascendc)
-    ADD_CUSTOM_TARGET(${RUN_TARGET} ALL DEPENDS ${ALL_MODULES})
-    ADD_CUSTOM_COMMAND(TARGET ${RUN_TARGET}
-        PRE_BUILD
+    SET(ALL_MODULES ${OP_PROTO_TARGET} ai_core_ops_config_json ${AICPU_KERNEL_TARGET} aicpu_ops_config_json
+        optiling_compat cust_optiling cust_op_proto_ascendc
+        ascendc_ops_info ascendc_impl_gen gen_version_info)
+    # Stage metadata, tiling and source wrappers for offline ATC compilation.
+    ADD_CUSTOM_TARGET(prepare_op_package DEPENDS ${ALL_MODULES}
         COMMAND mkdir -p ${OPP_INSTALL_DIR}/op_impl/cpu/aicpu_kernel/impl/
         COMMAND mkdir -p ${OPP_INSTALL_DIR}/op_impl/ai_core/tbe/${VENDOR_NAME}_impl
         COMMAND mkdir -p ${OPP_INSTALL_DIR}/op_impl/vector_core/
@@ -36,11 +37,16 @@ IF(BUILD_ASCENDC)
         COMMAND cp -r ./ascendc/op_kernel/tbe/dynamic ${OPP_INSTALL_DIR}/op_impl/ai_core/tbe/${VENDOR_NAME}_impl
         COMMAND cp ${CMAKE_CURRENT_LIST_DIR}/ascendc/op_kernel/*.cpp ${OPP_INSTALL_DIR}/op_impl/ai_core/tbe/${VENDOR_NAME}_impl/dynamic
         COMMAND cp ${CMAKE_CURRENT_LIST_DIR}/ascendc/op_kernel/*.h ${OPP_INSTALL_DIR}/op_impl/ai_core/tbe/${VENDOR_NAME}_impl/dynamic
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${CMAKE_CURRENT_LIST_DIR}/../../../../Third_Party_Open_Source_Software_Notice ${OPP_INSTALL_DIR}/
         COMMAND mkdir -p ${OPP_INSTALL_DIR}/op_impl/ai_core/tbe/op_tiling/lib/linux/${CMAKE_HOST_SYSTEM_PROCESSOR}/
         COMMAND cp ./ascendc/op_host/libcust_opmaster_rt2.0.so ${OPP_INSTALL_DIR}/op_impl/ai_core/tbe/op_tiling/lib/linux/${CMAKE_HOST_SYSTEM_PROCESSOR}/
         COMMAND cp -d ./ascendc/op_host/liboptiling.so ${OPP_INSTALL_DIR}/op_impl/ai_core/tbe/op_tiling/
         COMMAND mkdir -p ${OPP_INSTALL_DIR}/op_proto/lib/linux/${CMAKE_HOST_SYSTEM_PROCESSOR}/
         COMMAND cp ./ascendc/op_host/libcust_opsproto_rt2.0.so ${OPP_INSTALL_DIR}/op_proto/lib/linux/${CMAKE_HOST_SYSTEM_PROCESSOR}/
+    )
+    ADD_CUSTOM_TARGET(${RUN_TARGET} ALL DEPENDS prepare_op_package)
+    ADD_CUSTOM_COMMAND(TARGET ${RUN_TARGET} PRE_BUILD
         COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/cmake/util/makeself/makeself.sh --gzip --complevel 4 --nomd5 --sha256 --header ${CMAKE_CURRENT_SOURCE_DIR}/cmake/util/makeself/makeself-header.sh ./makepkg ${RUN_TARGET} "version:1.0" ./install.sh)
 ELSE()
     SET(ALL_MODULES ${OP_PROTO_TARGET} ai_core_ops_config_json ${AICPU_KERNEL_TARGET} aicpu_ops_config_json)

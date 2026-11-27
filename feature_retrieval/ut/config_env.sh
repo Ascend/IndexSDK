@@ -30,8 +30,10 @@ dependcy_package_install() {
             libboost-all-dev \
             linux-tools-generic \
             linux-tools-common
+    elif command -v dnf >/dev/null 2>&1; then
+        dnf install -y gdb boost-devel perf libasan
     elif command -v yum >/dev/null 2>&1; then
-        yum install -y gdb boost-devel perf
+        yum install -y gdb boost-devel perf libasan
     else
         echo -e "${RED} unsupported package manager ${END}"
         exit 1
