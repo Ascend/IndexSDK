@@ -16,36 +16,39 @@
  * -------------------------------------------------------------------------
  */
 
-
 #include "ascenddaemon/utils/AscendOperator.h"
+
 #include "ascenddaemon/utils/AscendUtils.h"
 #include "common/utils/LogUtils.h"
 
-namespace ascend {
+namespace ascend
+{
 AscendOperator::AscendOperator(AscendOpDesc &desc)
-    : opDesc(std::move(desc)),
-      handle(nullptr),
-      numInputs(opDesc.inputDesc.size()),
-      numOutputs(opDesc.outputDesc.size())
+    : opDesc(std::move(desc)), handle(nullptr), numInputs(opDesc.inputDesc.size()), numOutputs(opDesc.outputDesc.size())
 {
 }
 
 bool AscendOperator::init()
 {
-    auto ret = aclopCreateHandle(opDesc.opType.c_str(),
-                                 numInputs, opDesc.inputDesc.data(),
-                                 numOutputs, opDesc.outputDesc.data(),
-                                 opDesc.opAttr, &handle);
-    if (ACL_ERROR_NONE != ret) {
+    auto ret = initWithStatus();
+    if (ACL_ERROR_NONE != ret)
+    {
         APP_LOG_ERROR("the result of aclopCreateHandle() is err, opType=%s, ret=%d.\n", opDesc.opType.c_str(), ret);
         return false;
     }
     return true;
 }
 
+aclError AscendOperator::initWithStatus()
+{
+    return aclopCreateHandle(opDesc.opType.c_str(), numInputs, opDesc.inputDesc.data(), numOutputs,
+                             opDesc.outputDesc.data(), opDesc.opAttr, &handle);
+}
+
 AscendOperator::~AscendOperator()
 {
-    if (handle) {
+    if (handle)
+    {
         aclopDestroyHandle(handle);
         handle = nullptr;
     }
@@ -107,15 +110,16 @@ size_t AscendOperator::getOutputSize(int index)
     return aclGetTensorDescSize(opDesc.outputDesc[index]);
 }
 
-void AscendOperator::exec(std::vector<const aclDataBuffer *>& inputBuffers,
-                          std::vector<aclDataBuffer *>& outputBuffers, aclrtStream stream)
+void AscendOperator::exec(std::vector<const aclDataBuffer *> &inputBuffers, std::vector<aclDataBuffer *> &outputBuffers,
+                          aclrtStream stream)
 {
     ASCEND_THROW_IF_NOT(handle != nullptr);
-    ACL_REQUIRE_OK(aclopExecWithHandle(handle,
-                                       numInputs,
-                                       inputBuffers.data(),
-                                       numOutputs,
-                                       outputBuffers.data(),
-                                       stream));
+    ACL_REQUIRE_OK(execWithStatus(inputBuffers, outputBuffers, stream));
+}
+
+aclError AscendOperator::execWithStatus(std::vector<const aclDataBuffer *> &inputBuffers,
+                                        std::vector<aclDataBuffer *> &outputBuffers, aclrtStream stream)
+{
+    return aclopExecWithHandle(handle, numInputs, inputBuffers.data(), numOutputs, outputBuffers.data(), stream);
 }
 }  // namespace ascend

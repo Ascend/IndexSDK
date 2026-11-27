@@ -16,38 +16,39 @@
  * -------------------------------------------------------------------------
  */
 
-
 #ifndef ASCEND_OPERATOR_INCLUDED
 #define ASCEND_OPERATOR_INCLUDED
 
 #include <vector>
+
 #include "ascenddaemon/utils/AscendOpDesc.h"
 
-namespace ascend {
-class AscendOperator {
-public:
+namespace ascend
+{
+class AscendOperator
+{
+   public:
     explicit AscendOperator(AscendOpDesc &opDesc);
 
     ~AscendOperator();
 
-    AscendOperator(const AscendOperator&) = delete;
+    AscendOperator(const AscendOperator &) = delete;
 
-    AscendOperator& operator=(const AscendOperator&) = delete;
+    AscendOperator &operator=(const AscendOperator &) = delete;
 
     bool init();
 
-    void exec(std::vector<const aclDataBuffer *>& inputBuffers,
-              std::vector<aclDataBuffer *>& outputBuffers, aclrtStream stream);
+    // Raw ACL status variants for callers that preserve the original device error.
+    aclError initWithStatus();
+    aclError execWithStatus(std::vector<const aclDataBuffer *> &inputBuffers,
+                            std::vector<aclDataBuffer *> &outputBuffers, aclrtStream stream);
 
-    inline int getNumInputs() const
-    {
-        return numInputs;
-    }
+    void exec(std::vector<const aclDataBuffer *> &inputBuffers, std::vector<aclDataBuffer *> &outputBuffers,
+              aclrtStream stream);
 
-    inline int getNumOutputs() const
-    {
-        return numOutputs;
-    }
+    inline int getNumInputs() const { return numInputs; }
+
+    inline int getNumOutputs() const { return numOutputs; }
 
     size_t getInputNumDims(int index);
 
@@ -61,7 +62,7 @@ public:
 
     size_t getOutputSize(int index);
 
-private:
+   private:
     AscendOpDesc opDesc;
     aclopHandle *handle;
     int numInputs;

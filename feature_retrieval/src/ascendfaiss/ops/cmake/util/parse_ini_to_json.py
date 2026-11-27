@@ -17,6 +17,7 @@ MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 See the Mulan PSL v2 for more details.
 -------------------------------------------------------------------------
 """
+
 import json
 import os
 import stat
@@ -34,8 +35,8 @@ def parse_ini_files(ini_files):
 
 
 def parse_ini_to_obj(ini_file, tbe_ops_info):
-    with open(ini_file) as ini_file:
-        lines = ini_file.readlines()
+    with open(ini_file, encoding='utf-8') as stream:
+        lines = stream.readlines()
         op = {}
         for line in lines:
             line = line.rstrip()
@@ -44,8 +45,8 @@ def parse_ini_to_obj(ini_file, tbe_ops_info):
                 op = {}
                 tbe_ops_info[op_name] = op
             else:
-                key1 = line[:line.index("=")]
-                key2 = line[line.index("=") + 1:]
+                key1 = line[: line.index("=")]
+                key2 = line[line.index("=") + 1 :]
                 key1_0, key1_1 = key1.split(".")
                 if key1_0 not in op:
                     op[key1_0] = {}
@@ -73,8 +74,11 @@ def check_op_info(tbe_ops):
                     is_valid = False
                 else:
                     if op_input_info["paramType"] not in param_type_valid_value:
-                        logging.info("op: %s %s paramType not valid, valid key:[dynamic, optional, required]",
-                                     op_key, op_info_key)
+                        logging.info(
+                            "op: %s %s paramType not valid, valid key:[dynamic, optional, required]",
+                            op_key,
+                            op_info_key,
+                        )
                         is_valid = False
             if op_info_key.startswith("output"):
                 op_input_info = op[op_info_key]
@@ -95,7 +99,7 @@ def check_op_info(tbe_ops):
 
 def write_json_file(tbe_ops_info, json_file_path):
     json_file_real_path = os.path.realpath(json_file_path)
-    flags = os.O_WRONLY | os.O_CREAT
+    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
     modes = stat.S_IWUSR | stat.S_IRUSR | stat.S_IWGRP | stat.S_IRGRP
     with os.fdopen(os.open(json_file_real_path, flags, modes), "w") as f:
         json.dump(tbe_ops_info, f, sort_keys=True, indent=4, separators=(',', ':'))

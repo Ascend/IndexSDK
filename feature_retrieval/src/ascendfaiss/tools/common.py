@@ -67,7 +67,7 @@ def set_env():
     os.environ['ASCEND_OPP_PATH'] = os.path.join(ascend_toolkit_path, 'opp')
 
 
-def atc_model(json_file, soc_version="Ascend310P3"):
+def atc_model(json_file, soc_version="Ascend310P3", output_dir="op_models"):
     # generate aicore operator model
     ascend_toolkit_path = os.path.join(os.environ['ASCEND_HOME'], os.environ['ASCEND_VERSION'])
     atc_path = os.path.join(ascend_toolkit_path, 'bin/atc')
@@ -76,7 +76,7 @@ def atc_model(json_file, soc_version="Ascend310P3"):
             atc_path,
             '--singleop=./config/%s.json' % json_file,
             '--soc_version=%s' % soc_version,
-            '--output=op_models',
+            '--output=%s' % output_dir,
             '--log=error',
         ],
         shell=False,

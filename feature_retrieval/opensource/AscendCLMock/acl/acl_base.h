@@ -21,6 +21,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 #ifdef __cplusplus
@@ -106,6 +107,7 @@ extern "C"
         int numDims{0};
         const int64_t *dims{nullptr};
         aclFormat format{ACL_FORMAT_ND};
+        std::shared_ptr<const int64_t[]> ownedDims;
     };
 
     struct tagAclrtContext;

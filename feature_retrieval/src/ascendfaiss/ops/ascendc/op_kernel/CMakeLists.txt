@@ -17,6 +17,8 @@ if ("${CMAKE_BUILD_TYPE}x" STREQUAL "Debugx")
     add_ops_compile_options(ALL OPTIONS -g -O0)
 endif()
 
+set(ascendc_ops_info)
+add_custom_target(ascendc_ops_info)
 foreach(compute_unit ${ASCEND_COMPUTE_UNIT})
 
     # generate aic-${compute_unit}-ops-info.json
@@ -25,16 +27,17 @@ foreach(compute_unit ${ASCEND_COMPUTE_UNIT})
         OPS_INFO ${ASCEND_AUTOGEN_PATH}/aic-${compute_unit}-ops-info.ini
         INSTALL_DIR packages/vendors/${vendor_name}/op_impl/ai_core/tbe/config/${compute_unit}
     )
+    add_dependencies(ascendc_ops_info ops_info_gen_${compute_unit})
 
-    # generate ascendc impl py once
-    if (NOT TARGET ascendc_impl_gen_${compute_unit})
-        add_ops_impl_target(TARGET ascendc_impl_gen_${compute_unit}
-            OPS_INFO ${ASCEND_AUTOGEN_PATH}/aic-${compute_unit}-ops-info.ini
-            OPS_BATCH ${BATCH_MODE_REPLAY_LIST}
-            OPS_ITERATE ${ITERATOR_MODE_REPLAY_LIST}
-            IMPL_DIR ${CMAKE_CURRENT_SOURCE_DIR}
-            OUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/tbe
-            INSTALL_DIR packages/vendors/${vendor_name}/op_impl/ai_core/tbe/${VENDOR_NAME}_impl
-        )
-    endif()
+    list(APPEND ascendc_ops_info ${ASCEND_AUTOGEN_PATH}/aic-${compute_unit}-ops-info.ini)
 endforeach()
+
+# One wrapper per operator, including operators registered only for one SoC.
+add_ops_impl_target(TARGET ascendc_impl_gen
+    OPS_INFO ${ascendc_ops_info}
+    OPS_BATCH ${BATCH_MODE_REPLAY_LIST}
+    OPS_ITERATE ${ITERATOR_MODE_REPLAY_LIST}
+    IMPL_DIR ${CMAKE_CURRENT_SOURCE_DIR}
+    OUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/tbe
+    INSTALL_DIR packages/vendors/${vendor_name}/op_impl/ai_core/tbe/${VENDOR_NAME}_impl
+)

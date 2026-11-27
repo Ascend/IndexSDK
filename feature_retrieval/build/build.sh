@@ -317,7 +317,8 @@ build_ops()
 
     # Ascend950 needs its own package so that legacy op-proto constants and
     # packaged operator metadata are built for A5 instead of reusing 910B.
-    build_ops_for_npu_type Ascend950 || build_failed=1
+    build_ops_for_npu_type Ascend950 &
+    wait "$!" || build_failed=1
 
     rm -rf "${PROJECT_ZIP_PATH}"/stage_310P "${PROJECT_ZIP_PATH}"/stage_910B \
         "${PROJECT_ZIP_PATH}"/stage_Ascend950
@@ -365,6 +366,7 @@ build_install()
     cmake -S ${PROJECT_SRC_PATH} -DPROTOBUF_HOME="${PROJECT_ROOT_FOLDER}"/../opensource/opensource/temp/"${protobuf_dir}" \
         -DPROTOBUF_AARCH64_HOME="${PROJECT_ROOT_FOLDER}"/../opensource/opensource/temp/protobuf_aarch64 \
         -DBUILD_OPS=OFF -DCMAKE_INSTALL_PREFIX="${PROJECT_ZIP_PATH}"/feature_retrieval \
+        -DBUILD_ASCENDDEVICE="${BUILD_ASCENDDEVICE:-ON}" \
         -DBUILD_ASCEND_SEARCH="${is_build_ascend_search}" -DASCEND_SEARCH_HOME="${DEFAULT_IVFSP_HOME_WITH_NPU_TYPE}/.." \
         -DBUILD_OCK="${build_ock}" -DOCK_HOME="${OCK_HOME}" \
         -DFAISS_HOME="${BUILD_FAISS_HOME}"

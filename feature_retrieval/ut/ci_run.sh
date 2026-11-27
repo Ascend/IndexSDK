@@ -81,22 +81,11 @@ function build_opensource() {
 function build_mockcpp() {
     pushd ./
     cd "${CUR_DIR}"/../opensource/mockcpp
-    if [ -d "output" ]; then
-        echo "skip build mockcpp"
-        popd
-        return
-    fi
-
-    if [ -d "build" ]; then
-        rm -rf build
-    fi
-
-    mkdir build
-    mkdir output
+    # A failed build also leaves output/. Always let the build system check its artifacts.
+    mkdir -p build output
 
     cd build
     cmake ../ -DCMAKE_INSTALL_PREFIX=../output
-    make clean
     make -j"${BUILD_JOBS}"
     make install
     popd
@@ -107,7 +96,7 @@ function build_securec() {
     cd "${SECUREC_HOME}"
     make CC=gcc
     cd lib
-    ln -sf libboundscheck.so libsecurec.so
+    ln -sfn libboundscheck.so libsecurec.so
     popd
 }
 
@@ -119,17 +108,27 @@ function gen_report() {
     cd ./build
     echo "========= Testing is running pls wait ========="
     make
+    python3 -B -m unittest discover -s "${CUR_DIR}/../src/ascendfaiss/ut" -p 'test_bm25*.py'
 
     if [ "${1}" == "on" ]; then
         GCC_MAJOR_VERSION=$(gcc -dumpversion | awk '{print $1}')
         GET_ARCH=`arch`
         ASAN_SO=/usr/lib/gcc/$GET_ARCH-linux-gnu/${GCC_MAJOR_VERSION}/libasan.so
-        export ASAN_OPTIONS=halt_on_error=0:log_path=${CUR_DIR}/build/${ASAN_LOG}
-        LD_PRELOAD=${ASAN_SO} ./TestAscendIndexUT --gtest_output=xml:./test_detail.xml
+        export ASAN_OPTIONS="halt_on_error=0:log_path=${CUR_DIR}/build/${ASAN_LOG}"
+        local test_status=0
+        LD_PRELOAD=${ASAN_SO} ./TestAscendIndexUT --gtest_output=xml:./test_detail.xml || test_status=$?
 
-        if [ -f ${CUR_DIR}/build/${ASAN_LOG}.* ]; then
-            echo "asan found error, please check asan log"
-            exit 1
+        local asan_report
+        for asan_report in "${CUR_DIR}/build/${ASAN_LOG}".*; do
+            [ -f "${asan_report}" ] || continue
+            echo "ASan report from ${asan_report}" >&2
+            cat -- "${asan_report}" >&2
+            if [ "${test_status}" -eq 0 ]; then
+                test_status=1
+            fi
+        done
+        if [ "${test_status}" -ne 0 ]; then
+            return "${test_status}"
         fi
     else
         ctest -V -R '^TestAscendIndexUT$'

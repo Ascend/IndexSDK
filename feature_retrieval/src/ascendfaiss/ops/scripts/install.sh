@@ -75,12 +75,12 @@ if [ ! -d "$targetdir" ];then
 fi
 
 targetdir=$(realpath "$targetdir")
- 
+
 cann_owner=$(stat -c '%U' "$targetdir")
 current_user=$(whoami)
- 
+
 if [ "$current_user" != "$cann_owner" ]; then
-    log "ERROR" "Cann owner is not current user." "y"
+    log "ERROR" "CANN owner is not current user." "y"
     exit 126
 fi
 
@@ -149,11 +149,11 @@ if [ ! -d "${targetdir}"/vendors ];then
     log "ERROR" "${targetdir}/vendors not exist." "y"
     return 1
 fi
- 
+
 if [ -d "${targetdir}"/"$vendordir" ];then
     chmod -R u+w "${targetdir}"/"$vendordir"
 fi
- 
+
 config_file="${targetdir}"/vendors/config.ini
 if [ ! -f "${config_file}" ]; then
     touch "${config_file}"
@@ -184,6 +184,11 @@ if [ $? -ne 0 ];then
 fi
 
 upgrade_file version.info
+if [ $? -ne 0 ];then
+    exit 1
+fi
+
+upgrade_file Third_Party_Open_Source_Software_Notice
 if [ $? -ne 0 ];then
     exit 1
 fi
@@ -234,4 +239,3 @@ fi
 chmod -R -w "${targetdir}"/"$vendordir">/dev/null 2>&1
 log "INFO" "Install package successfully" "y"
 exit 0
-

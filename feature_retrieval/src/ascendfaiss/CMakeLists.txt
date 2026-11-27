@@ -27,21 +27,6 @@ ELSE()
 ENDIF()
 SET(FAISS_HOME                  /usr/local/faiss             CACHE STRING   "")
 SET(NPU_TYPE                    310P                         CACHE STRING   "310P")
-# Relative paths
-SET(PROJECT_SRC_ROOT ${CMAKE_CURRENT_LIST_DIR})
-SET(ASCEND_TOOLKIT_PATH ${ASCEND_HOME}/ascend-toolkit/${ASCEND_TOOLKIT_VERSION})
-# Check user-settable path existence
-FOREACH(X IN LISTS
-            ASCEND_HOME
-            DRIVER_HOME
-            ASCEND_TOOLKIT_PATH
-            ASCEND_MINIOS_HOME
-            FAISS_HOME
-        )
-    IF (NOT EXISTS ${X})
-        MESSAGE(FATAL_ERROR "${X} does not exist")
-    ENDIF()
-ENDFOREACH()
 
 OPTION(BUILD_ASCENDHOST    "Build ascendhost"                          ON)
 OPTION(BUILD_ASCENDDEVICE  "Build ascenddevice"                        ON)
@@ -49,6 +34,26 @@ OPTION(BUILD_OPS           "Build ops"                                 ON)
 OPTION(COVERAGE            "COVERAGE"                                  OFF)
 OPTION(HITEST              "HITEST"                                    OFF)
 OPTION(BUILD_ASCEND_SEARCH "Build ascendsearch"                        OFF)
+
+# Relative paths
+SET(PROJECT_SRC_ROOT ${CMAKE_CURRENT_LIST_DIR})
+IF (NOT DEFINED ASCEND_TOOLKIT_PATH)
+    SET(ASCEND_TOOLKIT_PATH ${ASCEND_HOME}/ascend-toolkit/${ASCEND_TOOLKIT_VERSION})
+ENDIF()
+# Check user-settable path existence
+FOREACH(X IN LISTS
+            ASCEND_HOME
+            DRIVER_HOME
+            ASCEND_TOOLKIT_PATH
+            FAISS_HOME
+        )
+    IF (NOT EXISTS ${X})
+        MESSAGE(FATAL_ERROR "${X} does not exist")
+    ENDIF()
+ENDFOREACH()
+IF(BUILD_ASCENDDEVICE AND NOT EXISTS "${ASCEND_MINIOS_HOME}")
+    MESSAGE(FATAL_ERROR "${ASCEND_MINIOS_HOME} does not exist (required by BUILD_ASCENDDEVICE=ON)")
+ENDIF()
 
 INCLUDE(${CMAKE_CURRENT_LIST_DIR}/cmake/CRoaringAmalgam.cmake)
 

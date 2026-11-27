@@ -181,9 +181,27 @@ function install_ut_deps()
     if ! lcov --version 2>/dev/null | grep -q '2\.0'; then
         echo "[INSTALL_INFO] lcov 2.0 not found. Installing..."
         cd "${TOP_DIR}"
-        apt update && apt install -y libcapture-tiny-perl libdatetime-perl libtimedate-perl
-        wget https://github.com/linux-test-project/lcov/releases/download/v2.0/lcov-2.0.tar.gz
-        tar -xzf lcov-2.0.tar.gz && cd lcov-2.0
+        if command -v apt-get >/dev/null 2>&1; then
+            apt-get update
+            apt-get install -y libcapture-tiny-perl libdatetime-perl libtimedate-perl
+        elif command -v dnf >/dev/null 2>&1; then
+            dnf install -y perl-Capture-Tiny perl-DateTime perl-TimeDate
+        elif command -v yum >/dev/null 2>&1; then
+            yum install -y perl-Capture-Tiny perl-DateTime perl-TimeDate
+        else
+            echo "[INSTALL_ERROR] Install lcov 2.0 and its Perl dependencies with the system package manager."
+            return 1
+        fi
+        if [ ! -s lcov-2.0.tar.gz ]; then
+            if ! wget https://github.com/linux-test-project/lcov/releases/download/v2.0/lcov-2.0.tar.gz \
+                -O lcov-2.0.tar.gz.partial; then
+                echo "[INSTALL_ERROR] lcov download failed. Check CA/proxy trust or provide a trusted local lcov-2.0.tar.gz."
+                return 1
+            fi
+            mv lcov-2.0.tar.gz.partial lcov-2.0.tar.gz
+        fi
+        tar -xzf lcov-2.0.tar.gz
+        cd lcov-2.0
         make install
         cd .. && rm -rf lcov-2.0 lcov-2.0.tar.gz
     else
