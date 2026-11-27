@@ -19,16 +19,16 @@ Before you start, ensure that the following requirements are met:
 - Select the corresponding image pull command based on the Ascend AI Processor model:
 
     <!-- npu="310p" id1 -->
-    - For Atlas inference products, run the `npu-smi info` command on a server where the Ascend AI Processor is installed. Remove the last digit from the queried `Name` value. The result is the value of `npu_type`.
+    - For Atlas inference products, the image tag is `310p`.
     <!-- end id1 -->
     <!-- npu="910b" id2 -->
-    - For Atlas 800I A2, run the `npu-smi info` command on a server where the Ascend AI Processor is installed. The queried `Name` value is the value of `npu_type`.
+    - For Atlas 800I A2, the image tag is `910b`.
     <!-- end id2 -->
     <!-- npu="A3" id3 -->
-    - For Atlas 800I A3, run the `npu-smi info -t board -i 0 -c 0` command to query the NPU Name. The `910_NPU Name` value is the value of `npu_type`.
+    - For Atlas 800I A3, the image tag is `a3`.
     <!-- end id3 -->
     <!-- npu="950" id4 -->
-    - For Atlas 950PR products, `Ascend950PR` is the value of `npu_type`.
+    - For Atlas 950PR products, the image tag is `950`.
     <!-- end id4 -->
 
    | Chip Model | Pull Command |

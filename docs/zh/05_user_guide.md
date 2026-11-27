@@ -554,7 +554,7 @@ Cagra构图脚本 "graph_build.py" 用于构建CAGRA图检索算法所需的图�
 环境依赖库参见如下：
 
 - nnae（version \>= 8.0.0, 8.5.0 及以后由 toolkit 包收编）
-- python（version \>= 3.9）
+- python（version \>= 3.10）
 - torch（version \>= 2.0.1）
 - torch\_npu（version \>= 2.0.1.post4）
 
@@ -686,7 +686,7 @@ CANN 8.5.0之前版本需要单独安装nnae。具体安装步骤如下：
 
 ##### 码本训练脚本<a name="ZH-CN_TOPIC_0000002008865568"></a>
 
-训练涉及“vstar\_train\_codebook.py”脚本（训练脚本位于安装目录下的“tools/train”文件夹中），注意Python版本为3.9。
+训练涉及“vstar\_train\_codebook.py”脚本（训练脚本位于安装目录下的“tools/train”文件夹中），注意Python版本为3.10。
 
 <a name="table48723587152"></a>
 <table><tbody>
@@ -724,7 +724,7 @@ source /usr/local/Ascend/ascend-toolkit/set_env.sh
 Index SDK提供两种训练脚本方式：
 
 - 使用IVFSP算法的[trainCodeBook接口](./api/02_approximate_retrieval/05_AscendIndexIVFSP.md#traincodebook接口)进行训练（推荐使用该方式）。
-- 使用“ivfsp\_train\_codebook.py”脚本进行训练。训练脚本位于安装目录下的“tools/train”文件夹中，注意Python版本为3.9.11。为了用户执行方便，提供了“ivfsp\_train\_codebook\_example.sh”样例脚本（脚本位于安装目录下的“tools/train”文件夹中），用户可在此文件上根据实际场景修改参数值，然后执行此脚本生成码本文件。
+- 使用“ivfsp\_train\_codebook.py”脚本进行训练。训练脚本位于安装目录下的“tools/train”文件夹中，注意Python版本为3.10.12。为了用户执行方便，提供了“ivfsp\_train\_codebook\_example.sh”样例脚本（脚本位于安装目录下的“tools/train”文件夹中），用户可在此文件上根据实际场景修改参数值，然后执行此脚本生成码本文件。
 
 <a name="table48723587152"></a>
 <table><tbody>
@@ -737,7 +737,7 @@ Index SDK提供两种训练脚本方式：
 
 **环境依赖<a name="section162431329141010"></a>**
 
-- 安装Python3.9（支持Python3.9、Python3.10和Python3.11，推荐使用Python3.9）。
+- 安装Python3.10（支持Python3.10和Python3.11，推荐使用Python3.10）。
 - 安装Faiss 1.10.0。可通过**pip install**命令安装，命令执行参考如下。
 
     ```bash
