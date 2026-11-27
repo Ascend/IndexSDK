@@ -53,8 +53,8 @@
 3,&emsp;  请将如下声明文本放入每个源文件的头部注释中。
 
 ```bash
-Copyright (c) [Year] [name of copyright holder]
-[Software Name] is licensed under Mulan PSL v2.
+Copyright (c) 2026 Huawei Technologies Co., Ltd.
+IndexSDK is licensed under Mulan PSL v2.
 You can use this software according to the terms and conditions of the Mulan PSL v2.
 You may obtain a copy of Mulan PSL v2 at:
          http://license.coscl.org.cn/MulanPSL2
@@ -123,8 +123,8 @@ To apply the Mulan PSL v2 to your work, for easy identification by recipients, y
 &emsp;&emsp;iii. Attach the statement to the appropriate annotated syntax at the beginning of each source file.
 
 ```bash
-Copyright (c) [Year] [name of copyright holder]
-[Software Name] is licensed under Mulan PSL v2.
+Copyright (c) 2026 Huawei Technologies Co., Ltd.
+IndexSDK is licensed under Mulan PSL v2.
 You can use this software according to the terms and conditions of the Mulan PSL v2.
 You may obtain a copy of Mulan PSL v2 at:
          http://license.coscl.org.cn/MulanPSL2
