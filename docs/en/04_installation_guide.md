@@ -30,7 +30,7 @@ Refer to [CANN Quick Installation](https://www.hiascend.com/en/cann/download), s
 | gcc | >=7.5.0 | You are advised to obtain the source package and compile and install it. |
 | gfortran | >=7.5.0 | Required for compiling OpenBLAS (the OpenBLAS build command specifies `FC=gfortran`). You are advised to install it using a package manager. See the following example installation command.<br>`sudo apt-get install -y gfortran` |
 | cmake | >=3.24.0 | You are advised to install it using a package manager. See the following example installation command.<br>`sudo apt-get install -y cmake`<br>If the version available through the package manager does not meet the minimum version requirement, you can install it from source. |
-| Python | 3.9/3.10/3.11/3.12 | You are advised to obtain the source package and compile and install it. |
+| Python | 3.10/3.11/3.12 | You are advised to obtain the source package and compile and install it. |
 
 Run the following commands to check whether GCC, CMake, and other dependencies are installed.
 
@@ -47,7 +47,7 @@ If the following information is returned, the corresponding software is installe
 gcc 7.5.0
 gfortran 7.5.0
 cmake version 3.24.0
-Python 3.9.11
+Python 3.10.12
 ```
 
 #### Python Dependencies
@@ -316,7 +316,7 @@ The following table describes the command-line options.
 <tr><td width="270" valign="middle">--install</td><td valign="middle">Installation command for the feature retrieval package.</td></tr>
 <tr><td width="270" valign="middle">--install-path=*&lt;path&gt;*</td><td valign="middle">Optional. Customize the root installation directory for the feature retrieval package. If not set, the current directory where you run the command is used by default. The path must start with <code>/</code> or <code>~</code>, and can contain only letters, digits, <code>-</code>, <code>_</code>, <code>.</code>, and <code>/</code>.<br>If not specified, the package is installed to the default path:<br>● If installed as root, the default installation path is <code>/usr/local/Ascend</code>.<br>● If installed as a non-root user, the default installation path is <code>${HOME}/Ascend</code>, where <code>${HOME}</code> is the user directory.<br>If this parameter is used to specify the installation directory, other users must not have write permission to that directory. If a regular user is specified for installation, the owner of the installation directory must be the current installation user.</td></tr>
 <tr><td width="270" valign="middle">--upgrade</td><td valign="middle">Installation command for upgrading the feature retrieval package, which upgrades feature retrieval to the Index SDK version included in the package.</td></tr>
-<tr><td width="270" valign="middle">--platform=*&lt;npu_type&gt;*</td><td valign="middle">Corresponding Ascend AI Processor type.<br>● For Atlas inference products, enter <code>310P</code>.<br>● For Atlas 800I A3, enter <code>A3</code>.<br>● For Atlas A2 inference products, run <code>npu-smi info</code> on a server where the Ascend AI Processor is installed to query it, then remove the last digit of the queried &quot;Name&quot; value. The result is the value of <code>--platform</code>.<br>● For Atlas 950PR products, enter <code>Ascend950PR</code>.</td></tr>
+<tr><td width="270" valign="middle">--platform=*&lt;npu_type&gt;*</td><td valign="middle">Corresponding Ascend AI Processor type.<br>● For Atlas inference products, enter <code>310P</code>.<br>● For Atlas 800I A3, enter <code>A3</code>.<br>● For Atlas A2 inference products, enter <code>910B</code>.<br>● For Atlas 950PR products, enter <code>Ascend950PR</code>.</td></tr>
 <tr><td width="270" valign="middle">--faiss-version=*&lt;version&gt;*</td><td valign="middle">Optional. Select the default activated Faiss ABI version after installation. Supported values include <code>1.10</code>, <code>1.10.0</code>, <code>faiss1.10</code>, <code>1.14</code>, <code>1.14.1</code>, and <code>faiss1.14</code>. The default value is <code>1.10</code>. When <code>1.10</code> is selected, the business shared libraries and header files built against Faiss 1.10.x are activated. When <code>1.14</code> is selected, the business shared libraries and header files built against Faiss 1.14.1 are activated.</td></tr>
 </tbody></table>
 

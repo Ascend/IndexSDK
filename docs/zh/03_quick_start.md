@@ -19,16 +19,16 @@
 - 根据芯片型号选择对应的镜像拉取命令：
 
     <!-- npu="310p" id1 -->
-    - 对于 Atlas推理系列产品，可在安装昇腾 AI 处理器的服务器执行 npu-smi info 命令进行查询，将查询到的“Name”最后一位数字删除，即是npu_type的取值。
+    - 对于 Atlas推理系列产品，镜像 tag 为 `310p`。
     <!-- end id1 -->
     <!-- npu="910b" id2 -->
-    - 对于 Atlas 800I A2推理服务器，可在安装昇腾 AI 处理器的服务器执行 npu-smi info 命令进行查询，查询到的“Name”即是npu_type的取值。
+    - 对于 Atlas 800I A2推理服务器，镜像 tag 为 `910b`。
     <!-- end id2 -->
     <!-- npu="A3" id3 -->
-    - 对于 Atlas 800I A3超节点服务器，可以通过 npu-smi info -t board -i 0 -c 0 命令进行查询，获取NPU Name信息，910_NPU Name即是npu_type的取值。
+    - 对于 Atlas 800I A3超节点服务器，镜像 tag 为 `a3`。
     <!-- end id3 -->
     <!-- npu="950" id4 -->
-    - 对于 Ascend 950PR系列产品，Ascend950PR即是npu_type的取值。
+    - 对于 Ascend 950PR系列产品，镜像 tag 为 `950`。
     <!-- end id4 -->
 
    | 服务器型号 | 拉取命令 |

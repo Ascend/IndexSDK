@@ -552,7 +552,7 @@ The Cagra graph construction script, `graph_build.py`, builds the graph file req
 The environment dependencies are as follows:
 
 - `nnae` (`8.0.0 <= version < 8.5.0`)
-- `python` (`version >= 3.9`)
+- `python` (`version >= 3.10`)
 - `torch` (`version >= 2.0.1`)
 - `torch_npu` (`version >= 2.0.1.post4`)
 
@@ -684,7 +684,7 @@ Versions earlier than CANN 8.5.0 require a separate `nnae` installation. Follow 
 
 ##### Codebook Training Script<a name="en-us_TOPIC_0000002008865568"></a>
 
-Training uses the `vstar_train_codebook.py` script. The training script is in the `tools/train` folder under the installation directory. Note that the Python version is 3.9.
+Training uses the `vstar_train_codebook.py` script. The training script is in the `tools/train` folder under the installation directory. Note that the Python version is 3.10.
 
 <a name="table48723587152"></a>
 <table><tbody>
@@ -722,7 +722,7 @@ source /usr/local/Ascend/ascend-toolkit/set_env.sh
 Index SDK provides two ways to use the training script:
 
 - Use the [trainCodeBook interface](./api/02_approximate_retrieval/05_AscendIndexIVFSP.md#traincodebook) of the IVFSP algorithm for training (this method is recommended).
-- Use the `ivfsp_train_codebook.py` script for training. The script is in the `tools/train` folder under the installation directory. Note that the Python version is 3.9.11. For convenience, an `ivfsp_train_codebook_example.sh` sample script is provided in the same folder. You can modify the parameters in that file according to your actual scenario and then run the script to generate the codebook file.
+- Use the `ivfsp_train_codebook.py` script for training. The script is in the `tools/train` folder under the installation directory. Note that the Python version is 3.10.12. For convenience, an `ivfsp_train_codebook_example.sh` sample script is provided in the same folder. You can modify the parameters in that file according to your actual scenario and then run the script to generate the codebook file.
 
 <a name="table48723587152"></a>
 <table><tbody>
@@ -735,7 +735,7 @@ Index SDK provides two ways to use the training script:
 
 **Environment Dependencies<a name="section162431329141010"></a>**
 
-- Install Python 3.9. Python 3.9, Python 3.10, and Python 3.11 are supported, but Python 3.9 is recommended.
+- Install Python 3.10. Python 3.10 and Python 3.11 are supported, but Python 3.10 is recommended.
 - Install Faiss 1.10.0. You can install it with `pip install` as follows.
 
     ```bash
